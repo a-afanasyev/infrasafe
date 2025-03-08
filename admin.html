@@ -4,29 +4,265 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Database Admin Panel</title>
-    <script defer src="admin.js"></script>
-    <link rel="stylesheet" href="css\styles.css">
+    <script defer src="public/admin.js"></script>
+    <style>
+        /* Стили для предотвращения мерцания */
+        html {
+            scroll-behavior: smooth;
+        }
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        /* Базовые стили для страницы */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            /* Предотвращаем скачки при появлении полосы прокрутки */
+            overflow-y: scroll;
+            /* Предотвращаем мерцание при загрузке шрифтов */
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        h1, h2 {
+            color: #333;
+        }
+        
+        /* Предотвращаем мерцание при загрузке таблиц */
+        .table-wrapper {
+            position: relative;
+            min-height: 200px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            background-color: white;
+            /* Предотвращаем изменение размеров таблицы при загрузке данных */
+            table-layout: fixed;
+            /* Добавляем тень для лучшего визуального разделения */
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            /* Предотвращаем мерцание при рендеринге */
+            backface-visibility: hidden;
+            transform: translateZ(0);
+            -webkit-transform: translateZ(0);
+        }
+        
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border: 1px solid #ddd;
+            /* Предотвращаем перенос текста, чтобы избежать изменения высоты строк */
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        th {
+            background-color: #4CAF50;
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        
+        form {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            /* Добавляем тень для лучшего визуального разделения */
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        input, select {
+            padding: 8px;
+            margin-right: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        button {
+            padding: 8px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        button:disabled {
+            background-color: #cccccc;
+            color: #666666;
+            cursor: not-allowed;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .pagination button {
+            margin: 0 5px;
+        }
+        
+        .pagination span {
+            padding: 8px 15px;
+            background-color: #f2f2f2;
+            border-radius: 4px;
+        }
+        
+        /* Стили для модальных окон редактирования */
+        .edit-form-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            /* Добавляем плавное появление и исчезновение */
+            opacity: 1;
+            transition: opacity 0.3s ease-in-out;
+            /* Предотвращаем мерцание при рендеринге */
+            will-change: opacity;
+            transform: translateZ(0);
+            -webkit-transform: translateZ(0);
+        }
+        
+        .edit-form-overlay[style*="display: none"] {
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .edit-form {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            width: 80%;
+            max-width: 500px;
+            /* Добавляем плавное появление */
+            transform: translateY(0);
+            transition: transform 0.3s ease-in-out;
+            /* Предотвращаем мерцание при рендеринге */
+            will-change: transform;
+            backface-visibility: hidden;
+        }
+        
+        .edit-form-overlay[style*="display: none"] .edit-form {
+            transform: translateY(-20px);
+        }
+        
+        .edit-form h3 {
+            margin-top: 0;
+        }
+        
+        .edit-form form {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .edit-form input, .edit-form select {
+            margin-bottom: 10px;
+            padding: 8px;
+        }
+        
+        .form-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+        }
+        
+        /* Стили для индикатора загрузки */
+        .loading-row td {
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+            color: #666;
+        }
+        
+        .table-container {
+            position: relative;
+            min-height: 100px;
+            /* Предотвращаем изменение размеров контейнера при загрузке данных */
+            overflow: hidden;
+            /* Добавляем плавное появление */
+            transition: opacity 0.3s ease-in-out;
+            /* Устанавливаем начальную прозрачность */
+            opacity: 0;
+            /* Добавляем отступ снизу */
+            margin-bottom: 30px;
+            /* Предотвращаем мерцание при рендеринге */
+            will-change: opacity;
+            transform: translateZ(0);
+            -webkit-transform: translateZ(0);
+        }
+        
+        /* Стили для сообщений об ошибках */
+        .error-message {
+            color: #d32f2f;
+            background-color: #ffebee;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            border-left: 4px solid #d32f2f;
+        }
+    </style>
 </head>
 <body>
     <h1>Database Administration</h1>
 
     <!-- Buildings Table -->
     <h2>Buildings</h2>
-    <table id="buildings-table" border="1">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Address</th>
-                <th>Town</th>
-                <th>Latitude</th>
-                <th>Longitude</th>
-                <th>Management Company</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody></tbody>
-    </table>
+    <div class="table-container">
+        <table id="buildings-table" border="1">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Address</th>
+                    <th>Town</th>
+                    <th>Region</th>
+                    <th>Latitude</th>
+                    <th>Longitude</th>
+                    <th>Management Company</th>
+                    <th>Hot Water</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="10" style="text-align: center;">Загрузка данных...</td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="pagination" id="buildings-pagination">
+            <button id="buildings-prev-page">Предыдущая</button>
+            <span id="buildings-page-info">Страница 1</span>
+            <button id="buildings-next-page">Следующая</button>
+        </div>
+    </div>
 
     <!-- Form to Add New Building -->
     <h2>Add New Building</h2>
@@ -34,9 +270,13 @@
         <input type="text" id="building-name" placeholder="Building Name" required>
         <input type="text" id="building-address" placeholder="Address" required>
         <input type="text" id="building-town" placeholder="Town" required>
+        <input type="text" id="building-region" placeholder="Region">
         <input type="number" step="0.000001" id="building-latitude" placeholder="Latitude" required>
         <input type="number" step="0.000001" id="building-longitude" placeholder="Longitude" required>
         <input type="text" id="building-management" placeholder="Management Company">
+        <label>
+            <input type="checkbox" id="building-hot-water"> Hot Water Available
+        </label>
         <button type="submit">Add Building</button>
     </form>
 
@@ -44,20 +284,31 @@
 
     <!-- Controllers Table -->
     <h2>Controllers</h2>
-    <table id="controllers-table" border="1">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Serial Number</th>
-                <th>Vendor</th>
-                <th>Model</th>
-                <th>Building ID</th>
-                <th>Status</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody></tbody>
-    </table>
+    <div class="table-container">
+        <table id="controllers-table" border="1">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Serial Number</th>
+                    <th>Vendor</th>
+                    <th>Model</th>
+                    <th>Building ID</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="7" style="text-align: center;">Загрузка данных...</td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="pagination" id="controllers-pagination">
+            <button id="controllers-prev-page">Предыдущая</button>
+            <span id="controllers-page-info">Страница 1</span>
+            <button id="controllers-next-page">Следующая</button>
+        </div>
+    </div>
 
     <!-- Form to Add New Controller -->
     <h2>Add New Controller</h2>
@@ -67,11 +318,112 @@
         <input type="text" id="controller-model" placeholder="Model">
         <input type="number" id="controller-building-id" placeholder="Building ID" required>
         <select id="controller-status">
-            <option value="active">Active</option>
+            <option value="online">Online</option>
             <option value="offline">Offline</option>
+            <option value="maintenance">Maintenance</option>
         </select>
         <button type="submit">Add Controller</button>
     </form>
+
+    <hr>
+
+    <!-- Metrics Table -->
+    <h2>Latest Metrics</h2>
+    <div class="table-container">
+        <table id="metrics-table" border="1">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Controller ID</th>
+                    <th>Timestamp</th>
+                    <th>Electricity Ph1</th>
+                    <th>Electricity Ph2</th>
+                    <th>Electricity Ph3</th>
+                    <th>Cold Water Pressure</th>
+                    <th>Hot Water In Temp</th>
+                    <th>Air Temp</th>
+                    <th>Humidity</th>
+                    <th>Leak Sensor</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="12" style="text-align: center;">Загрузка данных...</td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="pagination" id="metrics-pagination">
+            <button id="metrics-prev-page">Предыдущая</button>
+            <span id="metrics-page-info">Страница 1</span>
+            <button id="metrics-next-page">Следующая</button>
+        </div>
+    </div>
+
+    <!-- Form to Add Test Metric -->
+    <h2>Add Test Metric</h2>
+    <form id="add-metric-form">
+        <input type="number" id="metric-controller-id" placeholder="Controller ID" required>
+        <input type="number" step="0.1" id="metric-electricity-ph1" placeholder="Electricity Ph1" value="220.0">
+        <input type="number" step="0.1" id="metric-electricity-ph2" placeholder="Electricity Ph2" value="220.0">
+        <input type="number" step="0.1" id="metric-electricity-ph3" placeholder="Electricity Ph3" value="220.0">
+        <input type="number" step="0.1" id="metric-cold-water-pressure" placeholder="Cold Water Pressure" value="5.0">
+        <input type="number" step="0.1" id="metric-hot-water-in-temp" placeholder="Hot Water In Temp" value="65.0">
+        <input type="number" step="0.1" id="metric-air-temp" placeholder="Air Temperature" value="22.0">
+        <input type="number" step="0.1" id="metric-humidity" placeholder="Humidity %" value="45.0">
+        <label>
+            <input type="checkbox" id="metric-leak-sensor"> Leak Detected
+        </label>
+        <button type="submit">Add Test Metric</button>
+    </form>
+
+    <!-- Модальные окна редактирования (скрыты по умолчанию) -->
+    <!-- Модальное окно редактирования здания -->
+    <div id="edit-building-modal" class="edit-form-overlay" style="display: none;">
+        <div class="edit-form">
+            <h3>Редактировать здание</h3>
+            <form id="edit-building-form">
+                <input type="hidden" id="edit-building-id">
+                <input type="text" id="edit-building-name" placeholder="Название" required>
+                <input type="text" id="edit-building-address" placeholder="Адрес" required>
+                <input type="text" id="edit-building-town" placeholder="Город" required>
+                <input type="text" id="edit-building-region" placeholder="Регион">
+                <input type="number" step="0.000001" id="edit-building-latitude" placeholder="Широта" required>
+                <input type="number" step="0.000001" id="edit-building-longitude" placeholder="Долгота" required>
+                <input type="text" id="edit-building-management" placeholder="Управляющая компания">
+                <label>
+                    <input type="checkbox" id="edit-building-hot-water"> Горячая вода
+                </label>
+                <div class="form-buttons">
+                    <button type="submit">Сохранить</button>
+                    <button type="button" id="cancel-edit-building">Отмена</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модальное окно редактирования контроллера -->
+    <div id="edit-controller-modal" class="edit-form-overlay" style="display: none;">
+        <div class="edit-form">
+            <h3>Редактировать контроллер</h3>
+            <form id="edit-controller-form">
+                <input type="hidden" id="edit-controller-id">
+                <input type="text" id="edit-controller-serial" placeholder="Серийный номер" required>
+                <input type="text" id="edit-controller-vendor" placeholder="Производитель">
+                <input type="text" id="edit-controller-model" placeholder="Модель">
+                <input type="number" id="edit-controller-building-id" placeholder="ID здания" required>
+                <select id="edit-controller-status">
+                    <option value="online">Online</option>
+                    <option value="offline">Offline</option>
+                    <option value="maintenance">Maintenance</option>
+                </select>
+                <div class="form-buttons">
+                    <button type="submit">Сохранить</button>
+                    <button type="button" id="cancel-edit-controller">Отмена</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
 </body>
 </html>

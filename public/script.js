@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', async function () {
     // Define backend API URL (can be modified externally)
-    const backendURL = window.BACKEND_URL || "http://localhost:8080/api/metrics"; 
-
+    const backendURL = window.BACKEND_URL || "https://172.17.0.1/api/metrics"; 
+ //   const backendURL = window.BACKEND_URL || "http://localhost:3000/api/metrics"; 
     // Initialize the map
     const map = L.map('map').setView([52.52, 13.405], 10); // Default: Berlin
 
@@ -180,5 +180,46 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     } catch (err) {
         console.error("Error loading data:", err);
+        
+        // Создаем сообщение об ошибке вместо перезагрузки страницы
+        const errorDiv = document.createElement('div');
+        errorDiv.style.position = 'absolute';
+        errorDiv.style.top = '50%';
+        errorDiv.style.left = '50%';
+        errorDiv.style.transform = 'translate(-50%, -50%)';
+        errorDiv.style.backgroundColor = 'white';
+        errorDiv.style.padding = '20px';
+        errorDiv.style.border = '1px solid red';
+        errorDiv.style.borderRadius = '5px';
+        errorDiv.style.zIndex = '1000';
+        errorDiv.style.boxShadow = '0 0 10px rgba(0,0,0,0.5)';
+        
+        errorDiv.innerHTML = `
+            <h3 style="color: red; margin-top: 0;">Ошибка загрузки данных</h3>
+            <p>${err.message}</p>
+            <p>Пожалуйста, проверьте соединение с сервером и обновите страницу.</p>
+            <button id="retry-button" style="padding: 8px 15px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px;">Повторить загрузку</button>
+        `;
+        
+        document.body.appendChild(errorDiv);
+        
+        // Добавляем обработчик для кнопки повторной загрузки
+        document.getElementById('retry-button').addEventListener('click', function() {
+            // Удаляем сообщение об ошибке
+            errorDiv.remove();
+            
+            // Повторяем загрузку данных без перезагрузки страницы
+            fetch(backendURL)
+                .then(response => response.json())
+                .then(data => {
+                    // Если данные успешно загружены, обновляем страницу
+                    window.location.reload();
+                })
+                .catch(error => {
+                    // Если ошибка повторяется, показываем сообщение снова
+                    console.error("Error reloading data:", error);
+                    document.body.appendChild(errorDiv);
+                });
+        });
     }
 });

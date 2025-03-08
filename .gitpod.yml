@@ -1,0 +1,23 @@
+image: gitpod/workspace-postgres
+
+ports:
+  - port: 3000
+    onOpen: open-preview
+  - port: 5432
+    onOpen: ignore
+
+tasks:
+  - init: |
+      npm install
+    command: |
+      npm run dev
+
+github:
+  prebuilds:
+    master: true
+    branches: true
+    pullRequests: true
+    pullRequestsFromForks: true
+    addCheck: true
+    addComment: true
+    addBadge: true 
