@@ -33,6 +33,7 @@ coverage/
 .vscode/
 *.swp
 *.swo
+*.code-workspace
 
 # Файлы базы данных
 *.sqlite
