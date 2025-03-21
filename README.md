@@ -41,7 +41,7 @@ NODE_ENV=development
 # Настройки базы данных
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=leaflet
+DB_NAME=infrasafe
 DB_USER=postgres
 DB_PASSWORD=postgres
 
@@ -85,6 +85,8 @@ leaflet/
 │   ├── images/              # Иконки и изображения
 │   └── index.html           # Основная страница приложения
 ├── src/                     # Исходный код сервера
+│   ├── config/              # Конфигурационные файлы
+│   │   └── database.js      # Конфигурация базы данных
 │   ├── controllers/         # Контроллеры для обработки запросов
 │   │   ├── buildingController.js
 │   │   ├── controllerController.js
@@ -98,12 +100,15 @@ leaflet/
 │   │   ├── controllerRoutes.js
 │   │   ├── metricRoutes.js
 │   │   └── index.js
+│   ├── services/            # Сервисный слой для бизнес-логики
+│   │   ├── buildingService.js
+│   │   ├── controllerService.js
+│   │   └── metricService.js
 │   ├── middleware/          # Промежуточное ПО
 │   │   └── errorHandler.js
 │   ├── utils/               # Утилиты и вспомогательные функции
 │   │   ├── helpers.js
 │   │   └── logger.js
-│   ├── db.js                # Конфигурация базы данных
 │   ├── server.js            # Настройка сервера Express
 │   └── index.js             # Входная точка приложения
 ├── .env                     # Переменные окружения
@@ -111,6 +116,17 @@ leaflet/
 ├── package.json             # Зависимости и скрипты
 └── README.md                # Документация проекта
 ```
+
+## План рефакторинга
+
+✅ Перенос конфигурации базы данных из `src/db.js` в `src/config/database.js`
+✅ Добавление сервисного слоя для разделения бизнес-логики и контроллеров
+✅ Перенос серверной логики в `src/server.js`
+⬜ Улучшение обработки ошибок и логирования
+⬜ Добавление модульного тестирования для ключевых компонентов
+⬜ Реализация кэширования для часто запрашиваемых данных
+⬜ Оптимизация запросов к базе данных
+⬜ Улучшение документации API
 
 ## API Endpoints
 

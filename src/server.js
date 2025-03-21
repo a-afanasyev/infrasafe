@@ -10,7 +10,7 @@ const swaggerUi = require('swagger-ui-express');
 const apiRoutes = require('./routes');
 const errorHandler = require('./middleware/errorHandler');
 const logger = require('./utils/logger');
-const db = require('./db');
+const db = require('./config/database');
 
 // Создаем экземпляр приложения Express
 const app = express();
