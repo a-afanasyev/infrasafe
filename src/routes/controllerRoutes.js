@@ -4,7 +4,7 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/controllers:
+ * /controllers:
  *   get:
  *     summary: Получить список всех контроллеров
  *     description: Возвращает список всех контроллеров с пагинацией
@@ -42,7 +42,7 @@ router.get('/', controllerController.getAllControllers);
 
 /**
  * @swagger
- * /api/controllers/{id}:
+ * /controllers/{id}:
  *   get:
  *     summary: Получить контроллер по ID
  *     description: Возвращает один контроллер по его ID
@@ -63,7 +63,7 @@ router.get('/:id', controllerController.getControllerById);
 
 /**
  * @swagger
- * /api/controllers/building/{buildingId}:
+ * /controllers/building/{buildingId}:
  *   get:
  *     summary: Получить контроллеры по ID здания
  *     description: Возвращает список контроллеров, привязанных к зданию
@@ -82,7 +82,7 @@ router.get('/building/:buildingId', controllerController.getControllersByBuildin
 
 /**
  * @swagger
- * /api/controllers/{id}/metrics:
+ * /controllers/{id}/metrics:
  *   get:
  *     summary: Получить метрики контроллера
  *     description: Возвращает список метрик для контроллера с возможностью фильтрации по дате
@@ -115,7 +115,7 @@ router.get('/:id/metrics', controllerController.getControllerMetrics);
 
 /**
  * @swagger
- * /api/controllers:
+ * /controllers:
  *   post:
  *     summary: Создать новый контроллер
  *     description: Создает новый контроллер
@@ -152,7 +152,7 @@ router.post('/', controllerController.createController);
 
 /**
  * @swagger
- * /api/controllers/{id}:
+ * /controllers/{id}:
  *   put:
  *     summary: Обновить контроллер
  *     description: Обновляет существующий контроллер по его ID
@@ -190,7 +190,7 @@ router.put('/:id', controllerController.updateController);
 
 /**
  * @swagger
- * /api/controllers/{id}/status:
+ * /controllers/{id}/status:
  *   patch:
  *     summary: Обновить статус контроллера
  *     description: Обновляет статус существующего контроллера
@@ -225,7 +225,7 @@ router.patch('/:id/status', controllerController.updateControllerStatus);
 
 /**
  * @swagger
- * /api/controllers/{id}:
+ * /controllers/{id}:
  *   delete:
  *     summary: Удалить контроллер
  *     description: Удаляет контроллер по его ID

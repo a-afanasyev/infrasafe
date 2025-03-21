@@ -4,7 +4,7 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/buildings:
+ * /buildings:
  *   get:
  *     summary: Получить список всех зданий
  *     description: Возвращает список всех зданий с пагинацией
@@ -42,7 +42,7 @@ router.get('/', buildingController.getAllBuildings);
 
 /**
  * @swagger
- * /api/buildings/{id}:
+ * /buildings/{id}:
  *   get:
  *     summary: Получить здание по ID
  *     description: Возвращает одно здание по его ID
@@ -63,7 +63,7 @@ router.get('/:id', buildingController.getBuildingById);
 
 /**
  * @swagger
- * /api/buildings:
+ * /buildings:
  *   post:
  *     summary: Создать новое здание
  *     description: Создает новое здание
@@ -97,7 +97,7 @@ router.post('/', buildingController.createBuilding);
 
 /**
  * @swagger
- * /api/buildings/{id}:
+ * /buildings/{id}:
  *   put:
  *     summary: Обновить здание
  *     description: Обновляет существующее здание по его ID
@@ -135,7 +135,7 @@ router.put('/:id', buildingController.updateBuilding);
 
 /**
  * @swagger
- * /api/buildings/{id}:
+ * /buildings/{id}:
  *   delete:
  *     summary: Удалить здание
  *     description: Удаляет здание по его ID

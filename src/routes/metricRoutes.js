@@ -4,7 +4,7 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/metrics:
+ * /metrics:
  *   get:
  *     summary: Получить список всех метрик
  *     description: Возвращает список всех метрик с пагинацией
@@ -42,7 +42,7 @@ router.get('/', metricController.getAllMetrics);
 
 /**
  * @swagger
- * /api/metrics/latest:
+ * /metrics/latest:
  *   get:
  *     summary: Получить последние метрики для всех контроллеров
  *     description: Возвращает последние записанные метрики для каждого контроллера
@@ -54,7 +54,7 @@ router.get('/latest', metricController.getLastMetricsForAllControllers);
 
 /**
  * @swagger
- * /api/metrics/controller/{controllerId}:
+ * /metrics/controller/{controllerId}:
  *   get:
  *     summary: Получить метрики по ID контроллера
  *     description: Возвращает список метрик для конкретного контроллера с возможностью фильтрации по дате
@@ -87,7 +87,7 @@ router.get('/controller/:controllerId', metricController.getMetricsByControllerI
 
 /**
  * @swagger
- * /api/metrics/{id}:
+ * /metrics/{id}:
  *   get:
  *     summary: Получить метрику по ID
  *     description: Возвращает одну метрику по ее ID
@@ -108,7 +108,7 @@ router.get('/:id', metricController.getMetricById);
 
 /**
  * @swagger
- * /api/metrics:
+ * /metrics:
  *   post:
  *     summary: Создать новую метрику
  *     description: Создает новую запись метрики
@@ -148,7 +148,7 @@ router.post('/', metricController.createMetric);
 
 /**
  * @swagger
- * /api/metrics/telemetry:
+ * /metrics/telemetry:
  *   post:
  *     summary: Получить телеметрию от устройства
  *     description: Принимает данные телеметрии от контроллера и сохраняет их как метрику
@@ -188,7 +188,7 @@ router.post('/telemetry', metricController.receiveTelementry);
 
 /**
  * @swagger
- * /api/metrics/{id}:
+ * /metrics/{id}:
  *   delete:
  *     summary: Удалить метрику
  *     description: Удаляет метрику по ее ID
