@@ -7,7 +7,7 @@ const app = express();
 const port = 8080;
 
 app.use(express.json());
-//app.use(cors());
+// Настройка CORS для разрешения доступа с любого источника
 app.use(cors({
     origin: '*', // Разрешить всем источникам (в продакшн лучше указать конкретные домены)
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
