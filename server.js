@@ -7,7 +7,12 @@ const app = express();
 const port = 8080;
 
 app.use(express.json());
-app.use(cors());
+//app.use(cors());
+app.use(cors({
+    origin: '*', // Разрешить всем источникам (в продакшн лучше указать конкретные домены)
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.static(path.join(__dirname, "public")));
 
 // PostgreSQL connection

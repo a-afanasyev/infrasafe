@@ -1,5 +1,5 @@
 document.addEventListener("DOMContentLoaded", function () {
-    const backendURL = "http://localhost:8080/api"; // Adjust this as needed
+    const backendURL = "/api"; // Adjust this as needed
 
     // Fetch and display buildings
     async function loadBuildings() {

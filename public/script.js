@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', async function () {
     // Define backend API URL (can be modified externally)
-    const backendURL = window.BACKEND_URL || "http://localhost:8080/api/metrics"; 
+    const backendURL = window.BACKEND_URL || "/api/metrics"; 
 
     // Initialize the map
     const map = L.map('map').setView([52.52, 13.405], 10); // Default: Berlin
@@ -28,19 +28,19 @@ document.addEventListener('DOMContentLoaded', async function () {
             // Determine electricity status
 
             //Determine phase 1 status
-            const isPhase1Ok = item.electricity_ph1 > 210 && item.electricity_ph1 < 230;
+            const isPhase1Ok = item.electricity_ph1 > 200 && item.electricity_ph1 < 240;
             const electricityImage1 = isPhase1Ok
                 ? 'data/images/Electricity_Green.png'
                 : 'data/images/Electricity_Red.png';
             
             //Determine phase 2 status
-            const isPhase2Ok = item.electricity_ph2 > 210 && item.electricity_ph2 < 230;
+            const isPhase2Ok = item.electricity_ph2 > 200 && item.electricity_ph2 < 240;
             const electricityImage2 = isPhase2Ok
                 ? 'data/images/Electricity_Green.png'
                 : 'data/images/Electricity_Red.png';
             
             //Determine phase 3 status
-            const isPhase3Ok = item.electricity_ph3 > 210 && item.electricity_ph3 < 230;
+            const isPhase3Ok = item.electricity_ph3 > 200 && item.electricity_ph3 < 240;
             const electricityImage3 = isPhase3Ok
                 ? 'data/images/Electricity_Green.png'
                 : 'data/images/Electricity_Red.png';
@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             // Determine hot water status 
             //need to update procedure for hot water to show houses withoit hot water and check the difference betwee in and out pressure and temperature
 
-            const isHotWaterOK = item.hot_water_in_pressure > 1 &&item.hot_water_out_pressure > 1;
+            const isHotWaterOK = item.hot_water_in_pressure >= 1 &&item.hot_water_out_pressure >= 1;
             const hotWaterImage = isHotWaterOK
                 ? 'data/images/Water_Red.png'
                 : 'data/images/Water_No_Red.png';
