@@ -26,6 +26,23 @@
     color: #2ecc71;
 }
 
+.connection-indicator.warning {
+    background-color: rgba(50, 50, 0, 0.8);
+    border: 1px solid #f39c12;
+}
+
+.connection-indicator.error {
+    background-color: rgba(50, 0, 0, 0.8);
+    border: 1px solid #e74c3c;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(231, 76, 60, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); }
+}
+
 /* Стили для мигающей ячейки */
 @keyframes blink-orange {
     0% { background-color: transparent; }

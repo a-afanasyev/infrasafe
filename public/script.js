@@ -213,6 +213,37 @@ document.addEventListener('DOMContentLoaded', async function () {
         connectionIndicator.classList.remove('connected');
     });
 
+    // Обработчик статуса соединения с базой данных
+    socket.on('connectionStatus', function(statusData) {
+        console.log('Получен статус соединения:', statusData);
+        
+        switch(statusData.status) {
+            case 'online':
+                connectionIndicator.innerHTML = '<span style="color: green;">⚫</span> ' + statusData.message;
+                connectionIndicator.classList.add('connected');
+                
+                // Через 3 секунды скрываем индикатор для онлайн-статуса
+                setTimeout(() => {
+                    connectionIndicator.style.opacity = '0';
+                }, 3000);
+                break;
+                
+            case 'database_offline':
+                connectionIndicator.innerHTML = '<span style="color: orange;">⚫</span> ' + statusData.message;
+                connectionIndicator.style.opacity = '1';
+                connectionIndicator.classList.remove('connected');
+                connectionIndicator.classList.add('warning');
+                break;
+                
+            case 'error':
+                connectionIndicator.innerHTML = '<span style="color: red;">⚫</span> ' + statusData.message;
+                connectionIndicator.style.opacity = '1';
+                connectionIndicator.classList.remove('connected');
+                connectionIndicator.classList.add('error');
+                break;
+        }
+    });
+
     socket.on('initialData', function(data) {
         console.log('Получены начальные данные');
         updateMapData(data);
