@@ -2,6 +2,47 @@ document.addEventListener('DOMContentLoaded', async function () {
     // Define backend API URL (can be modified externally)
     const backendURL = window.BACKEND_URL || "https://infrasafe.aisolutions.uz/api/metrics"; 
 
+    // Добавляем необходимые CSS-стили для сворачиваемости сайдбара
+    const sidebarStyles = document.createElement('style');
+    sidebarStyles.textContent = `
+        #sidebar h3 {
+            cursor: pointer;
+            position: relative;
+            padding-right: 20px;
+            user-select: none;
+        }
+        
+        #sidebar h3:after {
+            content: "▼";
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.8em;
+            transition: transform 0.3s;
+        }
+        
+        #sidebar h3.collapsed:after {
+            transform: translateY(-50%) rotate(-90deg);
+        }
+        
+        #sidebar .status-items.collapsed {
+            display: none !important;
+        }
+        
+        .blinking-leak-header {
+            animation: blink-animation 1s infinite;
+            color: #1976d2;
+        }
+        
+        @keyframes blink-animation {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+    `;
+    document.head.appendChild(sidebarStyles);
+
     // Создаём элемент для индикатора загрузки
     const loadingIndicator = document.createElement('div');
     loadingIndicator.id = 'loading-indicator';
@@ -45,24 +86,50 @@ document.addEventListener('DOMContentLoaded', async function () {
             // Получаем контейнер элементов группы
             const itemsContainer = header.nextElementSibling;
             
-            // Добавляем обработчик клика на заголовок
-            header.addEventListener('click', function() {
+            // Убеждаемся, что у заголовка есть стиль курсора, указывающий, что он кликабельный
+            header.style.cursor = 'pointer';
+            
+            // Добавляем текстовую подсказку
+            header.title = 'Нажмите, чтобы свернуть/развернуть';
+            
+            // Очищаем все предыдущие обработчики (на случай повторной инициализации)
+            const newHeader = header.cloneNode(true);
+            if (header.parentNode) {
+                header.parentNode.replaceChild(newHeader, header);
+            }
+            
+            // Добавляем обработчик клика на заголовок с явным захватом события
+            newHeader.addEventListener('click', function(event) {
+                event.stopPropagation(); // Предотвращаем всплытие события
+                
                 // Переключаем класс для заголовка
                 this.classList.toggle('collapsed');
                 
-                // Переключаем класс для контейнера элементов
-                if (itemsContainer) {
-                    itemsContainer.classList.toggle('collapsed');
+                // Получаем контейнер снова, так как мы заменили элемент
+                const items = this.nextElementSibling;
+                
+                // Переключаем видимость контейнера напрямую через стили, если класс не работает
+                if (items) {
+                    if (items.classList.contains('collapsed')) {
+                        items.classList.remove('collapsed');
+                        items.style.display = 'block';
+                    } else {
+                        items.classList.add('collapsed');
+                        items.style.display = 'none';
+                    }
                 }
-            });
+            }, true); // Используем третий параметр true для захвата события
             
             // По умолчанию не сворачиваем группу "Протечка"
             // и сворачиваем остальные группы, если в них нет элементов
-            if (header.parentElement.id !== 'leak-group') {
-                const isEmpty = itemsContainer.children.length === 0;
+            if (newHeader.parentElement.id !== 'leak-group') {
+                const isEmpty = itemsContainer ? itemsContainer.children.length === 0 : true;
                 if (isEmpty) {
-                    header.classList.add('collapsed');
-                    itemsContainer.classList.add('collapsed');
+                    newHeader.classList.add('collapsed');
+                    if (itemsContainer) {
+                        itemsContainer.classList.add('collapsed');
+                        itemsContainer.style.display = 'none';
+                    }
                 }
             }
         });
@@ -416,6 +483,9 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (loadingIndicator) {
                 loadingIndicator.style.display = 'none';
             }
+            
+            // Вызываем функцию для исправления возможных проблем с сайдбаром
+            fixSidebarCollapsible();
         } catch (error) {
             console.error("Error loading data:", error);
             // Показываем ошибку в индикаторе загрузки
@@ -429,7 +499,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     
     // Функция для обновления состояния свернутых групп
     function updateGroupsCollapsedState() {
-        const sidebarGroups = ['ok-group', 'warning-group', 'critical-group', 'no-group'];
+        const sidebarGroups = ['ok-group', 'warning-group', 'critical-group', 'no-group', 'leak-group'];
         
         sidebarGroups.forEach(groupId => {
             const header = document.querySelector(`#${groupId} h3`);
@@ -438,13 +508,66 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (header && itemsContainer) {
                 const isEmpty = itemsContainer.children.length === 0;
                 
-                if (isEmpty) {
+                if (isEmpty && groupId !== 'leak-group') {
+                    // Для пустых групп (кроме группы протечек)
                     header.classList.add('collapsed');
                     itemsContainer.classList.add('collapsed');
-                } else {
+                    itemsContainer.style.display = 'none';
+                } else if (!isEmpty) {
                     // Если в группе есть элементы, разворачиваем её
                     header.classList.remove('collapsed');
                     itemsContainer.classList.remove('collapsed');
+                    itemsContainer.style.display = 'block';
+                }
+                
+                // Особая обработка для группы протечек
+                if (groupId === 'leak-group') {
+                    // Группа протечек всегда видима, даже если пуста
+                    header.classList.remove('collapsed');
+                    itemsContainer.classList.remove('collapsed');
+                    itemsContainer.style.display = 'block';
+                }
+            }
+        });
+    }
+
+    // Функция для исправления возможных проблем с сайдбаром
+    function fixSidebarCollapsible() {
+        // Убедимся, что у всех заголовков есть обработчики событий и правильные стили
+        const sidebarHeaders = document.querySelectorAll('#sidebar h3');
+        
+        sidebarHeaders.forEach(header => {
+            // Добавляем стиль курсора
+            header.style.cursor = 'pointer';
+            
+            // Убедимся, что заголовок является кликабельным
+            if (!header.onclick) {
+                header.onclick = function(event) {
+                    event.stopPropagation();
+                    this.classList.toggle('collapsed');
+                    
+                    const itemsContainer = this.nextElementSibling;
+                    if (itemsContainer) {
+                        if (itemsContainer.classList.contains('collapsed')) {
+                            itemsContainer.classList.remove('collapsed');
+                            itemsContainer.style.display = 'block';
+                        } else {
+                            itemsContainer.classList.add('collapsed');
+                            itemsContainer.style.display = 'none';
+                        }
+                    }
+                };
+            }
+            
+            // Применяем правильные стили к содержимому
+            const itemsContainer = header.nextElementSibling;
+            if (itemsContainer) {
+                if (header.classList.contains('collapsed')) {
+                    itemsContainer.classList.add('collapsed');
+                    itemsContainer.style.display = 'none';
+                } else {
+                    itemsContainer.classList.remove('collapsed');
+                    itemsContainer.style.display = 'block';
                 }
             }
         });
