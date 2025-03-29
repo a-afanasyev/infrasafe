@@ -2,9 +2,18 @@ const express = require("express");
 const { Pool } = require("pg");
 const cors = require("cors");
 const path = require("path");
+const http = require("http");
+const { Server } = require("socket.io");
 
 const app = express();
 const port = 8080;
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: '*',
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+    }
+});
 
 app.use(express.json());
 // Настройка CORS для разрешения доступа с любого источника
@@ -23,6 +32,81 @@ const pool = new Pool({
     password: "postgres",
     port: 5432,
 });
+
+// WebSocket connection
+io.on("connection", (socket) => {
+    console.log("Клиент подключился");
+    
+    // Отправка начальных данных при подключении
+    sendInitialData(socket);
+    
+    // Прослушивание событий от клиента
+    socket.on("disconnect", () => {
+        console.log("Клиент отключился");
+    });
+});
+
+// Функция для отправки начальных данных клиенту
+async function sendInitialData(socket) {
+    try {
+        const result = await pool.query(`
+            SELECT 
+                b.building_id,
+                b.name AS building_name,
+                b.latitude, 
+                b.longitude,
+                COALESCE(m.electricity_ph1, NULL) AS electricity_ph1,
+                COALESCE(m.electricity_ph2, NULL) AS electricity_ph2,
+                COALESCE(m.electricity_ph3, NULL) AS electricity_ph3,
+                COALESCE(m.cold_water_pressure, NULL) AS cold_water_pressure,
+                COALESCE(m.hot_water_in_pressure, NULL) AS hot_water_in_pressure,
+                COALESCE(m.hot_water_out_pressure, NULL) AS hot_water_out_pressure,
+                COALESCE(m.hot_water_in_temp, NULL) AS hot_water_in_temp,
+                COALESCE(m.hot_water_out_temp, NULL) AS hot_water_out_temp,
+                COALESCE(m.leak_sensor, NULL) AS leak_sensor,
+                COALESCE(m.air_temp, NULL) AS air_temp,
+                COALESCE(m.humidity, NULL) AS humidity,
+                c.controller_id
+            FROM buildings b
+            LEFT JOIN controllers c ON b.building_id = c.building_id
+            LEFT JOIN metrics m ON c.controller_id = m.controller_id;
+        `);
+        socket.emit("initialData", result.rows);
+    } catch (err) {
+        console.error("Error fetching initial data:", err);
+    }
+}
+
+// Функция для рассылки обновлений всем подключенным клиентам
+async function broadcastMetricsUpdate() {
+    try {
+        const result = await pool.query(`
+            SELECT 
+                b.building_id,
+                b.name AS building_name,
+                b.latitude, 
+                b.longitude,
+                COALESCE(m.electricity_ph1, NULL) AS electricity_ph1,
+                COALESCE(m.electricity_ph2, NULL) AS electricity_ph2,
+                COALESCE(m.electricity_ph3, NULL) AS electricity_ph3,
+                COALESCE(m.cold_water_pressure, NULL) AS cold_water_pressure,
+                COALESCE(m.hot_water_in_pressure, NULL) AS hot_water_in_pressure,
+                COALESCE(m.hot_water_out_pressure, NULL) AS hot_water_out_pressure,
+                COALESCE(m.hot_water_in_temp, NULL) AS hot_water_in_temp,
+                COALESCE(m.hot_water_out_temp, NULL) AS hot_water_out_temp,
+                COALESCE(m.leak_sensor, NULL) AS leak_sensor,
+                COALESCE(m.air_temp, NULL) AS air_temp,
+                COALESCE(m.humidity, NULL) AS humidity,
+                c.controller_id
+            FROM buildings b
+            LEFT JOIN controllers c ON b.building_id = c.building_id
+            LEFT JOIN metrics m ON c.controller_id = m.controller_id;
+        `);
+        io.emit("metricsUpdate", result.rows);
+    } catch (err) {
+        console.error("Error broadcasting metrics update:", err);
+    }
+}
 
 // 🔹 Get all buildings
 app.get("/api/buildings", async (req, res) => {
@@ -145,6 +229,10 @@ app.post("/api/metrics", async (req, res) => {
                 hot_water_in_pressure, hot_water_out_pressure, hot_water_in_temp, hot_water_out_temp,
                 leak_sensor, air_temp, humidity]
         );
+        
+        // Отправляем обновление всем клиентам после добавления новых метрик
+        broadcastMetricsUpdate();
+        
         res.json(result.rows[0]);
     } catch (err) {
         console.error("Error inserting metric:", err);
@@ -186,7 +274,12 @@ app.delete("/api/controllers/:id", async (req, res) => {
     }
 });
 
+// Настроим уведомление при изменении данных в базе
+// Установим интервал для периодической проверки новых данных (если не используем триггеры в БД)
+const UPDATE_INTERVAL = 30000; // 30 секунд
+setInterval(broadcastMetricsUpdate, UPDATE_INTERVAL);
+
 // Start server
-app.listen(port, () => {
+server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}`);
 });
