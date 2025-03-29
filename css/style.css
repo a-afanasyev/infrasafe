@@ -56,12 +56,42 @@ body {
     margin: 10px 0;
     font-size: 18px;
     color: #34495e;
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    padding-right: 20px;
+    transition: color 0.3s;
+}
+
+#sidebar h3:hover {
+    color: #1e88e5;
+}
+
+/* Стрелка-индикатор для заголовков групп */
+#sidebar h3::after {
+    content: "▼";
+    position: absolute;
+    right: 0;
+    font-size: 12px;
+    transition: transform 0.3s;
+}
+
+#sidebar h3.collapsed::after {
+    transform: rotate(-90deg);
 }
 
 /* Sidebar Category Items */
 .status-items {
     padding-left: 10px;
     width: 100%;
+    max-height: 500px;
+    overflow-y: auto;
+    transition: max-height 0.3s ease-out;
+}
+
+.status-items.collapsed {
+    max-height: 0;
+    overflow: hidden;
 }
 
 .sidebar-item {
@@ -85,6 +115,21 @@ body {
 .sidebar-item img {
     width: 15px;
     margin-right: 8px;
+}
+
+/* Специальные стили для группы протечек */
+#leak-group h3 {
+    color: #1e88e5;
+    font-weight: bold;
+}
+
+#leak-group .sidebar-item {
+    background-color: #e3f2fd;
+    border-left: 3px solid #1e88e5;
+}
+
+#leak-group .sidebar-item:hover {
+    background-color: #bbdefb;
 }
 
 /* ---- Map and Content Styling ---- */
@@ -129,10 +174,38 @@ body {
     50% { opacity: 0.5; }
 }
 
+@keyframes blinkMarker {
+    0%, 100% { 
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% { 
+        opacity: 0.6;
+        transform: scale(1.1);
+    }
+}
+
+.blinking-marker {
+    animation: blinkMarker 1.5s ease-in-out infinite;
+    transform-origin: center center;
+    transform-box: fill-box;
+}
+
 .blinking-cell-orange {
     animation: blink 1.5s linear infinite;
     color: orange;
     font-weight: bold;
+}
+
+/* Мигающий заголовок для группы протечек */
+@keyframes blink-blue {
+    0%, 100% { color: #1e88e5; }
+    50% { color: #01579b; }
+}
+
+.blinking-leak-header {
+    animation: blink-blue 2s linear infinite;
+    font-weight: bold !important;
 }
 
 /* Warning Popup */
@@ -189,4 +262,53 @@ body {
         font-size: 12px;
         padding: 5px;
     }
+}
+
+/* ---- Update Control Styling ---- */
+.update-control {
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+}
+
+.update-control button {
+    display: block;
+    width: 100%;
+    background-color: #2c3e50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 10px;
+    margin: 5px 0;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.update-control button:hover {
+    background-color: #34495e;
+}
+
+.update-control select {
+    width: 100%;
+    padding: 4px;
+    margin: 5px 0;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.update-control .auto-update-label {
+    display: block;
+    margin: 8px 0 5px 0;
+}
+
+.update-control .last-update {
+    margin-bottom: 5px;
+    color: #666;
+    font-size: 12px;
+}
+
+.update-control .interval-label {
+    margin-top: 5px;
+    color: #666;
+    font-size: 12px;
 }
