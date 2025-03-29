@@ -3,11 +3,18 @@ document.addEventListener('DOMContentLoaded', async function () {
     const backendURL = window.BACKEND_URL || "/api/metrics"; 
 
     // Initialize the map
-    const map = L.map('map').setView([41.347560, 69.201332], 10); // Default: Berlin
+    const map = L.map('map', {
+        attributionControl: false  // Отключаем стандартный контрол атрибуции
+    }).setView([41.347560, 69.201332], 10); // Default: Berlin
+
+    // Добавляем собственный контрол атрибуции только с OpenStreetMap
+    L.control.attribution({
+        prefix: false  // Это убирает "Leaflet"
+    }).addAttribution('&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors').addTo(map);
 
     // Add OpenStreetMap tile layer
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        attribution: '',  // Пустая атрибуция для слоя, так как мы уже добавили её вручную выше
     }).addTo(map);
 
     // Create a group to hold markers
