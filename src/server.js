@@ -42,6 +42,17 @@ const swaggerOptions = {
                 description: 'Development server',
             },
         ],
+        components: {
+            securitySchemes: {
+                bearerAuth: {
+                    type: 'http',
+                    scheme: 'bearer',
+                    bearerFormat: 'JWT',
+                    description: 'Требуется для маршрутов, которые изменяют данные (POST, PUT, DELETE, PATCH)'
+                }
+            }
+        },
+        security: [], // По умолчанию авторизация не требуется для GET запросов
     },
     apis: ['./src/routes/*.js'], // Пути к файлам с JSDoc комментариями
 };

@@ -1,5 +1,6 @@
 const express = require('express');
 const metricController = require('../controllers/metricController');
+const { authenticateJWT } = require('../middleware/auth');
 const router = express.Router();
 
 /**
@@ -8,6 +9,7 @@ const router = express.Router();
  *   get:
  *     summary: Получить список всех метрик
  *     description: Возвращает список всех метрик с пагинацией
+ *     security: [] # Без авторизации
  *     parameters:
  *       - in: query
  *         name: page
@@ -112,6 +114,8 @@ router.get('/:id', metricController.getMetricById);
  *   post:
  *     summary: Создать новую метрику
  *     description: Создает новую запись метрики
+ *     security:
+ *       - bearerAuth: [] # Требуется авторизация
  *     requestBody:
  *       required: true
  *       content:
@@ -143,48 +147,12 @@ router.get('/:id', metricController.getMetricById);
  *         description: Ошибка валидации данных
  *       404:
  *         description: Контроллер не найден
+ *       401:
+ *         description: Отсутствует токен авторизации
+ *       403:
+ *         description: Недействительный токен
  */
 router.post('/', metricController.createMetric);
-
-/**
- * @swagger
- * /metrics/telemetry:
- *   post:
- *     summary: Получить телеметрию от устройства
- *     description: Принимает данные телеметрии от контроллера и сохраняет их как метрику
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - controller_id
- *             properties:
- *               controller_id:
- *                 type: integer
- *               temperature:
- *                 type: number
- *               humidity:
- *                 type: number
- *               pressure:
- *                 type: number
- *               co2_level:
- *                 type: number
- *               voltage:
- *                 type: number
- *               timestamp:
- *                 type: string
- *                 format: date-time
- *     responses:
- *       201:
- *         description: Телеметрия успешно получена и сохранена
- *       400:
- *         description: Ошибка валидации данных
- *       404:
- *         description: Контроллер не найден
- */
-router.post('/telemetry', metricController.receiveTelementry);
 
 /**
  * @swagger

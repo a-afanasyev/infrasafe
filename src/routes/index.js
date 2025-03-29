@@ -2,9 +2,81 @@ const express = require('express');
 const buildingRoutes = require('./buildingRoutes');
 const controllerRoutes = require('./controllerRoutes');
 const metricRoutes = require('./metricRoutes');
+const metricController = require('../controllers/metricController');
+const { authenticateJWT } = require('../middleware/auth');
 const { createError } = require('../utils/helpers');
 
 const router = express.Router();
+
+/**
+ * @swagger
+ * components:
+ *   securitySchemes:
+ *     bearerAuth:
+ *       type: http
+ *       scheme: bearer
+ *       bearerFormat: JWT
+ * 
+ * security:
+ *   - bearerAuth: []
+ * 
+ * paths:
+ *   /metrics/telemetry:
+ *     post:
+ *       summary: Получить телеметрию от устройства
+ *       description: Принимает данные телеметрии от контроллера и сохраняет их как метрику
+ *       security: []  # Отключаем требование авторизации для этого маршрута
+ *       requestBody:
+ *         required: true
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required:
+ *                 - controller_id
+ *               properties:
+ *                 controller_id:
+ *                   type: integer
+ *                 temperature:
+ *                   type: number
+ *                 humidity:
+ *                   type: number
+ *                 pressure:
+ *                   type: number
+ *                 co2_level:
+ *                   type: number
+ *                 voltage:
+ *                   type: number
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *       responses:
+ *         201:
+ *           description: Телеметрия успешно получена и сохранена
+ *         400:
+ *           description: Ошибка валидации данных
+ *         404:
+ *           description: Контроллер не найден
+ */
+// Специальные маршруты, для которых не требуется аутентификация
+// Маршрут телеметрии должен быть доступен без аутентификации
+router.post('/metrics/telemetry', metricController.receiveTelementry);
+
+// Определяем middleware для защищенных маршрутов - PUT, POST, DELETE
+router.use((req, res, next) => {
+    // Исключаем маршрут телеметрии из проверки
+    if (req.path === '/metrics/telemetry' && req.method === 'POST') {
+        return next();
+    }
+    
+    // Защищаем только маршруты, которые изменяют данные
+    if (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE' || req.method === 'PATCH') {
+        authenticateJWT(req, res, next);
+    } else {
+        // Для GET запросов - разрешаем без аутентификации
+        next();
+    }
+});
 
 // Маршруты API
 router.use('/buildings', buildingRoutes);

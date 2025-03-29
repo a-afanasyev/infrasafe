@@ -1,0 +1,51 @@
+/* Включение базовых стилей Tailwind */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Кастомные глобальные стили */
+@layer base {
+  h1 {
+    @apply text-2xl font-bold mb-4;
+  }
+  h2 {
+    @apply text-xl font-bold mb-3;
+  }
+  h3 {
+    @apply text-lg font-semibold mb-2;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded bg-primary-600 text-white hover:bg-primary-700 transition-colors;
+  }
+  
+  .btn-secondary {
+    @apply px-4 py-2 rounded bg-gray-200 text-gray-800 hover:bg-gray-300 transition-colors;
+  }
+  
+  .card {
+    @apply bg-white rounded-lg shadow p-4 mb-4;
+  }
+  
+  .table-container {
+    @apply overflow-x-auto rounded-lg shadow;
+  }
+  
+  .data-table {
+    @apply w-full bg-white;
+  }
+  
+  .data-table th {
+    @apply p-3 bg-gray-100 text-left text-gray-600 font-semibold;
+  }
+  
+  .data-table td {
+    @apply p-3 border-t border-gray-200;
+  }
+  
+  .data-table tr:hover {
+    @apply bg-gray-50;
+  }
+} 

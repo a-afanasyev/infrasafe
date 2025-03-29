@@ -8,6 +8,7 @@ const router = express.Router();
  *   get:
  *     summary: Получить список всех контроллеров
  *     description: Возвращает список всех контроллеров с пагинацией
+ *     security: [] # Без авторизации
  *     parameters:
  *       - in: query
  *         name: page
@@ -46,6 +47,7 @@ router.get('/', controllerController.getAllControllers);
  *   get:
  *     summary: Получить контроллер по ID
  *     description: Возвращает один контроллер по его ID
+ *     security: [] # Без авторизации
  *     parameters:
  *       - in: path
  *         name: id
@@ -119,6 +121,8 @@ router.get('/:id/metrics', controllerController.getControllerMetrics);
  *   post:
  *     summary: Создать новый контроллер
  *     description: Создает новый контроллер
+ *     security:
+ *       - bearerAuth: [] # Требуется авторизация
  *     requestBody:
  *       required: true
  *       content:
@@ -147,6 +151,10 @@ router.get('/:id/metrics', controllerController.getControllerMetrics);
  *         description: Контроллер успешно создан
  *       400:
  *         description: Ошибка валидации данных
+ *       401:
+ *         description: Отсутствует токен авторизации
+ *       403:
+ *         description: Недействительный токен
  */
 router.post('/', controllerController.createController);
 

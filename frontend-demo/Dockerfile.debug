@@ -1,0 +1,21 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Устанавливаем зависимости
+COPY package*.json ./
+RUN npm install --legacy-peer-deps
+
+# Копируем файлы проекта
+COPY . .
+
+# Собираем приложение
+RUN npm run build
+RUN echo "==== LISTING ROOT DIRECTORY ===="
+RUN ls -la
+RUN echo "==== LISTING .SVELTE-KIT DIRECTORY ===="
+RUN ls -la .svelte-kit || echo "No .svelte-kit directory"
+RUN echo "==== LISTING .SVELTE-KIT/OUTPUT DIRECTORY ===="
+RUN ls -la .svelte-kit/output || echo "No .svelte-kit/output directory"
+
+CMD ["sh", "-c", "ls -la .svelte-kit/output && echo 'Ready to debug'"] 

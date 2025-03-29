@@ -8,6 +8,7 @@ const router = express.Router();
  *   get:
  *     summary: Получить список всех зданий
  *     description: Возвращает список всех зданий с пагинацией
+ *     security: [] # Без авторизации
  *     parameters:
  *       - in: query
  *         name: page
@@ -46,6 +47,7 @@ router.get('/', buildingController.getAllBuildings);
  *   get:
  *     summary: Получить здание по ID
  *     description: Возвращает одно здание по его ID
+ *     security: [] # Без авторизации
  *     parameters:
  *       - in: path
  *         name: id
@@ -67,6 +69,8 @@ router.get('/:id', buildingController.getBuildingById);
  *   post:
  *     summary: Создать новое здание
  *     description: Создает новое здание
+ *     security:
+ *       - bearerAuth: [] # Требуется авторизация
  *     requestBody:
  *       required: true
  *       content:
@@ -92,6 +96,10 @@ router.get('/:id', buildingController.getBuildingById);
  *         description: Здание успешно создано
  *       400:
  *         description: Ошибка валидации данных
+ *       401:
+ *         description: Отсутствует токен авторизации
+ *       403:
+ *         description: Недействительный токен
  */
 router.post('/', buildingController.createBuilding);
 
@@ -101,6 +109,8 @@ router.post('/', buildingController.createBuilding);
  *   put:
  *     summary: Обновить здание
  *     description: Обновляет существующее здание по его ID
+ *     security:
+ *       - bearerAuth: [] # Требуется авторизация
  *     parameters:
  *       - in: path
  *         name: id
@@ -130,6 +140,10 @@ router.post('/', buildingController.createBuilding);
  *         description: Здание не найдено
  *       400:
  *         description: Ошибка валидации данных
+ *       401:
+ *         description: Отсутствует токен авторизации
+ *       403:
+ *         description: Недействительный токен
  */
 router.put('/:id', buildingController.updateBuilding);
 
@@ -139,6 +153,8 @@ router.put('/:id', buildingController.updateBuilding);
  *   delete:
  *     summary: Удалить здание
  *     description: Удаляет здание по его ID
+ *     security:
+ *       - bearerAuth: [] # Требуется авторизация
  *     parameters:
  *       - in: path
  *         name: id
@@ -153,6 +169,10 @@ router.put('/:id', buildingController.updateBuilding);
  *         description: Здание не найдено
  *       400:
  *         description: Невозможно удалить здание с привязанными контроллерами
+ *       401:
+ *         description: Отсутствует токен авторизации
+ *       403:
+ *         description: Недействительный токен
  */
 router.delete('/:id', buildingController.deleteBuilding);
 
