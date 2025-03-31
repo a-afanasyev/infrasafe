@@ -40,6 +40,64 @@ document.addEventListener('DOMContentLoaded', async function () {
             50% { opacity: 0.5; }
             100% { opacity: 1; }
         }
+        
+        /* Стили для кластеров маркеров */
+        .marker-cluster-custom {
+            text-align: center;
+            border-radius: 50%;
+            font-weight: bold;
+        }
+        
+        .marker-cluster-custom div {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .marker-cluster-leak div {
+            animation: cluster-blink-animation 1.5s infinite;
+        }
+        
+        @keyframes cluster-blink-animation {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+        
+        /* Стили для кнопки обновления */
+        .update-control {
+            transition: all 0.3s ease;
+        }
+        
+        .update-toggle-button {
+            border-radius: 3px;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+        
+        .update-toggle-button:hover {
+            background-color: #f0f0f0;
+        }
+        
+        .update-content {
+            overflow: hidden;
+            transition: height 0.3s ease;
+        }
+        
+        .update-button {
+            background-color: #1976D2;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            transition: background-color 0.2s;
+        }
+        
+        .update-button:hover {
+            background-color: #1565C0;
+        }
     `;
     document.head.appendChild(sidebarStyles);
 
@@ -136,7 +194,55 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
     
     // Create a group to hold markers
-    let markers = L.featureGroup().addTo(map);
+    // Заменяем обычную группу маркеров на кластеризованную группу
+    let markers = L.markerClusterGroup({
+        maxClusterRadius: 50,       // Расстояние в пикселях, на котором маркеры будут объединяться в кластер
+        spiderfyOnMaxZoom: true,    // Раскрывать кластер при максимальном зуме
+        showCoverageOnHover: false, // Не показывать границы кластера при наведении
+        zoomToBoundsOnClick: true,  // Приближать к границам кластера при клике
+        disableClusteringAtZoom: 15, // Отключать кластеризацию при большом зуме
+        // Настраиваем внешний вид кластера
+        iconCreateFunction: function(cluster) {
+            // Получаем все маркеры в кластере
+            const markers = cluster.getAllChildMarkers();
+            
+            // Определяем статус кластера на основе статусов маркеров
+            let hasLeak = false;
+            let hasCritical = false;
+            let hasWarning = false;
+            
+            for (let marker of markers) {
+                const status = marker.options.status;
+                if (status === 'leak') hasLeak = true;
+                if (status === 'critical') hasCritical = true;
+                if (status === 'warning') hasWarning = true;
+            }
+            
+            // Задаем цвет кластера в зависимости от приоритета статусов
+            let className = 'marker-cluster-custom';
+            let style = '';
+            
+            if (hasLeak) {
+                className += ' marker-cluster-leak';
+                style = 'background-color: rgba(33, 150, 243, 0.8); color: white;';
+            } else if (hasCritical) {
+                className += ' marker-cluster-critical';
+                style = 'background-color: rgba(255, 0, 0, 0.8); color: white;';
+            } else if (hasWarning) {
+                className += ' marker-cluster-warning';
+                style = 'background-color: rgba(255, 165, 0, 0.8); color: white;';
+            } else {
+                className += ' marker-cluster-ok';
+                style = 'background-color: rgba(0, 128, 0, 0.8); color: white;';
+            }
+            
+            return L.divIcon({ 
+                html: `<div style="${style}"><span>${cluster.getChildCount()}</span></div>`,
+                className: className,
+                iconSize: L.point(40, 40)
+            });
+        }
+    }).addTo(map);
     
     // Создаем переменные для хранения настроек обновления
     let updateInterval = 60; // секунды
@@ -153,28 +259,68 @@ document.addEventListener('DOMContentLoaded', async function () {
         container.style.borderRadius = '4px';
         container.style.boxShadow = '0 0 5px rgba(0,0,0,0.2)';
         
+        // Добавляем кнопку плюсика для сворачивания/разворачивания
+        const toggleButton = L.DomUtil.create('div', 'update-toggle-button', container);
+        toggleButton.innerHTML = '+';
+        toggleButton.style.cursor = 'pointer';
+        toggleButton.style.fontWeight = 'bold';
+        toggleButton.style.fontSize = '18px';
+        toggleButton.style.width = '24px';
+        toggleButton.style.height = '24px';
+        toggleButton.style.textAlign = 'center';
+        toggleButton.style.lineHeight = '22px';
+        toggleButton.style.borderRadius = '3px';
+        toggleButton.style.border = '1px solid #ccc';
+        toggleButton.style.backgroundColor = '#fff';
+        toggleButton.style.transition = 'all 0.2s ease';
+        toggleButton.style.boxShadow = '0 1px 2px rgba(0,0,0,0.1)';
+        toggleButton.title = 'Открыть панель обновления';
+        
+        // Стили при наведении
+        toggleButton.onmouseover = function() {
+            this.style.backgroundColor = '#f4f4f4';
+        };
+        toggleButton.onmouseout = function() {
+            this.style.backgroundColor = '#fff';
+        };
+        
+        // Стили при активации
+        toggleButton.onmousedown = function() {
+            this.style.boxShadow = '0 0 1px rgba(0,0,0,0.2)';
+            this.style.transform = 'translateY(1px)';
+        };
+        toggleButton.onmouseup = function() {
+            this.style.boxShadow = '0 1px 2px rgba(0,0,0,0.1)';
+            this.style.transform = 'translateY(0)';
+        };
+        
+        // Создаем контейнер для содержимого, который будет сворачиваться
+        const contentContainer = L.DomUtil.create('div', 'update-content', container);
+        contentContainer.style.display = 'none'; // По умолчанию свернут
+        contentContainer.style.marginTop = '6px';
+        
         // Последнее обновление
-        const lastUpdateEl = L.DomUtil.create('div', 'last-update', container);
+        const lastUpdateEl = L.DomUtil.create('div', 'last-update', contentContainer);
         lastUpdateEl.innerHTML = `<small>Последнее обновление: <span id="last-update-time">Только что</span></small>`;
         
         // Кнопка обновления
-        const updateButton = L.DomUtil.create('button', 'update-button', container);
+        const updateButton = L.DomUtil.create('button', 'update-button', contentContainer);
         updateButton.innerHTML = 'Обновить сейчас';
         updateButton.style.padding = '4px 8px';
         updateButton.style.margin = '5px 0';
         updateButton.style.cursor = 'pointer';
         
         // Автообновление
-        const autoUpdateLabel = L.DomUtil.create('label', 'auto-update-label', container);
+        const autoUpdateLabel = L.DomUtil.create('label', 'auto-update-label', contentContainer);
         const autoUpdateCheckbox = L.DomUtil.create('input', 'auto-update-checkbox', autoUpdateLabel);
         autoUpdateCheckbox.type = 'checkbox';
         autoUpdateCheckbox.id = 'auto-update';
         autoUpdateLabel.appendChild(document.createTextNode(' Автообновление'));
         
         // Селектор интервала
-        const intervalLabel = L.DomUtil.create('div', 'interval-label', container);
+        const intervalLabel = L.DomUtil.create('div', 'interval-label', contentContainer);
         intervalLabel.innerHTML = '<small>Интервал обновления:</small>';
-        const intervalSelect = L.DomUtil.create('select', 'interval-select', container);
+        const intervalSelect = L.DomUtil.create('select', 'interval-select', contentContainer);
         intervalSelect.id = 'update-interval';
         
         const intervals = [
@@ -194,7 +340,26 @@ document.addEventListener('DOMContentLoaded', async function () {
             intervalSelect.appendChild(option);
         });
         
-        // Обработчики событий
+        // Обработчик для переключения видимости содержимого
+        L.DomEvent.on(toggleButton, 'click', function() {
+            if (contentContainer.style.display === 'none') {
+                // Разворачиваем
+                contentContainer.style.display = 'block';
+                toggleButton.innerHTML = '−'; // Меняем плюс на минус
+                toggleButton.title = 'Закрыть панель обновления';
+                // Анимация открытия
+                container.style.minWidth = '180px';
+            } else {
+                // Сворачиваем
+                contentContainer.style.display = 'none';
+                toggleButton.innerHTML = '+'; // Меняем минус на плюс
+                toggleButton.title = 'Открыть панель обновления';
+                // Анимация закрытия
+                container.style.minWidth = '24px';
+            }
+        });
+        
+        // Обработчики событий для элементов управления
         L.DomEvent.on(updateButton, 'click', function() {
             loadData();
         });
@@ -312,7 +477,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 const hasLeak = item.leak_sensor === true;
                 const leakSensorImage = hasLeak 
                     ? 'data/images/leak1.png' 
-                    : 'data/images/Water_Blue.png';
+                    : 'data/images/Leak_Green.png';
 
                 // Увеличиваем счетчик зданий с протечкой
                 if (hasLeak) {
@@ -346,7 +511,11 @@ document.addEventListener('DOMContentLoaded', async function () {
             
 
                 // Create a Leaflet marker
-                const marker = L.circleMarker([item.latitude, item.longitude], circleOptions);
+                const marker = L.circleMarker([item.latitude, item.longitude], {
+                    ...circleOptions,
+                    status: status, // Сохраняем статус маркера для использования в кластерах
+                    building_id: item.building_id || item.controller_id || item.building_name // Уникальный идентификатор для здания
+                });
                 
                 // Делаем маркер с протечкой мигающим
                 if (status === 'leak') {
@@ -420,6 +589,9 @@ document.addEventListener('DOMContentLoaded', async function () {
                 marker.bindPopup(popupContent).addTo(markers);
                 markers.addLayer(marker);
 
+                // Сохраняем содержимое попапа глобально для этого маркера
+                marker._popupContent = popupContent;
+
                 // Update the sidebar with building information
                 const sidebarGroup = document.querySelector(`#${status}-group .status-items`);
                 if (sidebarGroup) {
@@ -429,7 +601,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                         <img src="${electricityImage}" alt="Electricity_Status" style="width: 15px;">
                         ${isColdWaterOK ? `<img src="${coldWaterImage}" alt="Cold_Water_Status" style="width: 15px;">` : ''}
                         ${isHotWaterOK ? `<img src="${hotWaterImage}" alt="Hot_Water_Status" style="width: 15px;">` : ''}
-                        ${hasLeak ? `<img src="${leakSensorImage}" alt="Leak_Sensor_Status" style="width: 15px;">` : ''}
+                        <img src="${leakSensorImage}" alt="Leak_Sensor_Status" style="width: 15px;">
                         ${item.building_name}
                     ` : `
                         <img src="data/images/no_controller.png" alt="No_Controller" style="width: 15px;">
@@ -437,8 +609,24 @@ document.addEventListener('DOMContentLoaded', async function () {
                     `;
 
                     sidebarItem.addEventListener("click", function () {
-                        map.setView([item.latitude, item.longitude], 14);
-                        marker.openPopup();
+                        // Сохраняем координаты и уникальный ID маркера для надежности
+                        const markerLat = item.latitude;
+                        const markerLng = item.longitude;
+                        const markerId = item.building_id || item.controller_id || item.building_name;
+                        
+                        // Создаем попап мгновенно - не ждем анимацию карты
+                        const popup = L.popup()
+                            .setLatLng([markerLat, markerLng])
+                            .setContent(popupContent)
+                            .openOn(map);
+                        
+                        // Быстро перемещаемся к маркеру с минимальной анимацией
+                        map.flyTo([markerLat, markerLng], 16, {
+                            duration: 0.5 // Уменьшаем время анимации до 0.5 секунды
+                        });
+                        
+                        // Расформируем кластеры при необходимости
+                        markers.unspiderfy();
                     });
                     sidebarGroup.appendChild(sidebarItem);
                 } else {
