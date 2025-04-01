@@ -137,54 +137,31 @@ document.addEventListener('DOMContentLoaded', async function () {
     
     // Функция для инициализации сворачиваемых групп в сайдбаре
     function initCollapsibleGroups() {
-        const sidebarHeaders = document.querySelectorAll('#sidebar h3');
+        const groupHeaders = document.querySelectorAll('.group-header');
         
-        sidebarHeaders.forEach(header => {
-            // Получаем контейнер элементов группы
-            const itemsContainer = header.nextElementSibling;
-            
-            // Убеждаемся, что у заголовка есть стиль курсора, указывающий, что он кликабельный
-            header.style.cursor = 'pointer';
-            
+        groupHeaders.forEach(header => {
             // Добавляем текстовую подсказку
             header.title = 'Нажмите, чтобы свернуть/развернуть';
             
-            // Очищаем все предыдущие обработчики (на случай повторной инициализации)
-            const newHeader = header.cloneNode(true);
-            if (header.parentNode) {
-                header.parentNode.replaceChild(newHeader, header);
-            }
-            
-            // Добавляем обработчик клика на заголовок с явным захватом события
-            newHeader.addEventListener('click', function(event) {
+            // Добавляем обработчик клика на заголовок
+            header.onclick = function(event) {
                 event.stopPropagation(); // Предотвращаем всплытие события
+                
+                // Проверяем, не свернут ли сайдбар
+                const sidebar = document.getElementById('sidebar');
+                if (sidebar && sidebar.classList.contains('collapsed')) {
+                    return; // Если сайдбар свернут, не обрабатываем клик
+                }
                 
                 // Переключаем класс для заголовка
                 this.classList.toggle('collapsed');
                 
-                // Получаем контейнер снова, так как мы заменили элемент
-                const items = this.nextElementSibling;
-                
-                // Переключаем видимость контейнера напрямую через стили, если класс не работает
-                if (items) {
-                    if (items.classList.contains('collapsed')) {
-                        items.classList.remove('collapsed');
-                        items.style.display = 'block';
-                    } else {
-                        items.classList.add('collapsed');
-                        items.style.display = 'none';
-                    }
+                // Получаем контейнер элементов
+                const itemsContainer = this.nextElementSibling;
+                if (itemsContainer && itemsContainer.classList.contains('status-items')) {
+                    itemsContainer.classList.toggle('collapsed');
                 }
-            }, true); // Используем третий параметр true для захвата события
-            
-            // По умолчанию сворачиваем все группы кроме "Протечка"
-            if (newHeader.parentElement.id !== 'leak-group') {
-                newHeader.classList.add('collapsed');
-                if (itemsContainer) {
-                    itemsContainer.classList.add('collapsed');
-                    itemsContainer.style.display = 'none';
-                }
-            }
+            };
         });
     }
     
@@ -685,31 +662,14 @@ document.addEventListener('DOMContentLoaded', async function () {
         const sidebarGroups = ['ok-group', 'warning-group', 'critical-group', 'no-group', 'leak-group'];
         
         sidebarGroups.forEach(groupId => {
-            const header = document.querySelector(`#${groupId} h3`);
-            const itemsContainer = header?.nextElementSibling;
+            const group = document.querySelector(`#${groupId}`);
+            const statusItems = group?.querySelector('.status-items');
+            const groupHeader = group?.querySelector('.group-header');
             
-            if (header && itemsContainer) {
-                const isEmpty = itemsContainer.children.length === 0;
-                
-                // Для группы протечек - особая обработка
-                if (groupId === 'leak-group') {
-                    // Группа протечек всегда развернута
-                    header.classList.remove('collapsed');
-                    itemsContainer.classList.remove('collapsed');
-                    itemsContainer.style.display = 'block';
-                    
-                    // Добавляем мигание, если есть элементы
-                    if (!isEmpty) {
-                        header.classList.add('blinking-leak-header');
-                    } else {
-                        header.classList.remove('blinking-leak-header');
-                    }
-                } else {
-                    // Для остальных групп - всегда сворачиваем при обновлении
-                    header.classList.add('collapsed');
-                    itemsContainer.classList.add('collapsed');
-                    itemsContainer.style.display = 'none';
-                }
+            if (statusItems && groupHeader) {
+                // Сворачиваем все группы по умолчанию
+                statusItems.classList.add('collapsed');
+                groupHeader.classList.add('collapsed');
             }
         });
     }
@@ -756,58 +716,92 @@ document.addEventListener('DOMContentLoaded', async function () {
         });
     }
 
-    // Функция для управления сайдбаром
-    function initializeSidebar() {
-        const sidebar = document.getElementById('sidebar');
-        const toggleButton = document.querySelector('.sidebar-toggle');
-        const mapContainer = document.getElementById('map');
-
-        // Добавляем сайдбар и кнопку переключения в контейнер карты
-        if (sidebar && mapContainer) {
-            mapContainer.appendChild(sidebar);
-        }
-        if (toggleButton && mapContainer) {
-            mapContainer.appendChild(toggleButton);
-        }
-
-        // Обработчик для кнопки переключения
-        if (toggleButton) {
-            toggleButton.addEventListener('click', (e) => {
-                e.stopPropagation();
-                sidebar.classList.toggle('hidden');
-                toggleButton.classList.toggle('hidden');
-            });
-        }
-
-        // Предотвращаем закрытие при клике на сайдбар
-        if (sidebar) {
-            sidebar.addEventListener('click', (e) => {
-                e.stopPropagation();
-            });
-        }
-
-        // Закрываем сайдбар при клике на карту
-        map.on('click', () => {
-            if (sidebar && !sidebar.classList.contains('hidden')) {
-                sidebar.classList.add('hidden');
-                toggleButton.classList.add('hidden');
-            }
-        });
-
-        // Обновляем позицию при изменении размера окна
-        window.addEventListener('resize', () => {
-            if (sidebar) {
-                if (window.innerWidth <= 768) {
-                    sidebar.style.maxHeight = '50vh';
-                } else {
-                    sidebar.style.maxHeight = 'calc(100% - 40px)';
+    // Инициализация сайдбара
+    const sidebar = document.getElementById('sidebar');
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    
+    if (sidebar && sidebarToggle) {
+        // Добавляем обработчик клика на кнопку переключения
+        sidebarToggle.onclick = function(e) {
+            e.stopPropagation();
+            sidebar.classList.toggle('collapsed');
+            
+            // Обновляем состояние групп при сворачивании/разворачивании
+            const statusGroups = document.querySelectorAll('.status-group');
+            statusGroups.forEach(group => {
+                const statusItems = group.querySelector('.status-items');
+                if (statusItems) {
+                    if (sidebar.classList.contains('collapsed')) {
+                        statusItems.classList.add('collapsed');
+                    } else {
+                        // При разворачивании сайдбара восстанавливаем предыдущее состояние групп
+                        const groupHeader = group.querySelector('.group-header');
+                        if (groupHeader && !groupHeader.classList.contains('collapsed')) {
+                            statusItems.classList.remove('collapsed');
+                        }
+                    }
                 }
-            }
+            });
+        };
+        
+        // Добавляем обработчики для заголовков групп
+        const groupHeaders = document.querySelectorAll('.group-header');
+        groupHeaders.forEach(header => {
+            header.onclick = function(e) {
+                e.stopPropagation();
+                const statusItems = this.nextElementSibling;
+                if (statusItems && statusItems.classList.contains('status-items')) {
+                    if (!sidebar.classList.contains('collapsed')) {
+                        statusItems.classList.toggle('collapsed');
+                        this.classList.toggle('collapsed');
+                    }
+                }
+            };
         });
     }
-
-    // Инициализация после загрузки DOM
-    initializeSidebar();
+    
+    // Функция для показа подсказки при клике на группу в свернутом состоянии
+    function showGroupTooltip(title) {
+        // Удаляем существующую подсказку, если она есть
+        const existingTooltip = document.querySelector('.group-tooltip');
+        if (existingTooltip) {
+            existingTooltip.remove();
+        }
+        
+        // Создаем новую подсказку
+        const tooltip = document.createElement('div');
+        tooltip.className = 'group-tooltip';
+        tooltip.textContent = title;
+        
+        // Добавляем стили для подсказки
+        tooltip.style.position = 'fixed';
+        tooltip.style.background = 'rgba(0, 0, 0, 0.8)';
+        tooltip.style.color = 'white';
+        tooltip.style.padding = '8px 12px';
+        tooltip.style.borderRadius = '4px';
+        tooltip.style.fontSize = '14px';
+        tooltip.style.zIndex = '1001';
+        tooltip.style.pointerEvents = 'none';
+        
+        // Позиционируем подсказку
+        const sidebar = document.getElementById('sidebar');
+        const rect = sidebar.getBoundingClientRect();
+        tooltip.style.left = `${rect.right + 10}px`;
+        tooltip.style.top = `${rect.top + 10}px`;
+        
+        // Добавляем подсказку на страницу
+        document.body.appendChild(tooltip);
+        
+        // Удаляем подсказку через 2 секунды
+        setTimeout(() => {
+            tooltip.remove();
+        }, 2000);
+    }
+    
+    // Инициализируем сайдбар при загрузке страницы
+    document.addEventListener('DOMContentLoaded', () => {
+        initializeSidebar();
+    });
 
     // Загрузка данных при инициализации
     await loadData();

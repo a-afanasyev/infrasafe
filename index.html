@@ -41,47 +41,49 @@
         <p class="subtitle">Мониторинг состояния объектов инфраструктуры в режиме реального времени</p>
     </div>
     <div id="sidebar">
-        <div id="ok-group">
-            <h3>
-                <div class="icon normal-icon"></div>
-                <span>Нормальное</span>
-            </h3>
-            <div class="status-items"></div>
+        <div class="sidebar-content">
+            <div id="ok-group" class="status-group">
+                <div class="group-header">
+                    <div class="icon normal-icon"></div>
+                    <span class="group-title">Нормальное</span>
+                </div>
+                <div class="status-items"></div>
+            </div>
+            <div id="warning-group" class="status-group">
+                <div class="group-header">
+                    <div class="icon warning-icon"></div>
+                    <span class="group-title">Предупреждение</span>
+                </div>
+                <div class="status-items"></div>
+            </div>
+            <div id="leak-group" class="status-group">
+                <div class="group-header">
+                    <div class="icon leak-icon"></div>
+                    <span class="group-title">Протечка</span>
+                </div>
+                <div class="status-items"></div>
+            </div>
+            <div id="critical-group" class="status-group">
+                <div class="group-header">
+                    <div class="icon critical-icon"></div>
+                    <span class="group-title">Критическое</span>
+                </div>
+                <div class="status-items"></div>
+            </div>
+            <div id="no-group" class="status-group">
+                <div class="group-header">
+                    <div class="icon no-controller-icon"></div>
+                    <span class="group-title">Нет контроллеров</span>
+                </div>
+                <div class="status-items"></div>
+            </div>
         </div>
-        <div id="warning-group">
-            <h3>
-                <div class="icon warning-icon"></div>
-                <span>Предупреждение</span>
-            </h3>
-            <div class="status-items"></div>
-        </div>
-        <div id="leak-group">
-            <h3>
-                <div class="icon leak-icon"></div>
-                <span>Протечка</span>
-            </h3>
-            <div class="status-items"></div>
-        </div>
-        <div id="critical-group">
-            <h3>
-                <div class="icon critical-icon"></div>
-                <span>Критическое</span>
-            </h3>
-            <div class="status-items"></div>
-        </div>
-        <div id="no-group">
-            <h3>
-                <div class="icon no-controller-icon"></div>
-                <span>Нет контроллеров</span>
-            </h3>
-            <div class="status-items"></div>
-        </div>
-    </div>
-    <div class="content">
-        <div id="map"></div>
         <button class="sidebar-toggle" id="sidebarToggle">
             <img src="public/images/toggle-icon.svg" alt="Toggle Sidebar">
         </button>
+    </div>
+    <div class="content">
+        <div id="map"></div>
     </div>
     <div class="status-info">
         <div class="last-update">
