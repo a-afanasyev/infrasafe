@@ -228,8 +228,9 @@ body {
 /* ---- Sidebar Styling ---- */
 #sidebar {
     position: absolute;
-    top: 90px;
+    top: 50%;
     left: 10px;
+    transform: translateY(-50%);
     width: 320px;
     max-height: calc(100vh - 250px);
     background-color: rgba(255, 255, 255, 0.85);
