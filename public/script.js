@@ -752,9 +752,29 @@ document.addEventListener('DOMContentLoaded', async function () {
         groupHeaders.forEach(header => {
             header.onclick = function(e) {
                 e.stopPropagation();
-                const statusItems = this.nextElementSibling;
-                if (statusItems && statusItems.classList.contains('status-items')) {
-                    if (!sidebar.classList.contains('collapsed')) {
+                
+                // Если сайдбар свернут, разворачиваем его и открываем группу
+                if (sidebar.classList.contains('collapsed')) {
+                    sidebar.classList.remove('collapsed');
+                    // Сворачиваем все группы
+                    document.querySelectorAll('.status-group').forEach(group => {
+                        const items = group.querySelector('.status-items');
+                        const header = group.querySelector('.group-header');
+                        if (items && header) {
+                            items.classList.add('collapsed');
+                            header.classList.add('collapsed');
+                        }
+                    });
+                    // Разворачиваем только текущую группу
+                    const statusItems = this.nextElementSibling;
+                    if (statusItems) {
+                        statusItems.classList.remove('collapsed');
+                        this.classList.remove('collapsed');
+                    }
+                } else {
+                    // Если сайдбар развернут, просто переключаем состояние группы
+                    const statusItems = this.nextElementSibling;
+                    if (statusItems && statusItems.classList.contains('status-items')) {
                         statusItems.classList.toggle('collapsed');
                         this.classList.toggle('collapsed');
                     }
