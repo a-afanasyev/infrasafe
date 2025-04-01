@@ -643,6 +643,9 @@ document.addEventListener('DOMContentLoaded', async function () {
             // Убедимся, что состояние свернутых групп соответствует нашим правилам
             updateGroupsCollapsedState();
             
+            // После обновления данных обновляем счетчики
+            updateGroupCounters();
+            
             // Возвращаем успешный результат
             return true;
         } catch (error) {
@@ -805,5 +808,43 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     // Загрузка данных при инициализации
     await loadData();
+
+    // Функция для обновления счетчиков в группах
+    function updateGroupCounters() {
+        const groups = ['ok', 'warning', 'leak', 'critical', 'no'];
+        
+        groups.forEach(group => {
+            const groupElement = document.getElementById(`${group}-group`);
+            const itemsContainer = groupElement.querySelector('.status-items');
+            const counterElement = groupElement.querySelector('.group-counter');
+            
+            // Подсчитываем количество элементов в группе
+            const itemCount = itemsContainer.children.length;
+            
+            // Обновляем счетчик
+            counterElement.textContent = itemCount;
+            
+            // Скрываем счетчик, если элементов нет
+            counterElement.style.display = itemCount > 0 ? 'flex' : 'none';
+        });
+    }
+
+    // Добавляем обновление счетчиков при инициализации
+    document.addEventListener('DOMContentLoaded', async function () {
+        // ... existing code ...
+        
+        // Инициализация счетчиков
+        updateGroupCounters();
+        
+        // Наблюдаем за изменениями в группах
+        const observer = new MutationObserver(updateGroupCounters);
+        
+        // Наблюдаем за изменениями во всех группах
+        ['ok', 'warning', 'leak', 'critical', 'no'].forEach(group => {
+            const groupElement = document.getElementById(`${group}-group`);
+            const itemsContainer = groupElement.querySelector('.status-items');
+            observer.observe(itemsContainer, { childList: true, subtree: true });
+        });
+    });
 });
    

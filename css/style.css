@@ -340,6 +340,7 @@ body {
     padding: 5px;
     border-radius: 4px;
     transition: background-color 0.2s ease;
+    position: relative;
 }
 
 .group-header:hover {
@@ -366,6 +367,35 @@ body {
 
 .status-items {
     padding-left: 30px;
+}
+
+/* Стили для счетчика элементов в группах */
+.group-counter {
+    position: absolute;
+    bottom: 0px;
+    right: 6px;
+    color: #000000;
+    font-size: 14px;
+    display: flex;
+    align-items: left;
+    justify-content: left;
+    z-index: 1;
+}
+
+/* Удаляем специальные цвета для разных групп */
+#ok-group .group-counter,
+#warning-group .group-counter,
+#leak-group .group-counter,
+#critical-group .group-counter,
+#no-group .group-counter {
+    color: #000000;
+}
+
+/* Адаптивность для счетчика */
+@media screen and (max-width: 768px) {
+    .group-counter {
+        font-size: 11px;
+    }
 }
 
 /* Адаптивность для мобильных устройств */
