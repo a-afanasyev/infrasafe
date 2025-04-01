@@ -1,34 +1,36 @@
 /* Reset default margin & padding */
 body, html {
     margin: 0;
+    padding: 0;
     height: 100%;
     width: 100%;
     font-family: 'Roboto', Arial, sans-serif;
+    overflow: hidden;
 }
 
 /* Map Full Height */
 #map {
-    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
+    height: 100%;
     z-index: 1;
 }
 
 /* Grid Layout for the Page */
 body {
-    display: grid;
-    grid-template-rows: 80px auto 1fr 60px;
-    grid-template-columns: 300px 1fr;
-    grid-template-areas: 
-        "header header"
-        "heading heading"
-        "sidebar content"
-        "footer footer";
     height: 100vh;
+    overflow: hidden;
 }
 
 /* ---- Header Styling ---- */
 .header {
-    grid-area: header;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 80px;
     background: linear-gradient(to right, #0F1E25, #1a2a3a);
     padding: 0 25px;
     color: white;
@@ -36,8 +38,7 @@ body {
     align-items: center;
     justify-content: space-between;
     box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.15);
-    position: relative;
-    z-index: 100;
+    z-index: 1000;
 }
 
 .logo-container {
@@ -130,52 +131,62 @@ body {
     margin-left: 5px;
 }
 
-/* Заголовок и подзаголовок */
+/* ---- Main Heading ---- */
 .main-heading {
-    grid-area: heading;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
     text-align: center;
     padding: 15px 0;
-    background-color: #fff;
-    position: relative;
+    background: none;
     z-index: 90;
+    pointer-events: none;
 }
 
 .main-heading .subtitle {
-    color: #555;
+    color: #333;
     font-size: 16px;
     margin: 0;
+    text-shadow: 0 0 10px white;
 }
 
 /* Информация о статусе и обратная связь */
 .status-info {
     position: absolute;
     bottom: 70px;
-    left: 0;
-    right: 0;
+    left: 20px;
+    right: 20px;
     display: flex;
     justify-content: space-between;
-    padding: 0 20px;
+    align-items: center;
     z-index: 95;
 }
 
 .last-update {
+    position: absolute;
+    bottom: 80px;
+    left: 10px;
     background-color: rgba(255, 255, 255, 0.9);
     padding: 8px 12px;
     border-radius: 4px;
     display: flex;
     align-items: center;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-}
-
-.last-update span {
-    font-size: 14px;
-    font-weight: 500;
-    color: #333;
+    backdrop-filter: blur(8px);
+    z-index: 1000;
 }
 
 .update-time {
     margin-left: 10px;
     font-weight: normal;
+}
+
+.feedback-btn {
+    position: absolute;
+    bottom: 80px;
+    right: 10px;
+    z-index: 1000;
 }
 
 .feedback-btn button {
@@ -190,6 +201,7 @@ body {
     font-size: 14px;
     transition: background-color 0.3s;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(8px);
 }
 
 .feedback-btn button:hover {
@@ -217,60 +229,167 @@ body {
     }
     
     .status-info {
+        bottom: 70px;
         flex-direction: column;
         align-items: flex-start;
-        padding: 0 10px;
+        gap: 10px;
     }
     
     .last-update {
         margin-bottom: 10px;
     }
+
+    .feedback-btn {
+        margin-left: 0;
+    }
 }
 
 /* ---- Sidebar Styling ---- */
 #sidebar {
-    grid-area: sidebar;
+    position: absolute;
+    top: 90px;
+    left: 10px;
     width: 300px;
-    background-color: #f5f7fa;
-    border-right: 1px solid #e0e5ec;
-    padding: 10px;
+    max-height: calc(100vh - 250px);
+    background-color: rgba(255, 255, 255, 0.85);
+    border-radius: 8px;
+    padding: 15px;
     overflow-y: auto;
-    box-shadow: inset -2px 0 5px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    backdrop-filter: blur(8px);
+    transition: all 0.3s ease;
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* Sidebar Category Titles */
+.sidebar-toggle {
+    position: absolute;
+    top: 90px;
+    left: 320px;
+    background-color: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 8px 12px;
+    cursor: pointer;
+    z-index: 1000;
+    border-radius: 0 8px 8px 0;
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(8px);
+    transition: all 0.3s ease;
+}
+
+.sidebar-toggle:hover {
+    background-color: rgba(255, 255, 255, 0.95);
+}
+
+#sidebar.hidden {
+    transform: translateX(-100%);
+    opacity: 0;
+}
+
+.sidebar-toggle.hidden {
+    left: 20px;
+    transform: translateX(-100%);
+}
+
+/* Адаптивность для мобильных устройств */
+@media screen and (max-width: 768px) {
+    #sidebar {
+        width: calc(100% - 40px);
+        height: auto;
+        max-height: 50vh;
+        top: auto;
+        bottom: 140px;
+        left: 20px;
+    }
+
+    .sidebar-toggle {
+        top: auto;
+        bottom: calc(50vh + 150px);
+        left: 20px;
+        border-radius: 8px 8px 0 0;
+    }
+
+    .last-update {
+        bottom: 140px;
+    }
+
+    .feedback-btn {
+        bottom: 140px;
+    }
+}
+
+/* Обновляем стили для элементов внутри сайдбара */
 #sidebar h3 {
+    background-color: rgba(255, 255, 255, 0.5);
+    border-radius: 6px;
+    padding: 10px 15px;
     margin: 10px 0;
     font-size: 16px;
     font-weight: 600;
     color: #0F1E25;
     cursor: pointer;
     user-select: none;
-    position: relative;
-    padding: 8px 30px 8px 10px;
     transition: all 0.3s;
-    border-radius: 4px;
-    background-color: #f0f2f5;
-    display: flex;
-    align-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 #sidebar h3:hover {
-    color: #3CE43C;
-    background-color: #e9ecef;
+    background-color: rgba(255, 255, 255, 0.8);
+    transform: translateX(3px);
 }
 
-/* Стрелка-индикатор для заголовков групп */
-#sidebar h3::after {
-    content: "▼";
-    position: absolute;
-    right: 10px;
-    font-size: 12px;
-    transition: transform 0.3s;
+.sidebar-item {
+    background-color: rgba(255, 255, 255, 0.7);
+    margin: 8px 0;
+    padding: 10px 15px;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-#sidebar h3.collapsed::after {
-    transform: rotate(-90deg);
+.sidebar-item:hover {
+    background-color: rgba(255, 255, 255, 0.9);
+    transform: translateX(3px);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+}
+
+/* Специальные стили для группы протечек */
+#leak-group h3 {
+    background-color: rgba(60, 228, 60, 0.1);
+    border: 1px solid rgba(60, 228, 60, 0.2);
+}
+
+#leak-group .sidebar-item {
+    background-color: rgba(60, 228, 60, 0.1);
+    border: 1px solid rgba(60, 228, 60, 0.2);
+}
+
+#leak-group .sidebar-item:hover {
+    background-color: rgba(60, 228, 60, 0.15);
+}
+
+/* Стили для скроллбара */
+#sidebar::-webkit-scrollbar {
+    width: 8px;
+}
+
+#sidebar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+#sidebar::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+
+#sidebar::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
 }
 
 /* Индикаторы статуса */
@@ -348,45 +467,10 @@ body {
     overflow: hidden;
 }
 
-.sidebar-item {
-    background-color: #ffffff;
-    margin: 8px 0;
-    padding: 10px 12px;
-    cursor: pointer;
-    border-radius: 6px;
-    transition: all 0.3s;
-    display: flex;
-    align-items: center;
-    font-size: 14px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    border-left: 3px solid transparent;
-}
-
-/* Hover Effect */
-.sidebar-item:hover {
-    transform: translateX(3px);
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
-}
-
 /* Sidebar Icons */
 .sidebar-item img {
     width: 15px;
     margin-right: 8px;
-}
-
-/* Специальные стили для группы протечек */
-#leak-group h3 {
-    color: #3CE43C;
-    font-weight: bold;
-}
-
-#leak-group .sidebar-item {
-    background-color: #e6ffe6;
-    border-left: 3px solid #3CE43C;
-}
-
-#leak-group .sidebar-item:hover {
-    background-color: #ccffcc;
 }
 
 /* Стили для группы с нормальным статусом */
@@ -411,8 +495,12 @@ body {
 
 /* ---- Map and Content Styling ---- */
 .content {
-    grid-area: content;
-    position: relative;
+    position: fixed;
+    top: 80px;
+    left: 0;
+    right: 0;
+    bottom: 60px;
+    overflow: hidden;
 }
 
 /* Улучшаем стили для контролов карты */
@@ -435,12 +523,17 @@ body {
 
 /* ---- Footer Styling ---- */
 .footer {
-    grid-area: footer;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
     background: linear-gradient(to right, #0F1E25, #1a2a3a);
     color: white;
     display: flex;
     justify-content: center;
     align-items: center;
+    z-index: 1000;
 }
 
 .footer-content {
@@ -450,15 +543,21 @@ body {
     max-width: 1200px;
     width: 100%;
     padding: 0 20px;
+    position: relative;
 }
 
 .footer-section {
     display: flex;
     align-items: center;
+    width: 33.33%;
 }
 
 .footer-section.left {
     justify-content: flex-start;
+}
+
+.footer-section.center {
+    justify-content: center;
 }
 
 .footer-section.right {
@@ -508,6 +607,75 @@ body {
 .footer-info a:hover {
     color: #3CE43C;
     text-decoration: underline;
+}
+
+.footer-feedback-btn {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: white;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 25px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.footer-feedback-btn:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+}
+
+.footer-feedback-btn img {
+    width: 16px;
+    height: 16px;
+    margin-left: 8px;
+}
+
+/* Удаляем старые стили кнопки обратной связи */
+.feedback-btn {
+    display: none;
+}
+
+/* Адаптивная верстка для мобильных устройств */
+@media screen and (max-width: 768px) {
+    .footer-content {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 10px;
+    }
+    
+    .footer-section {
+        width: 100%;
+        margin-bottom: 10px;
+        flex-direction: column;
+        justify-content: center;
+    }
+    
+    .footer-section.right {
+        flex-direction: column;
+    }
+    
+    .footer-logo {
+        margin-right: 0;
+        margin-bottom: 5px;
+    }
+    
+    .footer-section.right .footer-logo {
+        margin-left: 0;
+        margin-bottom: 5px;
+    }
+    
+    .footer-info.text-right {
+        text-align: center;
+    }
+
+    .footer-feedback-btn {
+        margin: 10px 0;
+    }
 }
 
 /* ---- Popup Styling ---- */
@@ -654,50 +822,106 @@ body {
 .update-control {
     font-family: 'Roboto', Arial, sans-serif;
     font-size: 14px;
+    background-color: rgba(255, 255, 255, 0.9);
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    min-width: 200px;
 }
 
-.update-control button {
+.update-toggle-button {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    cursor: pointer;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    font-size: 14px;
+    color: #333;
+    transition: all 0.2s ease;
+}
+
+.update-toggle-button .toggle-icon {
+    margin-right: 8px;
+    transition: transform 0.3s ease;
+}
+
+.update-toggle-button.expanded .toggle-icon {
+    transform: rotate(45deg);
+}
+
+.update-time-display {
+    display: flex;
+    align-items: center;
+    font-size: 13px;
+    color: #666;
+}
+
+.update-time-display span {
+    margin-left: 5px;
+}
+
+.update-content {
+    padding: 10px;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    display: none;
+}
+
+.update-content.expanded {
+    display: block;
+}
+
+.update-control button.update-now {
     display: block;
     width: 100%;
     background-color: #0F1E25;
     color: white;
     border: none;
     border-radius: 4px;
-    padding: 6px 10px;
-    margin: 5px 0;
+    padding: 8px 12px;
+    margin: 8px 0;
     font-size: 13px;
     cursor: pointer;
     transition: all 0.3s;
 }
 
-.update-control button:hover {
+.update-control button.update-now:hover {
     background-color: #3CE43C;
     color: #0F1E25;
 }
 
 .update-control select {
     width: 100%;
-    padding: 4px;
+    padding: 6px;
     margin: 5px 0;
     border: 1px solid #ccc;
     border-radius: 4px;
+    background-color: white;
 }
 
 .update-control .auto-update-label {
-    display: block;
-    margin: 8px 0 5px 0;
+    display: flex;
+    align-items: center;
+    margin: 8px 0;
+    cursor: pointer;
 }
 
-.update-control .last-update {
-    margin-bottom: 5px;
-    color: #666;
-    font-size: 12px;
+.update-control .auto-update-label input {
+    margin-right: 8px;
 }
 
 .update-control .interval-label {
-    margin-top: 5px;
+    margin-top: 8px;
     color: #666;
-    font-size: 12px;
+    font-size: 13px;
+}
+
+/* Удаляем старые стили для элемента обновления */
+.last-update {
+    display: none;
 }
 
 /* ---- Mobile Responsive Design ---- */

@@ -116,22 +116,18 @@ document.addEventListener('DOMContentLoaded', async function () {
     loadingIndicator.style.boxShadow = '0 0 10px rgba(0,0,0,0.2)';
     document.body.appendChild(loadingIndicator);
 
-    // Initialize the map без указания начальной точки и масштаба
-    const map = L.map('map', {
-        attributionControl: false,  // Отключаем стандартный контрол атрибуции
-        zoomControl: true,          // Включаем контроль зума
-        minZoom: 2                  // Минимальный зум для предотвращения потери ориентации
-    });
+    // Инициализация карты
+    const map = L.map('map').setView([41.32, 69.25], 13);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
 
     // Добавляем собственный контрол атрибуции только с OpenStreetMap
     L.control.attribution({
         prefix: false  // Это убирает "Leaflet"
     }).addAttribution('&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors').addTo(map);
-
-    // Add OpenStreetMap tile layer
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '',  // Пустая атрибуция для слоя, так как мы уже добавили её вручную выше
-    }).addTo(map);
 
     // Инициализация сворачиваемых групп в сайдбаре
     initCollapsibleGroups();
@@ -278,116 +274,67 @@ document.addEventListener('DOMContentLoaded', async function () {
     const updateControl = L.control({ position: 'topright' });
     updateControl.onAdd = function(map) {
         const container = L.DomUtil.create('div', 'update-control');
-        container.style.backgroundColor = 'white';
-        container.style.padding = '6px';
-        container.style.borderRadius = '4px';
-        container.style.boxShadow = '0 0 5px rgba(0,0,0,0.2)';
         
-        // Добавляем кнопку плюсика для сворачивания/разворачивания
-        const toggleButton = L.DomUtil.create('div', 'update-toggle-button', container);
-        toggleButton.innerHTML = '+';
-        toggleButton.style.cursor = 'pointer';
-        toggleButton.style.fontWeight = 'bold';
-        toggleButton.style.fontSize = '18px';
-        toggleButton.style.width = '24px';
-        toggleButton.style.height = '24px';
-        toggleButton.style.textAlign = 'center';
-        toggleButton.style.lineHeight = '22px';
-        toggleButton.style.borderRadius = '3px';
-        toggleButton.style.border = '1px solid #ccc';
-        toggleButton.style.backgroundColor = '#fff';
-        toggleButton.style.transition = 'all 0.2s ease';
-        toggleButton.style.boxShadow = '0 1px 2px rgba(0,0,0,0.1)';
-        toggleButton.title = 'Открыть панель обновления';
+        // Создаем кнопку-заголовок с информацией об обновлении
+        const toggleButton = L.DomUtil.create('button', 'update-toggle-button', container);
+        toggleButton.innerHTML = `
+            <span class="toggle-icon">+</span>
+            <div class="update-time-display">
+                <span>ОБНОВЛЕНО</span>
+                <span class="update-time">2 минуты назад</span>
+            </div>
+        `;
         
-        // Стили при наведении
-        toggleButton.onmouseover = function() {
-            this.style.backgroundColor = '#f4f4f4';
-        };
-        toggleButton.onmouseout = function() {
-            this.style.backgroundColor = '#fff';
-        };
-        
-        // Стили при активации
-        toggleButton.onmousedown = function() {
-            this.style.boxShadow = '0 0 1px rgba(0,0,0,0.2)';
-            this.style.transform = 'translateY(1px)';
-        };
-        toggleButton.onmouseup = function() {
-            this.style.boxShadow = '0 1px 2px rgba(0,0,0,0.1)';
-            this.style.transform = 'translateY(0)';
-        };
-        
-        // Создаем контейнер для содержимого, который будет сворачиваться
+        // Создаем контейнер для содержимого
         const contentContainer = L.DomUtil.create('div', 'update-content', container);
-        contentContainer.style.display = 'none'; // По умолчанию свернут
-        contentContainer.style.marginTop = '6px';
-        
-        // Последнее обновление
-        const lastUpdateEl = L.DomUtil.create('div', 'last-update', contentContainer);
-        lastUpdateEl.innerHTML = `<small>Последнее обновление: <span id="last-update-time">Только что</span></small>`;
         
         // Кнопка обновления
-        const updateButton = L.DomUtil.create('button', 'update-button', contentContainer);
+        const updateButton = L.DomUtil.create('button', 'update-now', contentContainer);
         updateButton.innerHTML = 'Обновить сейчас';
-        updateButton.style.padding = '4px 8px';
-        updateButton.style.margin = '5px 0';
-        updateButton.style.cursor = 'pointer';
         
         // Автообновление
         const autoUpdateLabel = L.DomUtil.create('label', 'auto-update-label', contentContainer);
-        const autoUpdateCheckbox = L.DomUtil.create('input', 'auto-update-checkbox', autoUpdateLabel);
+        const autoUpdateCheckbox = L.DomUtil.create('input', '', autoUpdateLabel);
         autoUpdateCheckbox.type = 'checkbox';
         autoUpdateCheckbox.id = 'auto-update';
-        autoUpdateLabel.appendChild(document.createTextNode(' Автообновление'));
+        autoUpdateLabel.appendChild(document.createTextNode('Автообновление'));
         
         // Селектор интервала
         const intervalLabel = L.DomUtil.create('div', 'interval-label', contentContainer);
-        intervalLabel.innerHTML = '<small>Интервал обновления:</small>';
-        const intervalSelect = L.DomUtil.create('select', 'interval-select', contentContainer);
+        intervalLabel.innerHTML = 'Интервал обновления:';
+        const intervalSelect = L.DomUtil.create('select', '', contentContainer);
         intervalSelect.id = 'update-interval';
         
+        // Добавляем опции для интервала
         const intervals = [
-            { value: 30, label: '30 секунд' },
-            { value: 60, label: '1 минута' },
-            { value: 300, label: '5 минут' },
-            { value: 600, label: '10 минут' }
+            { value: 30, text: '30 секунд' },
+            { value: 60, text: '1 минута' },
+            { value: 300, text: '5 минут' },
+            { value: 600, text: '10 минут' }
         ];
         
         intervals.forEach(interval => {
             const option = document.createElement('option');
             option.value = interval.value;
-            option.text = interval.label;
-            if (interval.value === updateInterval) {
-                option.selected = true;
-            }
+            option.text = interval.text;
+            if (interval.value === 60) option.selected = true;
             intervalSelect.appendChild(option);
         });
         
-        // Обработчик для переключения видимости содержимого
-        L.DomEvent.on(toggleButton, 'click', function() {
-            if (contentContainer.style.display === 'none') {
-                // Разворачиваем
-                contentContainer.style.display = 'block';
-                toggleButton.innerHTML = '−'; // Меняем плюс на минус
-                toggleButton.title = 'Закрыть панель обновления';
-                // Анимация открытия
-                container.style.minWidth = '180px';
-            } else {
-                // Сворачиваем
-                contentContainer.style.display = 'none';
-                toggleButton.innerHTML = '+'; // Меняем минус на плюс
-                toggleButton.title = 'Открыть панель обновления';
-                // Анимация закрытия
-                container.style.minWidth = '24px';
-            }
+        // Обработчик для кнопки переключения
+        L.DomEvent.on(toggleButton, 'click', function(e) {
+            L.DomEvent.stop(e);
+            this.classList.toggle('expanded');
+            contentContainer.classList.toggle('expanded');
         });
         
-        // Обработчики событий для элементов управления
-        L.DomEvent.on(updateButton, 'click', function() {
+        // Обработчик для кнопки обновления
+        L.DomEvent.on(updateButton, 'click', function(e) {
+            L.DomEvent.stop(e);
             loadData();
         });
         
+        // Обработчики для автообновления
         L.DomEvent.on(autoUpdateCheckbox, 'change', function() {
             autoUpdateEnabled = this.checked;
             if (autoUpdateEnabled) {
@@ -405,8 +352,10 @@ document.addEventListener('DOMContentLoaded', async function () {
             }
         });
         
-        // Предотвращение распространения событий карты при взаимодействии с элементами управления
+        // Предотвращаем распространение событий карты
         L.DomEvent.disableClickPropagation(container);
+        L.DomEvent.disableScrollPropagation(container);
+        
         return container;
     };
     updateControl.addTo(map);
@@ -429,12 +378,34 @@ document.addEventListener('DOMContentLoaded', async function () {
     
     // Функция для обновления времени последнего обновления
     function updateLastUpdateTime() {
-        lastUpdateTime = new Date();
-        const timeElement = document.getElementById('last-update-time');
-        if (timeElement) {
-            timeElement.textContent = lastUpdateTime.toLocaleTimeString();
+        const now = new Date();
+        const diff = Math.floor((now - lastUpdateTime) / 1000); // разница в секундах
+        
+        let timeText;
+        if (diff < 60) {
+            timeText = 'только что';
+        } else if (diff < 3600) {
+            const minutes = Math.floor(diff / 60);
+            timeText = `${minutes} ${declOfNum(minutes, ['минуту', 'минуты', 'минут'])} назад`;
+        } else {
+            const hours = Math.floor(diff / 3600);
+            timeText = `${hours} ${declOfNum(hours, ['час', 'часа', 'часов'])} назад`;
         }
+        
+        const timeElements = document.getElementsByClassName('update-time');
+        Array.from(timeElements).forEach(el => {
+            el.textContent = timeText;
+        });
     }
+
+    // Вспомогательная функция для склонения числительных
+    function declOfNum(number, titles) {
+        const cases = [2, 0, 1, 1, 1, 2];
+        return titles[(number % 100 > 4 && number % 100 < 20) ? 2 : cases[(number % 10 < 5) ? number % 10 : 5]];
+    }
+
+    // Обновляем время каждую минуту
+    setInterval(updateLastUpdateTime, 60000);
 
     // Функция загрузки данных с сервера
     async function loadData() {
@@ -765,6 +736,59 @@ document.addEventListener('DOMContentLoaded', async function () {
             }
         });
     }
+
+    // Функция для управления сайдбаром
+    function initializeSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const toggleButton = document.querySelector('.sidebar-toggle');
+        const mapContainer = document.getElementById('map');
+
+        // Добавляем сайдбар и кнопку переключения в контейнер карты
+        if (sidebar && mapContainer) {
+            mapContainer.appendChild(sidebar);
+        }
+        if (toggleButton && mapContainer) {
+            mapContainer.appendChild(toggleButton);
+        }
+
+        // Обработчик для кнопки переключения
+        if (toggleButton) {
+            toggleButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                sidebar.classList.toggle('hidden');
+                toggleButton.classList.toggle('hidden');
+            });
+        }
+
+        // Предотвращаем закрытие при клике на сайдбар
+        if (sidebar) {
+            sidebar.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+        }
+
+        // Закрываем сайдбар при клике на карту
+        map.on('click', () => {
+            if (sidebar && !sidebar.classList.contains('hidden')) {
+                sidebar.classList.add('hidden');
+                toggleButton.classList.add('hidden');
+            }
+        });
+
+        // Обновляем позицию при изменении размера окна
+        window.addEventListener('resize', () => {
+            if (sidebar) {
+                if (window.innerWidth <= 768) {
+                    sidebar.style.maxHeight = '50vh';
+                } else {
+                    sidebar.style.maxHeight = 'calc(100% - 40px)';
+                }
+            }
+        });
+    }
+
+    // Инициализация после загрузки DOM
+    initializeSidebar();
 
     // Загрузка данных при инициализации
     await loadData();
