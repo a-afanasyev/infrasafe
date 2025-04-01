@@ -136,6 +136,9 @@ document.addEventListener('DOMContentLoaded', async function () {
     // Инициализация сворачиваемых групп в сайдбаре
     initCollapsibleGroups();
     
+    // Инициализация заголовков с количеством элементов
+    updateGroupHeaders();
+    
     // Функция для инициализации сворачиваемых групп в сайдбаре
     function initCollapsibleGroups() {
         const sidebarHeaders = document.querySelectorAll('#sidebar h3');
@@ -178,17 +181,38 @@ document.addEventListener('DOMContentLoaded', async function () {
                 }
             }, true); // Используем третий параметр true для захвата события
             
-            // По умолчанию не сворачиваем группу "Протечка"
-            // и сворачиваем остальные группы, если в них нет элементов
+            // По умолчанию сворачиваем все группы кроме "Протечка"
             if (newHeader.parentElement.id !== 'leak-group') {
-                const isEmpty = itemsContainer ? itemsContainer.children.length === 0 : true;
-                if (isEmpty) {
-                    newHeader.classList.add('collapsed');
-                    if (itemsContainer) {
-                        itemsContainer.classList.add('collapsed');
-                        itemsContainer.style.display = 'none';
-                    }
+                newHeader.classList.add('collapsed');
+                if (itemsContainer) {
+                    itemsContainer.classList.add('collapsed');
+                    itemsContainer.style.display = 'none';
                 }
+            }
+        });
+    }
+    
+    // Функция для обновления заголовков с количеством элементов
+    function updateGroupHeaders() {
+        const sidebarGroups = ['ok-group', 'warning-group', 'critical-group', 'no-group', 'leak-group'];
+        
+        sidebarGroups.forEach(groupId => {
+            const header = document.querySelector(`#${groupId} h3`);
+            const itemsContainer = header?.nextElementSibling;
+            
+            if (header && itemsContainer) {
+                const count = itemsContainer.children.length;
+                
+                // Получаем текущий текст заголовка без числа (если оно уже есть)
+                let headerText = header.textContent.replace(/\s*\(\d+\)$/, '').trim();
+                
+                // Добавляем число элементов
+                header.textContent = `${headerText} (${count})`;
+                
+                // Восстанавливаем индикатор статуса
+                const statusIndicator = document.createElement('span');
+                statusIndicator.className = `status-indicator ${groupId.replace('-group', '')}`;
+                header.insertBefore(statusIndicator, header.firstChild);
             }
         });
     }
@@ -634,46 +658,26 @@ document.addEventListener('DOMContentLoaded', async function () {
                 }
             });
 
-            // Update last update time
-            updateLastUpdateTime();
+            // Обновляем информацию на карте
+            map.fitBounds(markers.getBounds(), { padding: [50, 50] });
             
-            // Активируем мигающий эффект для заголовка группы протечек, если есть здания с протечкой
-            const leakGroupHeader = document.querySelector('#leak-group h3');
-            if (leakGroupHeader) {
-                if (leakBuildingsCount > 0) {
-                    leakGroupHeader.classList.add('blinking-leak-header');
-                    leakGroupHeader.textContent = `Протечка (${leakBuildingsCount})`;
-                    
-                    // Разворачиваем группу протечек, если в ней появились здания
-                    leakGroupHeader.classList.remove('collapsed');
-                    const leakItems = leakGroupHeader.nextElementSibling;
-                    if (leakItems) {
-                        leakItems.classList.remove('collapsed');
-                    }
-                } else {
-                    leakGroupHeader.classList.remove('blinking-leak-header');
-                    leakGroupHeader.textContent = 'Протечка';
-                }
-            }
+            // Обновляем счетчики элементов в заголовках и заголовок группы протечек
+            updateGroupHeaders();
             
-            // Обновляем состояние всех групп - сворачиваем пустые группы
-            updateGroupsCollapsedState();
-            
-            // Всегда масштабируем карту, чтобы показать все маркеры
-            if (markers.getLayers().length > 0) {
-                map.fitBounds(markers.getBounds(), {
-                    padding: [50, 50] // Добавляем отступы по краям для лучшей видимости
-                });
-            }
-
             // Скрываем индикатор загрузки
             const loadingIndicator = document.getElementById('loading-indicator');
             if (loadingIndicator) {
                 loadingIndicator.style.display = 'none';
             }
             
-            // Вызываем функцию для исправления возможных проблем с сайдбаром
-            fixSidebarCollapsible();
+            // Обновляем время последнего обновления
+            updateLastUpdateTime();
+            
+            // Убедимся, что состояние свернутых групп соответствует нашим правилам
+            updateGroupsCollapsedState();
+            
+            // Возвращаем успешный результат
+            return true;
         } catch (error) {
             console.error("Error loading data:", error);
             // Показываем ошибку в индикаторе загрузки
@@ -682,6 +686,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 loadingIndicator.innerHTML = 'Ошибка загрузки данных';
                 loadingIndicator.style.background = 'rgba(255, 200, 200, 0.9)';
             }
+            return false;
         }
     }
     
@@ -696,24 +701,24 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (header && itemsContainer) {
                 const isEmpty = itemsContainer.children.length === 0;
                 
-                if (isEmpty && groupId !== 'leak-group') {
-                    // Для пустых групп (кроме группы протечек)
+                // Для группы протечек - особая обработка
+                if (groupId === 'leak-group') {
+                    // Группа протечек всегда развернута
+                    header.classList.remove('collapsed');
+                    itemsContainer.classList.remove('collapsed');
+                    itemsContainer.style.display = 'block';
+                    
+                    // Добавляем мигание, если есть элементы
+                    if (!isEmpty) {
+                        header.classList.add('blinking-leak-header');
+                    } else {
+                        header.classList.remove('blinking-leak-header');
+                    }
+                } else {
+                    // Для остальных групп - всегда сворачиваем при обновлении
                     header.classList.add('collapsed');
                     itemsContainer.classList.add('collapsed');
                     itemsContainer.style.display = 'none';
-                } else if (!isEmpty) {
-                    // Если в группе есть элементы, разворачиваем её
-                    header.classList.remove('collapsed');
-                    itemsContainer.classList.remove('collapsed');
-                    itemsContainer.style.display = 'block';
-                }
-                
-                // Особая обработка для группы протечек
-                if (groupId === 'leak-group') {
-                    // Группа протечек всегда видима, даже если пуста
-                    header.classList.remove('collapsed');
-                    itemsContainer.classList.remove('collapsed');
-                    itemsContainer.style.display = 'block';
                 }
             }
         });
