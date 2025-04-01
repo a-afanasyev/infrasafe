@@ -121,7 +121,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
-        attribution: '© OpenStreetMap contributors'
+        attribution: ''
     }).addTo(map);
 
     // Добавляем собственный контрол атрибуции только с OpenStreetMap
@@ -199,16 +199,35 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (header && itemsContainer) {
                 const count = itemsContainer.children.length;
                 
-                // Получаем текущий текст заголовка без числа (если оно уже есть)
-                let headerText = header.textContent.replace(/\s*\(\d+\)$/, '').trim();
-                
-                // Добавляем число элементов
-                header.textContent = `${headerText} (${count})`;
-                
-                // Восстанавливаем индикатор статуса
-                const statusIndicator = document.createElement('span');
-                statusIndicator.className = `status-indicator ${groupId.replace('-group', '')}`;
-                header.insertBefore(statusIndicator, header.firstChild);
+                // Определяем текст в зависимости от группы
+                let text;
+                switch(groupId) {
+                    case 'ok-group':
+                        text = `Нормальное (${count})`;
+                        header.innerHTML = `<div class="icon normal-icon"></div><span>${text}</span>`;
+                        break;
+                    case 'warning-group':
+                        text = `Предупреждение (${count})`;
+                        header.innerHTML = `<div class="icon warning-icon"></div><span>${text}</span>`;
+                        break;
+                    case 'critical-group':
+                        text = `Критическое (${count})`;
+                        header.innerHTML = `<div class="icon critical-icon"></div><span>${text}</span>`;
+                        break;
+                    case 'no-group':
+                        text = `Нет контроллеров (${count})`;
+                        header.innerHTML = `<div class="icon no-controller-icon"></div><span>${text}</span>`;
+                        break;
+                    case 'leak-group':
+                        text = `Протечка (${count})`;
+                        header.innerHTML = `<div class="icon leak-icon"></div><span>${text}</span>`;
+                        if (count > 0) {
+                            header.classList.add('blinking-leak-header');
+                        } else {
+                            header.classList.remove('blinking-leak-header');
+                        }
+                        break;
+                }
             }
         });
     }

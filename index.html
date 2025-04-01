@@ -42,23 +42,38 @@
     </div>
     <div id="sidebar">
         <div id="ok-group">
-            <h3><span class="status-indicator normal"></span> Нормальное</h3>
+            <h3>
+                <div class="icon normal-icon"></div>
+                <span>Нормальное</span>
+            </h3>
             <div class="status-items"></div>
         </div>
         <div id="warning-group">
-            <h3><span class="status-indicator warning"></span> Предупреждение</h3>
+            <h3>
+                <div class="icon warning-icon"></div>
+                <span>Предупреждение</span>
+            </h3>
             <div class="status-items"></div>
         </div>
         <div id="leak-group">
-            <h3><span class="status-indicator leak"></span> Протечка</h3>
+            <h3>
+                <div class="icon leak-icon"></div>
+                <span>Протечка</span>
+            </h3>
             <div class="status-items"></div>
         </div>
         <div id="critical-group">
-            <h3><span class="status-indicator critical"></span> Критическое</h3>
+            <h3>
+                <div class="icon critical-icon"></div>
+                <span>Критическое</span>
+            </h3>
             <div class="status-items"></div>
         </div>
         <div id="no-group">
-            <h3><span class="status-indicator no-data"></span> Нет контроллеров</h3>
+            <h3>
+                <div class="icon no-controller-icon"></div>
+                <span>Нет контроллеров</span>
+            </h3>
             <div class="status-items"></div>
         </div>
     </div>
@@ -72,9 +87,6 @@
         <div class="last-update">
             <span>ОБНОВЛЕНО</span>
             <span class="update-time">2 минуты назад</span>
-        </div>
-        <div class="feedback-btn">
-            <button>Обратная связь <img src="public/images/feedback-icon.svg" alt="Feedback"></button>
         </div>
     </div>
     
