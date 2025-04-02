@@ -142,7 +142,12 @@ document.addEventListener('DOMContentLoaded', async function () {
         container.style.color = '#333';
         container.style.backdropFilter = 'blur(8px)';
         container.style.border = '1px solid rgba(255, 255, 255, 0.2)';
-        container.innerHTML = 'Olmazor Holding Grand';
+        container.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <img src="public/images/BSK-Logo-transparent.png" alt="BSK Logo" style="width: 35px; height: 35px; object-fit: contain;">
+                <span>Olmazor Holding Grand</span>
+            </div>
+        `;
         return container;
     };
     ukControl.addTo(map);
