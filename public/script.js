@@ -129,6 +129,24 @@ document.addEventListener('DOMContentLoaded', async function () {
         prefix: false  // Это убирает "Leaflet"
     }).addAttribution('&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors').addTo(map);
 
+    // Создаем элемент для отображения УК
+    const ukControl = L.control({ position: 'topright' });
+    ukControl.onAdd = function(map) {
+        const container = L.DomUtil.create('div', 'uk-control');
+        container.style.background = 'rgba(255, 255, 255, 0.9)';
+        container.style.padding = '8px 12px';
+        container.style.borderRadius = '4px';
+        container.style.boxShadow = '0 2px 5px rgba(0, 0, 0, 0.1)';
+        container.style.fontSize = '14px';
+        container.style.fontWeight = '500';
+        container.style.color = '#333';
+        container.style.backdropFilter = 'blur(8px)';
+        container.style.border = '1px solid rgba(255, 255, 255, 0.2)';
+        container.innerHTML = 'Olmazor Holding Grand';
+        return container;
+    };
+    ukControl.addTo(map);
+
     // Инициализация сворачиваемых групп в сайдбаре
     initCollapsibleGroups();
     
@@ -264,7 +282,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     let updateInterval = 60; // секунды
     let autoUpdateEnabled = false;
     let updateTimer = null;
-    let lastUpdateTime = new Date();
+    let lastUpdateTime = null; // Инициализируем как null
 
     // Создаем элемент управления обновлением
     const updateControl = L.control({ position: 'topright' });
@@ -374,6 +392,11 @@ document.addEventListener('DOMContentLoaded', async function () {
     
     // Функция для обновления времени последнего обновления
     function updateLastUpdateTime() {
+        if (!lastUpdateTime) {
+            lastUpdateTime = new Date();
+            return;
+        }
+
         const now = new Date();
         const diff = Math.floor((now - lastUpdateTime) / 1000); // разница в секундах
         
@@ -415,6 +438,22 @@ document.addEventListener('DOMContentLoaded', async function () {
             // Fetch data from the backend
             const response = await fetch(backendURL);
             const data = await response.json();
+
+            // Обновляем название УК на карте
+            if (data.length > 0) {
+                // Собираем все уникальные названия УК
+                const uniqueCompanies = [...new Set(data
+                    .filter(item => item.management_company)
+                    .map(item => item.management_company))];
+                
+                // Если есть хотя бы одна УК, отображаем её
+                if (uniqueCompanies.length > 0) {
+                    const ukControl = document.querySelector('.uk-control');
+                    if (ukControl) {
+                        ukControl.innerHTML = uniqueCompanies[0];
+                    }
+                }
+            }
 
             // Счетчик зданий с протечкой
             let leakBuildingsCount = 0;
@@ -638,6 +677,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             }
             
             // Обновляем время последнего обновления
+            lastUpdateTime = new Date(); // Устанавливаем новое время обновления
             updateLastUpdateTime();
             
             // Убедимся, что состояние свернутых групп соответствует нашим правилам

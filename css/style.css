@@ -233,11 +233,11 @@ body {
     transform: translateY(-50%);
     width: 320px;
     max-height: calc(100vh - 250px);
-    background-color: rgba(255, 255, 255, 0.85);
+    background-color: rgba(248, 248, 248, 0.85);
     border-radius: 8px;
     padding: 15px;
     overflow-y: auto;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.634);
     z-index: 1000;
     backdrop-filter: blur(8px);
     transition: all 0.3s ease;
@@ -280,7 +280,7 @@ body {
     top: 0;
     width: 30px;
     height: 30px;
-    background-color: rgba(255, 255, 255, 0.9);
+    background-color: rgba(255, 255, 255, 0.6);
     border: none;
     border-radius: 0 8px 0 8px;
     cursor: pointer;
@@ -311,10 +311,10 @@ body {
 }
 
 .status-group {
-    margin-bottom: 15px;
-    background: rgba(255, 255, 255, 0.9);
-    border-radius: 8px;
-    padding: 10px;
+    margin-bottom: 5px;
+    background: rgba(225, 225, 225, 0.8);
+    border-radius: 6px;
+    padding: 6px;
     transition: all 0.3s ease;
 }
 
@@ -336,7 +336,7 @@ body {
 .group-header {
     display: flex;
     align-items: center;
-    margin-bottom: 10px;
+    margin-bottom: 5px;
     cursor: pointer;
     padding: 5px;
     border-radius: 4px;
@@ -428,7 +428,7 @@ body {
 #sidebar h3 {
     cursor: pointer;
     position: relative;
-    padding-right: 20px;
+    padding-right: 10px;
     user-select: none;
 }
 
@@ -449,7 +449,7 @@ body {
 .sidebar-item {
     background-color: rgba(255, 255, 255, 0.7);
     margin: 8px 0;
-    padding: 10px 15px;
+    padding: 5px 5px;
     cursor: pointer;
     border-radius: 6px;
     transition: all 0.3s;
@@ -601,8 +601,8 @@ body {
 /* Стили для иконок статуса */
 .icon {
     min-width: 24px;
-    width: 24px;
-    height: 24px;
+    width: 34px;
+    height: 34px;
     border-radius: 50%;
     display: inline-flex;
     align-items: center;
@@ -620,10 +620,10 @@ body {
 .normal-icon::before {
     content: '';
     position: absolute;
-    width: 6px;
-    height: 12px;
+    width: 10px;
+    height: 18px;
     border: solid white;
-    border-width: 0 2px 2px 0;
+    border-width: 0 4px 4px 0;
     transform: rotate(45deg);
     top: 4px;
 }
@@ -645,15 +645,15 @@ body {
 
 /* Верхняя палка */
 .warning-icon::before {
-    width: 2px;
-    height: 9px;
+    width: 4px;
+    height: 15px;
     top: 5px;
 }
 
 /* Нижняя точка */
 .warning-icon::after {
-    width: 2px;
-    height: 2px;
+    width: 4px;
+    height: 4px;
     bottom: 5px;
     border-radius: 50%;
 }
@@ -668,8 +668,8 @@ body {
 .critical-icon::after {
     content: '';
     position: absolute;
-    width: 12px;
-    height: 2px;
+    width: 24px;
+    height: 4px;
     background-color: white;
     border-radius: 1px;
 }
@@ -691,8 +691,8 @@ body {
 .leak-icon::before {
     content: '';
     position: absolute;
-    width: 7px;
-    height: 10px;
+    width: 14px;
+    height: 20px;
     background: white;
     border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
     clip-path: polygon(50% 0%, 85% 50%, 50% 100%, 15% 50%);
@@ -908,7 +908,7 @@ body {
 
 .no-controller-icon::before {
     content: "?";
-    font-size: 16px;
+    font-size: 24px;
     color: white;
     font-weight: bold;
     line-height: 1;
@@ -1053,4 +1053,78 @@ body {
     width: 16px;
     height: 16px;
     margin-left: 8px;
+}
+
+/* Стили для элемента управления УК */
+.uk-control {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 300px;
+    transition: all 0.3s ease;
+    background: rgba(255, 255, 255, 0.95) !important;
+    padding: 10px 15px !important;
+    border-radius: 6px !important;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15) !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    color: #333 !important;
+    backdrop-filter: blur(8px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    margin: 10px !important;
+}
+
+.uk-control:hover {
+    background: rgba(255, 255, 255, 1) !important;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2) !important;
+    transform: translateY(-1px);
+}
+
+/* Адаптивность для мобильных устройств */
+@media screen and (max-width: 768px) {
+    .uk-control {
+        max-width: 200px;
+        font-size: 12px !important;
+        padding: 8px 12px !important;
+    }
+}
+
+#serendipity-logo {
+    height: 40px;
+    width: auto;
+    object-fit: contain;
+    transition: transform 0.3s ease;
+    filter: brightness(0) invert(1); /* Делаем логотип белым */
+}
+
+#serendipity-logo:hover {
+    transform: scale(1.05);
+    filter: brightness(0) invert(0.8); /* При наведении делаем чуть прозрачнее */
+}
+
+.serendipity-link {
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+    color: white;
+    transition: all 0.3s ease;
+}
+
+.serendipity-text {
+    margin-left: 10px;
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    transition: opacity 0.3s ease;
+}
+
+.serendipity-link:hover .serendipity-text {
+    opacity: 0.8;
+}
+
+/* Адаптивность для мобильных устройств */
+@media screen and (max-width: 768px) {
+    .serendipity-text {
+        font-size: 14px;
+    }
 }
