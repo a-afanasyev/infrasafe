@@ -1128,3 +1128,16 @@ body {
         font-size: 14px;
     }
 }
+
+/* Стили для выделения значений в попапе */
+.blinking-cell-orange {
+    color: #ff9800;
+    font-weight: bold;
+    animation: blink-orange 1s infinite;
+}
+
+@keyframes blink-orange {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
