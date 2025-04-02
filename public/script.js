@@ -12,6 +12,18 @@ document.addEventListener('DOMContentLoaded', async function () {
             user-select: none;
         }
         
+        /* Добавляем стили для мигающего текста */
+        @keyframes blink-red {
+            0% { color: #ff0000; }
+            50% { color: #ff6666; }
+            100% { color: #ff0000; }
+        }
+        
+        .blinking-text-red {
+            animation: blink-red 1.5s infinite;
+            font-weight: bold;
+        }
+        
         #sidebar h3:after {
             content: "▼";
             position: absolute;
@@ -525,10 +537,21 @@ document.addEventListener('DOMContentLoaded', async function () {
                     status = 'leak'; // Новый статус для зданий с протечкой
                 } else if (isElectricityOK && isColdWaterOK && isHotWaterOK) {
                     status = 'ok';
-                } else if (isElectricityOK || isColdWaterOK) {
-                    status = 'warning';
-                } else if (item.controller_id) {
+                } else if (item.controller_id && (
+                    // Проверяем полное отсутствие основных систем
+                    (!item.electricity_ph1 && !item.electricity_ph2 && !item.electricity_ph3) || // Нет электричества
+                    (!item.cold_water_pressure || item.cold_water_pressure <= 0) || // Нет холодной воды
+                    ((!item.hot_water_in_pressure || item.hot_water_in_pressure <= 0) && 
+                     (!item.hot_water_out_pressure || item.hot_water_out_pressure <= 0)) // Нет горячей воды
+                )) {
                     status = 'critical';
+                } else if (item.controller_id && (
+                    // Проверяем частичное нарушение работы систем
+                    (item.electricity_ph1 || item.electricity_ph2 || item.electricity_ph3) && // Есть хотя бы одна фаза
+                    (item.cold_water_pressure > 0) && // Есть холодная вода
+                    ((item.hot_water_in_pressure > 0) || (item.hot_water_out_pressure > 0)) // Есть горячая вода
+                )) {
+                    status = 'warning';
                 } else {
                     status = 'no';
                 }
@@ -583,23 +606,26 @@ document.addEventListener('DOMContentLoaded', async function () {
                     <!-- Electricity Data -->
                     <tr>
                         <td><img src="${electricityImage}" alt="Electricity_Status" style="width: 20px;" /></td>
-                        <td ${!isPhase1Ok ? "class='blinking-cell-orange'" : ''} >${item.electricity_ph1 ? item.electricity_ph1 + "V" : "N/A"}</td>
-                        <td ${!isPhase2Ok ? "class='blinking-cell-orange'" : ''}>${item.electricity_ph2 ? item.electricity_ph2 + "V" : "N/A"}</td>
-                        <td ${!isPhase3Ok ? "class='blinking-cell-orange'" : ''}>${item.electricity_ph3 ? item.electricity_ph3 + "V" : "N/A"}</td>
+                        <td ${!item.electricity_ph1 ? "class='blinking-text-red'" : (!isPhase1Ok ? "class='blinking-cell-orange'" : '')}>${item.electricity_ph1 ? item.electricity_ph1 + "V" : "Нет данных"}</td>
+                        <td ${!item.electricity_ph2 ? "class='blinking-text-red'" : (!isPhase2Ok ? "class='blinking-cell-orange'" : '')}>${item.electricity_ph2 ? item.electricity_ph2 + "V" : "Нет данных"}</td>
+                        <td ${!item.electricity_ph3 ? "class='blinking-text-red'" : (!isPhase3Ok ? "class='blinking-cell-orange'" : '')}>${item.electricity_ph3 ? item.electricity_ph3 + "V" : "Нет данных"}</td>
                     </tr>
 
                     <!-- Cold Water Data -->
                     <tr>
                         <td><img src="${coldWaterImage}" alt="Cold_Water" style="width: 20px;" /></td>
-                        <td colspan="3" ${!isColdWaterOK ? "class='blinking-cell-orange'" : ''}><strong>ХВС:</strong> ${item.cold_water_pressure ? item.cold_water_pressure + " Bar" : "NoPres"}, 
-                        ${item.cold_water_temp ? item.cold_water_temp + "°C" : "NoTemp"}</td>
+                        <td colspan="3" ${!item.cold_water_pressure ? "class='blinking-text-red'" : (!isColdWaterOK ? "class='blinking-cell-orange'" : '')}>
+                            <strong>ХВС:</strong> ${item.cold_water_pressure ? item.cold_water_pressure + " Bar" : "Нет данных"}, 
+                            ${item.cold_water_temp ? item.cold_water_temp + "°C" : "Нет данных"}
+                        </td>
                     </tr>
 
-                    <!-- Hot Water Data (Temperature + Inflow & Outflow Pressure) -->
+                    <!-- Hot Water Data -->
                     ${item.hot_water_in_temp && item.hot_water_out_temp && item.hot_water_in_pressure && item.hot_water_out_pressure ? `
                     <tr>
                         <td><img src="data/images/Water_Red.png" alt="Hot_Water" style="width: 20px;" /></td>
-                        <td colspan="3" ${!isHotWaterOK ? "class='blinking-cell-orange'" : ''}><strong>ГВС Подача:</strong> ${item.hot_water_in_temp}°C, ${item.hot_water_in_pressure} Bar
+                        <td colspan="3" ${!isHotWaterOK ? "class='blinking-cell-orange'" : ''}>
+                            <strong>ГВС Подача:</strong> ${item.hot_water_in_temp}°C, ${item.hot_water_in_pressure} Bar
                         </td>
                     </tr>
                     <tr>
@@ -608,13 +634,15 @@ document.addEventListener('DOMContentLoaded', async function () {
                     </tr>` : `
                     <tr>
                         <td><img src="data/images/Water_Red.png" alt="Hot_Water" style="width: 20px;" /></td>
-                        <td colspan="3"><strong>ГВС:</strong> Not connected</td>
+                        <td colspan="3" class="blinking-text-red"><strong>ГВС:</strong> Нет данных</td>
                     </tr>`}
 
                     <!-- Leak Sensor Data -->
                     <tr>
                         <td><img src="${leakSensorImage}" alt="Leak_Sensor_Status" style="width: 20px;" /></td>
-                        <td colspan="3" ${hasLeak ? "class='blinking-cell-orange'" : ''}><strong>Датчик протечки:</strong> ${hasLeak ? 'Протечка!' : 'OK'}</td>
+                        <td colspan="3" ${hasLeak ? "class='blinking-cell-orange'" : ''}>
+                            <strong>Датчик протечки:</strong> ${hasLeak ? 'Протечка!' : 'OK'}
+                        </td>
                     </tr>
                 </table>
             </div>
