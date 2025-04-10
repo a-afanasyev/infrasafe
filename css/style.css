@@ -1141,3 +1141,94 @@ body {
     50% { opacity: 0.5; }
     100% { opacity: 1; }
 }
+
+/* Стили для страниц с контентом (не карты) */
+body.content-page {
+    overflow-y: auto; /* Разрешить вертикальную прокрутку */
+    overflow-x: hidden; /* Запретить горизонтальную прокрутку */
+    height: auto; /* Позволить body растягиваться по контенту */
+    position: relative; /* Нужно для расчета высоты */
+    padding-top: 80px; /* Отступ для фиксированного хедера */
+    padding-bottom: 60px; /* Отступ для фиксированного футера */
+}
+
+body.content-page html {
+    height: auto; /* Позволить html растягиваться */
+}
+
+body.content-page .content {
+    position: relative; /* Сделать контент не фиксированным */
+    top: 0; /* Убрать смещение */
+    bottom: 0; /* Убрать смещение */
+    left: 0; /* Убрать смещение */
+    right: 0; /* Убрать смещение */
+    overflow-y: visible; /* Разрешить контенту быть выше/ниже видимой области */
+    overflow-x: hidden;ы
+    height: auto; /* Позволить контенту растягиваться */
+    padding: 10px; /* Добавляем отступы здесь */
+    min-height: calc(100vh - 80px - 60px - 40px); /* Мин. высота = высота окна - хедер - футер - отступы контента */
+}
+
+body.content-page #map { /* Скрыть карту на страницах с контентом */
+    display: none;
+}
+
+body.content-page .footer {
+    position: fixed; /* Оставить футер фиксированным */
+    bottom: 0; 
+}
+
+body.content-page .header {
+    position: fixed; /* Убедиться, что хедер остается фиксированным */
+    top: 0;
+}
+
+/* Стили для двух колонок на странице "О системе" */
+.features-container {
+    display: flex;
+    flex-wrap: wrap; /* Позволит переносить колонки на узких экранах */
+    gap: 30px; /* Пространство между колонками */
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+.feature-column {
+    flex: 1; /* Колонки занимают равное пространство */
+    min-width: 300px; /* Минимальная ширина колонки перед переносом */
+}
+
+.feature-column ul {
+    padding-left: 20px; /* Немного отступа для списков в колонках */
+}
+
+.feature-column ul ul {
+    padding-left: 15px; /* Меньший отступ для вложенных списков */
+}
+
+/* Убираем margin-bottom у последнего элемента в колонке, если нужно */
+.feature-column > *:last-child {
+    margin-bottom: 0;
+}
+
+/* Стили для страницы контактов */
+.contact-info p {
+    margin: 10px 0;
+    line-height: 1.6;
+}
+
+.contact-info strong {
+    min-width: 120px; /* Выравнивание названий полей */
+    display: inline-block;
+}
+
+/* Стили для формы обратной связи удалены */
+
+#form-status.success {
+    color: green;
+    font-weight: bold;
+}
+
+#form-status.error {
+    color: red;
+    font-weight: bold;
+}
