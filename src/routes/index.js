@@ -78,6 +78,47 @@ router.use((req, res, next) => {
     }
 });
 
+/**
+ * @swagger
+ * /:
+ *   get:
+ *     summary: Информация об API
+ *     description: Возвращает основную информацию о версии API и доступных эндпоинтах
+ *     responses:
+ *       200:
+ *         description: Информация об API
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 name:
+ *                   type: string
+ *                 version:
+ *                   type: string
+ *                 description:
+ *                   type: string
+ *                 endpoints:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ */
+// Корневой маршрут API
+router.get('/', (req, res) => {
+    res.json({
+        name: 'InfraSafe Habitat IQ API',
+        version: '1.0.0',
+        description: 'API для системы мониторинга зданий',
+        endpoints: [
+            '/api/buildings - Управление зданиями',
+            '/api/controllers - Управление контроллерами',
+            '/api/metrics - Получение метрик',
+            '/api-docs - Документация API'
+        ],
+        status: 'healthy'
+    });
+});
+
 // Маршруты API
 router.use('/buildings', buildingRoutes);
 router.use('/controllers', controllerRoutes);
@@ -85,7 +126,7 @@ router.use('/metrics', metricRoutes);
 
 // Обработка 404 для API
 router.use((req, res, next) => {
-    next(createError(404, `Route ${req.originalUrl} not found`));
+    next(createError(`Route ${req.originalUrl} not found`, 404));
 });
 
 module.exports = router;

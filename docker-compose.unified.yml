@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # Фронтенд на Nginx
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.unified
+      target: frontend
+    ports:
+      - "8080:8080"
+    depends_on:
+      - app
+    networks:
+      - leaflet-network
+    restart: unless-stopped
+
+  # Бэкенд API
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.unified
+      target: backend
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=infrasafe
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - leaflet-network
+    restart: unless-stopped
+
+  # База данных PostgreSQL
+  postgres:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=infrasafe
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database.sql:/docker-entrypoint-initdb.d/database.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - leaflet-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  leaflet-network:
+    driver: bridge 

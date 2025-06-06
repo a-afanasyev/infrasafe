@@ -1,0 +1,66 @@
+# Multi-stage Dockerfile для InfraSafe Habitat IQ
+
+# Backend Stage
+FROM node:18-alpine as backend
+
+WORKDIR /app
+
+# Копируем package files
+COPY package*.json ./
+
+# Устанавливаем зависимости
+RUN npm install
+
+# Копируем исходный код
+COPY . .
+
+# Создаем директорию для логов
+RUN mkdir -p logs
+
+# Создаем пользователя для безопасности
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001 && \
+    chown -R nodejs:nodejs /app
+
+USER nodejs
+
+# Открываем порт
+EXPOSE 3000
+
+# Запускаем приложение
+CMD ["npm", "run", "dev"]
+
+# Frontend Stage
+FROM nginx:alpine as frontend
+
+# Копируем конфигурацию Nginx из существующего файла
+COPY nginx.conf /etc/nginx/nginx.conf
+
+WORKDIR /usr/share/nginx/html
+
+# Копируем HTML файлы
+COPY index.html .
+COPY *.html . 
+
+# Копируем статические ресурсы
+COPY css/ ./css/
+COPY public/ ./public/
+COPY data/ ./data/
+
+# Создаем пользователя для безопасности
+RUN addgroup -g 1001 -S nginx-user && \
+    adduser -S nginx-user -u 1001 && \
+    chown -R nginx-user:nginx-user /usr/share/nginx/html && \
+    chown -R nginx-user:nginx-user /var/cache/nginx && \
+    chown -R nginx-user:nginx-user /var/log/nginx && \
+    chown -R nginx-user:nginx-user /etc/nginx/conf.d && \
+    touch /var/run/nginx.pid && \
+    chown nginx-user:nginx-user /var/run/nginx.pid
+
+USER nginx-user
+
+# Открываем порт
+EXPOSE 8080
+
+# Запускаем Nginx
+CMD ["nginx", "-g", "daemon off;"] 
