@@ -1,87 +1,575 @@
 /* Reset default margin & padding */
 body, html {
     margin: 0;
+    padding: 0;
     height: 100%;
     width: 100%;
-    font-family: Arial, sans-serif;
+    font-family: 'Roboto', Arial, sans-serif;
+    overflow: hidden;
 }
 
 /* Map Full Height */
 #map {
-    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
-    z-index: 1; /* Убедимся, что карта не накладывается на другие элементы */
+    height: 100%;
+    z-index: 1;
 }
 
 /* Grid Layout for the Page */
 body {
-    display: grid;
-    grid-template-rows: 80px 1fr 50px;
-    grid-template-columns: 300px 1fr;
-    grid-template-areas: 
-        "header header"
-        "sidebar content"
-        "footer footer";
     height: 100vh;
     overflow: hidden;
 }
 
 /* ---- Header Styling ---- */
 .header {
-    grid-area: header;
-    background-color: #0066cc;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 80px;
+    background: linear-gradient(to right, #0F1E25, #1a2a3a);
+    padding: 0 25px;
     color: white;
-    padding: 20px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: 22px;
-    font-weight: bold;
-    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
 }
 
-.header img {
-    height: 40px; /* Logo height */
+.logo-container {
+    display: flex;
+    align-items: center;
+    height: 100%;
+}
+
+.logo-container img {
+    height: 70px;
     margin-right: 15px;
+    transition: transform 0.3s ease;
+}
+
+.logo-container img:hover {
+    transform: scale(1.05);
+}
+
+.logo-container span {
+    font-size: 22px;
+    font-weight: 600;
+    color: white;
+    letter-spacing: 0.5px;
+    line-height: 1.2;
+    margin-right: 15px;
+}
+
+.logo-container span small {
+    display: block;
+    font-size: 12px;
+    color: #3CE43C;
+    letter-spacing: 1px;
+    font-weight: 400;
+    margin-top: -2px;
+}
+
+.header-controls {
+    display: flex;
+    align-items: center;
+}
+
+/* Навигация в хедере */
+.main-nav ul {
+    display: flex;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.main-nav li {
+    margin: 0 15px;
+}
+
+.main-nav a {
+    color: white;
+    text-decoration: none;
+    font-size: 16px;
+    transition: color 0.3s;
+    padding: 5px 0;
+}
+
+.main-nav a:hover {
+    color: #3CE43C;
+}
+
+/* Переключатель языка */
+.language-switcher {
+    margin-left: 25px;
+}
+
+.lang-btn {
+    background-color: rgba(0, 0, 0, 0.2);
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+    transition: background-color 0.3s;
+}
+
+.lang-btn:hover {
+    background-color: rgba(0, 0, 0, 0.4);
+}
+
+.arrow-down {
+    font-size: 10px;
+    margin-left: 5px;
+}
+
+/* ---- Main Heading ---- */
+.main-heading {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    text-align: center;
+    padding: 15px 0;
+    background: none;
+    z-index: 90;
+    pointer-events: none;
+}
+
+.main-heading .subtitle {
+    color: #333;
+    font-size: 16px;
+    margin: 0;
+    text-shadow: 0 0 10px white;
+}
+
+/* Информация о статусе и обратная связь */
+.status-info {
+    position: absolute;
+    bottom: 70px;
+    left: 20px;
+    right: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 95;
+}
+
+.last-update {
+    position: absolute;
+    bottom: 80px;
+    left: 10px;
+    background-color: rgba(255, 255, 255, 0.9);
+    padding: 8px 12px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(8px);
+    z-index: 1000;
+}
+
+.update-time {
+    margin-left: 10px;
+    font-weight: normal;
+}
+
+/* Удаляем стили для кнопки обратной связи на карте */
+.feedback-btn {
+    display: none;
+}
+
+.feedback-btn button {
+    display: none;
+}
+
+.feedback-btn img {
+    display: none;
+}
+
+/* Адаптивная верстка для новых элементов */
+@media screen and (max-width: 768px) {
+    .header-controls {
+        display: none;
+    }
+    
+    .logo-container span {
+        font-size: 18px;
+    }
+    
+    .main-heading .subtitle {
+        font-size: 14px;
+    }
+    
+    .status-info {
+        bottom: 70px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .last-update {
+        margin-bottom: 10px;
+    }
+
+    .feedback-btn {
+        margin-left: 0;
+    }
 }
 
 /* ---- Sidebar Styling ---- */
 #sidebar {
-    grid-area: sidebar;
-    background-color: #f5f5f5;
-    padding: 10px;
+    position: absolute;
+    top: 50%;
+    left: 10px;
+    transform: translateY(-50%);
+    width: 320px;
+    max-height: calc(100vh - 250px);
+    background-color: rgba(248, 248, 248, 0.85);
+    border-radius: 8px;
+    padding: 15px;
     overflow-y: auto;
-    border-right: 1px solid #ddd;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.634);
+    z-index: 1000;
+    backdrop-filter: blur(8px);
+    transition: all 0.3s ease;
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* Sidebar Category Titles */
-#sidebar h3 {
-    margin: 10px 0;
-    font-size: 18px;
-    color: #34495e;
+#sidebar.collapsed {
+    width: 60px;
+    padding: 10px;
 }
 
-/* Sidebar Category Items */
+#sidebar.collapsed .group-title,
+#sidebar.collapsed .status-items,
+#sidebar.collapsed .sidebar-item span {
+    display: none;
+}
+
+#sidebar.collapsed .group-header {
+    justify-content: center;
+    padding: 5px;
+}
+
+#sidebar.collapsed .icon {
+    margin: 0;
+}
+
+#sidebar.collapsed .sidebar-item {
+    display: flex;
+    justify-content: center;
+    padding: 5px;
+}
+
+#sidebar.collapsed .sidebar-item img {
+    margin: 0;
+}
+
+.sidebar-toggle {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 30px;
+    height: 30px;
+    background-color: rgba(255, 255, 255, 0.6);
+    border: none;
+    border-radius: 0 8px 0 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: -2px 2px 5px rgba(0, 0, 0, 0.1);
+    z-index: 1001;
+    transition: all 0.3s ease;
+}
+
+.sidebar-toggle:hover {
+    background: rgba(255, 255, 255, 1);
+}
+
+.sidebar-toggle img {
+    width: 20px;
+    height: 20px;
+    transition: transform 0.3s ease;
+}
+
+#sidebar.collapsed .sidebar-toggle img {
+    transform: rotate(180deg);
+}
+
+.sidebar-content {
+    transition: all 0.3s ease;
+}
+
+.status-group {
+    margin-bottom: 5px;
+    background: rgba(225, 225, 225, 0.8);
+    border-radius: 6px;
+    padding: 6px;
+    transition: all 0.3s ease;
+}
+
+.status-group:hover {
+    background: rgba(255, 255, 255, 1);
+}
+
+.status-group .status-items {
+    max-height: 500px;
+    overflow-y: auto;
+    transition: max-height 0.3s ease-out;
+}
+
+.status-group .status-items.collapsed {
+    max-height: 0;
+    overflow: hidden;
+}
+
+.group-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 5px;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+    position: relative;
+}
+
+.group-header:hover {
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.group-header.collapsed + .status-items {
+    max-height: 0;
+    overflow: hidden;
+}
+
+.group-title {
+    margin-left: 10px;
+    font-size: 16px;
+    font-weight: 500;
+    color: #333;
+}
+
+.icon {
+    width: 20px;
+    height: 20px;
+    margin-right: 5px;
+}
+
 .status-items {
-    padding-left: 10px;
-    width: 100%;
+    padding-left: 30px;
+}
+
+/* Стили для счетчика элементов в группах */
+.group-counter {
+    position: absolute;
+    bottom: 0px;
+    right: 6px;
+    color: #000000;
+    font-size: 14px;
+    display: flex;
+    align-items: left;
+    justify-content: left;
+    z-index: 1;
+}
+
+/* Удаляем специальные цвета для разных групп */
+#ok-group .group-counter,
+#warning-group .group-counter,
+#leak-group .group-counter,
+#critical-group .group-counter,
+#no-group .group-counter {
+    color: #000000;
+}
+
+/* Адаптивность для счетчика */
+@media screen and (max-width: 768px) {
+    .group-counter {
+        font-size: 11px;
+    }
+}
+
+/* Адаптивность для мобильных устройств */
+@media screen and (max-width: 768px) {
+    #sidebar {
+        width: 280px;
+        top: 80px;
+    }
+    
+    #sidebar.collapsed {
+        width: 50px;
+    }
+    
+    .sidebar-toggle {
+        width: 25px;
+        height: 25px;
+    }
+
+    .last-update {
+        bottom: 140px;
+    }
+
+    .feedback-btn {
+        bottom: 140px;
+    }
+}
+
+/* Обновляем стили для элементов внутри сайдбара */
+#sidebar h3 {
+    cursor: pointer;
+    position: relative;
+    padding-right: 10px;
+    user-select: none;
+}
+
+#sidebar h3:after {
+    content: "▼";
+    position: absolute;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.8em;
+    transition: transform 0.3s;
+}
+
+#sidebar h3.collapsed:after {
+    transform: translateY(-50%) rotate(-90deg);
 }
 
 .sidebar-item {
-    background-color: #eee;
-    margin: 5px 0;
-    padding: 8px;
+    background-color: rgba(255, 255, 255, 0.7);
+    margin: 8px 0;
+    padding: 5px 5px;
     cursor: pointer;
-    border-radius: 3px;
-    transition: background-color 0.3s;
+    border-radius: 6px;
+    transition: all 0.3s;
     display: flex;
     align-items: center;
     font-size: 14px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* Hover Effect */
 .sidebar-item:hover {
-    background-color: #ddd;
+    background-color: rgba(255, 255, 255, 0.9);
+    transform: translateX(3px);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+}
+
+/* Специальные стили для группы протечек */
+#leak-group h3 {
+    background-color: rgba(60, 228, 60, 0.1);
+    border: 1px solid rgba(60, 228, 60, 0.2);
+}
+
+#leak-group .sidebar-item {
+    background-color: rgba(60, 228, 60, 0.1);
+    border: 1px solid rgba(60, 228, 60, 0.2);
+}
+
+#leak-group .sidebar-item:hover {
+    background-color: rgba(60, 228, 60, 0.15);
+}
+
+/* Стили для скроллбара */
+#sidebar::-webkit-scrollbar {
+    width: 8px;
+}
+
+#sidebar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+#sidebar::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+
+#sidebar::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+/* Индикаторы статуса */
+.status-indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+    position: relative;
+}
+
+.status-indicator.normal {
+    background-color: #4caf50;
+    box-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
+}
+
+.status-indicator.warning {
+    background-color: #ff9800;
+    box-shadow: 0 0 5px rgba(255, 152, 0, 0.5);
+}
+
+.status-indicator.leak {
+    background-color: #3CE43C;
+    box-shadow: 0 0 5px rgba(60, 228, 60, 0.5);
+    animation: pulse-green 2s infinite;
+}
+
+.status-indicator.critical {
+    background-color: #f44336;
+    box-shadow: 0 0 5px rgba(244, 67, 54, 0.5);
+    animation: pulse-red 1.5s infinite;
+}
+
+.status-indicator.no-data {
+    background-color: #9e9e9e;
+    box-shadow: 0 0 5px rgba(158, 158, 158, 0.5);
+}
+
+@keyframes pulse-green {
+    0% {
+        box-shadow: 0 0 0 0 rgba(60, 228, 60, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 6px rgba(60, 228, 60, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(60, 228, 60, 0);
+    }
+}
+
+@keyframes pulse-red {
+    0% {
+        box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 6px rgba(244, 67, 54, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(244, 67, 54, 0);
+    }
+}
+
+/* Sidebar Category Items */
+#sidebar .status-items {
+    max-height: 1000px;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+}
+
+#sidebar .status-items.collapsed {
+    max-height: 0;
 }
 
 /* Sidebar Icons */
@@ -90,102 +578,275 @@ body {
     margin-right: 8px;
 }
 
-/* ---- Map and Content Styling ---- */
-.content {
-    grid-area: content;
+/* Стили для группы с нормальным статусом */
+#ok-group .sidebar-item {
+    border-left: 3px solid #4caf50;
+}
+
+/* Стили для группы с предупреждениями */
+#warning-group .sidebar-item {
+    border-left: 3px solid #ff9800;
+}
+
+/* Стили для группы с критическим статусом */
+#critical-group .sidebar-item {
+    border-left: 3px solid #f44336;
+}
+
+/* Стили для группы без контроллеров */
+#no-group .sidebar-item {
+    border-left: 3px solid #9e9e9e;
+}
+
+/* Стили для иконок статуса */
+.icon {
+    min-width: 24px;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     position: relative;
-    height: 100%;
-    width: 100%;
+    margin-right: 10px;
+    flex-shrink: 0;
 }
 
-/* ---- Footer Styling ---- */
-.footer {
-    grid-area: footer;
-    background-color: #0066cc;
-    color: white;
-    padding: 15px;
-    text-align: center;
-    font-size: 14px;
+/* Нормальная иконка */
+.normal-icon {
+    background-color: #4CAF50;
 }
 
-/* ---- Popup Styling ---- */
-.custom-popup-style .leaflet-popup-content-wrapper {
-    background-color: #f0f0f0;
-    color: #333;
-    font-size: 14px;
-    border-radius: 8px;
-    padding: 8px;
-}
-
-.custom-popup-style table {
-    border-collapse: collapse;
-    width: 100%;
-    font-size: 12px;
-}
-
-.custom-popup-style th, .custom-popup-style td {
-    border: 1px solid black;
-    padding: 4px;
-}
-
-/* ---- Blinking Effect for Alerts ---- */
-@keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-}
-
-.blinking-cell-orange {
-    animation: blink-orange 1s linear infinite;
-    color: #FF6600;
-    font-weight: bold;
-}
-
-@keyframes blink-orange {
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
-}
-
-/* Warning Popup */
-.warning-popup {
-    background-color: yellow;
-    color: black;
-    border-radius: 8px;
-}
-
-/* Blinking Critical Alert Popup */
-.blinking-popup {
-    background-color: red;
-    color: white;
-    border-radius: 8px;
-    animation: blink 2s linear infinite;
-}
-
-/* Safe Mode Banner */
-.safe-mode-banner {
+.normal-icon::before {
+    content: '';
     position: absolute;
-    top: 10px;
+    width: 10px;
+    height: 18px;
+    border: solid white;
+    border-width: 0 4px 4px 0;
+    transform: rotate(45deg);
+    top: 4px;
+}
+
+/* Иконка предупреждения */
+.warning-icon {
+    background-color: #f5a623;
+    position: relative;
+}
+
+.warning-icon::before,
+.warning-icon::after {
+    content: '';
+    position: absolute;
+    background-color: white;
     left: 50%;
     transform: translateX(-50%);
+}
+
+/* Верхняя палка */
+.warning-icon::before {
+    width: 4px;
+    height: 15px;
+    top: 5px;
+}
+
+/* Нижняя точка */
+.warning-icon::after {
+    width: 4px;
+    height: 4px;
+    bottom: 5px;
+    border-radius: 50%;
+}
+
+/* Иконка критического состояния */
+.critical-icon {
+    background-color: #e74c3c;
+}
+
+/* Крестик для критической иконки */
+.critical-icon::before,
+.critical-icon::after {
+    content: '';
+    position: absolute;
+    width: 24px;
+    height: 4px;
+    background-color: white;
+    border-radius: 1px;
+}
+
+/* Диагонали для крестика */
+.critical-icon::before {
+    transform: rotate(45deg);
+}
+
+.critical-icon::after {
+    transform: rotate(-45deg);
+}
+
+/* Иконка протечки */
+.leak-icon {
+    background-color: #3498db;
+}
+
+.leak-icon::before {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 20px;
     background: white;
-    padding: 5px 10px;
-    z-index: 1000;
-    border: 1px solid orange;
-    color: orange;
-    border-radius: 3px;
-    font-weight: bold;
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    clip-path: polygon(50% 0%, 85% 50%, 50% 100%, 15% 50%);
+}
+
+/* Скрываем старые индикаторы статуса */
+#ok-group h3 .status-indicator,
+#warning-group h3 .status-indicator,
+#critical-group h3 .status-indicator,
+#no-group h3 .status-indicator,
+#leak-group h3 .status-indicator {
+    display: none !important;
+}
+
+/* Мигающий заголовок для группы протечек */
+@keyframes blink-green {
+    0%, 100% { color: #3CE43C; }
+    50% { color: #2aaa2a; }
+}
+
+.blinking-leak-header {
+    animation: blink-green 2s linear infinite;
+    font-weight: bold !important;
+}
+
+/* ---- Update Control Styling ---- */
+.update-control {
+    font-family: 'Roboto', Arial, sans-serif;
+    font-size: 14px;
+    background-color: rgba(255, 255, 255, 0.9);
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    min-width: 200px;
+    margin: 10px;
+}
+
+.update-toggle-button {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    cursor: pointer;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    font-size: 14px;
+    color: #333;
+    transition: all 0.2s ease;
+}
+
+.update-toggle-button .toggle-icon {
+    margin-right: 8px;
+    transition: transform 0.3s ease;
+}
+
+.update-toggle-button.expanded .toggle-icon {
+    transform: rotate(45deg);
+}
+
+.update-time-display {
+    display: flex;
+    align-items: center;
+    font-size: 13px;
+    color: #666;
+}
+
+.update-time-display span {
+    margin-left: 5px;
+}
+
+.update-content {
+    padding: 10px;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    display: none;
+}
+
+.update-content.expanded {
+    display: block;
+}
+
+.update-control button.update-now {
+    display: block;
+    width: 100%;
+    background-color: #0F1E25;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin: 8px 0;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.update-control button.update-now:hover {
+    background-color: #3CE43C;
+    color: #0F1E25;
+}
+
+.update-control select {
+    width: 100%;
+    padding: 6px;
+    margin: 5px 0;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: white;
+}
+
+.update-control .auto-update-label {
+    display: flex;
+    align-items: center;
+    margin: 8px 0;
+    cursor: pointer;
+}
+
+.update-control .auto-update-label input {
+    margin-right: 8px;
+}
+
+.update-control .interval-label {
+    margin-top: 8px;
+    color: #666;
+    font-size: 13px;
+}
+
+/* Удаляем старые стили для элемента обновления */
+.last-update {
+    display: none;
 }
 
 /* ---- Mobile Responsive Design ---- */
 @media screen and (max-width: 768px) {
     body {
         display: grid;
-        grid-template-rows: 60px 1fr 50px;
+        grid-template-rows: 60px 1fr 60px;
         grid-template-columns: 1fr;
         grid-template-areas:
             "header"
             "content"
             "footer";
+    }
+
+    .header {
+        padding: 0 15px;
+    }
+    
+    .logo-container img {
+        height: 30px;
+    }
+    
+    .logo-container span {
+        font-size: 20px;
     }
 
     #sidebar {
@@ -198,21 +859,376 @@ body {
         height: 100vh;
         overflow-y: auto;
     }
-
-    .header {
-        justify-content: space-between;
+    
+    /* Адаптивный футер */
+    .footer-content {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 10px;
     }
-
-    .header button {
-        background: none;
-        border: none;
-        color: white;
-        font-size: 20px;
-        cursor: pointer;
+    
+    .footer-section {
+        margin-bottom: 10px;
+        flex-direction: column;
     }
-
-    .sidebar-item {
-        font-size: 12px;
-        padding: 5px;
+    
+    .footer-section.right {
+        flex-direction: column-reverse;
     }
+    
+    .footer-logo {
+        margin-right: 0;
+        margin-bottom: 5px;
+    }
+    
+    .footer-section.right .footer-logo {
+        margin-left: 0;
+        margin-bottom: 5px;
+    }
+    
+    .footer-info.text-right {
+        text-align: center;
+    }
+}
+
+/* Стили для атрибуции карты */
+.leaflet-control-attribution {
+    background: rgba(255, 255, 255, 0.8) !important;
+}
+
+.leaflet-control-attribution a[href="https://leafletjs.com"] {
+    display: none !important;
+}
+
+/* Иконка для группы без контроллеров */
+.no-controller-icon {
+    background-color: #7f8c8d;
+}
+
+.no-controller-icon::before {
+    content: "?";
+    font-size: 24px;
+    color: white;
+    font-weight: bold;
+    line-height: 1;
+}
+
+/* ---- Map and Content Styling ---- */
+.content {
+    position: fixed;
+    top: 80px;
+    left: 0;
+    right: 0;
+    bottom: 60px;
+    overflow: hidden;
+}
+
+/* Улучшаем стили для контролов карты */
+.leaflet-control-zoom {
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2) !important;
+}
+
+.leaflet-control-zoom a {
+    background-color: white !important;
+    color: #0F1E25 !important;
+    transition: all 0.2s ease;
+}
+
+.leaflet-control-zoom a:hover {
+    background-color: #f5f5f5 !important;
+    color: #3CE43C !important;
+}
+
+/* ---- Footer Styling ---- */
+.footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: linear-gradient(to right, #0F1E25, #1a2a3a);
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.footer-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 1200px;
+    width: 100%;
+    padding: 0 20px;
+    position: relative;
+}
+
+.footer-section {
+    display: flex;
+    align-items: center;
+    width: 33.33%;
+}
+
+.footer-section.left {
+    justify-content: flex-start;
+}
+
+.footer-section.center {
+    justify-content: center;
+}
+
+.footer-section.right {
+    justify-content: flex-end;
+}
+
+.footer-logo {
+    margin-right: 15px;
+}
+
+.footer-section.right .footer-logo {
+    margin-right: 0;
+    margin-left: 15px;
+}
+
+.footer-logo img {
+    height: 50px;
+    transition: transform 0.3s ease;
+}
+
+.footer-logo img:hover {
+    transform: scale(1.1);
+}
+
+.footer-info {
+    display: flex;
+    flex-direction: column;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 12px;
+}
+
+.footer-info.text-right {
+    text-align: right;
+}
+
+.footer-info p {
+    margin: 2px 0;
+    line-height: 1.5;
+}
+
+.footer-info a {
+    color: rgba(255, 255, 255, 0.9);
+    text-decoration: none;
+    transition: color 0.3s, text-decoration 0.3s;
+}
+
+.footer-info a:hover {
+    color: #3CE43C;
+    text-decoration: underline;
+}
+
+.footer-feedback-btn {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: white;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 25px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.footer-feedback-btn:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+}
+
+.footer-feedback-btn img {
+    width: 16px;
+    height: 16px;
+    margin-left: 8px;
+}
+
+/* Стили для элемента управления УК */
+.uk-control {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 300px;
+    transition: all 0.3s ease;
+    background: rgba(255, 255, 255, 0.95) !important;
+    padding: 10px 15px !important;
+    border-radius: 6px !important;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15) !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    color: #333 !important;
+    backdrop-filter: blur(8px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    margin: 10px !important;
+}
+
+.uk-control:hover {
+    background: rgba(255, 255, 255, 1) !important;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2) !important;
+    transform: translateY(-1px);
+}
+
+/* Адаптивность для мобильных устройств */
+@media screen and (max-width: 768px) {
+    .uk-control {
+        max-width: 200px;
+        font-size: 12px !important;
+        padding: 8px 12px !important;
+    }
+}
+
+#serendipity-logo {
+    height: 40px;
+    width: auto;
+    object-fit: contain;
+    transition: transform 0.3s ease;
+    filter: brightness(0) invert(1); /* Делаем логотип белым */
+}
+
+#serendipity-logo:hover {
+    transform: scale(1.05);
+    filter: brightness(0) invert(0.8); /* При наведении делаем чуть прозрачнее */
+}
+
+.serendipity-link {
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+    color: white;
+    transition: all 0.3s ease;
+}
+
+.serendipity-text {
+    margin-left: 10px;
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    transition: opacity 0.3s ease;
+}
+
+.serendipity-link:hover .serendipity-text {
+    opacity: 0.8;
+}
+
+/* Адаптивность для мобильных устройств */
+@media screen and (max-width: 768px) {
+    .serendipity-text {
+        font-size: 14px;
+    }
+}
+
+/* Стили для выделения значений в попапе */
+.blinking-cell-orange {
+    color: #ff9800;
+    font-weight: bold;
+    animation: blink-orange 1s infinite;
+}
+
+@keyframes blink-orange {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+/* Стили для страниц с контентом (не карты) */
+body.content-page {
+    overflow-y: auto; /* Разрешить вертикальную прокрутку */
+    overflow-x: hidden; /* Запретить горизонтальную прокрутку */
+    height: auto; /* Позволить body растягиваться по контенту */
+    position: relative; /* Нужно для расчета высоты */
+    padding-top: 80px; /* Отступ для фиксированного хедера */
+    padding-bottom: 60px; /* Отступ для фиксированного футера */
+}
+
+body.content-page html {
+    height: auto; /* Позволить html растягиваться */
+}
+
+body.content-page .content {
+    position: relative; /* Сделать контент не фиксированным */
+    top: 0; /* Убрать смещение */
+    bottom: 0; /* Убрать смещение */
+    left: 0; /* Убрать смещение */
+    right: 0; /* Убрать смещение */
+    overflow-y: visible; /* Разрешить контенту быть выше/ниже видимой области */
+    overflow-x: hidden;ы
+    height: auto; /* Позволить контенту растягиваться */
+    padding: 10px; /* Добавляем отступы здесь */
+    min-height: calc(100vh - 80px - 60px - 40px); /* Мин. высота = высота окна - хедер - футер - отступы контента */
+}
+
+body.content-page #map { /* Скрыть карту на страницах с контентом */
+    display: none;
+}
+
+body.content-page .footer {
+    position: fixed; /* Оставить футер фиксированным */
+    bottom: 0; 
+}
+
+body.content-page .header {
+    position: fixed; /* Убедиться, что хедер остается фиксированным */
+    top: 0;
+}
+
+/* Стили для двух колонок на странице "О системе" */
+.features-container {
+    display: flex;
+    flex-wrap: wrap; /* Позволит переносить колонки на узких экранах */
+    gap: 30px; /* Пространство между колонками */
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+.feature-column {
+    flex: 1; /* Колонки занимают равное пространство */
+    min-width: 300px; /* Минимальная ширина колонки перед переносом */
+}
+
+.feature-column ul {
+    padding-left: 20px; /* Немного отступа для списков в колонках */
+}
+
+.feature-column ul ul {
+    padding-left: 15px; /* Меньший отступ для вложенных списков */
+}
+
+/* Убираем margin-bottom у последнего элемента в колонке, если нужно */
+.feature-column > *:last-child {
+    margin-bottom: 0;
+}
+
+/* Стили для страницы контактов */
+.contact-info p {
+    margin: 10px 0;
+    line-height: 1.6;
+}
+
+.contact-info strong {
+    min-width: 120px; /* Выравнивание названий полей */
+    display: inline-block;
+}
+
+/* Стили для формы обратной связи удалены */
+
+#form-status.success {
+    color: green;
+    font-weight: bold;
+}
+
+#form-status.error {
+    color: red;
+    font-weight: bold;
 }

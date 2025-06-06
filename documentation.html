@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="description" content="InfraSafe - Система мониторинга инфраструктуры и безопасности">
-    <meta name="keywords" content="InfraSafe, monitoring, infrastructure, safety, map, visualization, HabitatITIQ">
+    <meta name="description" content="InfraSafe - Документация системы мониторинга">
+    <meta name="keywords" content="InfraSafe, monitoring, infrastructure, safety, documentation, HabitatITIQ">
     <meta name="author" content="InfraSafe Team">
     <meta name="theme-color" content="#0F1E25">
-    
+
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="public/images/favicon.svg">
-    
+
     <!-- Стили -->
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="public/libs/leaflet/leaflet.css" />
@@ -18,10 +18,10 @@
     <link rel="stylesheet" href="public/libs/leaflet-markercluster/MarkerCluster.css" />
     <link rel="stylesheet" href="public/libs/leaflet-markercluster/MarkerCluster.Default.css" />
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
-    
-    <title>InfraSafe - Система мониторинга</title>
+
+    <title>InfraSafe - Документация</title>
 </head>
-<body>
+<body class="content-page">
     <div class="header">
         <div class="logo-container">
             <a href="index.html" style="display: flex; align-items: center; text-decoration: none;">
@@ -39,66 +39,13 @@
             </nav>
         </div>
     </div>
-    <div class="main-heading">
-        <p class="subtitle">Мониторинг состояния объектов инфраструктуры в режиме реального времени</p>
-    </div>
-    <div id="sidebar" class="collapsed">
-        <div class="sidebar-content">
-            <div id="ok-group" class="status-group">
-                <div class="group-header">
-                    <div class="icon normal-icon"></div>
-                    <span class="group-title">Нет проблем</span>
-                    <span class="group-counter">0</span>
-                </div>
-                <div class="status-items"></div>
-            </div>
-            <div id="warning-group" class="status-group">
-                <div class="group-header">
-                    <div class="icon warning-icon"></div>
-                    <span class="group-title">Предупреждение</span>
-                    <span class="group-counter">0</span>
-                </div>
-                <div class="status-items"></div>
-            </div>
-            <div id="leak-group" class="status-group">
-                <div class="group-header">
-                    <div class="icon leak-icon"></div>
-                    <span class="group-title">Вода в подвале</span>
-                    <span class="group-counter">0</span>
-                </div>
-                <div class="status-items"></div>
-            </div>
-            <div id="critical-group" class="status-group">
-                <div class="group-header">
-                    <div class="icon critical-icon"></div>
-                    <span class="group-title">Авария</span>
-                    <span class="group-counter">0</span>
-                </div>
-                <div class="status-items"></div>
-            </div>
-            <div id="no-group" class="status-group">
-                <div class="group-header">
-                    <div class="icon no-controller-icon"></div>
-                    <span class="group-title">Нет контроллера</span>
-                    <span class="group-counter">0</span>
-                </div>
-                <div class="status-items"></div>
-            </div>
-        </div>
-        <button class="sidebar-toggle" id="sidebarToggle">
-            <img src="public/images/toggle-icon.svg" alt="Toggle Sidebar">
-        </button>
-    </div>
+
     <div class="content">
-        <div id="map"></div>
+        <h1>Документация</h1>
+        <p>В настоящее время данный раздел пополняется.</p>
+        <!-- Добавьте сюда подробное описание, инструкции, руководства и т.д. -->
     </div>
-    <div class="status-info">
-        <div class="last-update">
-            <span>ОБНОВЛЕНО</span>
-            <span class="update-time">2 минуты назад</span>
-        </div>
-    </div>
-    
+
     <div class="footer">
         <div class="footer-content">
             <div class="footer-section left">
@@ -128,14 +75,12 @@
                         <span class="serendipity-text">SERENDIPITY</span>
                     </a>
                 </div>
-                
+
             </div>
         </div>
     </div>
-    
-    <script src="public/libs/leaflet/leaflet.js"></script>
-    <script src="public/libs/leaflet/leaflet.icon-fallback.js"></script>
-    <script src="public/libs/leaflet-markercluster/leaflet.markercluster.js"></script>
-    <script src="public/script.js"></script>
+
+    <!-- Скрипты, если они понадобятся для страницы "Документация", можно добавить сюда -->
+    <!-- <script src="..."></script> -->
 </body>
-</html>
+</html> 
