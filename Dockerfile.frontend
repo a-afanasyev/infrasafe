@@ -13,6 +13,7 @@ COPY *.html .
 # Копируем статические ресурсы
 COPY css/ ./css/
 COPY public/ ./public/
+COPY data/ ./data/
 
 # Создаем пользователя для безопасности
 RUN addgroup -g 1001 -S nginx-user && \
