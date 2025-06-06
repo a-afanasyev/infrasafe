@@ -1,6 +1,20 @@
 version: '3.8'
 
 services:
+  # Фронтенд на Nginx
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "8080:8080"
+    depends_on:
+      - app
+    networks:
+      - leaflet-network
+    restart: unless-stopped
+
+  # Бэкенд API
   app:
     build: .
     ports:
@@ -21,7 +35,9 @@ services:
         condition: service_healthy
     networks:
       - leaflet-network
+    restart: unless-stopped
 
+  # База данных PostgreSQL
   postgres:
     image: postgres:15
     ports:
@@ -40,6 +56,7 @@ services:
       retries: 5
     networks:
       - leaflet-network
+    restart: unless-stopped
 
 volumes:
   postgres_data:

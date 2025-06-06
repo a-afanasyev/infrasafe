@@ -1,0 +1,17 @@
+node_modules
+npm-debug.log
+logs
+*.log
+.git
+.gitignore
+.env*
+.DS_Store
+Dockerfile
+Dockerfile.frontend
+docker-compose.yml
+README.md
+DOCKER_DEPLOYMENT.md
+src/
+database.sql
+package*.json
+analytics-improvements-critical.md 

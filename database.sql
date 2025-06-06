@@ -1,8 +1,3 @@
--- Создание базы данных
-CREATE DATABASE infrasafe WITH ENCODING = 'UTF8' LOCALE = 'en_US.utf8';
-
-\c infrasafe;
-
 -- Включение расширения PostGIS для работы с географическими данными (опционально)
 -- CREATE EXTENSION postgis;
 
@@ -46,7 +41,7 @@ CREATE INDEX idx_controllers_heartbeat ON controllers(last_heartbeat);
 
 -- Создание партиционированной таблицы для метрик
 CREATE TABLE metrics (
-    metric_id bigserial PRIMARY KEY,
+    metric_id bigserial,
     controller_id integer REFERENCES controllers(controller_id),
     timestamp timestamptz NOT NULL,
     -- Обычные столбцы для электричества
@@ -68,7 +63,9 @@ CREATE TABLE metrics (
     -- Параметры окружающей среды
     air_temp numeric(5,2),
     humidity numeric(5,2),
-    leak_sensor boolean
+    leak_sensor boolean,
+    -- Составной PRIMARY KEY включающий ключ партиционирования
+    PRIMARY KEY (metric_id, timestamp)
 ) PARTITION BY RANGE (timestamp);
 
 -- Создание партиций для метрик (пример)
@@ -85,7 +82,7 @@ CREATE INDEX idx_metrics_leak ON metrics(leak_sensor) WHERE leak_sensor = true;
 -- Создание таблицы оповещений
 CREATE TABLE alerts (
     alert_id serial PRIMARY KEY,
-    metric_id bigint REFERENCES metrics(metric_id),
+    metric_id bigint,
     alert_type_id integer REFERENCES alert_types(alert_type_id),
     severity varchar(20) NOT NULL,
     status varchar(20) DEFAULT 'active',
@@ -98,10 +95,11 @@ CREATE INDEX idx_alerts_metric ON alerts(metric_id);
 
 -- Создание партиционированной таблицы для логов
 CREATE TABLE logs (
-    log_id bigserial PRIMARY KEY,
+    log_id bigserial,
     timestamp timestamptz NOT NULL,
     log_level varchar(20),
-    message text NOT NULL
+    message text NOT NULL,
+    PRIMARY KEY (log_id, timestamp)
 ) PARTITION BY RANGE (timestamp);
 
 -- Создание партиций для логов (пример)
