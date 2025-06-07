@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', async function () {
     // Define backend API URL (can be modified externally)
-    const backendURL = window.BACKEND_URL || "https://infrasafe.aisolutions.uz/api/metrics"; 
+//    const backendURL = window.BACKEND_URL || "https://infrasafe.aisolutions.uz/api/metrics";
+const backendURL = window.BACKEND_URL || "http://localhost:3000/api/buildings-metrics"; 
 
     // Добавляем необходимые CSS-стили для сворачиваемости сайдбара
     const sidebarStyles = document.createElement('style');
@@ -454,7 +455,8 @@ document.addEventListener('DOMContentLoaded', async function () {
             
             // Fetch data from the backend
             const response = await fetch(backendURL);
-            const data = await response.json();
+            const result = await response.json();
+            const data = result.data || result; // Поддержка как нового формата (с pagination), так и старого
 
             // Обновляем название УК на карте
             if (data.length > 0) {
@@ -698,7 +700,9 @@ document.addEventListener('DOMContentLoaded', async function () {
             });
 
             // Обновляем информацию на карте
-            map.fitBounds(markers.getBounds(), { padding: [50, 50] });
+            if (markers.getLayers().length > 0) {
+                map.fitBounds(markers.getBounds(), { padding: [50, 50] });
+            }
             
             // Обновляем счетчики элементов в заголовках и заголовок группы протечек
             updateGroupHeaders();

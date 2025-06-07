@@ -2,6 +2,8 @@ const express = require('express');
 const buildingRoutes = require('./buildingRoutes');
 const controllerRoutes = require('./controllerRoutes');
 const metricRoutes = require('./metricRoutes');
+const authRoutes = require('./authRoutes');
+const buildingMetricsRoutes = require('./buildingMetricsRoutes');
 const metricController = require('../controllers/metricController');
 const { authenticateJWT } = require('../middleware/auth');
 const { createError } = require('../utils/helpers');
@@ -69,6 +71,11 @@ router.use((req, res, next) => {
         return next();
     }
     
+    // Исключаем маршруты авторизации из проверки
+    if (req.path.startsWith('/auth/')) {
+        return next();
+    }
+    
     // Защищаем только маршруты, которые изменяют данные
     if (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE' || req.method === 'PATCH') {
         authenticateJWT(req, res, next);
@@ -110,6 +117,7 @@ router.get('/', (req, res) => {
         version: '1.0.0',
         description: 'API для системы мониторинга зданий',
         endpoints: [
+            '/api/auth - Авторизация и управление пользователями',
             '/api/buildings - Управление зданиями',
             '/api/controllers - Управление контроллерами',
             '/api/metrics - Получение метрик',
@@ -120,9 +128,11 @@ router.get('/', (req, res) => {
 });
 
 // Маршруты API
+router.use('/auth', authRoutes);
 router.use('/buildings', buildingRoutes);
 router.use('/controllers', controllerRoutes);
 router.use('/metrics', metricRoutes);
+router.use('/buildings-metrics', buildingMetricsRoutes);
 
 // Обработка 404 для API
 router.use((req, res, next) => {
