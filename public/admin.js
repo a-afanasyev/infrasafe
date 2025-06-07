@@ -1,5 +1,5 @@
 document.addEventListener("DOMContentLoaded", function () {
-    const backendURL = "http://localhost:3000/api"; // Полный URL к API
+    const backendURL = "/api"; // Относительный URL к API через прокси
 
     // Переменные для пагинации
     const pagination = {

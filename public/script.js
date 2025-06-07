@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', async function () {
     // Define backend API URL (can be modified externally)
 //    const backendURL = window.BACKEND_URL || "https://infrasafe.aisolutions.uz/api/metrics";
-const backendURL = window.BACKEND_URL || "http://localhost:3000/api/buildings-metrics"; 
+const backendURL = window.BACKEND_URL || "/api/buildings-metrics"; 
 
     // Добавляем необходимые CSS-стили для сворачиваемости сайдбара
     const sidebarStyles = document.createElement('style');
@@ -478,10 +478,15 @@ const backendURL = window.BACKEND_URL || "http://localhost:3000/api/buildings-me
             let leakBuildingsCount = 0;
 
             data.forEach((item) => {
-                if (!item.latitude || !item.longitude) {
-                    console.warn("Skipping invalid data:", item);
+                // Проверяем наличие валидных координат
+                if (!item.latitude || !item.longitude || isNaN(parseFloat(item.latitude)) || isNaN(parseFloat(item.longitude))) {
+                    console.warn("Skipping invalid data - missing or invalid coordinates:", item.building_name || item.building_id);
                     return;
                 }
+                
+                // Преобразуем координаты в числа для корректной работы Leaflet
+                item.latitude = parseFloat(item.latitude);
+                item.longitude = parseFloat(item.longitude);
 
                 // Determine electricity status
 
@@ -509,7 +514,7 @@ const backendURL = window.BACKEND_URL || "http://localhost:3000/api/buildings-me
                     : 'data/images/Electricity_Red.png';
 
                 // Determine cold water status
-                const isColdWaterOK = item.cold_water_pressure > 1;
+                const isColdWaterOK = item.cold_water_pressure && item.cold_water_pressure > 1;
                 const coldWaterImage = isColdWaterOK
                     ? 'data/images/Water_Blue.png'
                     : 'data/images/Water_No_Blue.png';
@@ -517,7 +522,8 @@ const backendURL = window.BACKEND_URL || "http://localhost:3000/api/buildings-me
                 // Determine hot water status 
                 //need to update procedure for hot water to show houses withoit hot water and check the difference betwee in and out pressure and temperature
 
-                const isHotWaterOK = item.hot_water_in_pressure >= 1 &&item.hot_water_out_pressure >= 1;
+                const isHotWaterOK = item.hot_water_in_pressure && item.hot_water_out_pressure && 
+                                   item.hot_water_in_pressure >= 1 && item.hot_water_out_pressure >= 1;
                 const hotWaterImage = isHotWaterOK
                     ? 'data/images/Water_Red.png'
                     : 'data/images/Water_No_Red.png';
@@ -541,7 +547,9 @@ const backendURL = window.BACKEND_URL || "http://localhost:3000/api/buildings-me
                     status = 'ok';
                 } else if (item.controller_id && (
                     // Проверяем полное отсутствие основных систем
-                    (!item.electricity_ph1 && !item.electricity_ph2 && !item.electricity_ph3) || // Нет электричества
+                    ((!item.electricity_ph1 || item.electricity_ph1 <= 0) && 
+                     (!item.electricity_ph2 || item.electricity_ph2 <= 0) && 
+                     (!item.electricity_ph3 || item.electricity_ph3 <= 0)) || // Нет электричества
                     (!item.cold_water_pressure || item.cold_water_pressure <= 0) || // Нет холодной воды
                     ((!item.hot_water_in_pressure || item.hot_water_in_pressure <= 0) && 
                      (!item.hot_water_out_pressure || item.hot_water_out_pressure <= 0)) // Нет горячей воды
@@ -549,9 +557,10 @@ const backendURL = window.BACKEND_URL || "http://localhost:3000/api/buildings-me
                     status = 'critical';
                 } else if (item.controller_id && (
                     // Проверяем частичное нарушение работы систем
-                    (item.electricity_ph1 || item.electricity_ph2 || item.electricity_ph3) && // Есть хотя бы одна фаза
-                    (item.cold_water_pressure > 0) && // Есть холодная вода
-                    ((item.hot_water_in_pressure > 0) || (item.hot_water_out_pressure > 0)) // Есть горячая вода
+                    (item.electricity_ph1 > 0 || item.electricity_ph2 > 0 || item.electricity_ph3 > 0) && // Есть хотя бы одна фаза
+                    (item.cold_water_pressure && item.cold_water_pressure > 0) && // Есть холодная вода
+                    ((item.hot_water_in_pressure && item.hot_water_in_pressure > 0) || 
+                     (item.hot_water_out_pressure && item.hot_water_out_pressure > 0)) // Есть горячая вода
                 )) {
                     status = 'warning';
                 } else {
@@ -608,17 +617,17 @@ const backendURL = window.BACKEND_URL || "http://localhost:3000/api/buildings-me
                     <!-- Electricity Data -->
                     <tr>
                         <td><img src="${electricityImage}" alt="Electricity_Status" style="width: 20px;" /></td>
-                        <td ${!item.electricity_ph1 ? "class='blinking-text-red'" : (!isPhase1Ok ? "class='blinking-cell-orange'" : '')}>${item.electricity_ph1 ? item.electricity_ph1 + "V" : "Нет данных"}</td>
-                        <td ${!item.electricity_ph2 ? "class='blinking-text-red'" : (!isPhase2Ok ? "class='blinking-cell-orange'" : '')}>${item.electricity_ph2 ? item.electricity_ph2 + "V" : "Нет данных"}</td>
-                        <td ${!item.electricity_ph3 ? "class='blinking-text-red'" : (!isPhase3Ok ? "class='blinking-cell-orange'" : '')}>${item.electricity_ph3 ? item.electricity_ph3 + "V" : "Нет данных"}</td>
+                        <td ${!item.electricity_ph1 ? "class='blinking-text-red'" : (!isPhase1Ok ? "class='blinking-cell-orange'" : '')}>${item.electricity_ph1 !== null ? item.electricity_ph1 + "V" : "Нет данных"}</td>
+                        <td ${!item.electricity_ph2 ? "class='blinking-text-red'" : (!isPhase2Ok ? "class='blinking-cell-orange'" : '')}>${item.electricity_ph2 !== null ? item.electricity_ph2 + "V" : "Нет данных"}</td>
+                        <td ${!item.electricity_ph3 ? "class='blinking-text-red'" : (!isPhase3Ok ? "class='blinking-cell-orange'" : '')}>${item.electricity_ph3 !== null ? item.electricity_ph3 + "V" : "Нет данных"}</td>
                     </tr>
 
                     <!-- Cold Water Data -->
                     <tr>
                         <td><img src="${coldWaterImage}" alt="Cold_Water" style="width: 20px;" /></td>
                         <td colspan="3" ${!item.cold_water_pressure ? "class='blinking-text-red'" : (!isColdWaterOK ? "class='blinking-cell-orange'" : '')}>
-                            <strong>ХВС:</strong> ${item.cold_water_pressure ? item.cold_water_pressure + " Bar" : "Нет данных"}, 
-                            ${item.cold_water_temp ? item.cold_water_temp + "°C" : "Нет данных"}
+                            <strong>ХВС:</strong> ${item.cold_water_pressure !== null ? item.cold_water_pressure + " Bar" : "Нет данных"}, 
+                            ${item.cold_water_temp !== null ? item.cold_water_temp + "°C" : "Нет данных"}
                         </td>
                     </tr>
 
