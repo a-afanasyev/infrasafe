@@ -1,11 +1,6 @@
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
+const authService = require('../services/authService');
 const logger = require('../utils/logger');
-const db = require('../config/database');
 const { createError } = require('../utils/helpers');
-
-const JWT_SECRET = process.env.JWT_SECRET || 'your_very_secure_jwt_secret_key';
-const SALT_ROUNDS = 10;
 
 // Логин пользователя
 const login = async (req, res, next) => {
@@ -13,52 +8,42 @@ const login = async (req, res, next) => {
         const { username, password } = req.body;
 
         if (!username || !password) {
-            throw createError('Username and password are required', 400);
+            return res.status(400).json({ 
+                error: 'Username and password are required' 
+            });
         }
 
-        // Поиск пользователя в базе данных
-        const userQuery = 'SELECT * FROM users WHERE username = $1';
-        const userResult = await db.query(userQuery, [username]);
-
-        if (userResult.rows.length === 0) {
-            throw createError('Invalid credentials', 401);
-        }
-
-        const user = userResult.rows[0];
-
-        // Проверка пароля
-        const isPasswordValid = await bcrypt.compare(password, user.password);
+        // Аутентификация пользователя
+        const user = await authService.authenticateUser(username, password);
         
-        if (!isPasswordValid) {
-            throw createError('Invalid credentials', 401);
-        }
-
-        // Создание JWT токена
-        const token = jwt.sign(
-            { 
-                userId: user.user_id, 
-                username: user.username, 
-                role: user.role 
-            },
-            JWT_SECRET,
-            { expiresIn: '24h' }
-        );
-
-        logger.info(`Успешный вход в систему: ${username}`);
+        // Генерация токенов
+        const tokens = authService.generateTokens(user);
 
         res.json({
             success: true,
             message: 'Login successful',
-            token,
+            ...tokens,
             user: {
                 id: user.user_id,
                 username: user.username,
                 role: user.role,
-                created_at: user.created_at
+                last_login: user.last_login
             }
         });
 
     } catch (error) {
+        // Обрабатываем специфичные ошибки сервиса
+        if (error.code === 'INVALID_CREDENTIALS') {
+            return res.status(401).json({ error: error.message });
+        }
+        if (error.code === 'ACCOUNT_DISABLED') {
+            return res.status(403).json({ error: error.message });
+        }
+        if (error.code === 'ACCOUNT_LOCKED') {
+            return res.status(423).json({ error: error.message });
+        }
+        
+        logger.error(`Login error: ${error.message}`);
         next(error);
     }
 };
@@ -66,51 +51,34 @@ const login = async (req, res, next) => {
 // Регистрация нового пользователя
 const register = async (req, res, next) => {
     try {
-        const { username, password, role = 'user' } = req.body;
+        const { username, email, password, role = 'user' } = req.body;
 
         if (!username || !password) {
-            throw createError('Username and password are required', 400);
+            return res.status(400).json({ 
+                error: 'Username and password are required' 
+            });
         }
 
-        if (password.length < 6) {
-            throw createError('Password must be at least 6 characters long', 400);
-        }
-
-        // Проверка что пользователь не существует
-        const existingUserQuery = 'SELECT user_id FROM users WHERE username = $1';
-        const existingUserResult = await db.query(existingUserQuery, [username]);
-
-        if (existingUserResult.rows.length > 0) {
-            throw createError('Username already exists', 409);
-        }
-
-        // Хеширование пароля
-        const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-
-        // Создание пользователя
-        const insertQuery = `
-            INSERT INTO users (username, password, role, created_at) 
-            VALUES ($1, $2, $3, NOW()) 
-            RETURNING user_id, username, role, created_at
-        `;
-        
-        const result = await db.query(insertQuery, [username, passwordHash, role]);
-        const newUser = result.rows[0];
-
-        logger.info(`Новый пользователь зарегистрирован: ${username}`);
+        const newUser = await authService.registerUser({
+            username,
+            email,
+            password,
+            role
+        });
 
         res.status(201).json({
             success: true,
             message: 'User registered successfully',
-            user: {
-                id: newUser.user_id,
-                username: newUser.username,
-                role: newUser.role,
-                created_at: newUser.created_at
-            }
+            user: newUser
         });
 
     } catch (error) {
+        // Обрабатываем специфичные ошибки сервиса
+        if (error.code === 'USER_EXISTS') {
+            return res.status(409).json({ error: error.message });
+        }
+        
+        logger.error(`Registration error: ${error.message}`);
         next(error);
     }
 };
@@ -118,28 +86,110 @@ const register = async (req, res, next) => {
 // Получение информации о текущем пользователе
 const getProfile = async (req, res, next) => {
     try {
-        const userId = req.user.userId;
+        const userId = req.user.user_id || req.user.userId; // Поддержка обеих версий
 
-        const userQuery = 'SELECT user_id, username, role, created_at FROM users WHERE user_id = $1';
-        const userResult = await db.query(userQuery, [userId]);
+        const user = await authService.findUserById(userId);
 
-        if (userResult.rows.length === 0) {
-            throw createError('User not found', 404);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
         }
-
-        const user = userResult.rows[0];
 
         res.json({
             success: true,
             user: {
                 id: user.user_id,
                 username: user.username,
+                email: user.email,
                 role: user.role,
-                created_at: user.created_at
+                created_at: user.created_at,
+                last_login: user.last_login,
+                is_active: user.is_active
             }
         });
 
     } catch (error) {
+        logger.error(`Get profile error: ${error.message}`);
+        next(error);
+    }
+};
+
+// Выход из системы
+const logout = async (req, res, next) => {
+    try {
+        const token = req.headers.authorization?.replace('Bearer ', '');
+        
+        if (!token) {
+            return res.status(400).json({ error: 'Token required' });
+        }
+
+        await authService.logout(token);
+
+        res.json({
+            success: true,
+            message: 'Logout successful'
+        });
+
+    } catch (error) {
+        logger.error(`Logout error: ${error.message}`);
+        next(error);
+    }
+};
+
+// Обновление токена
+const refreshToken = async (req, res, next) => {
+    try {
+        const { refreshToken: refresh } = req.body;
+
+        if (!refresh) {
+            return res.status(400).json({ error: 'Refresh token required' });
+        }
+
+        const tokens = await authService.refreshToken(refresh);
+
+        res.json({
+            success: true,
+            message: 'Token refreshed successfully',
+            ...tokens
+        });
+
+    } catch (error) {
+        if (error.code === 'INVALID_REFRESH_TOKEN' || error.code === 'USER_NOT_FOUND') {
+            return res.status(401).json({ error: error.message });
+        }
+        
+        logger.error(`Refresh token error: ${error.message}`);
+        next(error);
+    }
+};
+
+// Смена пароля
+const changePassword = async (req, res, next) => {
+    try {
+        const userId = req.user.user_id || req.user.userId;
+        const { currentPassword, newPassword } = req.body;
+
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ 
+                error: 'Current password and new password are required' 
+            });
+        }
+
+        await authService.changePassword(userId, currentPassword, newPassword);
+
+        res.json({
+            success: true,
+            message: 'Password changed successfully'
+        });
+
+    } catch (error) {
+        if (error.code === 'USER_NOT_FOUND') {
+            return res.status(404).json({ error: error.message });
+        }
+        if (error.code === 'INVALID_CURRENT_PASSWORD') {
+            return res.status(400).json({ error: error.message });
+        }
+        
+        logger.error(`Change password error: ${error.message}`);
         next(error);
     }
 };
@@ -147,5 +197,8 @@ const getProfile = async (req, res, next) => {
 module.exports = {
     login,
     register,
-    getProfile
+    getProfile,
+    logout,
+    refreshToken,
+    changePassword
 }; 

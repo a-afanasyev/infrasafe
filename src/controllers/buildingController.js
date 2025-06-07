@@ -1,5 +1,4 @@
-const Building = require('../models/Building');
-const Controller = require('../models/Controller');
+const buildingService = require('../services/buildingService');
 const logger = require('../utils/logger');
 const { createError } = require('../utils/helpers');
 
@@ -7,7 +6,7 @@ const { createError } = require('../utils/helpers');
 const getAllBuildings = async (req, res, next) => {
     try {
         const { page = 1, limit = 10, sort = 'building_id', order = 'asc' } = req.query;
-        const result = await Building.findAll(parseInt(page), parseInt(limit), sort, order);
+        const result = await buildingService.getAllBuildings(parseInt(page), parseInt(limit), sort, order);
         return res.status(200).json(result);
     } catch (error) {
         logger.error(`Error in getAllBuildings: ${error.message}`);
@@ -19,19 +18,13 @@ const getAllBuildings = async (req, res, next) => {
 const getBuildingById = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const building = await Building.findById(id);
+        const building = await buildingService.getBuildingById(id);
         
         if (!building) {
             return res.status(404).json({ error: 'Building not found' });
         }
         
-        // Получаем также все контроллеры для этого здания
-        const controllers = await Controller.findByBuildingId(id);
-        
-        return res.status(200).json({
-            ...building,
-            controllers
-        });
+        return res.status(200).json(building);
     } catch (error) {
         logger.error(`Error in getBuildingById: ${error.message}`);
         next(error);
@@ -41,7 +34,7 @@ const getBuildingById = async (req, res, next) => {
 // Создать новое здание
 const createBuilding = async (req, res, next) => {
     try {
-        const newBuilding = await Building.create(req.body);
+        const newBuilding = await buildingService.createBuilding(req.body);
         return res.status(201).json(newBuilding);
     } catch (error) {
         logger.error(`Error in createBuilding: ${error.message}`);
@@ -53,7 +46,7 @@ const createBuilding = async (req, res, next) => {
 const updateBuilding = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const updatedBuilding = await Building.update(id, req.body);
+        const updatedBuilding = await buildingService.updateBuilding(id, req.body);
         
         if (!updatedBuilding) {
             return res.status(404).json({ error: 'Building not found' });
@@ -71,16 +64,7 @@ const deleteBuilding = async (req, res, next) => {
     try {
         const { id } = req.params;
         
-        // Проверяем, есть ли контроллеры, привязанные к этому зданию
-        const controllers = await Controller.findByBuildingId(id);
-        if (controllers.length > 0) {
-            return res.status(400).json({ 
-                error: 'Cannot delete building with associated controllers',
-                controllers
-            });
-        }
-        
-        const result = await Building.delete(id);
+        const result = await buildingService.deleteBuilding(id);
         
         if (!result) {
             return res.status(404).json({ error: 'Building not found' });
@@ -91,7 +75,50 @@ const deleteBuilding = async (req, res, next) => {
             deleted: result 
         });
     } catch (error) {
+        // Обрабатываем специфичные ошибки сервиса
+        if (error.code === 'BUILDING_HAS_CONTROLLERS') {
+            return res.status(400).json({ 
+                error: error.message,
+                controllers: error.controllers
+            });
+        }
+        
         logger.error(`Error in deleteBuilding: ${error.message}`);
+        next(error);
+    }
+};
+
+// Поиск зданий в радиусе
+const findBuildingsInRadius = async (req, res, next) => {
+    try {
+        const { latitude, longitude, radius = 1000 } = req.query;
+        
+        if (!latitude || !longitude) {
+            return res.status(400).json({ 
+                error: 'Latitude and longitude are required' 
+            });
+        }
+        
+        const result = await buildingService.findBuildingsInRadius(
+            parseFloat(latitude), 
+            parseFloat(longitude), 
+            parseInt(radius)
+        );
+        
+        return res.status(200).json(result);
+    } catch (error) {
+        logger.error(`Error in findBuildingsInRadius: ${error.message}`);
+        next(error);
+    }
+};
+
+// Получить статистику зданий
+const getBuildingsStatistics = async (req, res, next) => {
+    try {
+        const statistics = await buildingService.getBuildingsStatistics();
+        return res.status(200).json(statistics);
+    } catch (error) {
+        logger.error(`Error in getBuildingsStatistics: ${error.message}`);
         next(error);
     }
 };
@@ -101,5 +128,7 @@ module.exports = {
     getBuildingById,
     createBuilding,
     updateBuilding,
-    deleteBuilding
+    deleteBuilding,
+    findBuildingsInRadius,
+    getBuildingsStatistics
 }; 

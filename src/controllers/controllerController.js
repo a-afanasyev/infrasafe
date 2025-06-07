@@ -1,5 +1,4 @@
-const Controller = require('../models/Controller');
-const Metric = require('../models/Metric');
+const controllerService = require('../services/controllerService');
 const logger = require('../utils/logger');
 const { createError } = require('../utils/helpers');
 
@@ -7,7 +6,7 @@ const { createError } = require('../utils/helpers');
 const getAllControllers = async (req, res, next) => {
     try {
         const { page = 1, limit = 10, sort = 'controller_id', order = 'asc' } = req.query;
-        const result = await Controller.findAll(parseInt(page), parseInt(limit), sort, order);
+        const result = await controllerService.getAllControllers(parseInt(page), parseInt(limit), sort, order);
         return res.status(200).json(result);
     } catch (error) {
         logger.error(`Error in getAllControllers: ${error.message}`);
@@ -19,7 +18,7 @@ const getAllControllers = async (req, res, next) => {
 const getControllerById = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const controller = await Controller.findById(id);
+        const controller = await controllerService.getControllerById(id);
         
         if (!controller) {
             return res.status(404).json({ error: 'Controller not found' });
@@ -36,7 +35,7 @@ const getControllerById = async (req, res, next) => {
 const getControllersByBuildingId = async (req, res, next) => {
     try {
         const { buildingId } = req.params;
-        const controllers = await Controller.findByBuildingId(buildingId);
+        const controllers = await controllerService.getControllersByBuildingId(buildingId);
         
         return res.status(200).json(controllers);
     } catch (error) {
@@ -51,17 +50,14 @@ const getControllerMetrics = async (req, res, next) => {
         const { id } = req.params;
         const { startDate, endDate } = req.query;
         
-        // Проверяем существование контроллера
-        const controller = await Controller.findById(id);
-        if (!controller) {
-            return res.status(404).json({ error: 'Controller not found' });
-        }
-        
-        // Получаем метрики
-        const metrics = await Metric.findByControllerId(id, startDate, endDate);
+        const metrics = await controllerService.getControllerMetrics(id, startDate, endDate);
         
         return res.status(200).json(metrics);
     } catch (error) {
+        if (error.code === 'CONTROLLER_NOT_FOUND') {
+            return res.status(404).json({ error: error.message });
+        }
+        
         logger.error(`Error in getControllerMetrics: ${error.message}`);
         next(error);
     }
@@ -70,7 +66,7 @@ const getControllerMetrics = async (req, res, next) => {
 // Создать новый контроллер
 const createController = async (req, res, next) => {
     try {
-        const newController = await Controller.create(req.body);
+        const newController = await controllerService.createController(req.body);
         return res.status(201).json(newController);
     } catch (error) {
         logger.error(`Error in createController: ${error.message}`);
@@ -82,7 +78,7 @@ const createController = async (req, res, next) => {
 const updateController = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const updatedController = await Controller.update(id, req.body);
+        const updatedController = await controllerService.updateController(id, req.body);
         
         if (!updatedController) {
             return res.status(404).json({ error: 'Controller not found' });
@@ -101,11 +97,7 @@ const updateControllerStatus = async (req, res, next) => {
         const { id } = req.params;
         const { status } = req.body;
         
-        if (!status || !['online', 'offline', 'maintenance'].includes(status)) {
-            return res.status(400).json({ error: 'Invalid status value' });
-        }
-        
-        const updatedController = await Controller.updateStatus(id, status);
+        const updatedController = await controllerService.updateControllerStatus(id, status);
         
         if (!updatedController) {
             return res.status(404).json({ error: 'Controller not found' });
@@ -113,6 +105,10 @@ const updateControllerStatus = async (req, res, next) => {
         
         return res.status(200).json(updatedController);
     } catch (error) {
+        if (error.code === 'INVALID_STATUS') {
+            return res.status(400).json({ error: error.message });
+        }
+        
         logger.error(`Error in updateControllerStatus: ${error.message}`);
         next(error);
     }
@@ -123,16 +119,7 @@ const deleteController = async (req, res, next) => {
     try {
         const { id } = req.params;
         
-        // Проверяем, есть ли метрики, привязанные к этому контроллеру
-        const metrics = await Metric.findByControllerId(id);
-        if (metrics.length > 0) {
-            return res.status(400).json({ 
-                error: 'Cannot delete controller with associated metrics. Delete metrics first.',
-                metricCount: metrics.length
-            });
-        }
-        
-        const result = await Controller.delete(id);
+        const result = await controllerService.deleteController(id);
         
         if (!result) {
             return res.status(404).json({ error: 'Controller not found' });
@@ -143,7 +130,36 @@ const deleteController = async (req, res, next) => {
             deleted: result 
         });
     } catch (error) {
+        if (error.code === 'CONTROLLER_HAS_METRICS') {
+            return res.status(400).json({ 
+                error: error.message,
+                metricCount: error.metricCount
+            });
+        }
+        
         logger.error(`Error in deleteController: ${error.message}`);
+        next(error);
+    }
+};
+
+// Автоматическое обновление статусов контроллеров
+const updateControllersStatusByActivity = async (req, res, next) => {
+    try {
+        const result = await controllerService.updateControllersStatusByActivity();
+        return res.status(200).json(result);
+    } catch (error) {
+        logger.error(`Error in updateControllersStatusByActivity: ${error.message}`);
+        next(error);
+    }
+};
+
+// Получить статистику контроллеров
+const getControllersStatistics = async (req, res, next) => {
+    try {
+        const statistics = await controllerService.getControllersStatistics();
+        return res.status(200).json(statistics);
+    } catch (error) {
+        logger.error(`Error in getControllersStatistics: ${error.message}`);
         next(error);
     }
 };
@@ -156,5 +172,7 @@ module.exports = {
     createController,
     updateController,
     updateControllerStatus,
-    deleteController
+    deleteController,
+    updateControllersStatusByActivity,
+    getControllersStatistics
 }; 

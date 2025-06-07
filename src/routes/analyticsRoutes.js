@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const analyticsController = require('../controllers/analyticsController');
-const auth = require('../middleware/auth');
+const { authenticateJWT, isAdmin } = require('../middleware/auth');
 const { applyAnalyticsRateLimit, applyAdminRateLimit, applyCrudRateLimit } = require('../middleware/rateLimiter');
 
 /**
@@ -322,7 +322,7 @@ router.get('/status', analyticsController.getSystemStatus);
  *       200:
  *         description: Аналитика обновлена
  */
-router.post('/refresh', applyAdminRateLimit, auth, analyticsController.refreshAnalytics);
+router.post('/refresh', applyAdminRateLimit, authenticateJWT, analyticsController.refreshAnalytics);
 
 /**
  * @swagger
@@ -336,7 +336,7 @@ router.post('/refresh', applyAdminRateLimit, auth, analyticsController.refreshAn
  *       200:
  *         description: Кэши очищены
  */
-router.post('/cache/invalidate', applyAdminRateLimit, auth, analyticsController.invalidateCaches);
+router.post('/cache/invalidate', applyAdminRateLimit, authenticateJWT, analyticsController.invalidateCaches);
 
 /**
  * @swagger
@@ -350,7 +350,7 @@ router.post('/cache/invalidate', applyAdminRateLimit, auth, analyticsController.
  *       200:
  *         description: Circuit Breaker'ы сброшены
  */
-router.post('/circuit-breakers/reset', applyAdminRateLimit, auth, analyticsController.resetCircuitBreakers);
+router.post('/circuit-breakers/reset', applyAdminRateLimit, authenticateJWT, analyticsController.resetCircuitBreakers);
 
 /**
  * @swagger
@@ -382,7 +382,7 @@ router.post('/circuit-breakers/reset', applyAdminRateLimit, auth, analyticsContr
  *       200:
  *         description: Пороги обновлены
  */
-router.put('/thresholds', applyAdminRateLimit, auth, analyticsController.updateThresholds);
+router.put('/thresholds', applyAdminRateLimit, authenticateJWT, analyticsController.updateThresholds);
 
 // === CRUD ЭНДПОИНТЫ ДЛЯ ТРАНСФОРМАТОРОВ ===
 
@@ -406,7 +406,7 @@ router.put('/thresholds', applyAdminRateLimit, auth, analyticsController.updateT
  *       400:
  *         description: Ошибка валидации
  */
-router.post('/transformers', applyCrudRateLimit, auth, analyticsController.createTransformer);
+router.post('/transformers', applyCrudRateLimit, authenticateJWT, analyticsController.createTransformer);
 
 /**
  * @swagger
@@ -434,7 +434,7 @@ router.post('/transformers', applyCrudRateLimit, auth, analyticsController.creat
  *       404:
  *         description: Трансформатор не найден
  */
-router.put('/transformers/:transformerId', applyCrudRateLimit, auth, analyticsController.updateTransformer);
+router.put('/transformers/:transformerId', applyCrudRateLimit, authenticateJWT, analyticsController.updateTransformer);
 
 /**
  * @swagger
@@ -458,6 +458,6 @@ router.put('/transformers/:transformerId', applyCrudRateLimit, auth, analyticsCo
  *       400:
  *         description: Нельзя удалить - есть связанные здания
  */
-router.delete('/transformers/:transformerId', applyCrudRateLimit, auth, analyticsController.deleteTransformer);
+router.delete('/transformers/:transformerId', applyCrudRateLimit, authenticateJWT, analyticsController.deleteTransformer);
 
 module.exports = router; 

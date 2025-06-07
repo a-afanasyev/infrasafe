@@ -1,0 +1,2180 @@
+[0;35m╔═══════════════════════════════════════════════════════════════╗[0m
+[0;35m║               🚀 ТЕСТИРОВАНИЕ API INFRASAFE                   ║[0m
+[0;35m║                   Версия: 1.0.0                              ║[0m
+[0;35m╚═══════════════════════════════════════════════════════════════╝[0m
+[1;33m🌐 URL: http://localhost:8080[0m
+[1;33m📅 Время: Sat Jun  7 03:08:29 EDT 2025[0m
+
+[0;36m🔐 Получение JWT токена для тестирования...[0m
+[1;33m🔍 Попытка авторизации с: testapi[0m
+[1;33m🔍 Попытка авторизации с: admin[0m
+[1;33m🔍 Попытка авторизации с: admin[0m
+[1;33m🔍 Попытка авторизации с: user[0m
+[1;33m🔍 Попытка авторизации с: test[0m
+[1;33m⚠️  Не удалось получить JWT токен[0m
+[1;33m📝 Последний ответ сервера:[0m
+{"error":"Неверное имя пользователя или пароль"}
+[1;33m⚠️  Защищенные endpoints не будут протестированы[0m
+
+[0;36m🔧 Попытка создания тестового пользователя...[0m
+[0;34m📝 Результат регистрации:[0m
+{
+  "error": "Пользователь с таким именем или email уже существует"
+}
+[0;32m✅ Успешно создан и авторизован тестовый пользователь[0m
+[0;34m🎫 Токен: eyJhbGciOiJIUzI1NiIsInR5cCI6Ik...[0m
+
+[0;34m╔═══════════════════════════════════════════════════════════════╗[0m
+[0;34m║                    📊 БАЗОВЫЕ МАРШРУТЫ                        ║[0m
+[0;34m╚═══════════════════════════════════════════════════════════════╝[0m
+[0;36m📡 Информация об API[0m
+[1;33mGET /api/[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "name": "InfraSafe Habitat IQ API",
+  "version": "1.0.0",
+  "description": "API для системы мониторинга зданий",
+  "endpoints": [
+    "/api/auth - Авторизация и управление пользователями",
+    "/api/buildings - Управление зданиями",
+    "/api/controllers - Управление контроллерами",
+    "/api/metrics - Получение метрик",
+    "/api/analytics - Аналитика и инфраструктурные объекты",
+    "/api-docs - Документация API"
+  ],
+  "status": "healthy"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;34m╔═══════════════════════════════════════════════════════════════╗[0m
+[0;34m║                    🔐 АВТОРИЗАЦИЯ                             ║[0m
+[0;34m╚═══════════════════════════════════════════════════════════════╝[0m
+[0;36m📡 Авторизация администратора[0m
+[1;33mPOST /api/auth/login[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 423[0m
+[0;34m📋 Ответ:[0m
+{
+  "error": "Аккаунт заблокирован до 6/7/2025, 7:23:30 AM"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Регистрация нового пользователя[0m
+[1;33mPOST /api/auth/register[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 409[0m
+[0;34m📋 Ответ:[0m
+{
+  "error": "Пользователь с таким именем или email уже существует"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Получение профиля пользователя[0m
+[1;33mGET /api/auth/profile[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 403[0m
+[0;34m📋 Ответ:[0m
+{
+  "success": false,
+  "message": "Invalid or expired token"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;34m╔═══════════════════════════════════════════════════════════════╗[0m
+[0;34m║                    🏢 ЗДАНИЯ                                  ║[0m
+[0;34m╚═══════════════════════════════════════════════════════════════╝[0m
+[0;36m📡 Получение всех зданий[0m
+[1;33mGET /api/buildings[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "data": [
+    {
+      "building_id": 1,
+      "name": "Farabi-001",
+      "address": "Farabi, 1",
+      "town": "Tashkent",
+      "latitude": "41.347052",
+      "longitude": "69.203200",
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": null
+    },
+    {
+      "building_id": 2,
+      "name": "Farabi-002",
+      "address": "Farabi, 2",
+      "town": "Tashkent",
+      "latitude": "41.346924",
+      "longitude": "69.202787",
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": null
+    },
+    {
+      "building_id": 3,
+      "name": "Farabi-003",
+      "address": "Farabi, 3",
+      "town": "Tashkent",
+      "latitude": "41.347073",
+      "longitude": "69.202302",
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": null
+    },
+    {
+      "building_id": 4,
+      "name": "Farabi-004",
+      "address": "Farabi, 4",
+      "town": "Tashkent",
+      "latitude": "41.347249",
+      "longitude": "69.201718",
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": null
+    },
+    {
+      "building_id": 5,
+      "name": "Farabi-005",
+      "address": "Farabi, 5",
+      "town": "Tashkent",
+      "latitude": "41.347560",
+      "longitude": "69.201332",
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": true
+    },
+    {
+      "building_id": 6,
+      "name": "Farabi-006",
+      "address": "Farabi, 6",
+      "town": "Tashkent",
+      "latitude": "41.347553",
+      "longitude": "69.201853",
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": true
+    },
+    {
+      "building_id": 7,
+      "name": "Farabi-007",
+      "address": "Farabi, 7",
+      "town": "Tashkent",
+      "latitude": "41.347553",
+      "longitude": "69.200757",
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": true
+    },
+    {
+      "building_id": 8,
+      "name": "Farabi-008",
+      "address": "Farabi, 8",
+      "town": "Tashkent",
+      "latitude": "41.347845",
+      "longitude": "69.200865",
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": true
+    },
+    {
+      "building_id": 9,
+      "name": "Farabi-009",
+      "address": "Farabi, 9",
+      "town": "Tashkent",
+      "latitude": "41.347865",
+      "longitude": "69.200361",
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": true
+    },
+    {
+      "building_id": 10,
+      "name": "Farabi-010",
+      "address": "Farabi, 10",
+      "town": "Tashkent",
+      "latitude": "41.347845",
+      "longitude": "69.199813",
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": true
+    }
+  ],
+  "pagination": {
+    "total": 16,
+    "page": 1,
+    "limit": 10,
+    "totalPages": 2
+  }
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Получение зданий с пагинацией[0m
+[1;33mGET /api/buildings?page=1&limit=5[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "data": [
+    {
+      "building_id": 1,
+      "name": "Farabi-001",
+      "address": "Farabi, 1",
+      "town": "Tashkent",
+      "latitude": "41.347052",
+      "longitude": "69.203200",
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": null
+    },
+    {
+      "building_id": 2,
+      "name": "Farabi-002",
+      "address": "Farabi, 2",
+      "town": "Tashkent",
+      "latitude": "41.346924",
+      "longitude": "69.202787",
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": null
+    },
+    {
+      "building_id": 3,
+      "name": "Farabi-003",
+      "address": "Farabi, 3",
+      "town": "Tashkent",
+      "latitude": "41.347073",
+      "longitude": "69.202302",
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": null
+    },
+    {
+      "building_id": 4,
+      "name": "Farabi-004",
+      "address": "Farabi, 4",
+      "town": "Tashkent",
+      "latitude": "41.347249",
+      "longitude": "69.201718",
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": null
+    },
+    {
+      "building_id": 5,
+      "name": "Farabi-005",
+      "address": "Farabi, 5",
+      "town": "Tashkent",
+      "latitude": "41.347560",
+      "longitude": "69.201332",
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": true
+    }
+  ],
+  "pagination": {
+    "total": 16,
+    "page": 1,
+    "limit": 5,
+    "totalPages": 4
+  }
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Получение здания по ID[0m
+[1;33mGET /api/buildings/1[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "building_id": 1,
+  "name": "Farabi-001",
+  "address": "Farabi, 1",
+  "town": "Tashkent",
+  "latitude": "41.347052",
+  "longitude": "69.203200",
+  "region": "Olmazor",
+  "management_company": "Olmazor Holding Grand",
+  "hot_water": null,
+  "controllers": [
+    {
+      "controller_id": 1,
+      "serial_number": "SN-1",
+      "vendor": null,
+      "model": null,
+      "building_id": 1,
+      "status": "online",
+      "installed_at": "2025-06-06T20:01:18.737Z",
+      "last_heartbeat": "2025-06-06T17:02:46.235Z"
+    }
+  ]
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Создание нового здания[0m
+[1;33mPOST /api/buildings[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 403[0m
+[0;34m📋 Ответ:[0m
+{
+  "success": false,
+  "message": "Invalid or expired token"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Обновление здания[0m
+[1;33mPUT /api/buildings/1[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 403[0m
+[0;34m📋 Ответ:[0m
+{
+  "success": false,
+  "message": "Invalid or expired token"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;34m╔═══════════════════════════════════════════════════════════════╗[0m
+[0;34m║                    🎛️  КОНТРОЛЛЕРЫ                           ║[0m
+[0;34m╚═══════════════════════════════════════════════════════════════╝[0m
+[0;36m📡 Получение всех контроллеров[0m
+[1;33mGET /api/controllers[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "data": [
+    {
+      "controller_id": 1,
+      "serial_number": "SN-1",
+      "vendor": null,
+      "model": null,
+      "building_id": 1,
+      "status": "online",
+      "installed_at": "2025-06-06T20:01:18.737Z",
+      "last_heartbeat": "2025-06-06T17:02:46.235Z",
+      "building_name": "Farabi-001"
+    },
+    {
+      "controller_id": 4,
+      "serial_number": "SN-002",
+      "vendor": null,
+      "model": null,
+      "building_id": 2,
+      "status": "online",
+      "installed_at": "2025-06-06T20:02:04.896Z",
+      "last_heartbeat": "2025-06-06T17:32:46.239Z",
+      "building_name": "Farabi-002"
+    },
+    {
+      "controller_id": 5,
+      "serial_number": "SN-003",
+      "vendor": null,
+      "model": null,
+      "building_id": 3,
+      "status": "online",
+      "installed_at": "2025-06-06T20:02:04.896Z",
+      "last_heartbeat": "2025-06-06T17:47:46.240Z",
+      "building_name": "Farabi-003"
+    },
+    {
+      "controller_id": 6,
+      "serial_number": "SN-005",
+      "vendor": null,
+      "model": null,
+      "building_id": 5,
+      "status": "online",
+      "installed_at": "2025-06-06T20:02:04.896Z",
+      "last_heartbeat": "2025-06-06T17:52:46.242Z",
+      "building_name": "Farabi-005"
+    },
+    {
+      "controller_id": 7,
+      "serial_number": "SN-007",
+      "vendor": null,
+      "model": null,
+      "building_id": 7,
+      "status": "offline",
+      "installed_at": "2025-06-06T20:02:04.896Z",
+      "last_heartbeat": "2025-06-06T13:02:46.243Z",
+      "building_name": "Farabi-007"
+    },
+    {
+      "controller_id": 8,
+      "serial_number": "SN-010",
+      "vendor": null,
+      "model": null,
+      "building_id": 10,
+      "status": "maintenance",
+      "installed_at": "2025-06-06T20:02:04.896Z",
+      "last_heartbeat": "2025-06-06T15:02:46.243Z",
+      "building_name": "Farabi-010"
+    }
+  ],
+  "pagination": {
+    "total": 6,
+    "page": 1,
+    "limit": 10,
+    "totalPages": 1
+  }
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Получение контроллеров с пагинацией[0m
+[1;33mGET /api/controllers?page=1&limit=3[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "data": [
+    {
+      "controller_id": 1,
+      "serial_number": "SN-1",
+      "vendor": null,
+      "model": null,
+      "building_id": 1,
+      "status": "online",
+      "installed_at": "2025-06-06T20:01:18.737Z",
+      "last_heartbeat": "2025-06-06T17:02:46.235Z",
+      "building_name": "Farabi-001"
+    },
+    {
+      "controller_id": 4,
+      "serial_number": "SN-002",
+      "vendor": null,
+      "model": null,
+      "building_id": 2,
+      "status": "online",
+      "installed_at": "2025-06-06T20:02:04.896Z",
+      "last_heartbeat": "2025-06-06T17:32:46.239Z",
+      "building_name": "Farabi-002"
+    },
+    {
+      "controller_id": 5,
+      "serial_number": "SN-003",
+      "vendor": null,
+      "model": null,
+      "building_id": 3,
+      "status": "online",
+      "installed_at": "2025-06-06T20:02:04.896Z",
+      "last_heartbeat": "2025-06-06T17:47:46.240Z",
+      "building_name": "Farabi-003"
+    }
+  ],
+  "pagination": {
+    "total": 6,
+    "page": 1,
+    "limit": 3,
+    "totalPages": 2
+  }
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Получение контроллера по ID[0m
+[1;33mGET /api/controllers/1[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "controller_id": 1,
+  "serial_number": "SN-1",
+  "vendor": null,
+  "model": null,
+  "building_id": 1,
+  "status": "online",
+  "installed_at": "2025-06-06T20:01:18.737Z",
+  "last_heartbeat": "2025-06-06T17:02:46.235Z",
+  "building_name": "Farabi-001"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Получение контроллеров здания[0m
+[1;33mGET /api/controllers/building/1[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+[
+  {
+    "controller_id": 1,
+    "serial_number": "SN-1",
+    "vendor": null,
+    "model": null,
+    "building_id": 1,
+    "status": "online",
+    "installed_at": "2025-06-06T20:01:18.737Z",
+    "last_heartbeat": "2025-06-06T17:02:46.235Z"
+  }
+]
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Получение метрик контроллера[0m
+[1;33mGET /api/controllers/1/metrics[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+[
+  {
+    "metric_id": "2",
+    "controller_id": 1,
+    "timestamp": "2025-06-06T19:02:46.235Z",
+    "electricity_ph1": "217.50",
+    "electricity_ph2": "216.80",
+    "electricity_ph3": "218.20",
+    "amperage_ph1": null,
+    "amperage_ph2": null,
+    "amperage_ph3": null,
+    "cold_water_pressure": "5.20",
+    "cold_water_temp": "14.80",
+    "hot_water_in_pressure": "2.85",
+    "hot_water_out_pressure": "2.88",
+    "hot_water_in_temp": "32.10",
+    "hot_water_out_temp": "32.30",
+    "air_temp": "22.50",
+    "humidity": "45.20",
+    "leak_sensor": false
+  },
+  {
+    "metric_id": "3",
+    "controller_id": 1,
+    "timestamp": "2025-06-06T18:02:46.235Z",
+    "electricity_ph1": "216.90",
+    "electricity_ph2": "215.70",
+    "electricity_ph3": "217.80",
+    "amperage_ph1": null,
+    "amperage_ph2": null,
+    "amperage_ph3": null,
+    "cold_water_pressure": "5.10",
+    "cold_water_temp": "15.20",
+    "hot_water_in_pressure": "2.82",
+    "hot_water_out_pressure": "2.85",
+    "hot_water_in_temp": "31.80",
+    "hot_water_out_temp": "32.00",
+    "air_temp": "22.10",
+    "humidity": "46.10",
+    "leak_sensor": false
+  },
+  {
+    "metric_id": "4",
+    "controller_id": 1,
+    "timestamp": "2025-06-06T17:02:46.235Z",
+    "electricity_ph1": "218.10",
+    "electricity_ph2": "217.20",
+    "electricity_ph3": "219.00",
+    "amperage_ph1": null,
+    "amperage_ph2": null,
+    "amperage_ph3": null,
+    "cold_water_pressure": "5.30",
+    "cold_water_temp": "14.50",
+    "hot_water_in_pressure": "2.87",
+    "hot_water_out_pressure": "2.90",
+    "hot_water_in_temp": "32.50",
+    "hot_water_out_temp": "32.70",
+    "air_temp": "21.80",
+    "humidity": "44.80",
+    "leak_sensor": false
+  },
+  {
+    "metric_id": "1",
+    "controller_id": 1,
+    "timestamp": "2025-05-16T05:33:39.286Z",
+    "electricity_ph1": "217.00",
+    "electricity_ph2": "216.00",
+    "electricity_ph3": "218.00",
+    "amperage_ph1": null,
+    "amperage_ph2": null,
+    "amperage_ph3": null,
+    "cold_water_pressure": "5.00",
+    "cold_water_temp": "15.00",
+    "hot_water_in_pressure": "2.84",
+    "hot_water_out_pressure": "2.87",
+    "hot_water_in_temp": "31.70",
+    "hot_water_out_temp": "31.90",
+    "air_temp": null,
+    "humidity": null,
+    "leak_sensor": null
+  }
+]
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Создание нового контроллера[0m
+[1;33mPOST /api/controllers[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 403[0m
+[0;34m📋 Ответ:[0m
+{
+  "success": false,
+  "message": "Invalid or expired token"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Обновление контроллера[0m
+[1;33mPUT /api/controllers/1[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 403[0m
+[0;34m📋 Ответ:[0m
+{
+  "success": false,
+  "message": "Invalid or expired token"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Обновление статуса контроллера[0m
+[1;33mPATCH /api/controllers/1/status[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 403[0m
+[0;34m📋 Ответ:[0m
+{
+  "success": false,
+  "message": "Invalid or expired token"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;34m╔═══════════════════════════════════════════════════════════════╗[0m
+[0;34m║                    📊 МЕТРИКИ                                 ║[0m
+[0;34m╚═══════════════════════════════════════════════════════════════╝[0m
+[0;36m📡 Получение всех метрик[0m
+[1;33mGET /api/metrics[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "data": [
+    {
+      "metric_id": "11",
+      "controller_id": 6,
+      "timestamp": "2025-06-06T19:52:46.242Z",
+      "electricity_ph1": "222.10",
+      "electricity_ph2": "221.80",
+      "electricity_ph3": "223.20",
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": "3.20",
+      "cold_water_temp": "17.50",
+      "hot_water_in_pressure": "1.80",
+      "hot_water_out_pressure": "1.90",
+      "hot_water_in_temp": "28.50",
+      "hot_water_out_temp": "28.70",
+      "air_temp": "20.50",
+      "humidity": "55.20",
+      "leak_sensor": true,
+      "controller_serial": "SN-005"
+    },
+    {
+      "metric_id": "5",
+      "controller_id": 4,
+      "timestamp": "2025-06-06T19:32:46.239Z",
+      "electricity_ph1": "220.10",
+      "electricity_ph2": "219.50",
+      "electricity_ph3": "221.20",
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": "4.80",
+      "cold_water_temp": "16.10",
+      "hot_water_in_pressure": "3.10",
+      "hot_water_out_pressure": "3.20",
+      "hot_water_in_temp": "33.20",
+      "hot_water_out_temp": "33.50",
+      "air_temp": "23.10",
+      "humidity": "42.80",
+      "leak_sensor": false,
+      "controller_serial": "SN-002"
+    },
+    {
+      "metric_id": "8",
+      "controller_id": 5,
+      "timestamp": "2025-06-06T19:17:46.240Z",
+      "electricity_ph1": "215.20",
+      "electricity_ph2": "214.80",
+      "electricity_ph3": "216.10",
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": "5.50",
+      "cold_water_temp": "13.90",
+      "hot_water_in_pressure": "2.70",
+      "hot_water_out_pressure": "2.80",
+      "hot_water_in_temp": "35.10",
+      "hot_water_out_temp": "35.40",
+      "air_temp": "25.80",
+      "humidity": "38.90",
+      "leak_sensor": false,
+      "controller_serial": "SN-003"
+    },
+    {
+      "metric_id": "2",
+      "controller_id": 1,
+      "timestamp": "2025-06-06T19:02:46.235Z",
+      "electricity_ph1": "217.50",
+      "electricity_ph2": "216.80",
+      "electricity_ph3": "218.20",
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": "5.20",
+      "cold_water_temp": "14.80",
+      "hot_water_in_pressure": "2.85",
+      "hot_water_out_pressure": "2.88",
+      "hot_water_in_temp": "32.10",
+      "hot_water_out_temp": "32.30",
+      "air_temp": "22.50",
+      "humidity": "45.20",
+      "leak_sensor": false,
+      "controller_serial": "SN-1"
+    },
+    {
+      "metric_id": "12",
+      "controller_id": 6,
+      "timestamp": "2025-06-06T18:52:46.242Z",
+      "electricity_ph1": "221.80",
+      "electricity_ph2": "221.50",
+      "electricity_ph3": "222.90",
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": "4.10",
+      "cold_water_temp": "17.20",
+      "hot_water_in_pressure": "2.50",
+      "hot_water_out_pressure": "2.60",
+      "hot_water_in_temp": "30.10",
+      "hot_water_out_temp": "30.30",
+      "air_temp": "20.80",
+      "humidity": "52.80",
+      "leak_sensor": false,
+      "controller_serial": "SN-005"
+    },
+    {
+      "metric_id": "9",
+      "controller_id": 5,
+      "timestamp": "2025-06-06T18:47:46.240Z",
+      "electricity_ph1": "214.90",
+      "electricity_ph2": "214.50",
+      "electricity_ph3": "215.80",
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": "5.40",
+      "cold_water_temp": "14.10",
+      "hot_water_in_pressure": "2.60",
+      "hot_water_out_pressure": "2.70",
+      "hot_water_in_temp": "34.80",
+      "hot_water_out_temp": "35.10",
+      "air_temp": "25.50",
+      "humidity": "39.30",
+      "leak_sensor": false,
+      "controller_serial": "SN-003"
+    },
+    {
+      "metric_id": "6",
+      "controller_id": 4,
+      "timestamp": "2025-06-06T18:32:46.239Z",
+      "electricity_ph1": "219.80",
+      "electricity_ph2": "219.20",
+      "electricity_ph3": "220.90",
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": "4.90",
+      "cold_water_temp": "15.90",
+      "hot_water_in_pressure": "3.00",
+      "hot_water_out_pressure": "3.10",
+      "hot_water_in_temp": "33.00",
+      "hot_water_out_temp": "33.30",
+      "air_temp": "23.30",
+      "humidity": "43.20",
+      "leak_sensor": false,
+      "controller_serial": "SN-002"
+    },
+    {
+      "metric_id": "3",
+      "controller_id": 1,
+      "timestamp": "2025-06-06T18:02:46.235Z",
+      "electricity_ph1": "216.90",
+      "electricity_ph2": "215.70",
+      "electricity_ph3": "217.80",
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": "5.10",
+      "cold_water_temp": "15.20",
+      "hot_water_in_pressure": "2.82",
+      "hot_water_out_pressure": "2.85",
+      "hot_water_in_temp": "31.80",
+      "hot_water_out_temp": "32.00",
+      "air_temp": "22.10",
+      "humidity": "46.10",
+      "leak_sensor": false,
+      "controller_serial": "SN-1"
+    },
+    {
+      "metric_id": "13",
+      "controller_id": 6,
+      "timestamp": "2025-06-06T17:52:46.242Z",
+      "electricity_ph1": "222.30",
+      "electricity_ph2": "222.00",
+      "electricity_ph3": "223.40",
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": "4.00",
+      "cold_water_temp": "17.80",
+      "hot_water_in_pressure": "2.40",
+      "hot_water_out_pressure": "2.50",
+      "hot_water_in_temp": "29.80",
+      "hot_water_out_temp": "30.00",
+      "air_temp": "20.20",
+      "humidity": "53.50",
+      "leak_sensor": false,
+      "controller_serial": "SN-005"
+    },
+    {
+      "metric_id": "10",
+      "controller_id": 5,
+      "timestamp": "2025-06-06T17:47:46.240Z",
+      "electricity_ph1": "215.50",
+      "electricity_ph2": "215.10",
+      "electricity_ph3": "216.40",
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": "5.60",
+      "cold_water_temp": "13.70",
+      "hot_water_in_pressure": "2.80",
+      "hot_water_out_pressure": "2.90",
+      "hot_water_in_temp": "35.30",
+      "hot_water_out_temp": "35.60",
+      "air_temp": "26.10",
+      "humidity": "38.50",
+      "leak_sensor": false,
+      "controller_serial": "SN-003"
+    }
+  ],
+  "pagination": {
+    "total": 17,
+    "page": 1,
+    "limit": 10,
+    "totalPages": 2
+  }
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Получение метрик с пагинацией[0m
+[1;33mGET /api/metrics?page=1&limit=5[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "data": [
+    {
+      "metric_id": "11",
+      "controller_id": 6,
+      "timestamp": "2025-06-06T19:52:46.242Z",
+      "electricity_ph1": "222.10",
+      "electricity_ph2": "221.80",
+      "electricity_ph3": "223.20",
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": "3.20",
+      "cold_water_temp": "17.50",
+      "hot_water_in_pressure": "1.80",
+      "hot_water_out_pressure": "1.90",
+      "hot_water_in_temp": "28.50",
+      "hot_water_out_temp": "28.70",
+      "air_temp": "20.50",
+      "humidity": "55.20",
+      "leak_sensor": true,
+      "controller_serial": "SN-005"
+    },
+    {
+      "metric_id": "5",
+      "controller_id": 4,
+      "timestamp": "2025-06-06T19:32:46.239Z",
+      "electricity_ph1": "220.10",
+      "electricity_ph2": "219.50",
+      "electricity_ph3": "221.20",
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": "4.80",
+      "cold_water_temp": "16.10",
+      "hot_water_in_pressure": "3.10",
+      "hot_water_out_pressure": "3.20",
+      "hot_water_in_temp": "33.20",
+      "hot_water_out_temp": "33.50",
+      "air_temp": "23.10",
+      "humidity": "42.80",
+      "leak_sensor": false,
+      "controller_serial": "SN-002"
+    },
+    {
+      "metric_id": "8",
+      "controller_id": 5,
+      "timestamp": "2025-06-06T19:17:46.240Z",
+      "electricity_ph1": "215.20",
+      "electricity_ph2": "214.80",
+      "electricity_ph3": "216.10",
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": "5.50",
+      "cold_water_temp": "13.90",
+      "hot_water_in_pressure": "2.70",
+      "hot_water_out_pressure": "2.80",
+      "hot_water_in_temp": "35.10",
+      "hot_water_out_temp": "35.40",
+      "air_temp": "25.80",
+      "humidity": "38.90",
+      "leak_sensor": false,
+      "controller_serial": "SN-003"
+    },
+    {
+      "metric_id": "2",
+      "controller_id": 1,
+      "timestamp": "2025-06-06T19:02:46.235Z",
+      "electricity_ph1": "217.50",
+      "electricity_ph2": "216.80",
+      "electricity_ph3": "218.20",
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": "5.20",
+      "cold_water_temp": "14.80",
+      "hot_water_in_pressure": "2.85",
+      "hot_water_out_pressure": "2.88",
+      "hot_water_in_temp": "32.10",
+      "hot_water_out_temp": "32.30",
+      "air_temp": "22.50",
+      "humidity": "45.20",
+      "leak_sensor": false,
+      "controller_serial": "SN-1"
+    },
+    {
+      "metric_id": "12",
+      "controller_id": 6,
+      "timestamp": "2025-06-06T18:52:46.242Z",
+      "electricity_ph1": "221.80",
+      "electricity_ph2": "221.50",
+      "electricity_ph3": "222.90",
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": "4.10",
+      "cold_water_temp": "17.20",
+      "hot_water_in_pressure": "2.50",
+      "hot_water_out_pressure": "2.60",
+      "hot_water_in_temp": "30.10",
+      "hot_water_out_temp": "30.30",
+      "air_temp": "20.80",
+      "humidity": "52.80",
+      "leak_sensor": false,
+      "controller_serial": "SN-005"
+    }
+  ],
+  "pagination": {
+    "total": 17,
+    "page": 1,
+    "limit": 5,
+    "totalPages": 4
+  }
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Получение последних метрик всех контроллеров[0m
+[1;33mGET /api/metrics/latest[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+[
+  {
+    "metric_id": "2",
+    "controller_id": 1,
+    "timestamp": "2025-06-06T19:02:46.235Z",
+    "electricity_ph1": "217.50",
+    "electricity_ph2": "216.80",
+    "electricity_ph3": "218.20",
+    "amperage_ph1": null,
+    "amperage_ph2": null,
+    "amperage_ph3": null,
+    "cold_water_pressure": "5.20",
+    "cold_water_temp": "14.80",
+    "hot_water_in_pressure": "2.85",
+    "hot_water_out_pressure": "2.88",
+    "hot_water_in_temp": "32.10",
+    "hot_water_out_temp": "32.30",
+    "air_temp": "22.50",
+    "humidity": "45.20",
+    "leak_sensor": false,
+    "rn": "1",
+    "controller_serial": "SN-1",
+    "building_name": "Farabi-001",
+    "building_id": 1
+  },
+  {
+    "metric_id": "5",
+    "controller_id": 4,
+    "timestamp": "2025-06-06T19:32:46.239Z",
+    "electricity_ph1": "220.10",
+    "electricity_ph2": "219.50",
+    "electricity_ph3": "221.20",
+    "amperage_ph1": null,
+    "amperage_ph2": null,
+    "amperage_ph3": null,
+    "cold_water_pressure": "4.80",
+    "cold_water_temp": "16.10",
+    "hot_water_in_pressure": "3.10",
+    "hot_water_out_pressure": "3.20",
+    "hot_water_in_temp": "33.20",
+    "hot_water_out_temp": "33.50",
+    "air_temp": "23.10",
+    "humidity": "42.80",
+    "leak_sensor": false,
+    "rn": "1",
+    "controller_serial": "SN-002",
+    "building_name": "Farabi-002",
+    "building_id": 2
+  },
+  {
+    "metric_id": "8",
+    "controller_id": 5,
+    "timestamp": "2025-06-06T19:17:46.240Z",
+    "electricity_ph1": "215.20",
+    "electricity_ph2": "214.80",
+    "electricity_ph3": "216.10",
+    "amperage_ph1": null,
+    "amperage_ph2": null,
+    "amperage_ph3": null,
+    "cold_water_pressure": "5.50",
+    "cold_water_temp": "13.90",
+    "hot_water_in_pressure": "2.70",
+    "hot_water_out_pressure": "2.80",
+    "hot_water_in_temp": "35.10",
+    "hot_water_out_temp": "35.40",
+    "air_temp": "25.80",
+    "humidity": "38.90",
+    "leak_sensor": false,
+    "rn": "1",
+    "controller_serial": "SN-003",
+    "building_name": "Farabi-003",
+    "building_id": 3
+  },
+  {
+    "metric_id": "11",
+    "controller_id": 6,
+    "timestamp": "2025-06-06T19:52:46.242Z",
+    "electricity_ph1": "222.10",
+    "electricity_ph2": "221.80",
+    "electricity_ph3": "223.20",
+    "amperage_ph1": null,
+    "amperage_ph2": null,
+    "amperage_ph3": null,
+    "cold_water_pressure": "3.20",
+    "cold_water_temp": "17.50",
+    "hot_water_in_pressure": "1.80",
+    "hot_water_out_pressure": "1.90",
+    "hot_water_in_temp": "28.50",
+    "hot_water_out_temp": "28.70",
+    "air_temp": "20.50",
+    "humidity": "55.20",
+    "leak_sensor": true,
+    "rn": "1",
+    "controller_serial": "SN-005",
+    "building_name": "Farabi-005",
+    "building_id": 5
+  },
+  {
+    "metric_id": "14",
+    "controller_id": 7,
+    "timestamp": "2025-06-06T14:02:46.243Z",
+    "electricity_ph1": "210.50",
+    "electricity_ph2": "209.80",
+    "electricity_ph3": "211.20",
+    "amperage_ph1": null,
+    "amperage_ph2": null,
+    "amperage_ph3": null,
+    "cold_water_pressure": "6.10",
+    "cold_water_temp": "12.30",
+    "hot_water_in_pressure": "3.50",
+    "hot_water_out_pressure": "3.60",
+    "hot_water_in_temp": "38.20",
+    "hot_water_out_temp": "38.50",
+    "air_temp": "18.90",
+    "humidity": "48.70",
+    "leak_sensor": false,
+    "rn": "1",
+    "controller_serial": "SN-007",
+    "building_name": "Farabi-007",
+    "building_id": 7
+  },
+  {
+    "metric_id": "16",
+    "controller_id": 8,
+    "timestamp": "2025-06-06T16:02:46.243Z",
+    "electricity_ph1": "205.20",
+    "electricity_ph2": "204.80",
+    "electricity_ph3": "206.10",
+    "amperage_ph1": null,
+    "amperage_ph2": null,
+    "amperage_ph3": null,
+    "cold_water_pressure": "7.20",
+    "cold_water_temp": "11.80",
+    "hot_water_in_pressure": "4.10",
+    "hot_water_out_pressure": "4.20",
+    "hot_water_in_temp": "42.10",
+    "hot_water_out_temp": "42.40",
+    "air_temp": "17.50",
+    "humidity": "51.30",
+    "leak_sensor": false,
+    "rn": "1",
+    "controller_serial": "SN-010",
+    "building_name": "Farabi-010",
+    "building_id": 10
+  }
+]
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Получение метрик контроллера[0m
+[1;33mGET /api/metrics/controller/1[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+[
+  {
+    "metric_id": "2",
+    "controller_id": 1,
+    "timestamp": "2025-06-06T19:02:46.235Z",
+    "electricity_ph1": "217.50",
+    "electricity_ph2": "216.80",
+    "electricity_ph3": "218.20",
+    "amperage_ph1": null,
+    "amperage_ph2": null,
+    "amperage_ph3": null,
+    "cold_water_pressure": "5.20",
+    "cold_water_temp": "14.80",
+    "hot_water_in_pressure": "2.85",
+    "hot_water_out_pressure": "2.88",
+    "hot_water_in_temp": "32.10",
+    "hot_water_out_temp": "32.30",
+    "air_temp": "22.50",
+    "humidity": "45.20",
+    "leak_sensor": false
+  },
+  {
+    "metric_id": "3",
+    "controller_id": 1,
+    "timestamp": "2025-06-06T18:02:46.235Z",
+    "electricity_ph1": "216.90",
+    "electricity_ph2": "215.70",
+    "electricity_ph3": "217.80",
+    "amperage_ph1": null,
+    "amperage_ph2": null,
+    "amperage_ph3": null,
+    "cold_water_pressure": "5.10",
+    "cold_water_temp": "15.20",
+    "hot_water_in_pressure": "2.82",
+    "hot_water_out_pressure": "2.85",
+    "hot_water_in_temp": "31.80",
+    "hot_water_out_temp": "32.00",
+    "air_temp": "22.10",
+    "humidity": "46.10",
+    "leak_sensor": false
+  },
+  {
+    "metric_id": "4",
+    "controller_id": 1,
+    "timestamp": "2025-06-06T17:02:46.235Z",
+    "electricity_ph1": "218.10",
+    "electricity_ph2": "217.20",
+    "electricity_ph3": "219.00",
+    "amperage_ph1": null,
+    "amperage_ph2": null,
+    "amperage_ph3": null,
+    "cold_water_pressure": "5.30",
+    "cold_water_temp": "14.50",
+    "hot_water_in_pressure": "2.87",
+    "hot_water_out_pressure": "2.90",
+    "hot_water_in_temp": "32.50",
+    "hot_water_out_temp": "32.70",
+    "air_temp": "21.80",
+    "humidity": "44.80",
+    "leak_sensor": false
+  },
+  {
+    "metric_id": "1",
+    "controller_id": 1,
+    "timestamp": "2025-05-16T05:33:39.286Z",
+    "electricity_ph1": "217.00",
+    "electricity_ph2": "216.00",
+    "electricity_ph3": "218.00",
+    "amperage_ph1": null,
+    "amperage_ph2": null,
+    "amperage_ph3": null,
+    "cold_water_pressure": "5.00",
+    "cold_water_temp": "15.00",
+    "hot_water_in_pressure": "2.84",
+    "hot_water_out_pressure": "2.87",
+    "hot_water_in_temp": "31.70",
+    "hot_water_out_temp": "31.90",
+    "air_temp": null,
+    "humidity": null,
+    "leak_sensor": null
+  }
+]
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Получение метрики по ID[0m
+[1;33mGET /api/metrics/1[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "metric_id": "1",
+  "controller_id": 1,
+  "timestamp": "2025-05-16T05:33:39.286Z",
+  "electricity_ph1": "217.00",
+  "electricity_ph2": "216.00",
+  "electricity_ph3": "218.00",
+  "amperage_ph1": null,
+  "amperage_ph2": null,
+  "amperage_ph3": null,
+  "cold_water_pressure": "5.00",
+  "cold_water_temp": "15.00",
+  "hot_water_in_pressure": "2.84",
+  "hot_water_out_pressure": "2.87",
+  "hot_water_in_temp": "31.70",
+  "hot_water_out_temp": "31.90",
+  "air_temp": null,
+  "humidity": null,
+  "leak_sensor": null,
+  "controller_serial": "SN-1"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Создание новой метрики[0m
+[1;33mPOST /api/metrics[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 403[0m
+[0;34m📋 Ответ:[0m
+{
+  "success": false,
+  "message": "Invalid or expired token"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Отправка телеметрии от устройства[0m
+[1;33mPOST /api/metrics/telemetry[0m
+[0;32m✅ Успех! Статус: 201[0m
+[0;34m📋 Ответ:[0m
+{
+  "message": "Телеметрия успешно обработана",
+  "controller_id": 1,
+  "metric": {
+    "metric_id": "18",
+    "controller_id": 1,
+    "timestamp": "2025-06-07T07:08:42.000Z",
+    "electricity_ph1": null,
+    "electricity_ph2": null,
+    "electricity_ph3": null,
+    "amperage_ph1": null,
+    "amperage_ph2": null,
+    "amperage_ph3": null,
+    "cold_water_pressure": null,
+    "cold_water_temp": null,
+    "hot_water_in_pressure": null,
+    "hot_water_out_pressure": null,
+    "hot_water_in_temp": null,
+    "hot_water_out_temp": null,
+    "air_temp": null,
+    "humidity": null,
+    "leak_sensor": null
+  }
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;34m╔═══════════════════════════════════════════════════════════════╗[0m
+[0;34m║               🚀 НОВЫЕ ENDPOINTS (РЕФАКТОРИНГ)                ║[0m
+[0;34m╚═══════════════════════════════════════════════════════════════╝[0m
+[0;36m📍 Геопространственный поиск зданий[0m
+[0;36m📡 Поиск зданий в радиусе 5км[0m
+[1;33mGET /api/buildings/search?latitude=41.347052&longitude=69.203200&radius=5&limit=10[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "center": {
+    "latitude": 41.347052,
+    "longitude": 69.2032
+  },
+  "radius": 5,
+  "buildings": [
+    {
+      "building_id": 1,
+      "name": "Farabi-001",
+      "address": "Farabi, 1",
+      "town": "Tashkent",
+      "latitude": "41.347052",
+      "longitude": "69.203200",
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": null
+    }
+  ]
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Поиск зданий в радиусе 1км[0m
+[1;33mGET /api/buildings/search?latitude=41.347052&longitude=69.203200&radius=1[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "center": {
+    "latitude": 41.347052,
+    "longitude": 69.2032
+  },
+  "radius": 1,
+  "buildings": [
+    {
+      "building_id": 1,
+      "name": "Farabi-001",
+      "address": "Farabi, 1",
+      "town": "Tashkent",
+      "latitude": "41.347052",
+      "longitude": "69.203200",
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": null
+    }
+  ]
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Поиск с неверными координатами (должна быть ошибка)[0m
+[1;33mGET /api/buildings/search?latitude=200&longitude=300&radius=5[0m
+[0;31m❌ Ошибка сервера! Статус: 500[0m
+[0;34m📋 Ответ:[0m
+{
+  "error": {
+    "message": "Некорректная широта. Должна быть между -90 и 90",
+    "status": 500,
+    "stack": "Error: Некорректная широта. Должна быть между -90 и 90\n    at BuildingService.validateCoordinates (/app/src/services/buildingService.js:252:19)\n    at BuildingService.findBuildingsInRadius (/app/src/services/buildingService.js:155:18)\n    at findBuildingsInRadius (/app/src/controllers/buildingController.js:102:46)\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at next (/app/node_modules/express/lib/router/route.js:149:13)\n    at Route.dispatch (/app/node_modules/express/lib/router/route.js:119:3)\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at /app/node_modules/express/lib/router/index.js:284:15\n    at Function.process_params (/app/node_modules/express/lib/router/index.js:346:12)\n    at next (/app/node_modules/express/lib/router/index.js:280:10)"
+  }
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📊 Статистика зданий[0m
+[0;36m📡 Получение статистики зданий[0m
+[1;33mGET /api/buildings/statistics[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "total": 16,
+  "by_town": {
+    "Tashkent": 16
+  },
+  "by_management_company": {
+    "Olmazor Holding Grand": 15,
+    "test": 1
+  },
+  "with_coordinates": 16,
+  "without_coordinates": 0
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m🔄 Автообновление статусов контроллеров[0m
+[0;36m📡 Автообновление статусов контроллеров по активности[0m
+[1;33mPOST /api/controllers/update-status-by-activity[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 403[0m
+[0;34m📋 Ответ:[0m
+{
+  "success": false,
+  "message": "Invalid or expired token"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📊 Статистика контроллеров[0m
+[0;36m📡 Получение статистики контроллеров[0m
+[1;33mGET /api/controllers/statistics[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "total": 6,
+  "by_status": {
+    "online": 4,
+    "offline": 1,
+    "maintenance": 1
+  },
+  "by_building": {
+    "1": 1,
+    "2": 1,
+    "3": 1,
+    "5": 1,
+    "7": 1,
+    "10": 1
+  },
+  "by_type": {
+    "Не указан": 6
+  }
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📈 Агрегированные метрики[0m
+[0;36m📡 Агрегация метрик контроллера по часам[0m
+[1;33mGET /api/metrics/controller/1/aggregated?timeFrame=hour[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "count": 1,
+  "period": {
+    "start": "2025-06-07T07:08:42.000Z",
+    "end": "2025-06-07T07:08:42.000Z"
+  },
+  "voltage": null,
+  "amperage": null,
+  "power": null,
+  "temperature": null,
+  "humidity": null
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Агрегация метрик по дням за период[0m
+[1;33mGET /api/metrics/controller/1/aggregated?timeFrame=day&startDate=2024-01-01T00:00:00Z&endDate=2024-12-31T23:59:59Z[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "count": 1,
+  "period": {
+    "start": "2025-06-07T07:08:42.000Z",
+    "end": "2025-06-07T07:08:42.000Z"
+  },
+  "voltage": null,
+  "amperage": null,
+  "power": null,
+  "temperature": null,
+  "humidity": null
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Агрегация метрик по неделям[0m
+[1;33mGET /api/metrics/controller/1/aggregated?timeFrame=week[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "count": 1,
+  "period": {
+    "start": "2025-06-07T07:08:42.000Z",
+    "end": "2025-06-07T07:08:42.000Z"
+  },
+  "voltage": null,
+  "amperage": null,
+  "power": null,
+  "temperature": null,
+  "humidity": null
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Агрегация метрик по месяцам[0m
+[1;33mGET /api/metrics/controller/1/aggregated?timeFrame=month[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "count": 1,
+  "period": {
+    "start": "2025-06-07T07:08:42.000Z",
+    "end": "2025-06-07T07:08:42.000Z"
+  },
+  "voltage": null,
+  "amperage": null,
+  "power": null,
+  "temperature": null,
+  "humidity": null
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Агрегация с неверным timeFrame (должна быть ошибка)[0m
+[1;33mGET /api/metrics/controller/1/aggregated?timeFrame=invalid[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "count": 1,
+  "period": {
+    "start": "2025-06-07T07:08:42.000Z",
+    "end": "2025-06-07T07:08:42.000Z"
+  },
+  "voltage": null,
+  "amperage": null,
+  "power": null,
+  "temperature": null,
+  "humidity": null
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m🧹 Очистка старых метрик[0m
+[0;36m📡 Очистка метрик старше 90 дней[0m
+[1;33mDELETE /api/metrics/cleanup?days=90[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 403[0m
+[0;34m📋 Ответ:[0m
+{
+  "success": false,
+  "message": "Invalid or expired token"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Очистка метрик старше 1 года[0m
+[1;33mDELETE /api/metrics/cleanup?days=365[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 403[0m
+[0;34m📋 Ответ:[0m
+{
+  "success": false,
+  "message": "Invalid or expired token"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Очистка с неверным параметром days (должна быть ошибка)[0m
+[1;33mDELETE /api/metrics/cleanup?days=0[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 403[0m
+[0;34m📋 Ответ:[0m
+{
+  "success": false,
+  "message": "Invalid or expired token"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m🔐 Расширенная аутентификация[0m
+[1;33m🔄 Получение refresh токена...[0m
+[1;33m⚠️  Refresh токен не получен, возможно authService еще не полностью интегрирован[0m
+[0;36m📡 Обновление токенов без refresh token (должна быть ошибка)[0m
+[1;33mPOST /api/auth/refresh[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 400[0m
+[0;34m📋 Ответ:[0m
+{
+  "success": false,
+  "message": "Refresh token is required"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Обновление с недействительным refresh токеном (должна быть ошибка)[0m
+[1;33mPOST /api/auth/refresh[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 401[0m
+[0;34m📋 Ответ:[0m
+{
+  "success": false,
+  "message": "Invalid or expired refresh token"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m🔓 Выход из системы[0m
+[0;36m📡 Выход из системы (добавление токена в blacklist)[0m
+[1;33mPOST /api/auth/logout[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 403[0m
+[0;34m📋 Ответ:[0m
+{
+  "success": false,
+  "message": "Invalid or expired token"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m🔑 Смена пароля[0m
+[0;36m📡 Смена пароля[0m
+[1;33mPOST /api/auth/change-password[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 403[0m
+[0;34m📋 Ответ:[0m
+{
+  "success": false,
+  "message": "Invalid or expired token"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Возврат к старому паролю[0m
+[1;33mPOST /api/auth/change-password[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 403[0m
+[0;34m📋 Ответ:[0m
+{
+  "success": false,
+  "message": "Invalid or expired token"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Смена пароля с неверным текущим паролем (должна быть ошибка)[0m
+[1;33mPOST /api/auth/change-password[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 403[0m
+[0;34m📋 Ответ:[0m
+{
+  "success": false,
+  "message": "Invalid or expired token"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Смена на слабый пароль (должна быть ошибка)[0m
+[1;33mPOST /api/auth/change-password[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 403[0m
+[0;34m📋 Ответ:[0m
+{
+  "success": false,
+  "message": "Invalid or expired token"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;34m╔═══════════════════════════════════════════════════════════════╗[0m
+[0;34m║                    🗺️  ДАННЫЕ ДЛЯ КАРТЫ                      ║[0m
+[0;34m╚═══════════════════════════════════════════════════════════════╝[0m
+[0;36m📡 Получение зданий с метриками для карты[0m
+[1;33mGET /api/buildings-metrics[0m
+[0;32m✅ Успех! Статус: 200[0m
+[0;34m📋 Ответ:[0m
+{
+  "data": [
+    {
+      "building_id": 1,
+      "building_name": "Farabi-001",
+      "address": "Farabi, 1",
+      "town": "Tashkent",
+      "latitude": 41.347052,
+      "longitude": 69.2032,
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": null,
+      "controller_id": 1,
+      "controller_serial": "SN-1",
+      "controller_status": "online",
+      "timestamp": "2025-06-07T07:08:42.000Z",
+      "electricity_ph1": null,
+      "electricity_ph2": null,
+      "electricity_ph3": null,
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": null,
+      "cold_water_temp": null,
+      "hot_water_in_pressure": null,
+      "hot_water_out_pressure": null,
+      "hot_water_in_temp": null,
+      "hot_water_out_temp": null,
+      "air_temp": null,
+      "humidity": null,
+      "leak_sensor": null
+    },
+    {
+      "building_id": 2,
+      "building_name": "Farabi-002",
+      "address": "Farabi, 2",
+      "town": "Tashkent",
+      "latitude": 41.346924,
+      "longitude": 69.202787,
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": null,
+      "controller_id": 4,
+      "controller_serial": "SN-002",
+      "controller_status": "online",
+      "timestamp": "2025-06-06T19:32:46.239Z",
+      "electricity_ph1": 220.1,
+      "electricity_ph2": 219.5,
+      "electricity_ph3": 221.2,
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": 4.8,
+      "cold_water_temp": 16.1,
+      "hot_water_in_pressure": 3.1,
+      "hot_water_out_pressure": 3.2,
+      "hot_water_in_temp": 33.2,
+      "hot_water_out_temp": 33.5,
+      "air_temp": 23.1,
+      "humidity": 42.8,
+      "leak_sensor": false
+    },
+    {
+      "building_id": 3,
+      "building_name": "Farabi-003",
+      "address": "Farabi, 3",
+      "town": "Tashkent",
+      "latitude": 41.347073,
+      "longitude": 69.202302,
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": null,
+      "controller_id": 5,
+      "controller_serial": "SN-003",
+      "controller_status": "online",
+      "timestamp": "2025-06-06T19:17:46.240Z",
+      "electricity_ph1": 215.2,
+      "electricity_ph2": 214.8,
+      "electricity_ph3": 216.1,
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": 5.5,
+      "cold_water_temp": 13.9,
+      "hot_water_in_pressure": 2.7,
+      "hot_water_out_pressure": 2.8,
+      "hot_water_in_temp": 35.1,
+      "hot_water_out_temp": 35.4,
+      "air_temp": 25.8,
+      "humidity": 38.9,
+      "leak_sensor": false
+    },
+    {
+      "building_id": 4,
+      "building_name": "Farabi-004",
+      "address": "Farabi, 4",
+      "town": "Tashkent",
+      "latitude": 41.347249,
+      "longitude": 69.201718,
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": null,
+      "controller_id": null,
+      "controller_serial": null,
+      "controller_status": null,
+      "timestamp": null,
+      "electricity_ph1": null,
+      "electricity_ph2": null,
+      "electricity_ph3": null,
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": null,
+      "cold_water_temp": null,
+      "hot_water_in_pressure": null,
+      "hot_water_out_pressure": null,
+      "hot_water_in_temp": null,
+      "hot_water_out_temp": null,
+      "air_temp": null,
+      "humidity": null,
+      "leak_sensor": null
+    },
+    {
+      "building_id": 5,
+      "building_name": "Farabi-005",
+      "address": "Farabi, 5",
+      "town": "Tashkent",
+      "latitude": 41.34756,
+      "longitude": 69.201332,
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": true,
+      "controller_id": 6,
+      "controller_serial": "SN-005",
+      "controller_status": "online",
+      "timestamp": "2025-06-06T19:52:46.242Z",
+      "electricity_ph1": 222.1,
+      "electricity_ph2": 221.8,
+      "electricity_ph3": 223.2,
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": 3.2,
+      "cold_water_temp": 17.5,
+      "hot_water_in_pressure": 1.8,
+      "hot_water_out_pressure": 1.9,
+      "hot_water_in_temp": 28.5,
+      "hot_water_out_temp": 28.7,
+      "air_temp": 20.5,
+      "humidity": 55.2,
+      "leak_sensor": true
+    },
+    {
+      "building_id": 6,
+      "building_name": "Farabi-006",
+      "address": "Farabi, 6",
+      "town": "Tashkent",
+      "latitude": 41.347553,
+      "longitude": 69.201853,
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": true,
+      "controller_id": null,
+      "controller_serial": null,
+      "controller_status": null,
+      "timestamp": null,
+      "electricity_ph1": null,
+      "electricity_ph2": null,
+      "electricity_ph3": null,
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": null,
+      "cold_water_temp": null,
+      "hot_water_in_pressure": null,
+      "hot_water_out_pressure": null,
+      "hot_water_in_temp": null,
+      "hot_water_out_temp": null,
+      "air_temp": null,
+      "humidity": null,
+      "leak_sensor": null
+    },
+    {
+      "building_id": 7,
+      "building_name": "Farabi-007",
+      "address": "Farabi, 7",
+      "town": "Tashkent",
+      "latitude": 41.347553,
+      "longitude": 69.200757,
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": true,
+      "controller_id": 7,
+      "controller_serial": "SN-007",
+      "controller_status": "offline",
+      "timestamp": "2025-06-06T14:02:46.243Z",
+      "electricity_ph1": 210.5,
+      "electricity_ph2": 209.8,
+      "electricity_ph3": 211.2,
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": 6.1,
+      "cold_water_temp": 12.3,
+      "hot_water_in_pressure": 3.5,
+      "hot_water_out_pressure": 3.6,
+      "hot_water_in_temp": 38.2,
+      "hot_water_out_temp": 38.5,
+      "air_temp": 18.9,
+      "humidity": 48.7,
+      "leak_sensor": false
+    },
+    {
+      "building_id": 8,
+      "building_name": "Farabi-008",
+      "address": "Farabi, 8",
+      "town": "Tashkent",
+      "latitude": 41.347845,
+      "longitude": 69.200865,
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": true,
+      "controller_id": null,
+      "controller_serial": null,
+      "controller_status": null,
+      "timestamp": null,
+      "electricity_ph1": null,
+      "electricity_ph2": null,
+      "electricity_ph3": null,
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": null,
+      "cold_water_temp": null,
+      "hot_water_in_pressure": null,
+      "hot_water_out_pressure": null,
+      "hot_water_in_temp": null,
+      "hot_water_out_temp": null,
+      "air_temp": null,
+      "humidity": null,
+      "leak_sensor": null
+    },
+    {
+      "building_id": 9,
+      "building_name": "Farabi-009",
+      "address": "Farabi, 9",
+      "town": "Tashkent",
+      "latitude": 41.347865,
+      "longitude": 69.200361,
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": true,
+      "controller_id": null,
+      "controller_serial": null,
+      "controller_status": null,
+      "timestamp": null,
+      "electricity_ph1": null,
+      "electricity_ph2": null,
+      "electricity_ph3": null,
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": null,
+      "cold_water_temp": null,
+      "hot_water_in_pressure": null,
+      "hot_water_out_pressure": null,
+      "hot_water_in_temp": null,
+      "hot_water_out_temp": null,
+      "air_temp": null,
+      "humidity": null,
+      "leak_sensor": null
+    },
+    {
+      "building_id": 10,
+      "building_name": "Farabi-010",
+      "address": "Farabi, 10",
+      "town": "Tashkent",
+      "latitude": 41.347845,
+      "longitude": 69.199813,
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": true,
+      "controller_id": 8,
+      "controller_serial": "SN-010",
+      "controller_status": "maintenance",
+      "timestamp": "2025-06-06T16:02:46.243Z",
+      "electricity_ph1": 205.2,
+      "electricity_ph2": 204.8,
+      "electricity_ph3": 206.1,
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": 7.2,
+      "cold_water_temp": 11.8,
+      "hot_water_in_pressure": 4.1,
+      "hot_water_out_pressure": 4.2,
+      "hot_water_in_temp": 42.1,
+      "hot_water_out_temp": 42.4,
+      "air_temp": 17.5,
+      "humidity": 51.3,
+      "leak_sensor": false
+    },
+    {
+      "building_id": 11,
+      "building_name": "Farabi-011",
+      "address": "Farabi, 11",
+      "town": "Tashkent",
+      "latitude": 41.347987,
+      "longitude": 69.199328,
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": true,
+      "controller_id": null,
+      "controller_serial": null,
+      "controller_status": null,
+      "timestamp": null,
+      "electricity_ph1": null,
+      "electricity_ph2": null,
+      "electricity_ph3": null,
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": null,
+      "cold_water_temp": null,
+      "hot_water_in_pressure": null,
+      "hot_water_out_pressure": null,
+      "hot_water_in_temp": null,
+      "hot_water_out_temp": null,
+      "air_temp": null,
+      "humidity": null,
+      "leak_sensor": null
+    },
+    {
+      "building_id": 12,
+      "building_name": "Farabi-012",
+      "address": "Farabi, 12",
+      "town": "Tashkent",
+      "latitude": 41.348359,
+      "longitude": 69.198987,
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": true,
+      "controller_id": null,
+      "controller_serial": null,
+      "controller_status": null,
+      "timestamp": null,
+      "electricity_ph1": null,
+      "electricity_ph2": null,
+      "electricity_ph3": null,
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": null,
+      "cold_water_temp": null,
+      "hot_water_in_pressure": null,
+      "hot_water_out_pressure": null,
+      "hot_water_in_temp": null,
+      "hot_water_out_temp": null,
+      "air_temp": null,
+      "humidity": null,
+      "leak_sensor": null
+    },
+    {
+      "building_id": 13,
+      "building_name": "Farabi-013",
+      "address": "Farabi, 13",
+      "town": "Tashkent",
+      "latitude": 41.348345,
+      "longitude": 69.19949,
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": true,
+      "controller_id": null,
+      "controller_serial": null,
+      "controller_status": null,
+      "timestamp": null,
+      "electricity_ph1": null,
+      "electricity_ph2": null,
+      "electricity_ph3": null,
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": null,
+      "cold_water_temp": null,
+      "hot_water_in_pressure": null,
+      "hot_water_out_pressure": null,
+      "hot_water_in_temp": null,
+      "hot_water_out_temp": null,
+      "air_temp": null,
+      "humidity": null,
+      "leak_sensor": null
+    },
+    {
+      "building_id": 14,
+      "building_name": "Farabi-014",
+      "address": "Farabi, 14",
+      "town": "Tashkent",
+      "latitude": 41.348149,
+      "longitude": 69.199948,
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": true,
+      "controller_id": null,
+      "controller_serial": null,
+      "controller_status": null,
+      "timestamp": null,
+      "electricity_ph1": null,
+      "electricity_ph2": null,
+      "electricity_ph3": null,
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": null,
+      "cold_water_temp": null,
+      "hot_water_in_pressure": null,
+      "hot_water_out_pressure": null,
+      "hot_water_in_temp": null,
+      "hot_water_out_temp": null,
+      "air_temp": null,
+      "humidity": null,
+      "leak_sensor": null
+    },
+    {
+      "building_id": 21,
+      "building_name": "Shifonur, 3А",
+      "address": "Shifonur, 3А",
+      "town": "Tashkent",
+      "latitude": 41.351134,
+      "longitude": 69.219774,
+      "region": "Olmazor",
+      "management_company": "test",
+      "hot_water": null,
+      "controller_id": null,
+      "controller_serial": null,
+      "controller_status": null,
+      "timestamp": null,
+      "electricity_ph1": null,
+      "electricity_ph2": null,
+      "electricity_ph3": null,
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": null,
+      "cold_water_temp": null,
+      "hot_water_in_pressure": null,
+      "hot_water_out_pressure": null,
+      "hot_water_in_temp": null,
+      "hot_water_out_temp": null,
+      "air_temp": null,
+      "humidity": null,
+      "leak_sensor": null
+    },
+    {
+      "building_id": 25,
+      "building_name": "Farabi-049",
+      "address": "улица Фараби, 49",
+      "town": "Tashkent",
+      "latitude": 41.347371,
+      "longitude": 69.202437,
+      "region": "Olmazor",
+      "management_company": "Olmazor Holding Grand",
+      "hot_water": true,
+      "controller_id": null,
+      "controller_serial": null,
+      "controller_status": null,
+      "timestamp": null,
+      "electricity_ph1": null,
+      "electricity_ph2": null,
+      "electricity_ph3": null,
+      "amperage_ph1": null,
+      "amperage_ph2": null,
+      "amperage_ph3": null,
+      "cold_water_pressure": null,
+      "cold_water_temp": null,
+      "hot_water_in_pressure": null,
+      "hot_water_out_pressure": null,
+      "hot_water_in_temp": null,
+      "hot_water_out_temp": null,
+      "air_temp": null,
+      "humidity": null,
+      "leak_sensor": null
+    }
+  ],
+  "pagination": {
+    "total": 16,
+    "page": 1,
+    "limit": 16,
+    "totalPages": 1
+  }
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;34m╔═══════════════════════════════════════════════════════════════╗[0m
+[0;34m║                    ⚠️  ТЕСТЫ НА ОШИБКИ                       ║[0m
+[0;34m╚═══════════════════════════════════════════════════════════════╝[0m
+[0;36m📡 Несуществующее здание[0m
+[1;33mGET /api/buildings/99999[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 404[0m
+[0;34m📋 Ответ:[0m
+{
+  "error": "Building not found"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Несуществующий контроллер[0m
+[1;33mGET /api/controllers/99999[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 404[0m
+[0;34m📋 Ответ:[0m
+{
+  "error": "Controller not found"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Несуществующая метрика[0m
+[1;33mGET /api/metrics/99999[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 404[0m
+[0;34m📋 Ответ:[0m
+{
+  "error": "Metric not found"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Несуществующий endpoint[0m
+[1;33mGET /api/nonexistent[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 404[0m
+[0;34m📋 Ответ:[0m
+{
+  "error": {
+    "message": "Route /api/nonexistent not found",
+    "status": 404,
+    "stack": "Error: Route /api/nonexistent not found\n    at createError (/app/src/utils/helpers.js:8:19)\n    at /app/src/routes/index.js:142:10\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at trim_prefix (/app/node_modules/express/lib/router/index.js:328:13)\n    at /app/node_modules/express/lib/router/index.js:286:9\n    at Function.process_params (/app/node_modules/express/lib/router/index.js:346:12)\n    at next (/app/node_modules/express/lib/router/index.js:280:10)\n    at /app/src/routes/index.js:85:9\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at trim_prefix (/app/node_modules/express/lib/router/index.js:328:13)"
+  }
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;36m📡 Создание здания с невалидными данными[0m
+[1;33mPOST /api/buildings[0m
+[1;33m⚠️  Клиентская ошибка! Статус: 403[0m
+[0;34m📋 Ответ:[0m
+{
+  "success": false,
+  "message": "Invalid or expired token"
+}
+[0;35m═══════════════════════════════════════════════════════════════[0m
+
+[0;34m╔═══════════════════════════════════════════════════════════════╗[0m
+[0;34m║                    🗑️  DELETE ОПЕРАЦИИ                       ║[0m
+[0;34m║      (раскомментируйте для выполнения)                        ║[0m
+[0;34m╚═══════════════════════════════════════════════════════════════╝[0m
+[1;33m💡 DELETE операции закомментированы для безопасности[0m
+[1;33m💡 Раскомментируйте строки ниже для тестирования удаления[0m
+
+[0;35m╔═══════════════════════════════════════════════════════════════╗[0m
+[0;35m║                    📈 ИТОГИ ТЕСТИРОВАНИЯ                     ║[0m
+[0;35m╚═══════════════════════════════════════════════════════════════╝[0m
+[0;32m✅ Тестирование API завершено[0m
+[0;34m📊 Протестированы следующие группы endpoints:[0m
+[0;36m   • Базовые маршруты[0m
+[0;36m   • Авторизация (login, register, profile)[0m
+[0;36m   • Здания (CRUD операции)[0m
+[0;36m   • Контроллеры (CRUD + статус)[0m
+[0;36m   • Метрики (CRUD + телеметрия)[0m
+[0;32m   🆕 НОВЫЕ ENDPOINTS ПОСЛЕ РЕФАКТОРИНГА:[0m
+[0;36m   • Геопространственный поиск зданий[0m
+[0;36m   • Статистика зданий и контроллеров[0m
+[0;36m   • Агрегированные метрики по временным интервалам[0m
+[0;36m   • Очистка старых метрик (data retention)[0m
+[0;36m   • Расширенная аутентификация (logout, refresh, смена пароля)[0m
+[0;36m   • Данные для карты[0m
+[0;36m   • Обработка ошибок[0m
+
+[1;33m📋 Для просмотра документации API: http://localhost:8080/api-docs[0m
+[1;33m🏠 Главная страница приложения: http://localhost:8080[0m
+[1;33m👨‍💼 Админ панель: http://localhost:8080/admin.html[0m
+
+[0;32m💡 jq установлен - JSON ответы форматируются[0m
+
+[0;35m═══════════════════════════════════════════════════════════════[0m
