@@ -4,6 +4,7 @@ const controllerRoutes = require('./controllerRoutes');
 const metricRoutes = require('./metricRoutes');
 const authRoutes = require('./authRoutes');
 const buildingMetricsRoutes = require('./buildingMetricsRoutes');
+const analyticsRoutes = require('./analyticsRoutes');
 const metricController = require('../controllers/metricController');
 const { authenticateJWT } = require('../middleware/auth');
 const { createError } = require('../utils/helpers');
@@ -121,6 +122,7 @@ router.get('/', (req, res) => {
             '/api/buildings - Управление зданиями',
             '/api/controllers - Управление контроллерами',
             '/api/metrics - Получение метрик',
+            '/api/analytics - Аналитика и инфраструктурные объекты',
             '/api-docs - Документация API'
         ],
         status: 'healthy'
@@ -133,6 +135,7 @@ router.use('/buildings', buildingRoutes);
 router.use('/controllers', controllerRoutes);
 router.use('/metrics', metricRoutes);
 router.use('/buildings-metrics', buildingMetricsRoutes);
+router.use('/analytics', analyticsRoutes);
 
 // Обработка 404 для API
 router.use((req, res, next) => {
