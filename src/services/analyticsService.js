@@ -70,8 +70,31 @@ class AnalyticsService {
             // Сохраняем в кэш
             await cacheService.setTransformerAnalytics(transformerId, data);
             
+            // Автоматическая проверка на алерты (только если данные не fallback)
+            if (!data.is_fallback && data.load_percent > 0) {
+                this.checkForAlerts(transformerId, data);
+            }
+            
             return data;
         });
+    }
+    
+    // Асинхронная проверка на алерты (не блокирует основной запрос)
+    async checkForAlerts(transformerId, loadData) {
+        try {
+            // Выполняем в фоне, чтобы не замедлять ответ API
+            setImmediate(async () => {
+                try {
+                    const alertService = require('./alertService');
+                    await alertService.checkTransformerLoad(transformerId);
+                } catch (error) {
+                    logger.error(`Ошибка фоновой проверки алертов для трансформатора ${transformerId}:`, error);
+                }
+            });
+        } catch (error) {
+            // Игнорируем ошибки фоновых проверок, чтобы не влиять на основной API
+            logger.warn(`Не удалось запустить проверку алертов для трансформатора ${transformerId}:`, error.message);
+        }
     }
     
     // Получение всех трансформаторов с аналитикой

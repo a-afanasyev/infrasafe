@@ -1,5 +1,9 @@
--- Включение расширения PostGIS для работы с географическими данными (опционально)
--- CREATE EXTENSION postgis;
+-- ===============================================
+-- Инициализация базы данных InfraSafe с PostGIS
+-- ===============================================
+
+-- Включение расширения PostGIS для работы с географическими данными
+CREATE EXTENSION IF NOT EXISTS postgis;
 
 -- Создание таблицы типов оповещений
 CREATE TABLE alert_types (
@@ -14,23 +18,20 @@ CREATE TABLE buildings (
     name varchar(100) NOT NULL,
     address text NOT NULL,
     town varchar(100) NOT NULL,
-    -- Используем point из PostGIS вместо двух numeric полей (опционально)
-    -- location geography(POINT) NOT NULL,
     latitude numeric(9,6) NOT NULL,
     longitude numeric(9,6) NOT NULL,
     region varchar(50),
     management_company varchar(100),
     hot_water boolean,
-    -- Связи с инфраструктурными объектами
-    power_transformer_id varchar(50),
-    cold_water_source_id varchar(50),
-    heat_source_id varchar(50),
-    has_hot_water boolean DEFAULT false
+    has_hot_water boolean DEFAULT false,
+    geom geometry(POINT, 4326), -- PostGIS геометрия
+    created_at timestamptz DEFAULT NOW(),
+    updated_at timestamptz DEFAULT NOW()
 );
+
+-- Индексы для зданий
 CREATE INDEX idx_buildings_town ON buildings(town);
-CREATE INDEX idx_buildings_power_transformer ON buildings(power_transformer_id);
-CREATE INDEX idx_buildings_cold_water_source ON buildings(cold_water_source_id);
-CREATE INDEX idx_buildings_heat_source ON buildings(heat_source_id);
+CREATE INDEX idx_buildings_geom ON buildings USING GIST(geom);
 
 -- Создание таблиц инфраструктурных объектов
 
@@ -50,6 +51,7 @@ CREATE TABLE power_transformers (
     status varchar(20) DEFAULT 'active',
     maintenance_contact varchar(100),
     notes text,
+    geom geometry(POINT, 4326), -- PostGIS геометрия
     created_at timestamptz DEFAULT NOW(),
     updated_at timestamptz DEFAULT NOW()
 );
@@ -57,6 +59,7 @@ CREATE TABLE power_transformers (
 -- Индексы для трансформаторов
 CREATE INDEX idx_power_transformers_status ON power_transformers(status);
 CREATE INDEX idx_power_transformers_capacity ON power_transformers(capacity_kva);
+CREATE INDEX idx_power_transformers_geom ON power_transformers USING GIST(geom);
 
 -- 2. Таблица источников холодной воды (насосные станции, водозаборы)
 CREATE TABLE cold_water_sources (
@@ -72,6 +75,7 @@ CREATE TABLE cold_water_sources (
     status varchar(20) DEFAULT 'active',
     maintenance_contact varchar(100),
     notes text,
+    geom geometry(POINT, 4326),
     created_at timestamptz DEFAULT NOW(),
     updated_at timestamptz DEFAULT NOW()
 );
@@ -79,6 +83,7 @@ CREATE TABLE cold_water_sources (
 -- Индексы для источников холодной воды
 CREATE INDEX idx_cold_water_sources_status ON cold_water_sources(status);
 CREATE INDEX idx_cold_water_sources_type ON cold_water_sources(source_type);
+CREATE INDEX idx_cold_water_sources_geom ON cold_water_sources USING GIST(geom);
 
 -- 3. Таблица источников тепла (котельные, ТЭЦ)
 CREATE TABLE heat_sources (
@@ -94,6 +99,7 @@ CREATE TABLE heat_sources (
     status varchar(20) DEFAULT 'active',
     maintenance_contact varchar(100),
     notes text,
+    geom geometry(POINT, 4326),
     created_at timestamptz DEFAULT NOW(),
     updated_at timestamptz DEFAULT NOW()
 );
@@ -101,14 +107,25 @@ CREATE TABLE heat_sources (
 -- Индексы для источников тепла
 CREATE INDEX idx_heat_sources_status ON heat_sources(status);
 CREATE INDEX idx_heat_sources_type ON heat_sources(source_type);
+CREATE INDEX idx_heat_sources_geom ON heat_sources USING GIST(geom);
 
--- Добавление внешних ключей для зданий (добавляем позже, чтобы таблицы уже существовали)
+-- Обновление таблицы зданий для связи с инфраструктурой
+ALTER TABLE buildings ADD COLUMN power_transformer_id varchar(50);
+ALTER TABLE buildings ADD COLUMN cold_water_source_id varchar(50);
+ALTER TABLE buildings ADD COLUMN heat_source_id varchar(50);
+
+-- Добавление внешних ключей
 ALTER TABLE buildings ADD CONSTRAINT fk_buildings_power_transformer 
     FOREIGN KEY (power_transformer_id) REFERENCES power_transformers(id);
 ALTER TABLE buildings ADD CONSTRAINT fk_buildings_cold_water_source 
     FOREIGN KEY (cold_water_source_id) REFERENCES cold_water_sources(id);
 ALTER TABLE buildings ADD CONSTRAINT fk_buildings_heat_source 
     FOREIGN KEY (heat_source_id) REFERENCES heat_sources(id);
+
+-- Индексы для связей
+CREATE INDEX idx_buildings_power_transformer ON buildings(power_transformer_id);
+CREATE INDEX idx_buildings_cold_water_source ON buildings(cold_water_source_id);
+CREATE INDEX idx_buildings_heat_source ON buildings(heat_source_id);
 
 -- Создание таблицы контроллеров
 CREATE TABLE controllers (
@@ -121,6 +138,8 @@ CREATE TABLE controllers (
     installed_at timestamptz DEFAULT now(),
     last_heartbeat timestamptz
 );
+
+-- Индексы для контроллеров
 CREATE INDEX idx_controllers_building ON controllers(building_id);
 CREATE INDEX idx_controllers_status ON controllers(status);
 CREATE INDEX idx_controllers_heartbeat ON controllers(last_heartbeat);
@@ -175,11 +194,49 @@ CREATE TABLE alerts (
     created_at timestamptz DEFAULT now(),
     resolved_at timestamptz
 );
+
+-- Индексы для старых алертов
 CREATE INDEX idx_alerts_status ON alerts(status);
 CREATE INDEX idx_alerts_created_at ON alerts(created_at);
 CREATE INDEX idx_alerts_metric ON alerts(metric_id);
 
--- Таблица для алертов инфраструктуры (новая система)
+-- ===============================================
+-- СИСТЕМА АЛЕРТОВ ИНФРАСТРУКТУРЫ (НОВАЯ)
+-- ===============================================
+
+-- Таблица пользователей (для связей в алертах)
+CREATE TABLE IF NOT EXISTS users (
+    user_id serial PRIMARY KEY,
+    username varchar(50) NOT NULL UNIQUE,
+    email varchar(100) UNIQUE,
+    password_hash varchar(255) NOT NULL,
+    role varchar(20) DEFAULT 'user',
+    is_active boolean DEFAULT true,
+    failed_login_attempts integer DEFAULT 0,
+    last_failed_login timestamptz,
+    account_locked_until timestamptz,
+    created_at timestamptz DEFAULT NOW(),
+    updated_at timestamptz DEFAULT NOW()
+);
+
+-- Таблица для refresh токенов
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+    token_id bigserial PRIMARY KEY,
+    user_id integer REFERENCES users(user_id) ON DELETE CASCADE,
+    token_hash varchar(255) NOT NULL,
+    expires_at timestamptz NOT NULL,
+    created_at timestamptz DEFAULT NOW()
+);
+
+-- Таблица черного списка токенов
+CREATE TABLE IF NOT EXISTS token_blacklist (
+    id bigserial PRIMARY KEY,
+    token_hash varchar(255) NOT NULL UNIQUE,
+    expires_at timestamptz NOT NULL,
+    blacklisted_at timestamptz DEFAULT NOW()
+);
+
+-- Таблица для алертов инфраструктуры (ОСНОВНАЯ НОВАЯ СИСТЕМА)
 CREATE TABLE infrastructure_alerts (
     alert_id bigserial PRIMARY KEY,
     type varchar(50) NOT NULL,
@@ -193,8 +250,8 @@ CREATE TABLE infrastructure_alerts (
     created_at timestamptz DEFAULT NOW(),
     acknowledged_at timestamptz,
     resolved_at timestamptz,
-    acknowledged_by integer,
-    resolved_by integer
+    acknowledged_by integer REFERENCES users(user_id),
+    resolved_by integer REFERENCES users(user_id)
 );
 
 -- Индексы для алертов инфраструктуры
@@ -216,7 +273,7 @@ CREATE TABLE analytics_history (
     PRIMARY KEY (id, analysis_date)
 ) PARTITION BY RANGE (analysis_date);
 
--- Создаем партиции для аналитической истории (текущий и предыдущий месяц)
+-- Создаем партиции для аналитической истории
 CREATE TABLE analytics_history_current PARTITION OF analytics_history
     FOR VALUES FROM (date_trunc('month', CURRENT_DATE)) TO (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month');
 
@@ -228,80 +285,7 @@ CREATE INDEX idx_analytics_history_type ON analytics_history(analysis_type);
 CREATE INDEX idx_analytics_history_infrastructure ON analytics_history(infrastructure_id, infrastructure_type);
 CREATE INDEX idx_analytics_history_date ON analytics_history(analysis_date);
 
--- Создание партиционированной таблицы для логов
-CREATE TABLE logs (
-    log_id bigserial,
-    timestamp timestamptz NOT NULL,
-    log_level varchar(20),
-    message text NOT NULL,
-    PRIMARY KEY (log_id, timestamp)
-) PARTITION BY RANGE (timestamp);
-
--- Создание партиций для логов (пример)
-CREATE TABLE logs_current_month PARTITION OF logs
-    FOR VALUES FROM (date_trunc('month', CURRENT_DATE)) TO (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month');
-CREATE TABLE logs_prev_month PARTITION OF logs
-    FOR VALUES FROM (date_trunc('month', CURRENT_DATE) - INTERVAL '1 month') TO (date_trunc('month', CURRENT_DATE));
-
--- Создание индексов для таблицы логов
-CREATE INDEX idx_logs_timestamp ON logs(timestamp);
-CREATE INDEX idx_logs_level ON logs(log_level);
-
--- Создание таблицы пользователей
-CREATE TABLE users (
-    user_id serial PRIMARY KEY,
-    username varchar(50) NOT NULL UNIQUE,
-    email varchar(100) UNIQUE,
-    password text NOT NULL,
-    role varchar(20) DEFAULT 'user',
-    active boolean DEFAULT true,
-    created_at timestamptz DEFAULT now()
-);
-CREATE INDEX idx_users_role ON users(role);
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_active ON users(active);
-
--- Добавление внешних ключей для инфраструктурных алертов после создания таблицы users
-ALTER TABLE infrastructure_alerts ADD CONSTRAINT fk_infrastructure_alerts_acknowledged_by
-    FOREIGN KEY (acknowledged_by) REFERENCES users(user_id);
-ALTER TABLE infrastructure_alerts ADD CONSTRAINT fk_infrastructure_alerts_resolved_by
-    FOREIGN KEY (resolved_by) REFERENCES users(user_id);
-
--- Создание представления для удобного просмотра текущих активных метрик
-CREATE VIEW active_controllers AS
-SELECT 
-    c.controller_id, 
-    c.serial_number, 
-    b.name AS building_name, 
-    b.town,
-    c.status,
-    c.last_heartbeat,
-    now() - c.last_heartbeat AS heartbeat_age
-FROM 
-    controllers c
-JOIN 
-    buildings b ON c.building_id = b.building_id
-WHERE 
-    c.status = 'active';
-
--- Создание триггера для автоматического обновления last_heartbeat при добавлении метрики
-CREATE OR REPLACE FUNCTION update_controller_heartbeat() RETURNS TRIGGER AS $$
-BEGIN
-    UPDATE controllers SET last_heartbeat = NEW.timestamp 
-    WHERE controller_id = NEW.controller_id;
-    RETURN NEW;
-END; $$
-LANGUAGE plpgsql;
-
-CREATE TRIGGER trig_update_heartbeat
-AFTER INSERT ON metrics
-FOR EACH ROW
-EXECUTE FUNCTION update_controller_heartbeat();
-
--- Создание индекса для полнотекстового поиска по адресам зданий
-CREATE INDEX idx_buildings_address_gin ON buildings USING GIN (to_tsvector('russian', address));
-
--- Материализованное представление для загрузки трансформаторов в реальном времени (упрощенная версия без PostGIS)
+-- Материализованное представление для загрузки трансформаторов в реальном времени
 CREATE MATERIALIZED VIEW mv_transformer_load_realtime AS
 SELECT 
     pt.id,
@@ -315,7 +299,7 @@ SELECT
     COUNT(DISTINCT CASE WHEN c.status = 'active' THEN c.controller_id END) as active_controllers_count,
     AVG(COALESCE(m.electricity_ph1, 0) + COALESCE(m.electricity_ph2, 0) + COALESCE(m.electricity_ph3, 0)) as avg_total_voltage,
     AVG(COALESCE(m.amperage_ph1, 0) + COALESCE(m.amperage_ph2, 0) + COALESCE(m.amperage_ph3, 0)) as avg_total_amperage,
-    -- Примерный расчет загрузки (требует уточнения в зависимости от конкретных параметров)
+    -- Примерный расчет загрузки
     CASE 
         WHEN pt.capacity_kva > 0 THEN 
             LEAST(100, (AVG(COALESCE(m.amperage_ph1, 0) + COALESCE(m.amperage_ph2, 0) + COALESCE(m.amperage_ph3, 0)) * 0.4 / pt.capacity_kva) * 100)
@@ -335,17 +319,70 @@ CREATE UNIQUE INDEX idx_mv_transformer_load_id ON mv_transformer_load_realtime(i
 CREATE INDEX idx_mv_transformer_load_percent ON mv_transformer_load_realtime(load_percent DESC);
 CREATE INDEX idx_mv_transformer_load_status ON mv_transformer_load_realtime(status);
 
+-- Таблица логов
+CREATE TABLE IF NOT EXISTS logs (
+    log_id bigserial PRIMARY KEY,
+    timestamp timestamptz DEFAULT NOW(),
+    log_level varchar(10) NOT NULL,
+    message text NOT NULL,
+    details jsonb
+);
+
+-- ===============================================
+-- ФУНКЦИИ И ТРИГГЕРЫ
+-- ===============================================
+
+-- Функция для обновления геометрии при изменении координат
+CREATE OR REPLACE FUNCTION update_geom_on_coordinates_change() RETURNS TRIGGER AS $$
+BEGIN
+    NEW.geom = ST_SetSRID(ST_MakePoint(NEW.longitude, NEW.latitude), 4326);
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Триггеры для автоматического обновления геометрии
+CREATE TRIGGER trig_power_transformers_geom
+    BEFORE INSERT OR UPDATE OF latitude, longitude ON power_transformers
+    FOR EACH ROW EXECUTE FUNCTION update_geom_on_coordinates_change();
+
+CREATE TRIGGER trig_cold_water_sources_geom
+    BEFORE INSERT OR UPDATE OF latitude, longitude ON cold_water_sources
+    FOR EACH ROW EXECUTE FUNCTION update_geom_on_coordinates_change();
+
+CREATE TRIGGER trig_heat_sources_geom
+    BEFORE INSERT OR UPDATE OF latitude, longitude ON heat_sources
+    FOR EACH ROW EXECUTE FUNCTION update_geom_on_coordinates_change();
+
+CREATE TRIGGER trig_buildings_geom
+    BEFORE INSERT OR UPDATE OF latitude, longitude ON buildings
+    FOR EACH ROW EXECUTE FUNCTION update_geom_on_coordinates_change();
+
+-- Функция для обновления last_heartbeat в контроллерах
+CREATE OR REPLACE FUNCTION update_controller_heartbeat() RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE controllers 
+    SET last_heartbeat = NEW.timestamp 
+    WHERE controller_id = NEW.controller_id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Триггер для обновления heartbeat
+CREATE TRIGGER trig_update_heartbeat
+AFTER INSERT ON metrics
+FOR EACH ROW
+EXECUTE FUNCTION update_controller_heartbeat();
+
 -- Функции для обновления материализованных представлений
 CREATE OR REPLACE FUNCTION refresh_transformer_analytics() RETURNS void AS $$
 BEGIN
     REFRESH MATERIALIZED VIEW CONCURRENTLY mv_transformer_load_realtime;
     
-    -- Логируем время обновления
     INSERT INTO logs (timestamp, log_level, message) 
     VALUES (NOW(), 'INFO', 'Материализованное представление трансформаторов обновлено');
     
 EXCEPTION WHEN OTHERS THEN
-    -- Логируем ошибки
     INSERT INTO logs (timestamp, log_level, message) 
     VALUES (NOW(), 'ERROR', 'Ошибка обновления материализованного представления: ' || SQLERRM);
     RAISE;
@@ -358,14 +395,20 @@ BEGIN
     -- Архивируем загрузку трансформаторов
     INSERT INTO analytics_history (analysis_type, infrastructure_id, infrastructure_type, analysis_date, analysis_data)
     SELECT 
-        'transformer_load',
+        'daily_transformer_load',
         id,
         'transformer',
         CURRENT_DATE,
-        row_to_json(t)
-    FROM mv_transformer_load_realtime t;
+        jsonb_build_object(
+            'load_percent', load_percent,
+            'buildings_count', buildings_count,
+            'active_controllers_count', active_controllers_count,
+            'avg_total_voltage', avg_total_voltage,
+            'avg_total_amperage', avg_total_amperage
+        )
+    FROM mv_transformer_load_realtime
+    WHERE last_metric_time > CURRENT_DATE - INTERVAL '1 day';
     
-    -- Логируем архивирование
     INSERT INTO logs (timestamp, log_level, message) 
     VALUES (NOW(), 'INFO', 'Ежедневная аналитика заархивирована');
     
@@ -376,40 +419,50 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$ LANGUAGE plpgsql;
 
--- Функция для поиска ближайших зданий к трансформатору (упрощенная версия без PostGIS)
+-- Функция поиска ближайших зданий к трансформатору
 CREATE OR REPLACE FUNCTION find_nearest_buildings_to_transformer(
-    transformer_id VARCHAR(50),
-    max_distance_meters INTEGER DEFAULT 1000,
-    limit_count INTEGER DEFAULT 50
+    transformer_id_param VARCHAR(50),
+    radius_meters INTEGER DEFAULT 1000
 ) RETURNS TABLE (
     building_id INTEGER,
     building_name VARCHAR(100),
-    distance_meters NUMERIC
+    distance_meters DOUBLE PRECISION
 ) AS $$
 BEGIN
     RETURN QUERY
     SELECT 
         b.building_id,
         b.name,
-        -- Приблизительное расстояние в метрах (упрощенный расчет)
-        (6371000 * acos(cos(radians(pt.latitude)) * cos(radians(b.latitude)) * 
-         cos(radians(b.longitude) - radians(pt.longitude)) + 
-         sin(radians(pt.latitude)) * sin(radians(b.latitude)))) as distance_meters
-    FROM power_transformers pt
-    CROSS JOIN buildings b
-    WHERE pt.id = transformer_id
-      -- Простая фильтрация по прямоугольной области (приблизительно)
-      AND abs(b.latitude - pt.latitude) < (max_distance_meters::numeric / 111000) -- примерно 111км на градус
-      AND abs(b.longitude - pt.longitude) < (max_distance_meters::numeric / 111000)
-    ORDER BY distance_meters
-    LIMIT limit_count;
+        ST_Distance(
+            ST_Transform(pt.geom, 3857),
+            ST_Transform(b.geom, 3857)
+        ) as distance_meters
+    FROM buildings b
+    CROSS JOIN power_transformers pt
+    WHERE pt.id = transformer_id_param
+    AND ST_DWithin(
+        ST_Transform(pt.geom, 3857),
+        ST_Transform(b.geom, 3857),
+        radius_meters
+    )
+    ORDER BY distance_meters;
 END;
 $$ LANGUAGE plpgsql;
 
--- Комментарии к таблицам для документации
-COMMENT ON TABLE metrics IS 'Содержит данные о метриках с контроллеров';
-COMMENT ON TABLE controllers IS 'Устройства, установленные в зданиях для сбора метрик';
-COMMENT ON TABLE buildings IS 'Информация о зданиях, где установлены контроллеры';
-COMMENT ON TABLE power_transformers IS 'Электрические трансформаторы для анализа нагрузки';
-COMMENT ON TABLE infrastructure_alerts IS 'Система алертов для инфраструктурных объектов';
-COMMENT ON MATERIALIZED VIEW mv_transformer_load_realtime IS 'Аналитика загрузки трансформаторов в реальном времени'; 
+-- ===============================================
+-- ИНДЕКСЫ ДЛЯ ПОИСКА
+-- ===============================================
+
+-- Полнотекстовый поиск для адресов зданий
+CREATE INDEX idx_buildings_address_gin ON buildings USING GIN (to_tsvector('russian', address));
+
+-- Составной индекс для быстрого поиска активных алертов
+CREATE INDEX idx_infrastructure_alerts_active ON infrastructure_alerts(status, created_at DESC) WHERE status = 'active';
+
+-- ===============================================
+-- ЗАВЕРШЕНИЕ ИНИЦИАЛИЗАЦИИ
+-- ===============================================
+
+-- Логируем успешную инициализацию
+INSERT INTO logs (timestamp, log_level, message) 
+VALUES (NOW(), 'INFO', 'База данных InfraSafe с PostGIS успешно инициализирована'); 
