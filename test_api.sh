@@ -433,7 +433,272 @@ WEAK_PASSWORD_DATA='{
 }'
 test_endpoint "POST" "/api/auth/change-password" "$WEAK_PASSWORD_DATA" "true" "Смена на слабый пароль (должна быть ошибка)"
 
-# 6. ЗДАНИЯ С МЕТРИКАМИ (ДЛЯ КАРТЫ)
+# 6. АДМИНСКИЕ API (ОПТИМИЗИРОВАННЫЕ)
+echo -e "${BLUE}╔═══════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${BLUE}║               👨‍💼 АДМИНСКИЕ API (ОПТИМИЗИРОВАННЫЕ)           ║${NC}"
+echo -e "${BLUE}╚═══════════════════════════════════════════════════════════════╝${NC}"
+
+# Оптимизированные здания
+echo -e "${CYAN}🏢 Оптимизированное получение зданий${NC}"
+test_endpoint "GET" "/api/admin/buildings?page=1&limit=10" "" "true" "Пагинированный список зданий"
+test_endpoint "GET" "/api/admin/buildings?search=Дом" "" "true" "Поиск зданий по названию"
+test_endpoint "GET" "/api/admin/buildings?region=Ташкент&sort=name&order=asc" "" "true" "Фильтрация и сортировка зданий"
+
+# Batch операции с зданиями
+echo -e "${CYAN}📦 Массовые операции с зданиями${NC}"
+BUILDINGS_BATCH_DATA='{
+    "action": "update_status",
+    "ids": [1, 2, 3],
+    "data": {
+        "status": "active"
+    }
+}'
+test_endpoint "POST" "/api/admin/buildings/batch" "$BUILDINGS_BATCH_DATA" "true" "Массовое обновление статуса зданий"
+
+BUILDINGS_DELETE_BATCH='{
+    "action": "delete",
+    "ids": [99, 100, 101]
+}'
+test_endpoint "POST" "/api/admin/buildings/batch" "$BUILDINGS_DELETE_BATCH" "true" "Массовое удаление зданий (несуществующих ID)"
+
+# Оптимизированные контроллеры
+echo -e "${CYAN}🎛️  Оптимизированное получение контроллеров${NC}"
+test_endpoint "GET" "/api/admin/controllers?page=1&limit=10" "" "true" "Пагинированный список контроллеров"
+test_endpoint "GET" "/api/admin/controllers?search=SN-" "" "true" "Поиск контроллеров по серийному номеру"
+test_endpoint "GET" "/api/admin/controllers?status=active&manufacturer=Siemens" "" "true" "Фильтрация контроллеров по статусу и производителю"
+
+# Batch операции с контроллерами
+echo -e "${CYAN}📦 Массовые операции с контроллерами${NC}"
+CONTROLLERS_BATCH_DATA='{
+    "action": "update_status",
+    "ids": [1, 2, 3],
+    "data": {
+        "status": "inactive"
+    }
+}'
+test_endpoint "POST" "/api/admin/controllers/batch" "$CONTROLLERS_BATCH_DATA" "true" "Массовое обновление статуса контроллеров"
+
+CONTROLLERS_CALIBRATE_BATCH='{
+    "action": "calibrate",
+    "ids": [1, 2],
+    "data": {
+        "calibration_date": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+    }
+}'
+test_endpoint "POST" "/api/admin/controllers/batch" "$CONTROLLERS_CALIBRATE_BATCH" "true" "Массовая калибровка контроллеров"
+
+# Оптимизированные метрики
+echo -e "${CYAN}📊 Оптимизированное получение метрик${NC}"
+test_endpoint "GET" "/api/admin/metrics?page=1&limit=20" "" "true" "Пагинированный список метрик"
+test_endpoint "GET" "/api/admin/metrics?controller_id=1&start_date=2024-01-01&end_date=2024-12-31" "" "true" "Метрики по контроллеру за период"
+test_endpoint "GET" "/api/admin/metrics?sort=timestamp&order=desc&limit=50" "" "true" "Последние 50 метрик"
+
+# Трансформаторы (новые эндпоинты)
+echo -e "${CYAN}⚡ Управление трансформаторами${NC}"
+test_endpoint "GET" "/api/admin/transformers?page=1&limit=10" "" "true" "Пагинированный список трансформаторов"
+test_endpoint "GET" "/api/admin/transformers?search=TR-" "" "true" "Поиск трансформаторов по названию"
+test_endpoint "GET" "/api/admin/transformers?power_min=100&power_max=1000&sort=power_kva&order=desc" "" "true" "Фильтрация трансформаторов по мощности"
+
+# CRUD операции с трансформаторами
+TRANSFORMER_CREATE_DATA='{
+    "name": "TR-TEST-001",
+    "power_kva": 630,
+    "voltage_kv": 10,
+    "building_id": 34
+}'
+test_endpoint "POST" "/api/admin/transformers" "$TRANSFORMER_CREATE_DATA" "true" "Создание нового трансформатора"
+
+TRANSFORMER_UPDATE_DATA='{
+    "name": "TR-TEST-001-UPDATED",
+    "power_kva": 800,
+    "voltage_kv": 10
+}'
+test_endpoint "PUT" "/api/admin/transformers/1" "$TRANSFORMER_UPDATE_DATA" "true" "Обновление трансформатора"
+
+test_endpoint "GET" "/api/admin/transformers/1" "" "true" "Получение трансформатора по ID"
+
+# Линии электропередач (новые эндпоинты)
+echo -e "${CYAN}🔌 Управление линиями электропередач${NC}"
+test_endpoint "GET" "/api/admin/lines?page=1&limit=10" "" "true" "Пагинированный список линий"
+test_endpoint "GET" "/api/admin/lines?search=LINE-" "" "true" "Поиск линий по названию"
+test_endpoint "GET" "/api/admin/lines?voltage_min=6&voltage_max=35&sort=length_km&order=asc" "" "true" "Фильтрация линий по напряжению и длине"
+
+# CRUD операции с линиями
+LINE_CREATE_DATA='{
+    "name": "LINE-TEST-001",
+    "voltage_kv": 10,
+    "length_km": 2.5,
+    "transformer_id": 1
+}'
+test_endpoint "POST" "/api/admin/lines" "$LINE_CREATE_DATA" "true" "Создание новой линии"
+
+LINE_UPDATE_DATA='{
+    "name": "LINE-TEST-001-UPDATED",
+    "voltage_kv": 10,
+    "length_km": 3.2
+}'
+test_endpoint "PUT" "/api/admin/lines/1" "$LINE_UPDATE_DATA" "true" "Обновление линии"
+
+test_endpoint "GET" "/api/admin/lines/1" "" "true" "Получение линии по ID"
+
+# Batch операции с метриками
+echo -e "${CYAN}📦 Массовые операции с метриками${NC}"
+METRICS_CLEANUP_BATCH='{
+    "action": "cleanup_old",
+    "data": {
+        "older_than_days": 30
+    }
+}'
+test_endpoint "POST" "/api/admin/metrics/batch" "$METRICS_CLEANUP_BATCH" "true" "Массовая очистка старых метрик"
+
+METRICS_AGGREGATE_BATCH='{
+    "action": "aggregate",
+    "data": {
+        "time_frame": "hour",
+        "controller_ids": [1, 2, 3]
+    }
+}'
+test_endpoint "POST" "/api/admin/metrics/batch" "$METRICS_AGGREGATE_BATCH" "true" "Массовая агрегация метрик"
+
+# Batch операции с трансформаторами
+echo -e "${CYAN}📦 Массовые операции с трансформаторами${NC}"
+TRANSFORMERS_BATCH_DATA='{
+    "action": "update_voltage",
+    "ids": [1, 2, 3],
+    "data": {
+        "voltage_kv": 10
+    }
+}'
+test_endpoint "POST" "/api/admin/transformers/batch" "$TRANSFORMERS_BATCH_DATA" "true" "Массовое обновление напряжения трансформаторов"
+
+TRANSFORMERS_DELETE_BATCH='{
+    "action": "delete",
+    "ids": [99, 100]
+}'
+test_endpoint "POST" "/api/admin/transformers/batch" "$TRANSFORMERS_DELETE_BATCH" "true" "Массовое удаление трансформаторов (несуществующих ID)"
+
+# Batch операции с линиями
+echo -e "${CYAN}📦 Массовые операции с линиями${NC}"
+LINES_BATCH_DATA='{
+    "action": "update_voltage",
+    "ids": [1, 2, 3],
+    "data": {
+        "voltage_kv": 6
+    }
+}'
+test_endpoint "POST" "/api/admin/lines/batch" "$LINES_BATCH_DATA" "true" "Массовое обновление напряжения линий"
+
+LINES_MAINTENANCE_BATCH='{
+    "action": "set_maintenance",
+    "ids": [1, 2],
+    "data": {
+        "maintenance_date": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+    }
+}'
+test_endpoint "POST" "/api/admin/lines/batch" "$LINES_MAINTENANCE_BATCH" "true" "Массовая установка даты обслуживания линий"
+
+# Глобальный поиск
+echo -e "${CYAN}🔍 Глобальный поиск${NC}"
+test_endpoint "GET" "/api/admin/search?query=Дом&type=buildings&limit=10" "" "true" "Поиск по зданиям"
+test_endpoint "GET" "/api/admin/search?query=SN-1&type=controllers" "" "true" "Поиск по контроллерам"
+test_endpoint "GET" "/api/admin/search?query=temperature&type=metrics" "" "true" "Поиск по метрикам"
+test_endpoint "GET" "/api/admin/search?query=TR-&type=transformers" "" "true" "Поиск по трансформаторам"
+test_endpoint "GET" "/api/admin/search?query=LINE-&type=lines" "" "true" "Поиск по линиям"
+test_endpoint "GET" "/api/admin/search?query=test" "" "true" "Глобальный поиск по всем типам"
+
+# Статистика для админ дашборда
+echo -e "${CYAN}📈 Статистика для дашборда${NC}"
+test_endpoint "GET" "/api/admin/stats" "" "true" "Общая статистика системы"
+test_endpoint "GET" "/api/admin/stats?period=week" "" "true" "Статистика за неделю"
+test_endpoint "GET" "/api/admin/stats?period=month&detailed=true" "" "true" "Детальная статистика за месяц"
+
+# Экспорт данных
+echo -e "${CYAN}📤 Экспорт данных${NC}"
+EXPORT_DATA='{
+    "type": "buildings",
+    "format": "csv",
+    "filters": {
+        "region": "Ташкент"
+    }
+}'
+test_endpoint "POST" "/api/admin/export" "$EXPORT_DATA" "true" "Экспорт зданий в CSV"
+
+EXPORT_CONTROLLERS_DATA='{
+    "type": "controllers",
+    "format": "json",
+    "filters": {
+        "status": "active"
+    }
+}'
+test_endpoint "POST" "/api/admin/export" "$EXPORT_CONTROLLERS_DATA" "true" "Экспорт активных контроллеров в JSON"
+
+EXPORT_METRICS_DATA='{
+    "type": "metrics",
+    "format": "xlsx",
+    "filters": {
+        "controller_id": 1,
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31"
+    }
+}'
+test_endpoint "POST" "/api/admin/export" "$EXPORT_METRICS_DATA" "true" "Экспорт метрик в Excel"
+
+EXPORT_TRANSFORMERS_DATA='{
+    "type": "transformers",
+    "format": "csv",
+    "filters": {
+        "power_min": 100,
+        "power_max": 1000
+    }
+}'
+test_endpoint "POST" "/api/admin/export" "$EXPORT_TRANSFORMERS_DATA" "true" "Экспорт трансформаторов в CSV"
+
+EXPORT_LINES_DATA='{
+    "type": "lines",
+    "format": "json",
+    "filters": {
+        "voltage_min": 6,
+        "voltage_max": 35
+    }
+}'
+test_endpoint "POST" "/api/admin/export" "$EXPORT_LINES_DATA" "true" "Экспорт линий в JSON"
+
+# Тесты на ошибки для админских API
+echo -e "${CYAN}⚠️  Тесты ошибок админских API${NC}"
+test_endpoint "GET" "/api/admin/buildings?page=0&limit=0" "" "true" "Неверные параметры пагинации (должна быть ошибка)"
+test_endpoint "GET" "/api/admin/search?query=" "" "true" "Поиск с пустым запросом (должна быть ошибка)"
+
+INVALID_BATCH_DATA='{
+    "action": "invalid_action",
+    "ids": []
+}'
+test_endpoint "POST" "/api/admin/buildings/batch" "$INVALID_BATCH_DATA" "true" "Неверная batch операция (должна быть ошибка)"
+
+INVALID_EXPORT_DATA='{
+    "type": "invalid_type",
+    "format": "invalid_format"
+}'
+test_endpoint "POST" "/api/admin/export" "$INVALID_EXPORT_DATA" "true" "Неверные параметры экспорта (должна быть ошибка)"
+
+# Тесты ошибок для новых эндпоинтов
+test_endpoint "GET" "/api/admin/transformers/99999" "" "true" "Несуществующий трансформатор (должна быть ошибка)"
+test_endpoint "GET" "/api/admin/lines/99999" "" "true" "Несуществующая линия (должна быть ошибка)"
+
+INVALID_TRANSFORMER_DATA='{
+    "name": "",
+    "power_kva": -100,
+    "voltage_kv": 0
+}'
+test_endpoint "POST" "/api/admin/transformers" "$INVALID_TRANSFORMER_DATA" "true" "Создание трансформатора с невалидными данными (должна быть ошибка)"
+
+INVALID_LINE_DATA='{
+    "name": "",
+    "voltage_kv": -10,
+    "length_km": -5
+}'
+test_endpoint "POST" "/api/admin/lines" "$INVALID_LINE_DATA" "true" "Создание линии с невалидными данными (должна быть ошибка)"
+
+# 7. ЗДАНИЯ С МЕТРИКАМИ (ДЛЯ КАРТЫ)
 echo -e "${BLUE}╔═══════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║                    🗺️  ДАННЫЕ ДЛЯ КАРТЫ                      ║${NC}"
 echo -e "${BLUE}╚═══════════════════════════════════════════════════════════════╝${NC}"
@@ -468,6 +733,8 @@ echo -e "${YELLOW}💡 Раскомментируйте строки ниже д
 # test_endpoint "DELETE" "/api/metrics/1" "" "true" "Удаление метрики"
 # test_endpoint "DELETE" "/api/controllers/1" "" "true" "Удаление контроллера"  
 # test_endpoint "DELETE" "/api/buildings/1" "" "true" "Удаление здания"
+# test_endpoint "DELETE" "/api/admin/transformers/1" "" "true" "Удаление трансформатора"
+# test_endpoint "DELETE" "/api/admin/lines/1" "" "true" "Удаление линии"
 
 # ИТОГИ
 echo -e "${PURPLE}╔═══════════════════════════════════════════════════════════════╗${NC}"
@@ -487,8 +754,19 @@ echo -e "${CYAN}   • Статистика зданий и контроллер
 echo -e "${CYAN}   • Агрегированные метрики по временным интервалам${NC}"
 echo -e "${CYAN}   • Очистка старых метрик (data retention)${NC}"
 echo -e "${CYAN}   • Расширенная аутентификация (logout, refresh, смена пароля)${NC}"
+echo -e "${GREEN}   👨‍💼 ОПТИМИЗИРОВАННЫЕ АДМИНСКИЕ API:${NC}"
+echo -e "${CYAN}   • Быстрая пагинация и поиск зданий/контроллеров/метрик${NC}"
+echo -e "${CYAN}   • Массовые операции (batch) для всех сущностей${NC}"
+echo -e "${CYAN}   • Глобальный поиск по всем типам данных${NC}"
+echo -e "${CYAN}   • Статистика для админского дашборда${NC}"
+echo -e "${CYAN}   • Экспорт данных в различных форматах (CSV, JSON, Excel)${NC}"
 echo -e "${CYAN}   • Данные для карты${NC}"
 echo -e "${CYAN}   • Обработка ошибок${NC}"
+echo -e "${GREEN}   ⚡ НОВЫЕ СУЩНОСТИ АДМИНКИ:${NC}"
+echo -e "${CYAN}   • Трансформаторы (CRUD + фильтрация + batch операции)${NC}"
+echo -e "${CYAN}   • Линии электропередач (CRUD + фильтрация + batch операции)${NC}"
+echo -e "${CYAN}   • Расширенный поиск по всем 5 типам сущностей${NC}"
+echo -e "${CYAN}   • Экспорт трансформаторов и линий${NC}"
 
 echo -e "\n${YELLOW}📋 Для просмотра документации API: ${API_URL}/api-docs${NC}"
 echo -e "${YELLOW}🏠 Главная страница приложения: ${API_URL}${NC}"

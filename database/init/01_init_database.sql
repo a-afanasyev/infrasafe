@@ -12,6 +12,26 @@ CREATE TABLE alert_types (
     description text
 );
 
+-- Создание таблицы пользователей (для админки и системы алертов)
+CREATE TABLE users (
+    user_id serial PRIMARY KEY,
+    username varchar(50) NOT NULL UNIQUE,
+    email varchar(100) NOT NULL UNIQUE,
+    password_hash varchar(255) NOT NULL,
+    full_name varchar(100),
+    role varchar(20) DEFAULT 'user', -- 'admin', 'operator', 'user'
+    is_active boolean DEFAULT true,
+    created_at timestamptz DEFAULT NOW(),
+    updated_at timestamptz DEFAULT NOW(),
+    last_login timestamptz
+);
+
+-- Индексы для пользователей
+CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_role ON users(role);
+CREATE INDEX idx_users_active ON users(is_active) WHERE is_active = true;
+
 -- Создание таблицы зданий
 CREATE TABLE buildings (
     building_id serial PRIMARY KEY,
@@ -450,7 +470,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ===============================================
--- ИНДЕКСЫ ДЛЯ ПОИСКА
+-- ИНДЕКСЫ ДЛЯ ПОИСКА И ОПТИМИЗАЦИИ АДМИНКИ
 -- ===============================================
 
 -- Полнотекстовый поиск для адресов зданий
@@ -460,9 +480,159 @@ CREATE INDEX idx_buildings_address_gin ON buildings USING GIN (to_tsvector('russ
 CREATE INDEX idx_infrastructure_alerts_active ON infrastructure_alerts(status, created_at DESC) WHERE status = 'active';
 
 -- ===============================================
+-- ДОПОЛНИТЕЛЬНЫЕ ИНДЕКСЫ ДЛЯ ОПТИМИЗАЦИИ АДМИНКИ
+-- ===============================================
+
+-- Индексы для зданий (поиск и сортировка в админке)
+CREATE INDEX IF NOT EXISTS idx_buildings_name ON buildings(name);
+CREATE INDEX IF NOT EXISTS idx_buildings_region ON buildings(region);
+CREATE INDEX IF NOT EXISTS idx_buildings_management_company ON buildings(management_company);
+
+-- Композитные индексы для эффективной сортировки в админке
+CREATE INDEX IF NOT EXISTS idx_buildings_name_id ON buildings(name, building_id);
+CREATE INDEX IF NOT EXISTS idx_buildings_town_id ON buildings(town, building_id);
+CREATE INDEX IF NOT EXISTS idx_buildings_region_id ON buildings(region, building_id);
+
+-- Индексы для контроллеров (расширенные для админки)
+CREATE INDEX IF NOT EXISTS idx_controllers_vendor ON controllers(vendor);
+CREATE INDEX IF NOT EXISTS idx_controllers_model ON controllers(model);
+CREATE INDEX IF NOT EXISTS idx_controllers_serial ON controllers(serial_number);
+
+-- Композитные индексы для сортировки контроллеров
+CREATE INDEX IF NOT EXISTS idx_controllers_status_id ON controllers(status, controller_id);
+CREATE INDEX IF NOT EXISTS idx_controllers_vendor_id ON controllers(vendor, controller_id);
+CREATE INDEX IF NOT EXISTS idx_controllers_building_status ON controllers(building_id, status);
+
+-- Критически важные индексы для метрик (производительность админки)
+CREATE INDEX IF NOT EXISTS idx_metrics_controller_timestamp ON metrics(controller_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_metrics_timestamp_controller ON metrics(timestamp DESC, controller_id);
+
+-- Индекс для получения последних метрик по контроллеру (часто используется в админке)
+CREATE INDEX IF NOT EXISTS idx_metrics_controller_latest ON metrics(controller_id, timestamp DESC, metric_id);
+
+-- Индексы для инфраструктурных объектов (для админки инфраструктуры)
+CREATE INDEX IF NOT EXISTS idx_power_transformers_name ON power_transformers(name);
+CREATE INDEX IF NOT EXISTS idx_cold_water_sources_name ON cold_water_sources(name);
+CREATE INDEX IF NOT EXISTS idx_heat_sources_name ON heat_sources(name);
+
+-- Частичные индексы для активных записей (экономия места и скорость)
+CREATE INDEX IF NOT EXISTS idx_controllers_active_status ON controllers(controller_id, status) 
+WHERE status IN ('online', 'maintenance');
+
+-- Функциональные индексы для поиска (без учета регистра)
+CREATE INDEX IF NOT EXISTS idx_buildings_name_lower ON buildings(LOWER(name));
+CREATE INDEX IF NOT EXISTS idx_buildings_address_lower ON buildings(LOWER(address));
+CREATE INDEX IF NOT EXISTS idx_controllers_serial_lower ON controllers(LOWER(serial_number));
+
+-- Индексы для статистики и аналитики в админке
+CREATE INDEX IF NOT EXISTS idx_metrics_hourly_stats ON metrics(
+    DATE_TRUNC('hour', timestamp), 
+    controller_id, 
+    electricity_ph1, 
+    electricity_ph2, 
+    electricity_ph3
+);
+
+-- Дополнительные индексы для системы алертов
+CREATE INDEX IF NOT EXISTS idx_infrastructure_alerts_building_ref ON infrastructure_alerts(
+    infrastructure_id, infrastructure_type
+) WHERE infrastructure_type = 'building';
+
+-- Индекс для быстрого подсчета статистики в админке
+CREATE INDEX IF NOT EXISTS idx_buildings_stats ON buildings(town, region, management_company);
+CREATE INDEX IF NOT EXISTS idx_controllers_stats ON controllers(status, vendor, building_id);
+
+-- Комментарии для документации новых индексов
+COMMENT ON INDEX idx_buildings_name IS 'Ускоряет поиск зданий по названию в админке';
+COMMENT ON INDEX idx_controllers_serial_lower IS 'Поиск контроллеров по серийному номеру без учета регистра';
+COMMENT ON INDEX idx_metrics_controller_timestamp IS 'Критический индекс для загрузки последних метрик в админке';
+COMMENT ON INDEX idx_controllers_active_status IS 'Частичный индекс только для активных контроллеров';
+COMMENT ON INDEX idx_metrics_hourly_stats IS 'Индекс для агрегированной статистики по часам в админке';
+
+-- ===============================================
+-- ДОПОЛНИТЕЛЬНЫЕ ТАБЛИЦЫ ДЛЯ АДМИНКИ
+-- ===============================================
+
+-- Таблица трансформаторов для CRUD операций в админке
+CREATE TABLE IF NOT EXISTS transformers (
+    transformer_id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    power_kva DECIMAL(10,2) NOT NULL CHECK (power_kva > 0),
+    voltage_kv DECIMAL(10,2) NOT NULL CHECK (voltage_kv > 0),
+    building_id INTEGER REFERENCES buildings(building_id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Таблица линий электропередач для CRUD операций в админке
+CREATE TABLE IF NOT EXISTS lines (
+    line_id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    voltage_kv DECIMAL(10,2) NOT NULL CHECK (voltage_kv > 0),
+    length_km DECIMAL(10,3) NOT NULL CHECK (length_km > 0),
+    transformer_id INTEGER REFERENCES transformers(transformer_id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Комментарии для новых таблиц
+COMMENT ON TABLE transformers IS 'Трансформаторы для электроснабжения зданий (админка)';
+COMMENT ON TABLE lines IS 'Линии электропередач от трансформаторов (админка)';
+
+-- Индексы для оптимизации админки - трансформаторы
+CREATE INDEX IF NOT EXISTS idx_transformers_building_id ON transformers(building_id);
+CREATE INDEX IF NOT EXISTS idx_transformers_name ON transformers(name);
+CREATE INDEX IF NOT EXISTS idx_transformers_name_lower ON transformers(LOWER(name));
+CREATE INDEX IF NOT EXISTS idx_transformers_power ON transformers(power_kva);
+CREATE INDEX IF NOT EXISTS idx_transformers_voltage ON transformers(voltage_kv);
+CREATE INDEX IF NOT EXISTS idx_transformers_created_at ON transformers(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_transformers_stats ON transformers(building_id, power_kva, voltage_kv);
+
+-- Индексы для оптимизации админки - линии электропередач
+CREATE INDEX IF NOT EXISTS idx_lines_transformer_id ON lines(transformer_id);
+CREATE INDEX IF NOT EXISTS idx_lines_name ON lines(name);
+CREATE INDEX IF NOT EXISTS idx_lines_name_lower ON lines(LOWER(name));
+CREATE INDEX IF NOT EXISTS idx_lines_voltage ON lines(voltage_kv);
+CREATE INDEX IF NOT EXISTS idx_lines_length ON lines(length_km);
+CREATE INDEX IF NOT EXISTS idx_lines_created_at ON lines(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_lines_stats ON lines(transformer_id, voltage_kv, length_km);
+
+-- Функция для автоматического обновления updated_at
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Триггеры для автоматического обновления updated_at
+CREATE TRIGGER trigger_transformers_updated_at
+    BEFORE UPDATE ON transformers
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trigger_lines_updated_at
+    BEFORE UPDATE ON lines
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- ===============================================
 -- ЗАВЕРШЕНИЕ ИНИЦИАЛИЗАЦИИ
 -- ===============================================
 
+-- Обновляем статистику таблиц для оптимизатора после создания всех индексов
+ANALYZE users;
+ANALYZE buildings;
+ANALYZE controllers;
+ANALYZE metrics;
+ANALYZE infrastructure_alerts;
+ANALYZE power_transformers;
+ANALYZE cold_water_sources;
+ANALYZE heat_sources;
+ANALYZE transformers;
+ANALYZE lines;
+
 -- Логируем успешную инициализацию
 INSERT INTO logs (timestamp, log_level, message) 
-VALUES (NOW(), 'INFO', 'База данных InfraSafe с PostGIS успешно инициализирована'); 
+VALUES (NOW(), 'INFO', 'База данных InfraSafe с PostGIS и оптимизированными индексами успешно инициализирована'); 

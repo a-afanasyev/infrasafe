@@ -315,5 +315,6 @@ module.exports = {
     resetAllRateLimits,
     analyticsLimiter,
     adminLimiter,
-    crudLimiter
+    crudLimiter,
+    rateLimitStrict: adminLimiter.middleware()
 }; 
