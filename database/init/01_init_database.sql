@@ -129,12 +129,87 @@ CREATE INDEX idx_heat_sources_status ON heat_sources(status);
 CREATE INDEX idx_heat_sources_type ON heat_sources(source_type);
 CREATE INDEX idx_heat_sources_geom ON heat_sources USING GIST(geom);
 
--- Обновление таблицы зданий для связи с инфраструктурой
+-- ===============================================
+-- ТАБЛИЦЫ ВОДОСНАБЖЕНИЯ
+-- ===============================================
+
+-- Таблица линий водоснабжения
+CREATE TABLE water_lines (
+    line_id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    diameter_mm INTEGER CHECK (diameter_mm > 0),
+    material VARCHAR(100),
+    pressure_bar DECIMAL(5,2) CHECK (pressure_bar > 0),
+    installation_date DATE,
+    status VARCHAR(20) DEFAULT 'active',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Таблица поставщиков воды
+CREATE TABLE water_suppliers (
+    supplier_id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    supplier_type VARCHAR(50) NOT NULL, -- 'cold_water', 'hot_water', 'both'
+    contact_person VARCHAR(255),
+    phone VARCHAR(50),
+    email VARCHAR(255),
+    address TEXT,
+    tariff_per_m3 DECIMAL(10,2),
+    contract_number VARCHAR(100),
+    contract_date DATE,
+    status VARCHAR(20) DEFAULT 'active',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Таблица точек измерения воды
+CREATE TABLE water_measurement_points (
+    point_id SERIAL PRIMARY KEY,
+    building_id INTEGER NOT NULL REFERENCES buildings(building_id) ON DELETE CASCADE,
+    point_type VARCHAR(50) NOT NULL, -- 'cold_water', 'hot_water_supply', 'hot_water_return'
+    location VARCHAR(255),
+    meter_serial VARCHAR(100),
+    installation_date DATE,
+    last_reading DECIMAL(10,3),
+    last_reading_date DATE,
+    status VARCHAR(20) DEFAULT 'active',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Индексы для водоснабжения
+CREATE INDEX idx_water_lines_name ON water_lines(name);
+CREATE INDEX idx_water_lines_status ON water_lines(status);
+CREATE INDEX idx_water_suppliers_name ON water_suppliers(name);
+CREATE INDEX idx_water_suppliers_type ON water_suppliers(supplier_type);
+CREATE INDEX idx_water_suppliers_status ON water_suppliers(status);
+CREATE INDEX idx_water_measurement_points_building ON water_measurement_points(building_id);
+CREATE INDEX idx_water_measurement_points_type ON water_measurement_points(point_type);
+
+-- ===============================================
+-- ОБНОВЛЕНИЕ ТАБЛИЦЫ ЗДАНИЙ ДЛЯ НОВОЙ АРХИТЕКТУРЫ
+-- ===============================================
+
+-- Добавляем поля для связи с инфраструктурой (старые связи)
 ALTER TABLE buildings ADD COLUMN power_transformer_id varchar(50);
 ALTER TABLE buildings ADD COLUMN cold_water_source_id varchar(50);
 ALTER TABLE buildings ADD COLUMN heat_source_id varchar(50);
 
--- Добавление внешних ключей
+-- Добавляем поля для новой архитектуры (здания → трансформаторы/линии)
+ALTER TABLE buildings ADD COLUMN primary_transformer_id INTEGER;
+ALTER TABLE buildings ADD COLUMN backup_transformer_id INTEGER;
+ALTER TABLE buildings ADD COLUMN primary_line_id INTEGER;
+ALTER TABLE buildings ADD COLUMN backup_line_id INTEGER;
+
+-- Добавляем поля для водоснабжения
+ALTER TABLE buildings ADD COLUMN cold_water_line_id INTEGER;
+ALTER TABLE buildings ADD COLUMN hot_water_line_id INTEGER;
+ALTER TABLE buildings ADD COLUMN cold_water_supplier_id INTEGER;
+ALTER TABLE buildings ADD COLUMN hot_water_supplier_id INTEGER;
+
+-- Добавление внешних ключей (старые связи)
 ALTER TABLE buildings ADD CONSTRAINT fk_buildings_power_transformer 
     FOREIGN KEY (power_transformer_id) REFERENCES power_transformers(id);
 ALTER TABLE buildings ADD CONSTRAINT fk_buildings_cold_water_source 
@@ -142,10 +217,42 @@ ALTER TABLE buildings ADD CONSTRAINT fk_buildings_cold_water_source
 ALTER TABLE buildings ADD CONSTRAINT fk_buildings_heat_source 
     FOREIGN KEY (heat_source_id) REFERENCES heat_sources(id);
 
--- Индексы для связей
+-- Добавление внешних ключей (новая архитектура)
+ALTER TABLE buildings ADD CONSTRAINT fk_buildings_primary_transformer 
+    FOREIGN KEY (primary_transformer_id) REFERENCES transformers(transformer_id);
+ALTER TABLE buildings ADD CONSTRAINT fk_buildings_backup_transformer 
+    FOREIGN KEY (backup_transformer_id) REFERENCES transformers(transformer_id);
+ALTER TABLE buildings ADD CONSTRAINT fk_buildings_primary_line 
+    FOREIGN KEY (primary_line_id) REFERENCES lines(line_id);
+ALTER TABLE buildings ADD CONSTRAINT fk_buildings_backup_line 
+    FOREIGN KEY (backup_line_id) REFERENCES lines(line_id);
+
+-- Добавление внешних ключей для водоснабжения
+ALTER TABLE buildings ADD CONSTRAINT fk_buildings_cold_water_line 
+    FOREIGN KEY (cold_water_line_id) REFERENCES water_lines(line_id);
+ALTER TABLE buildings ADD CONSTRAINT fk_buildings_hot_water_line 
+    FOREIGN KEY (hot_water_line_id) REFERENCES water_lines(line_id);
+ALTER TABLE buildings ADD CONSTRAINT fk_buildings_cold_water_supplier 
+    FOREIGN KEY (cold_water_supplier_id) REFERENCES water_suppliers(supplier_id);
+ALTER TABLE buildings ADD CONSTRAINT fk_buildings_hot_water_supplier 
+    FOREIGN KEY (hot_water_supplier_id) REFERENCES water_suppliers(supplier_id);
+
+-- Индексы для связей (старые)
 CREATE INDEX idx_buildings_power_transformer ON buildings(power_transformer_id);
 CREATE INDEX idx_buildings_cold_water_source ON buildings(cold_water_source_id);
 CREATE INDEX idx_buildings_heat_source ON buildings(heat_source_id);
+
+-- Индексы для связей (новая архитектура)
+CREATE INDEX idx_buildings_primary_transformer ON buildings(primary_transformer_id);
+CREATE INDEX idx_buildings_backup_transformer ON buildings(backup_transformer_id);
+CREATE INDEX idx_buildings_primary_line ON buildings(primary_line_id);
+CREATE INDEX idx_buildings_backup_line ON buildings(backup_line_id);
+
+-- Индексы для водоснабжения
+CREATE INDEX idx_buildings_cold_water_line ON buildings(cold_water_line_id);
+CREATE INDEX idx_buildings_hot_water_line ON buildings(hot_water_line_id);
+CREATE INDEX idx_buildings_cold_water_supplier ON buildings(cold_water_supplier_id);
+CREATE INDEX idx_buildings_hot_water_supplier ON buildings(hot_water_supplier_id);
 
 -- Создание таблицы контроллеров
 CREATE TABLE controllers (
@@ -559,7 +666,11 @@ CREATE TABLE IF NOT EXISTS transformers (
     name VARCHAR(255) NOT NULL,
     power_kva DECIMAL(10,2) NOT NULL CHECK (power_kva > 0),
     voltage_kv DECIMAL(10,2) NOT NULL CHECK (voltage_kv > 0),
-    building_id INTEGER REFERENCES buildings(building_id) ON DELETE SET NULL,
+    location VARCHAR(255),
+    installation_date DATE,
+    manufacturer VARCHAR(100),
+    model VARCHAR(100),
+    status VARCHAR(20) DEFAULT 'active',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -578,15 +689,19 @@ CREATE TABLE IF NOT EXISTS lines (
 -- Комментарии для новых таблиц
 COMMENT ON TABLE transformers IS 'Трансформаторы для электроснабжения зданий (админка)';
 COMMENT ON TABLE lines IS 'Линии электропередач от трансформаторов (админка)';
+COMMENT ON TABLE water_lines IS 'Линии водоснабжения (ХВС и ГВС)';
+COMMENT ON TABLE water_suppliers IS 'Поставщики холодной и горячей воды';
+COMMENT ON TABLE water_measurement_points IS 'Точки измерения расхода воды в зданиях';
 
 -- Индексы для оптимизации админки - трансформаторы
-CREATE INDEX IF NOT EXISTS idx_transformers_building_id ON transformers(building_id);
 CREATE INDEX IF NOT EXISTS idx_transformers_name ON transformers(name);
 CREATE INDEX IF NOT EXISTS idx_transformers_name_lower ON transformers(LOWER(name));
 CREATE INDEX IF NOT EXISTS idx_transformers_power ON transformers(power_kva);
 CREATE INDEX IF NOT EXISTS idx_transformers_voltage ON transformers(voltage_kv);
+CREATE INDEX IF NOT EXISTS idx_transformers_status ON transformers(status);
+CREATE INDEX IF NOT EXISTS idx_transformers_manufacturer ON transformers(manufacturer);
 CREATE INDEX IF NOT EXISTS idx_transformers_created_at ON transformers(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_transformers_stats ON transformers(building_id, power_kva, voltage_kv);
+CREATE INDEX IF NOT EXISTS idx_transformers_stats ON transformers(power_kva, voltage_kv, status);
 
 -- Индексы для оптимизации админки - линии электропередач
 CREATE INDEX IF NOT EXISTS idx_lines_transformer_id ON lines(transformer_id);
@@ -617,6 +732,21 @@ CREATE TRIGGER trigger_lines_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER trigger_water_lines_updated_at
+    BEFORE UPDATE ON water_lines
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trigger_water_suppliers_updated_at
+    BEFORE UPDATE ON water_suppliers
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trigger_water_measurement_points_updated_at
+    BEFORE UPDATE ON water_measurement_points
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
 -- ===============================================
 -- ЗАВЕРШЕНИЕ ИНИЦИАЛИЗАЦИИ
 -- ===============================================
@@ -632,6 +762,9 @@ ANALYZE cold_water_sources;
 ANALYZE heat_sources;
 ANALYZE transformers;
 ANALYZE lines;
+ANALYZE water_lines;
+ANALYZE water_suppliers;
+ANALYZE water_measurement_points;
 
 -- Логируем успешную инициализацию
 INSERT INTO logs (timestamp, log_level, message) 

@@ -8,12 +8,13 @@ class Transformer {
         this.name = data.name;
         this.power_kva = data.power_kva;
         this.voltage_kv = data.voltage_kv;
-        this.building_id = data.building_id;
         this.created_at = data.created_at;
         this.updated_at = data.updated_at;
+        this.primary_buildings = data.primary_buildings || [];
+        this.backup_buildings = data.backup_buildings || [];
     }
 
-    // Получить все трансформаторы с пагинацией
+    // Получить все трансформаторы с пагинацией и списком обслуживаемых зданий
     static async findAll(page = 1, limit = 10, filters = {}) {
         try {
             const offset = (page - 1) * limit;
@@ -26,26 +27,20 @@ class Transformer {
             
             if (filters.name) {
                 paramCount++;
-                conditions.push(`name ILIKE $${paramCount}`);
+                conditions.push(`t.name ILIKE $${paramCount}`);
                 values.push(`%${filters.name}%`);
             }
             
             if (filters.power_kva) {
                 paramCount++;
-                conditions.push(`power_kva >= $${paramCount}`);
+                conditions.push(`t.power_kva >= $${paramCount}`);
                 values.push(filters.power_kva);
             }
             
             if (filters.voltage_kv) {
                 paramCount++;
-                conditions.push(`voltage_kv = $${paramCount}`);
+                conditions.push(`t.voltage_kv = $${paramCount}`);
                 values.push(filters.voltage_kv);
-            }
-            
-            if (filters.building_id) {
-                paramCount++;
-                conditions.push(`building_id = $${paramCount}`);
-                values.push(filters.building_id);
             }
 
             if (conditions.length > 0) {
@@ -53,15 +48,28 @@ class Transformer {
             }
 
             // Запрос для получения общего количества
-            const countQuery = `SELECT COUNT(*) FROM transformers ${whereClause}`;
+            const countQuery = `SELECT COUNT(*) FROM transformers t ${whereClause}`;
             const countResult = await db.query(countQuery, values);
             const total = parseInt(countResult.rows[0].count);
 
-            // Запрос для получения данных с пагинацией
+            // Запрос для получения данных с пагинацией и списком зданий
             const dataQuery = `
-                SELECT * FROM transformers 
+                SELECT 
+                    t.*,
+                    COALESCE(
+                        array_agg(DISTINCT pb.name) FILTER (WHERE pb.name IS NOT NULL), 
+                        '{}'
+                    ) as primary_buildings,
+                    COALESCE(
+                        array_agg(DISTINCT bb.name) FILTER (WHERE bb.name IS NOT NULL), 
+                        '{}'
+                    ) as backup_buildings
+                FROM transformers t
+                LEFT JOIN buildings pb ON t.transformer_id = pb.primary_transformer_id
+                LEFT JOIN buildings bb ON t.transformer_id = bb.backup_transformer_id
                 ${whereClause}
-                ORDER BY transformer_id 
+                GROUP BY t.transformer_id
+                ORDER BY t.transformer_id 
                 LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
             `;
             values.push(limit, offset);
@@ -105,13 +113,13 @@ class Transformer {
     // Создать новый трансформатор
     static async create(transformerData) {
         try {
-            const { name, power_kva, voltage_kv, building_id } = transformerData;
+            const { name, power_kva, voltage_kv } = transformerData;
             
             const { rows } = await db.query(
-                `INSERT INTO transformers (name, power_kva, voltage_kv, building_id)
-                VALUES ($1, $2, $3, $4) 
+                `INSERT INTO transformers (name, power_kva, voltage_kv)
+                VALUES ($1, $2, $3) 
                 RETURNING *`,
-                [name, power_kva, voltage_kv, building_id]
+                [name, power_kva, voltage_kv]
             );
             
             logger.info(`Created transformer: ${name}`);
@@ -125,14 +133,14 @@ class Transformer {
     // Обновить трансформатор
     static async update(id, transformerData) {
         try {
-            const { name, power_kva, voltage_kv, building_id } = transformerData;
+            const { name, power_kva, voltage_kv } = transformerData;
             
             const { rows } = await db.query(
                 `UPDATE transformers 
-                SET name = $1, power_kva = $2, voltage_kv = $3, building_id = $4, updated_at = NOW()
-                WHERE transformer_id = $5 
+                SET name = $1, power_kva = $2, voltage_kv = $3, updated_at = NOW()
+                WHERE transformer_id = $4 
                 RETURNING *`,
-                [name, power_kva, voltage_kv, building_id, id]
+                [name, power_kva, voltage_kv, id]
             );
             
             if (!rows.length) {
@@ -167,11 +175,13 @@ class Transformer {
         }
     }
 
-    // Найти трансформаторы по building_id
+    // Найти трансформаторы обслуживающие здание
     static async findByBuildingId(buildingId) {
         try {
             const { rows } = await db.query(
-                'SELECT * FROM transformers WHERE building_id = $1',
+                `SELECT DISTINCT t.* FROM transformers t
+                 LEFT JOIN buildings b ON (t.transformer_id = b.primary_transformer_id OR t.transformer_id = b.backup_transformer_id)
+                 WHERE b.building_id = $1`,
                 [buildingId]
             );
             

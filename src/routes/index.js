@@ -9,6 +9,10 @@ const alertRoutes = require('./alertRoutes');
 const adminRoutes = require('./adminRoutes');
 const transformerRoutes = require('./transformerRoutes');
 const lineRoutes = require('./lineRoutes');
+const waterSourceRoutes = require('./waterSourceRoutes');
+const heatSourceRoutes = require('./heatSourceRoutes');
+const waterLineRoutes = require('./waterLineRoutes');
+const waterSupplierRoutes = require('./waterSupplierRoutes');
 const metricController = require('../controllers/metricController');
 const { authenticateJWT } = require('../middleware/auth');
 const { createError } = require('../utils/helpers');
@@ -127,6 +131,10 @@ router.get('/', (req, res) => {
             '/api/controllers - Управление контроллерами',
             '/api/transformers - Управление трансформаторами',
             '/api/lines - Управление линиями электропередач',
+            '/api/cold-water-sources - Управление источниками воды',
+            '/api/heat-sources - Управление источниками тепла',
+            '/api/water-lines - Управление водными линиями',
+            '/api/water-suppliers - Управление поставщиками воды',
             '/api/metrics - Получение метрик',
             '/api/analytics - Аналитика и инфраструктурные объекты',
             '/api/alerts - Система алертов и уведомлений',
@@ -143,6 +151,10 @@ router.use('/buildings', buildingRoutes);
 router.use('/controllers', controllerRoutes);
 router.use('/transformers', transformerRoutes);
 router.use('/lines', lineRoutes);
+router.use('/cold-water-sources', waterSourceRoutes);
+router.use('/heat-sources', heatSourceRoutes);
+router.use('/water-lines', waterLineRoutes);
+router.use('/water-suppliers', waterSupplierRoutes);
 router.use('/metrics', metricRoutes);
 router.use('/buildings-metrics', buildingMetricsRoutes);
 router.use('/analytics', analyticsRoutes);

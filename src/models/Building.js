@@ -21,9 +21,27 @@ class Building {
             const sortColumn = validColumns.includes(sort) ? sort : 'building_id';
             
             const { rows: buildings } = await db.query(
-                `SELECT * FROM buildings 
-                 ORDER BY ${sortColumn} ${validOrder} 
-                 LIMIT $1 OFFSET $2`,
+                `SELECT 
+                    b.*,
+                    pt.name as primary_transformer_name,
+                    bt.name as backup_transformer_name,
+                    pl.name as primary_line_name,
+                    bl.name as backup_line_name,
+                    cwl.name as cold_water_line_name,
+                    hwl.name as hot_water_line_name,
+                    cws.name as cold_water_supplier_name,
+                    hws.name as hot_water_supplier_name
+                FROM buildings b
+                LEFT JOIN transformers pt ON b.primary_transformer_id = pt.transformer_id
+                LEFT JOIN transformers bt ON b.backup_transformer_id = bt.transformer_id
+                LEFT JOIN lines pl ON b.primary_line_id = pl.line_id
+                LEFT JOIN lines bl ON b.backup_line_id = bl.line_id
+                LEFT JOIN water_lines cwl ON b.cold_water_line_id = cwl.line_id
+                LEFT JOIN water_lines hwl ON b.hot_water_line_id = hwl.line_id
+                LEFT JOIN water_suppliers cws ON b.cold_water_supplier_id = cws.supplier_id
+                LEFT JOIN water_suppliers hws ON b.hot_water_supplier_id = hws.supplier_id
+                ORDER BY b.${sortColumn} ${validOrder} 
+                LIMIT $1 OFFSET $2`,
                 [limit, offset]
             );
             
@@ -53,7 +71,26 @@ class Building {
     static async findById(id) {
         try {
             const { rows } = await db.query(
-                'SELECT * FROM buildings WHERE building_id = $1',
+                `SELECT 
+                    b.*,
+                    pt.name as primary_transformer_name,
+                    bt.name as backup_transformer_name,
+                    pl.name as primary_line_name,
+                    bl.name as backup_line_name,
+                    cwl.name as cold_water_line_name,
+                    hwl.name as hot_water_line_name,
+                    cws.name as cold_water_supplier_name,
+                    hws.name as hot_water_supplier_name
+                FROM buildings b
+                LEFT JOIN transformers pt ON b.primary_transformer_id = pt.transformer_id
+                LEFT JOIN transformers bt ON b.backup_transformer_id = bt.transformer_id
+                LEFT JOIN lines pl ON b.primary_line_id = pl.line_id
+                LEFT JOIN lines bl ON b.backup_line_id = bl.line_id
+                LEFT JOIN water_lines cwl ON b.cold_water_line_id = cwl.line_id
+                LEFT JOIN water_lines hwl ON b.hot_water_line_id = hwl.line_id
+                LEFT JOIN water_suppliers cws ON b.cold_water_supplier_id = cws.supplier_id
+                LEFT JOIN water_suppliers hws ON b.hot_water_supplier_id = hws.supplier_id
+                WHERE b.building_id = $1`,
                 [id]
             );
             return rows.length ? rows[0] : null;
@@ -70,14 +107,22 @@ class Building {
      */
     static async create(buildingData) {
         try {
-            const { name, address, town, latitude, longitude, management_company, region, hot_water } = buildingData;
+            const { 
+                name, address, town, latitude, longitude, management_company, region, hot_water,
+                primary_transformer_id, backup_transformer_id, primary_line_id, backup_line_id,
+                cold_water_line_id, hot_water_line_id, cold_water_supplier_id, hot_water_supplier_id
+            } = buildingData;
             
             const { rows } = await db.query(
                 `INSERT INTO buildings 
-                (name, address, town, latitude, longitude, management_company, region, hot_water) 
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+                (name, address, town, latitude, longitude, management_company, region, hot_water,
+                 primary_transformer_id, backup_transformer_id, primary_line_id, backup_line_id,
+                 cold_water_line_id, hot_water_line_id, cold_water_supplier_id, hot_water_supplier_id) 
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) 
                 RETURNING *`,
-                [name, address, town, latitude, longitude, management_company, region, hot_water]
+                [name, address, town, latitude, longitude, management_company, region, hot_water,
+                 primary_transformer_id, backup_transformer_id, primary_line_id, backup_line_id,
+                 cold_water_line_id, hot_water_line_id, cold_water_supplier_id, hot_water_supplier_id]
             );
             
             logger.info(`Created new building with ID: ${rows[0].building_id}`);
@@ -96,15 +141,25 @@ class Building {
      */
     static async update(id, buildingData) {
         try {
-            const { name, address, town, latitude, longitude, management_company, region, hot_water } = buildingData;
+            const { 
+                name, address, town, latitude, longitude, management_company, region, hot_water,
+                primary_transformer_id, backup_transformer_id, primary_line_id, backup_line_id,
+                cold_water_line_id, hot_water_line_id, cold_water_supplier_id, hot_water_supplier_id
+            } = buildingData;
             
             const { rows } = await db.query(
                 `UPDATE buildings 
                 SET name = $1, address = $2, town = $3, latitude = $4, longitude = $5, 
-                    management_company = $6, region = $7, hot_water = $8
-                WHERE building_id = $9 
+                    management_company = $6, region = $7, hot_water = $8,
+                    primary_transformer_id = $9, backup_transformer_id = $10,
+                    primary_line_id = $11, backup_line_id = $12,
+                    cold_water_line_id = $13, hot_water_line_id = $14, 
+                    cold_water_supplier_id = $15, hot_water_supplier_id = $16
+                WHERE building_id = $17 
                 RETURNING *`,
-                [name, address, town, latitude, longitude, management_company, region, hot_water, id]
+                [name, address, town, latitude, longitude, management_company, region, hot_water,
+                 primary_transformer_id, backup_transformer_id, primary_line_id, backup_line_id,
+                 cold_water_line_id, hot_water_line_id, cold_water_supplier_id, hot_water_supplier_id, id]
             );
             
             if (!rows.length) {

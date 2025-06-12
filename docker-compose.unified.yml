@@ -41,9 +41,9 @@ services:
       - leaflet-network
     restart: unless-stopped
 
-  # База данных PostgreSQL
+  # База данных PostgreSQL с PostGIS
   postgres:
-    image: postgres:15
+    image: postgis/postgis:15-3.3
     ports:
       - "5432:5432"
     environment:

@@ -767,4 +767,204 @@ router.delete('/lines/:id', rateLimitStrict, adminController.deleteLine);
  */
 router.post('/lines/batch', rateLimitStrict, adminController.batchLinesOperation);
 
+/**
+ * @swagger
+ * /admin/water-lines:
+ *   get:
+ *     summary: Получить линии водоснабжения для админки (оптимизированный)
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *           maximum: 200
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [line_id, name, diameter_mm, pressure_bar, status]
+ *           default: line_id
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: asc
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Поиск по названию
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [ХВС, ГВС]
+ *         description: Фильтр по типу (ХВС/ГВС)
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [active, maintenance, inactive]
+ *         description: Фильтр по статусу
+ *       - in: query
+ *         name: material
+ *         schema:
+ *           type: string
+ *         description: Фильтр по материалу
+ *       - in: query
+ *         name: diameter_min
+ *         schema:
+ *           type: integer
+ *         description: Минимальный диаметр (мм)
+ *       - in: query
+ *         name: diameter_max
+ *         schema:
+ *           type: integer
+ *         description: Максимальный диаметр (мм)
+ *     responses:
+ *       200:
+ *         description: Список линий водоснабжения с метаданными
+ *   post:
+ *     summary: Создать новую линию водоснабжения
+ *     tags: [Admin]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - diameter_mm
+ *               - material
+ *               - pressure_bar
+ *             properties:
+ *               name:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               diameter_mm:
+ *                 type: integer
+ *               material:
+ *                 type: string
+ *               pressure_bar:
+ *                 type: number
+ *               installation_date:
+ *                 type: string
+ *                 format: date
+ *               status:
+ *                 type: string
+ *                 enum: [active, maintenance, inactive]
+ *     responses:
+ *       201:
+ *         description: Линия водоснабжения создана
+ */
+router.get('/water-lines', adminController.getOptimizedWaterLines);
+router.post('/water-lines', rateLimitStrict, adminController.createWaterLine);
+
+/**
+ * @swagger
+ * /admin/water-lines/{id}:
+ *   get:
+ *     summary: Получить линию водоснабжения по ID
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Данные линии водоснабжения
+ *       404:
+ *         description: Линия не найдена
+ *   put:
+ *     summary: Обновить линию водоснабжения
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               diameter_mm:
+ *                 type: integer
+ *               material:
+ *                 type: string
+ *               pressure_bar:
+ *                 type: number
+ *               installation_date:
+ *                 type: string
+ *                 format: date
+ *               status:
+ *                 type: string
+ *                 enum: [active, maintenance, inactive]
+ *     responses:
+ *       200:
+ *         description: Линия водоснабжения обновлена
+ *   delete:
+ *     summary: Удалить линию водоснабжения
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Линия водоснабжения удалена
+ */
+router.get('/water-lines/:id', adminController.getWaterLineById);
+router.put('/water-lines/:id', rateLimitStrict, adminController.updateWaterLine);
+router.delete('/water-lines/:id', rateLimitStrict, adminController.deleteWaterLine);
+
+/**
+ * @swagger
+ * /admin/water-lines/batch:
+ *   post:
+ *     summary: Массовые операции с линиями водоснабжения
+ *     tags: [Admin]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               action:
+ *                 type: string
+ *                 enum: [delete, update_status, set_maintenance, export]
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *               data:
+ *                 type: object
+ *     responses:
+ *       200:
+ *         description: Результат массовой операции
+ */
+router.post('/water-lines/batch', rateLimitStrict, adminController.batchWaterLinesOperation);
+
 module.exports = router; 

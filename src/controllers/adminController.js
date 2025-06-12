@@ -845,6 +845,332 @@ class AdminController {
             next(createError(`Batch operation failed: ${error.message}`, 500));
         }
     }
+
+    // ===============================================
+    // МЕТОДЫ ДЛЯ ЛИНИЙ ВОДОСНАБЖЕНИЯ
+    // ===============================================
+
+    // Оптимизированное получение линий водоснабжения
+    async getOptimizedWaterLines(req, res, next) {
+        try {
+            const {
+                page = 1,
+                limit = 50,
+                sort = 'line_id',
+                order = 'asc',
+                search,
+                type,
+                status,
+                material,
+                diameter_min,
+                diameter_max
+            } = req.query;
+
+            const pageNum = Math.max(1, parseInt(page));
+            const limitNum = Math.min(Math.max(1, parseInt(limit)), 200);
+            const offset = (pageNum - 1) * limitNum;
+
+            let query = `
+                SELECT wl.*, 
+                       COUNT(DISTINCT b.building_id) as connected_buildings_count,
+                       ARRAY_AGG(DISTINCT b.name) FILTER (WHERE b.name IS NOT NULL) as connected_buildings
+                FROM water_lines wl
+                LEFT JOIN buildings b ON (wl.line_id = b.cold_water_line_id OR wl.line_id = b.hot_water_line_id)
+            `;
+            let countQuery = 'SELECT COUNT(*) FROM water_lines wl';
+            let params = [];
+            let whereConditions = [];
+
+            if (search) {
+                whereConditions.push('wl.name ILIKE $' + (params.length + 1));
+                params.push(`%${search}%`);
+            }
+            if (type) {
+                whereConditions.push('wl.name ILIKE $' + (params.length + 1));
+                params.push(`%${type}%`);
+            }
+            if (status) {
+                whereConditions.push('wl.status = $' + (params.length + 1));
+                params.push(status);
+            }
+            if (material) {
+                whereConditions.push('wl.material ILIKE $' + (params.length + 1));
+                params.push(`%${material}%`);
+            }
+            if (diameter_min) {
+                whereConditions.push('wl.diameter_mm >= $' + (params.length + 1));
+                params.push(parseInt(diameter_min));
+            }
+            if (diameter_max) {
+                whereConditions.push('wl.diameter_mm <= $' + (params.length + 1));
+                params.push(parseInt(diameter_max));
+            }
+
+            if (whereConditions.length > 0) {
+                const whereClause = ' WHERE ' + whereConditions.join(' AND ');
+                query += whereClause;
+                countQuery += whereClause;
+            }
+
+            query += ` GROUP BY wl.line_id ORDER BY wl.${sort} ${order.toUpperCase()} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+            params.push(limitNum, offset);
+
+            const [dataResult, countResult] = await Promise.all([
+                pool.query(query, params),
+                pool.query(countQuery, params.slice(0, -2))
+            ]);
+
+            const result = {
+                data: dataResult.rows,
+                pagination: {
+                    total: parseInt(countResult.rows[0].count),
+                    page: pageNum,
+                    limit: limitNum,
+                    totalPages: Math.ceil(parseInt(countResult.rows[0].count) / limitNum)
+                }
+            };
+
+            res.json(result);
+
+        } catch (error) {
+            logger.error(`Error in getOptimizedWaterLines: ${error.message}`);
+            next(createError(`Failed to get water lines: ${error.message}`, 500));
+        }
+    }
+
+    // Создание новой линии водоснабжения
+    async createWaterLine(req, res, next) {
+        try {
+            const { 
+                name, 
+                description, 
+                diameter_mm, 
+                material, 
+                pressure_bar, 
+                installation_date, 
+                status = 'active' 
+            } = req.body;
+
+            if (!name || !diameter_mm || !material || !pressure_bar) {
+                return next(createError('Name, diameter_mm, material, and pressure_bar are required', 400));
+            }
+
+            const query = `
+                INSERT INTO water_lines (name, description, diameter_mm, material, pressure_bar, installation_date, status)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                RETURNING *
+            `;
+
+            const result = await pool.query(query, [
+                name, description, diameter_mm, material, pressure_bar, installation_date, status
+            ]);
+
+            res.status(201).json({
+                success: true,
+                data: result.rows[0],
+                message: 'Water line created successfully'
+            });
+
+        } catch (error) {
+            logger.error(`Error in createWaterLine: ${error.message}`);
+            next(createError(`Failed to create water line: ${error.message}`, 500));
+        }
+    }
+
+    // Получение линии водоснабжения по ID
+    async getWaterLineById(req, res, next) {
+        try {
+            const { id } = req.params;
+
+            const query = `
+                SELECT wl.*, 
+                       COUNT(DISTINCT b.building_id) as connected_buildings_count,
+                       ARRAY_AGG(DISTINCT b.name) FILTER (WHERE b.name IS NOT NULL) as connected_buildings
+                FROM water_lines wl
+                LEFT JOIN buildings b ON (wl.line_id = b.cold_water_line_id OR wl.line_id = b.hot_water_line_id)
+                WHERE wl.line_id = $1
+                GROUP BY wl.line_id
+            `;
+
+            const result = await pool.query(query, [id]);
+
+            if (result.rows.length === 0) {
+                return next(createError('Water line not found', 404));
+            }
+
+            res.json({
+                success: true,
+                data: result.rows[0]
+            });
+
+        } catch (error) {
+            logger.error(`Error in getWaterLineById: ${error.message}`);
+            next(createError(`Failed to get water line: ${error.message}`, 500));
+        }
+    }
+
+    // Обновление линии водоснабжения
+    async updateWaterLine(req, res, next) {
+        try {
+            const { id } = req.params;
+            const { 
+                name, 
+                description, 
+                diameter_mm, 
+                material, 
+                pressure_bar, 
+                installation_date, 
+                status 
+            } = req.body;
+
+            const updateFields = [];
+            const params = [];
+            let paramIndex = 1;
+
+            if (name !== undefined) {
+                updateFields.push(`name = $${paramIndex++}`);
+                params.push(name);
+            }
+            if (description !== undefined) {
+                updateFields.push(`description = $${paramIndex++}`);
+                params.push(description);
+            }
+            if (diameter_mm !== undefined) {
+                updateFields.push(`diameter_mm = $${paramIndex++}`);
+                params.push(diameter_mm);
+            }
+            if (material !== undefined) {
+                updateFields.push(`material = $${paramIndex++}`);
+                params.push(material);
+            }
+            if (pressure_bar !== undefined) {
+                updateFields.push(`pressure_bar = $${paramIndex++}`);
+                params.push(pressure_bar);
+            }
+            if (installation_date !== undefined) {
+                updateFields.push(`installation_date = $${paramIndex++}`);
+                params.push(installation_date);
+            }
+            if (status !== undefined) {
+                updateFields.push(`status = $${paramIndex++}`);
+                params.push(status);
+            }
+
+            if (updateFields.length === 0) {
+                return next(createError('No fields to update', 400));
+            }
+
+            updateFields.push(`updated_at = NOW()`);
+            params.push(id);
+
+            const query = `
+                UPDATE water_lines 
+                SET ${updateFields.join(', ')}
+                WHERE line_id = $${paramIndex}
+                RETURNING *
+            `;
+
+            const result = await pool.query(query, params);
+
+            if (result.rows.length === 0) {
+                return next(createError('Water line not found', 404));
+            }
+
+            res.json({
+                success: true,
+                data: result.rows[0],
+                message: 'Water line updated successfully'
+            });
+
+        } catch (error) {
+            logger.error(`Error in updateWaterLine: ${error.message}`);
+            next(createError(`Failed to update water line: ${error.message}`, 500));
+        }
+    }
+
+    // Удаление линии водоснабжения
+    async deleteWaterLine(req, res, next) {
+        try {
+            const { id } = req.params;
+
+            // Проверяем, есть ли связанные здания
+            const checkQuery = 'SELECT COUNT(*) FROM buildings WHERE cold_water_line_id = $1 OR hot_water_line_id = $1';
+            const checkResult = await pool.query(checkQuery, [id]);
+            
+            if (parseInt(checkResult.rows[0].count) > 0) {
+                return next(createError('Cannot delete water line: it has connected buildings', 400));
+            }
+
+            const query = 'DELETE FROM water_lines WHERE line_id = $1 RETURNING *';
+            const result = await pool.query(query, [id]);
+
+            if (result.rows.length === 0) {
+                return next(createError('Water line not found', 404));
+            }
+
+            res.json({
+                success: true,
+                message: 'Water line deleted successfully'
+            });
+
+        } catch (error) {
+            logger.error(`Error in deleteWaterLine: ${error.message}`);
+            next(createError(`Failed to delete water line: ${error.message}`, 500));
+        }
+    }
+
+    // Batch операции с линиями водоснабжения
+    async batchWaterLinesOperation(req, res, next) {
+        try {
+            const { action, ids, data } = req.body;
+
+            if (!action || !ids || !Array.isArray(ids)) {
+                return next(createError('Action and ids array are required', 400));
+            }
+
+            let result;
+            switch (action) {
+                case 'delete':
+                    // Проверяем, есть ли связанные здания
+                    const checkQuery = 'SELECT building_id FROM buildings WHERE cold_water_line_id = ANY($1) OR hot_water_line_id = ANY($1)';
+                    const checkResult = await pool.query(checkQuery, [ids]);
+                    
+                    if (checkResult.rows.length > 0) {
+                        return next(createError('Cannot delete water lines: some have connected buildings', 400));
+                    }
+                    
+                    const deleteQuery = 'DELETE FROM water_lines WHERE line_id = ANY($1) RETURNING line_id';
+                    result = await pool.query(deleteQuery, [ids]);
+                    break;
+
+                case 'update_status':
+                    if (!data || !data.status) {
+                        return next(createError('status is required for update_status action', 400));
+                    }
+                    const updateStatusQuery = 'UPDATE water_lines SET status = $1, updated_at = NOW() WHERE line_id = ANY($2) RETURNING line_id';
+                    result = await pool.query(updateStatusQuery, [data.status, ids]);
+                    break;
+
+                case 'set_maintenance':
+                    const maintenanceQuery = 'UPDATE water_lines SET status = \'maintenance\', updated_at = NOW() WHERE line_id = ANY($1) RETURNING line_id';
+                    result = await pool.query(maintenanceQuery, [ids]);
+                    break;
+
+                default:
+                    return next(createError(`Unknown action: ${action}`, 400));
+            }
+
+            res.json({
+                success: true,
+                message: `Batch ${action} completed`,
+                affected: result.rows.length
+            });
+
+        } catch (error) {
+            logger.error(`Error in batchWaterLinesOperation: ${error.message}`);
+            next(createError(`Batch operation failed: ${error.message}`, 500));
+        }
+    }
 }
 
 const adminController = new AdminController();
@@ -874,5 +1200,13 @@ module.exports = {
     getLineById: adminController.getLineById.bind(adminController),
     updateLine: adminController.updateLine.bind(adminController),
     deleteLine: adminController.deleteLine.bind(adminController),
-    batchLinesOperation: adminController.batchLinesOperation.bind(adminController)
+    batchLinesOperation: adminController.batchLinesOperation.bind(adminController),
+    
+    // Линии водоснабжения
+    getOptimizedWaterLines: adminController.getOptimizedWaterLines.bind(adminController),
+    createWaterLine: adminController.createWaterLine.bind(adminController),
+    getWaterLineById: adminController.getWaterLineById.bind(adminController),
+    updateWaterLine: adminController.updateWaterLine.bind(adminController),
+    deleteWaterLine: adminController.deleteWaterLine.bind(adminController),
+    batchWaterLinesOperation: adminController.batchWaterLinesOperation.bind(adminController)
 }; 
