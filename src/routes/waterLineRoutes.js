@@ -29,6 +29,35 @@ router.get('/:id', async (req, res, next) => {
     }
 });
 
+// GET /api/water-lines/:id/supplier - Получить поставщика для водной линии
+router.get('/:id/supplier', async (req, res, next) => {
+    try {
+        const waterLine = await WaterLine.findById(req.params.id);
+        if (!waterLine) {
+            return next(createError('Водная линия не найдена', 404));
+        }
+        
+        if (!waterLine.supplier_id) {
+            return res.json({ supplier: null, message: 'К линии не привязан поставщик' });
+        }
+        
+        const WaterSupplier = require('../models/WaterSupplier');
+        const supplier = await WaterSupplier.findById(waterLine.supplier_id);
+        
+        res.json({ 
+            supplier: supplier,
+            line: {
+                id: waterLine.line_id,
+                name: waterLine.name,
+                type: waterLine.line_type
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching water line supplier:', error);
+        next(createError('Ошибка получения поставщика линии', 500));
+    }
+});
+
 // POST /api/water-lines - Создать новую водную линию
 router.post('/', async (req, res, next) => {
     try {

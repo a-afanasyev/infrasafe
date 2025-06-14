@@ -15,6 +15,8 @@ class WaterLine {
         this.status = data.status;
         this.maintenance_contact = data.maintenance_contact;
         this.notes = data.notes;
+        this.line_type = data.line_type;
+        this.supplier_id = data.supplier_id;
         this.created_at = data.created_at;
         this.updated_at = data.updated_at;
         this.connected_buildings = data.connected_buildings || [];

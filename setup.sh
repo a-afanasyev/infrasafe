@@ -6,16 +6,30 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-echo -e "${YELLOW}Инициализация среды разработки проекта LeafLet${NC}"
+echo -e "${YELLOW}Инициализация среды разработки проекта InfraSafe${NC}"
 echo "================================================="
+
+# Проверка наличия .env файла
+if [ ! -f .env ]; then
+    echo -e "${YELLOW}Файл .env не найден. Копируем из env.example...${NC}"
+    cp env.example .env
+    echo -e "${RED}ВНИМАНИЕ: Отредактируйте файл .env с вашими настройками!${NC}"
+fi
 
 # Проверка наличия Docker
 if command -v docker &> /dev/null && command -v docker-compose &> /dev/null; then
     echo -e "${GREEN}Docker и Docker Compose установлены. Используем Docker для развертывания.${NC}"
     
-    # Запуск через Docker
-    echo "Запуск приложения через Docker..."
-    docker-compose up -d
+    # Выбор режима запуска
+    read -p "Выберите режим запуска (dev/prod): " mode
+    
+    if [ "$mode" = "prod" ]; then
+        echo "Запуск приложения в production режиме..."
+        docker-compose -f docker-compose.prod.yml up -d --build
+    else
+        echo "Запуск приложения в development режиме..."
+        docker-compose up -d --build
+    fi
     
     echo -e "${GREEN}Приложение запущено на http://localhost:3000${NC}"
     echo -e "${GREEN}API документация доступна на http://localhost:3000/api-docs${NC}"

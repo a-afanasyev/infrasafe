@@ -162,6 +162,8 @@ document.addEventListener("DOMContentLoaded", function () {
             case 'metrics':
                 console.log('Calling loadMetrics...');
                 if (!dataLoaded.metrics) loadMetrics();
+                // Загружаем контроллеры для формы метрик
+                loadControllersForMetrics();
                 break;
             case 'water-sources':
                 if (!dataLoaded.waterSources) loadWaterSources();
@@ -923,8 +925,63 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // Глобальные функции для кнопок (будут доступны из HTML)
-    window.editBuilding = function(id) { /* реализация */ };
-    window.deleteBuilding = function(id) { /* реализация */ };
+    window.editBuilding = async function(id) {
+        console.log('🏠 editBuilding вызвана для ID:', id);
+        try {
+            const response = await fetch(`/api/buildings/${id}`, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                }
+            });
+            if (!response.ok) throw new Error('Ошибка загрузки здания');
+            
+            const building = await response.json();
+            
+            // Заполняем существующую форму редактирования
+            document.getElementById('edit-building-id').value = building.building_id;
+            document.getElementById('edit-building-name').value = building.name || '';
+            document.getElementById('edit-building-address').value = building.address || '';
+            document.getElementById('edit-building-town').value = building.town || '';
+            document.getElementById('edit-building-region').value = building.region || '';
+            document.getElementById('edit-building-latitude').value = building.latitude || '';
+            document.getElementById('edit-building-longitude').value = building.longitude || '';
+            document.getElementById('edit-building-management').value = building.management_company || '';
+            document.getElementById('edit-building-hot-water').checked = building.has_hot_water || false;
+            
+            // Показываем модальное окно
+            document.getElementById('edit-building-modal').style.display = 'flex';
+            
+        } catch (error) {
+            console.error('Error loading building:', error);
+            showToast('Ошибка загрузки данных здания', 'error');
+        }
+    };
+
+    window.deleteBuilding = async function(id) {
+        console.log('🗑️ deleteBuilding вызвана для ID:', id);
+        if (!confirm('Вы уверены, что хотите удалить это здание? Это может повлиять на связанные контроллеры и метрики.')) return;
+        
+        try {
+            const response = await fetch(`/api/buildings/${id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                }
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Ошибка удаления здания');
+            }
+            
+            showToast('Здание успешно удалено', 'success');
+            dataLoaded.buildings = false;
+            loadBuildings();
+        } catch (error) {
+            console.error('Error deleting building:', error);
+            showToast(error.message || 'Ошибка удаления здания', 'error');
+        }
+    };
     window.editController = function(id) { /* реализация */ };
     window.deleteController = function(id) { /* реализация */ };
     window.deleteMetric = function(id) { /* реализация */ };
@@ -939,7 +996,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     window.editController = async function(id) {
         try {
-            const response = await fetch(`/api/admin/controllers/${id}`);
+            const response = await fetch(`/api/controllers/${id}`);
             if (!response.ok) throw new Error('Ошибка загрузки контроллера');
             
             const controller = await response.json();
@@ -1109,10 +1166,9 @@ document.addEventListener("DOMContentLoaded", function () {
             
             // Заполняем форму редактирования
             document.getElementById('edit-transformer-id').value = transformer.transformer_id;
-            document.getElementById('edit-transformer-name').value = transformer.name || '';
-            document.getElementById('edit-transformer-power').value = transformer.power_kva || '';
-            document.getElementById('edit-transformer-voltage').value = transformer.voltage_kv || '';
-            document.getElementById('edit-transformer-building-id').value = transformer.building_id || '';
+                    document.getElementById('edit-transformer-name').value = transformer.name || '';
+        document.getElementById('edit-transformer-power').value = transformer.power_kva || '';
+        document.getElementById('edit-transformer-voltage').value = transformer.voltage_kv || '';
             
             // Показываем модальное окно
             document.getElementById('edit-transformer-modal').style.display = 'flex';
@@ -1300,8 +1356,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const data = {
             name: document.getElementById('edit-transformer-name').value,
             power_kva: parseFloat(document.getElementById('edit-transformer-power').value),
-            voltage_kv: parseFloat(document.getElementById('edit-transformer-voltage').value),
-            building_id: parseInt(document.getElementById('edit-transformer-building-id').value)
+            voltage_kv: parseFloat(document.getElementById('edit-transformer-voltage').value)
         };
         
         try {
@@ -1525,6 +1580,9 @@ document.addEventListener("DOMContentLoaded", function () {
             fillDropdown('building-cold-water-supplier', coldSuppliers, 'supplier_id', 'name');
             fillDropdown('building-hot-water-supplier', hotSuppliers, 'supplier_id', 'name');
 
+            // Настраиваем связанные выпадающие списки после загрузки данных
+            setupCascadingDropdowns();
+
         } catch (error) {
             console.error('Ошибка загрузки данных для формы:', error);
             showToast('Ошибка загрузки данных для формы', 'error');
@@ -1570,6 +1628,196 @@ document.addEventListener("DOMContentLoaded", function () {
         console.log(`Заполнен dropdown ${elementId} с ${data.length} элементами`);
     }
 
+    // Настройка связанных выпадающих списков
+    function setupCascadingDropdowns() {
+        // При выборе ОСНОВНОЙ линии электропередачи - автоматически выбираем связанный трансформатор
+        const primaryLineSelect = document.getElementById('building-primary-line');
+        const primaryTransformerSelect = document.getElementById('building-primary-transformer');
+        
+        if (primaryLineSelect && primaryTransformerSelect) {
+            primaryLineSelect.addEventListener('change', async function() {
+                const lineId = this.value;
+                if (!lineId) {
+                    primaryTransformerSelect.value = '';
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/api/lines/${lineId}`);
+                    if (response.ok) {
+                        const result = await response.json();
+                        const lineData = result.data || result;
+                        if (lineData.transformer_id) {
+                            primaryTransformerSelect.value = lineData.transformer_id;
+                            showToast('Автоматически выбран основной трансформатор для линии', 'info');
+                        }
+                    }
+                } catch (error) {
+                    console.error('Ошибка получения данных основной линии:', error);
+                }
+            });
+        }
+
+        // При выборе РЕЗЕРВНОЙ линии электропередачи - автоматически выбираем связанный трансформатор
+        const backupLineSelect = document.getElementById('building-backup-line');
+        const backupTransformerSelect = document.getElementById('building-backup-transformer');
+        
+        if (backupLineSelect && backupTransformerSelect) {
+            backupLineSelect.addEventListener('change', async function() {
+                const lineId = this.value;
+                if (!lineId) {
+                    backupTransformerSelect.value = '';
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/api/lines/${lineId}`);
+                    if (response.ok) {
+                        const result = await response.json();
+                        const lineData = result.data || result;
+                        if (lineData.transformer_id) {
+                            backupTransformerSelect.value = lineData.transformer_id;
+                            showToast('Автоматически выбран резервный трансформатор для линии', 'info');
+                        }
+                    }
+                } catch (error) {
+                    console.error('Ошибка получения данных резервной линии:', error);
+                }
+            });
+        }
+
+        // При выборе линии ХОЛОДНОГО водоснабжения - показываем связанных поставщиков ХВС
+        const coldWaterLineSelect = document.getElementById('building-cold-water-line');
+        const coldWaterSupplierSelect = document.getElementById('building-cold-water-supplier');
+        
+        if (coldWaterLineSelect && coldWaterSupplierSelect) {
+            coldWaterLineSelect.addEventListener('change', async function() {
+                const lineId = this.value;
+                await updateWaterSuppliers(lineId, 'cold_water', coldWaterSupplierSelect);
+            });
+        }
+
+        // При выборе линии ГОРЯЧЕГО водоснабжения - показываем связанных поставщиков ГВС
+        const hotWaterLineSelect = document.getElementById('building-hot-water-line');
+        const hotWaterSupplierSelect = document.getElementById('building-hot-water-supplier');
+        
+        if (hotWaterLineSelect && hotWaterSupplierSelect) {
+            hotWaterLineSelect.addEventListener('change', async function() {
+                const lineId = this.value;
+                await updateWaterSuppliers(lineId, 'hot_water', hotWaterSupplierSelect);
+            });
+        }
+    }
+
+    async function updateWaterSuppliers(lineId, supplierType, selectElement) {
+        if (!lineId) {
+            // Деактивируем поле и очищаем
+            selectElement.disabled = true;
+            selectElement.innerHTML = `<option value="">Сначала выберите линию ${supplierType === 'cold_water' ? 'ХВС' : 'ГВС'}</option>`;
+            return;
+        }
+
+        try {
+            // Активируем поле
+            selectElement.disabled = false;
+            selectElement.innerHTML = '<option value="">Загрузка поставщика...</option>';
+            
+            // Получаем поставщика для конкретной линии
+            const response = await fetch(`/api/water-lines/${lineId}/supplier`);
+            if (response.ok) {
+                const result = await response.json();
+                
+                if (result.supplier) {
+                    // Есть привязанный поставщик - выбираем его автоматически
+                    selectElement.innerHTML = '<option value="">Выберите поставщика</option>';
+                    
+                    const option = document.createElement('option');
+                    option.value = result.supplier.supplier_id;
+                    option.textContent = `${result.supplier.name} (${result.supplier.tariff_per_m3} руб/м³)`;
+                    option.selected = true;
+                    selectElement.appendChild(option);
+                    
+                    showToast(`✅ Автоматически выбран поставщик для линии "${result.line.name}": ${result.supplier.name}`, 'success');
+                } else {
+                    // Нет привязанного поставщика - загружаем всех поставщиков этого типа
+                    const suppliersResponse = await fetch(`/api/water-suppliers?type=${supplierType}&limit=100`);
+                    if (suppliersResponse.ok) {
+                        const suppliersResult = await suppliersResponse.json();
+                        const suppliersData = suppliersResult.data || suppliersResult;
+                        
+                        selectElement.innerHTML = '<option value="">Выберите поставщика</option>';
+                        
+                        if (Array.isArray(suppliersData) && suppliersData.length > 0) {
+                            suppliersData.forEach(supplier => {
+                                const option = document.createElement('option');
+                                option.value = supplier.supplier_id;
+                                option.textContent = `${supplier.name} (${supplier.tariff_per_m3} руб/м³)`;
+                                selectElement.appendChild(option);
+                            });
+                            showToast(`📋 К линии не привязан поставщик. Загружено ${suppliersData.length} поставщиков ${supplierType === 'cold_water' ? 'ХВС' : 'ГВС'}`, 'info');
+                        } else {
+                            selectElement.innerHTML = '<option value="">Поставщики не найдены</option>';
+                            showToast(`⚠️ Поставщики ${supplierType === 'cold_water' ? 'ХВС' : 'ГВС'} не найдены`, 'warning');
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Ошибка получения поставщика для линии:', error);
+            selectElement.disabled = true;
+            selectElement.innerHTML = '<option value="">Ошибка загрузки</option>';
+            showToast('❌ Ошибка загрузки поставщика для линии', 'error');
+        }
+    }
+
+    // Функция сброса формы метрик
+    window.resetMetricsForm = function() {
+        document.getElementById('metric-controller-id').value = '';
+        document.getElementById('metric-electricity-ph1').value = '220.0';
+        document.getElementById('metric-electricity-ph2').value = '220.0';
+        document.getElementById('metric-electricity-ph3').value = '220.0';
+        document.getElementById('metric-amperage-ph1').value = '15.0';
+        document.getElementById('metric-amperage-ph2').value = '15.0';
+        document.getElementById('metric-amperage-ph3').value = '15.0';
+        document.getElementById('metric-cold-water-pressure').value = '5.0';
+        document.getElementById('metric-cold-water-temp').value = '15.0';
+        document.getElementById('metric-hot-water-in-pressure').value = '4.0';
+        document.getElementById('metric-hot-water-out-pressure').value = '3.5';
+        document.getElementById('metric-hot-water-in-temp').value = '65.0';
+        document.getElementById('metric-hot-water-out-temp').value = '45.0';
+        document.getElementById('metric-air-temp').value = '22.0';
+        document.getElementById('metric-humidity').value = '45.0';
+        document.getElementById('metric-leak-sensor').checked = false;
+    };
+
+    // Функция загрузки контроллеров для формы метрик
+    async function loadControllersForMetrics() {
+        try {
+            const response = await fetch('/api/controllers?limit=100');
+            if (response.ok) {
+                const data = await response.json();
+                const select = document.getElementById('metric-controller-id');
+                
+                // Очищаем существующие опции кроме первой
+                const firstOption = select.firstElementChild;
+                select.innerHTML = '';
+                if (firstOption) {
+                    select.appendChild(firstOption);
+                }
+                
+                const controllersData = data.data || data;
+                controllersData.forEach(controller => {
+                    const option = document.createElement('option');
+                    option.value = controller.controller_id;
+                    option.textContent = `ID: ${controller.controller_id} - ${controller.serial_number} (${controller.status})`;
+                    select.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки контроллеров:', error);
+        }
+    }
+
     // Загружаем данные при загрузке страницы (перенесено в конец файла)
     // loadFormData();
 
@@ -1602,7 +1850,9 @@ document.addEventListener("DOMContentLoaded", function () {
         try {
             const response = await fetch('/api/buildings', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify(data)
             });
             
@@ -1644,7 +1894,10 @@ document.addEventListener("DOMContentLoaded", function () {
         try {
             const response = await fetch('/api/admin/controllers', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                },
                 body: JSON.stringify(data)
             });
             
@@ -1674,20 +1927,30 @@ document.addEventListener("DOMContentLoaded", function () {
         
         const data = {
             controller_id: parseInt(document.getElementById('metric-controller-id').value),
-            electricity_ph1: parseFloat(document.getElementById('metric-electricity-ph1').value),
-            electricity_ph2: parseFloat(document.getElementById('metric-electricity-ph2').value),
-            electricity_ph3: parseFloat(document.getElementById('metric-electricity-ph3').value),
-            cold_water_pressure: parseFloat(document.getElementById('metric-cold-water-pressure').value),
-            hot_water_in_temp: parseFloat(document.getElementById('metric-hot-water-in-temp').value),
-            air_temp: parseFloat(document.getElementById('metric-air-temp').value),
-            humidity: parseFloat(document.getElementById('metric-humidity').value),
+            electricity_ph1: parseFloat(document.getElementById('metric-electricity-ph1').value) || null,
+            electricity_ph2: parseFloat(document.getElementById('metric-electricity-ph2').value) || null,
+            electricity_ph3: parseFloat(document.getElementById('metric-electricity-ph3').value) || null,
+            amperage_ph1: parseFloat(document.getElementById('metric-amperage-ph1').value) || null,
+            amperage_ph2: parseFloat(document.getElementById('metric-amperage-ph2').value) || null,
+            amperage_ph3: parseFloat(document.getElementById('metric-amperage-ph3').value) || null,
+            cold_water_pressure: parseFloat(document.getElementById('metric-cold-water-pressure').value) || null,
+            cold_water_temp: parseFloat(document.getElementById('metric-cold-water-temp').value) || null,
+            hot_water_in_pressure: parseFloat(document.getElementById('metric-hot-water-in-pressure').value) || null,
+            hot_water_out_pressure: parseFloat(document.getElementById('metric-hot-water-out-pressure').value) || null,
+            hot_water_in_temp: parseFloat(document.getElementById('metric-hot-water-in-temp').value) || null,
+            hot_water_out_temp: parseFloat(document.getElementById('metric-hot-water-out-temp').value) || null,
+            air_temp: parseFloat(document.getElementById('metric-air-temp').value) || null,
+            humidity: parseFloat(document.getElementById('metric-humidity').value) || null,
             leak_sensor: document.getElementById('metric-leak-sensor').checked
         };
         
         try {
             const response = await fetch('/api/admin/metrics', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                },
                 body: JSON.stringify(data)
             });
             
@@ -1699,7 +1962,7 @@ document.addEventListener("DOMContentLoaded", function () {
             showToast('Метрика успешно добавлена', 'success');
             
             // Очищаем форму
-            document.getElementById('add-metric-form').reset();
+            resetMetricsForm();
             
             // Перезагружаем данные метрик
             dataLoaded.metrics = false;
@@ -1731,7 +1994,10 @@ document.addEventListener("DOMContentLoaded", function () {
         try {
             const response = await fetch('/api/admin/water-lines', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                },
                 body: JSON.stringify(data)
             });
             
@@ -1756,14 +2022,60 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // ===============================================
+    // ОБРАБОТЧИК ФОРМЫ ДОБАВЛЕНИЯ ТРАНСФОРМАТОРА
+    // ===============================================
+
+    document.getElementById('add-transformer-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const data = {
+            name: document.getElementById('transformer-name').value,
+            power_kva: parseFloat(document.getElementById('transformer-power').value),
+            voltage_kv: parseFloat(document.getElementById('transformer-voltage').value)
+        };
+        
+        try {
+            const response = await fetch('/api/transformers', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                },
+                body: JSON.stringify(data)
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Ошибка создания трансформатора');
+            }
+            
+            showToast('Трансформатор успешно добавлен', 'success');
+            
+            // Очищаем форму
+            document.getElementById('add-transformer-form').reset();
+            
+            // Перезагружаем данные трансформаторов
+            dataLoaded.transformers = false;
+            loadTransformers();
+            
+        } catch (error) {
+            console.error('Error creating transformer:', error);
+            showToast('Ошибка создания трансформатора: ' + error.message, 'error');
+        }
+    });
+
+    // ===============================================
     // УНИВЕРСАЛЬНАЯ СИСТЕМА МОДАЛЬНЫХ ОКОН
     // ===============================================
 
     function openUniversalModal(type, data, config) {
+        console.log('🔧 openUniversalModal вызвана:', { type, data, config });
         const modal = document.getElementById('universal-modal');
         const title = document.getElementById('universal-modal-title');
         const formFields = document.getElementById('universal-form-fields');
         const form = document.getElementById('universal-form');
+        
+        console.log('📋 Найденные элементы:', { modal, title, formFields, form });
         
         // Устанавливаем заголовок
         title.textContent = config.title;
@@ -1879,7 +2191,9 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     // Создаем универсальное модальное окно при загрузке
+    console.log('🚀 Создаем универсальное модальное окно...');
     createUniversalModal();
+    console.log('✅ Универсальное модальное окно создано');
 
     // Добавляем стили для статусов контроллеров
     const statusStyles = `
@@ -1931,6 +2245,54 @@ document.addEventListener("DOMContentLoaded", function () {
     
     document.head.insertAdjacentHTML('beforeend', statusStyles);
     
+    // ===============================================
+    // ОБРАБОТЧИКИ ДЛЯ МОДАЛЬНЫХ ОКОН РЕДАКТИРОВАНИЯ
+    // ===============================================
+
+    // Обработчик формы редактирования здания
+    document.getElementById('edit-building-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = document.getElementById('edit-building-id').value;
+        
+        const data = {
+            name: document.getElementById('edit-building-name').value,
+            address: document.getElementById('edit-building-address').value,
+            town: document.getElementById('edit-building-town').value,
+            region: document.getElementById('edit-building-region').value,
+            latitude: parseFloat(document.getElementById('edit-building-latitude').value),
+            longitude: parseFloat(document.getElementById('edit-building-longitude').value),
+            management_company: document.getElementById('edit-building-management').value,
+            has_hot_water: document.getElementById('edit-building-hot-water').checked
+        };
+        
+        try {
+            const response = await fetch(`/api/buildings/${id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                },
+                body: JSON.stringify(data)
+            });
+            
+            if (!response.ok) throw new Error('Ошибка обновления здания');
+            
+            showToast('Здание успешно обновлено', 'success');
+            document.getElementById('edit-building-modal').style.display = 'none';
+            dataLoaded.buildings = false;
+            loadBuildings();
+            
+        } catch (error) {
+            console.error('Error updating building:', error);
+            showToast('Ошибка обновления здания: ' + error.message, 'error');
+        }
+    });
+
+    // Обработчик кнопки отмены редактирования здания
+    document.getElementById('cancel-edit-building').addEventListener('click', () => {
+        document.getElementById('edit-building-modal').style.display = 'none';
+    });
+
     // Загружаем данные для форм после инициализации всех функций
     console.log('🔄 Вызываем loadFormData() в конце инициализации');
     loadFormData();

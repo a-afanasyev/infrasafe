@@ -34,7 +34,7 @@ const authenticateJWT = async (req, res, next) => {
         }
 
         // Проверка токена
-        jwt.verify(token, process.env.JWT_SECRET || 'your_very_secure_jwt_secret_key', async (err, decoded) => {
+        jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', async (err, decoded) => {
             if (err) {
                 logger.warn(`Неудачная попытка аутентификации: ${err.message}`);
                 return res.status(403).json({ 
@@ -45,7 +45,7 @@ const authenticateJWT = async (req, res, next) => {
 
             // Проверка существования пользователя
             try {
-                const user = await authService.getUserById(decoded.id);
+                const user = await authService.findUserById(decoded.user_id);
                 if (!user) {
                     return res.status(401).json({ 
                         success: false,
@@ -62,7 +62,8 @@ const authenticateJWT = async (req, res, next) => {
                 }
 
                 req.user = {
-                    id: user.id,
+                    user_id: user.user_id,
+                    id: user.user_id, // Для обратной совместимости
                     username: user.username,
                     role: user.role,
                     email: user.email
@@ -121,7 +122,7 @@ const authenticateRefresh = async (req, res, next) => {
         }
 
         // Проверка refresh токена
-        jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || 'your_very_secure_refresh_secret_key', async (err, decoded) => {
+        jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || 'your-secret-key', async (err, decoded) => {
             if (err) {
                 logger.warn(`Неудачная попытка обновления токена: ${err.message}`);
                 return res.status(401).json({ 
@@ -132,7 +133,7 @@ const authenticateRefresh = async (req, res, next) => {
 
             // Проверка существования пользователя
             try {
-                const user = await authService.getUserById(decoded.id);
+                const user = await authService.findUserById(decoded.user_id);
                 if (!user) {
                     return res.status(401).json({ 
                         success: false,
@@ -149,7 +150,8 @@ const authenticateRefresh = async (req, res, next) => {
                 }
 
                 req.user = {
-                    id: user.id,
+                    user_id: user.user_id,
+                    id: user.user_id, // Для обратной совместимости
                     username: user.username,
                     role: user.role,
                     email: user.email
@@ -199,17 +201,18 @@ const optionalAuth = async (req, res, next) => {
         }
 
         // Проверка токена
-        jwt.verify(token, process.env.JWT_SECRET || 'your_very_secure_jwt_secret_key', async (err, decoded) => {
+        jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', async (err, decoded) => {
             if (err) {
                 req.user = null;
                 return next();
             }
 
             try {
-                const user = await authService.getUserById(decoded.id);
+                const user = await authService.findUserById(decoded.user_id);
                 if (user && !user.is_locked) {
                     req.user = {
-                        id: user.id,
+                        user_id: user.user_id,
+                        id: user.user_id, // Для обратной совместимости
                         username: user.username,
                         role: user.role,
                         email: user.email

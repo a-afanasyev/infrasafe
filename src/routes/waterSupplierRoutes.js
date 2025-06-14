@@ -7,7 +7,14 @@ const router = express.Router();
 // GET /api/water-suppliers - Получить всех поставщиков воды
 router.get('/', async (req, res, next) => {
     try {
-        const waterSuppliers = await WaterSupplier.findAll();
+        const { page = 1, limit = 100, type, line_id } = req.query;
+        const filters = {};
+        
+        if (type) {
+            filters.type = type;
+        }
+        
+        const waterSuppliers = await WaterSupplier.findAll(page, limit, filters);
         res.json(waterSuppliers);
     } catch (error) {
         console.error('Error fetching water suppliers:', error);

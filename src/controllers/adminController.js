@@ -946,23 +946,26 @@ class AdminController {
                 description, 
                 diameter_mm, 
                 material, 
-                pressure_bar, 
+                pressure_rating, 
                 installation_date, 
+                length_km,
+                line_type,
+                supplier_id,
                 status = 'active' 
             } = req.body;
 
-            if (!name || !diameter_mm || !material || !pressure_bar) {
-                return next(createError('Name, diameter_mm, material, and pressure_bar are required', 400));
+            if (!name || !diameter_mm || !material) {
+                return next(createError('Name, diameter_mm, and material are required', 400));
             }
 
             const query = `
-                INSERT INTO water_lines (name, description, diameter_mm, material, pressure_bar, installation_date, status)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                INSERT INTO water_lines (name, description, diameter_mm, material, pressure_rating, installation_date, length_km, line_type, supplier_id, status)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 RETURNING *
             `;
 
             const result = await pool.query(query, [
-                name, description, diameter_mm, material, pressure_bar, installation_date, status
+                name, description, diameter_mm, material, pressure_rating, installation_date, length_km, line_type, supplier_id, status
             ]);
 
             res.status(201).json({
@@ -1018,8 +1021,11 @@ class AdminController {
                 description, 
                 diameter_mm, 
                 material, 
-                pressure_bar, 
+                pressure_rating, 
                 installation_date, 
+                length_km,
+                line_type,
+                supplier_id,
                 status 
             } = req.body;
 
@@ -1043,13 +1049,25 @@ class AdminController {
                 updateFields.push(`material = $${paramIndex++}`);
                 params.push(material);
             }
-            if (pressure_bar !== undefined) {
-                updateFields.push(`pressure_bar = $${paramIndex++}`);
-                params.push(pressure_bar);
+            if (pressure_rating !== undefined) {
+                updateFields.push(`pressure_rating = $${paramIndex++}`);
+                params.push(pressure_rating);
             }
             if (installation_date !== undefined) {
                 updateFields.push(`installation_date = $${paramIndex++}`);
                 params.push(installation_date);
+            }
+            if (length_km !== undefined) {
+                updateFields.push(`length_km = $${paramIndex++}`);
+                params.push(length_km);
+            }
+            if (line_type !== undefined) {
+                updateFields.push(`line_type = $${paramIndex++}`);
+                params.push(line_type);
+            }
+            if (supplier_id !== undefined) {
+                updateFields.push(`supplier_id = $${paramIndex++}`);
+                params.push(supplier_id);
             }
             if (status !== undefined) {
                 updateFields.push(`status = $${paramIndex++}`);
@@ -1171,6 +1189,554 @@ class AdminController {
             next(createError(`Batch operation failed: ${error.message}`, 500));
         }
     }
+
+    // ===============================================
+    // CRUD МЕТОДЫ ДЛЯ ЗДАНИЙ
+    // ===============================================
+
+    async createBuilding(req, res, next) {
+        const buildingController = require('./buildingController');
+        return buildingController.createBuilding(req, res, next);
+    }
+
+    async getBuildingById(req, res, next) {
+        const buildingController = require('./buildingController');
+        return buildingController.getBuildingById(req, res, next);
+    }
+
+    async updateBuilding(req, res, next) {
+        const buildingController = require('./buildingController');
+        return buildingController.updateBuilding(req, res, next);
+    }
+
+    async deleteBuilding(req, res, next) {
+        const buildingController = require('./buildingController');
+        return buildingController.deleteBuilding(req, res, next);
+    }
+
+    // ===============================================
+    // CRUD МЕТОДЫ ДЛЯ КОНТРОЛЛЕРОВ
+    // ===============================================
+
+    async createController(req, res, next) {
+        const controllerController = require('./controllerController');
+        return controllerController.createController(req, res, next);
+    }
+
+    async getControllerById(req, res, next) {
+        const controllerController = require('./controllerController');
+        return controllerController.getControllerById(req, res, next);
+    }
+
+    async updateController(req, res, next) {
+        const controllerController = require('./controllerController');
+        return controllerController.updateController(req, res, next);
+    }
+
+    async deleteController(req, res, next) {
+        const controllerController = require('./controllerController');
+        return controllerController.deleteController(req, res, next);
+    }
+
+    // ===============================================
+    // CRUD МЕТОДЫ ДЛЯ МЕТРИК
+    // ===============================================
+
+    async createMetric(req, res, next) {
+        const metricController = require('./metricController');
+        return metricController.createMetric(req, res, next);
+    }
+
+    async getMetricById(req, res, next) {
+        const metricController = require('./metricController');
+        return metricController.getMetricById(req, res, next);
+    }
+
+    async updateMetric(req, res, next) {
+        const metricController = require('./metricController');
+        return metricController.updateMetric(req, res, next);
+    }
+
+    async deleteMetric(req, res, next) {
+        const metricController = require('./metricController');
+        return metricController.deleteMetric(req, res, next);
+    }
+
+    // ===============================================
+    // МЕТОДЫ ДЛЯ ИСТОЧНИКОВ ХОЛОДНОЙ ВОДЫ
+    // ===============================================
+
+    async getOptimizedColdWaterSources(req, res, next) {
+        try {
+            const {
+                page = 1,
+                limit = 50,
+                sort = 'id',
+                order = 'asc',
+                search,
+                source_type,
+                status
+            } = req.query;
+
+            const pageNum = Math.max(1, parseInt(page));
+            const limitNum = Math.min(Math.max(1, parseInt(limit)), 200);
+            const offset = (pageNum - 1) * limitNum;
+
+            let query = 'SELECT * FROM cold_water_sources';
+            let countQuery = 'SELECT COUNT(*) FROM cold_water_sources';
+            let params = [];
+            let whereConditions = [];
+
+            if (search) {
+                whereConditions.push('name ILIKE $' + (params.length + 1));
+                params.push(`%${search}%`);
+            }
+            if (source_type) {
+                whereConditions.push('source_type = $' + (params.length + 1));
+                params.push(source_type);
+            }
+            if (status) {
+                whereConditions.push('status = $' + (params.length + 1));
+                params.push(status);
+            }
+
+            if (whereConditions.length > 0) {
+                const whereClause = ' WHERE ' + whereConditions.join(' AND ');
+                query += whereClause;
+                countQuery += whereClause;
+            }
+
+            query += ` ORDER BY ${sort} ${order.toUpperCase()} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+            params.push(limitNum, offset);
+
+            const [dataResult, countResult] = await Promise.all([
+                pool.query(query, params),
+                pool.query(countQuery, params.slice(0, -2))
+            ]);
+
+            const result = {
+                data: dataResult.rows,
+                pagination: {
+                    total: parseInt(countResult.rows[0].count),
+                    page: pageNum,
+                    limit: limitNum,
+                    totalPages: Math.ceil(parseInt(countResult.rows[0].count) / limitNum)
+                }
+            };
+
+            res.json(result);
+
+        } catch (error) {
+            logger.error(`Error in getOptimizedColdWaterSources: ${error.message}`);
+            next(createError(`Failed to get cold water sources: ${error.message}`, 500));
+        }
+    }
+
+    async createColdWaterSource(req, res, next) {
+        try {
+            const {
+                name, address, latitude, longitude, source_type,
+                capacity_m3_per_hour, operating_pressure_bar, installation_date,
+                status = 'active', maintenance_contact, notes
+            } = req.body;
+
+            if (!name) {
+                return next(createError('Name is required', 400));
+            }
+
+            const query = `
+                INSERT INTO cold_water_sources 
+                (id, name, address, latitude, longitude, source_type, capacity_m3_per_hour, 
+                 operating_pressure_bar, installation_date, status, maintenance_contact, notes)
+                VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                RETURNING *
+            `;
+
+            const result = await pool.query(query, [
+                name, address, latitude, longitude, source_type, capacity_m3_per_hour,
+                operating_pressure_bar, installation_date, status, maintenance_contact, notes
+            ]);
+
+            res.status(201).json({
+                success: true,
+                data: result.rows[0],
+                message: 'Cold water source created successfully'
+            });
+
+        } catch (error) {
+            logger.error(`Error in createColdWaterSource: ${error.message}`);
+            next(createError(`Failed to create cold water source: ${error.message}`, 500));
+        }
+    }
+
+    async getColdWaterSourceById(req, res, next) {
+        try {
+            const { id } = req.params;
+            const result = await pool.query('SELECT * FROM cold_water_sources WHERE id = $1', [id]);
+
+            if (result.rows.length === 0) {
+                return next(createError('Cold water source not found', 404));
+            }
+
+            res.json({
+                success: true,
+                data: result.rows[0]
+            });
+
+        } catch (error) {
+            logger.error(`Error in getColdWaterSourceById: ${error.message}`);
+            next(createError(`Failed to get cold water source: ${error.message}`, 500));
+        }
+    }
+
+    async updateColdWaterSource(req, res, next) {
+        try {
+            const { id } = req.params;
+            const {
+                name, address, latitude, longitude, source_type,
+                capacity_m3_per_hour, operating_pressure_bar, installation_date,
+                status, maintenance_contact, notes
+            } = req.body;
+
+            const updateFields = [];
+            const params = [];
+            let paramIndex = 1;
+
+            if (name !== undefined) {
+                updateFields.push(`name = $${paramIndex++}`);
+                params.push(name);
+            }
+            if (address !== undefined) {
+                updateFields.push(`address = $${paramIndex++}`);
+                params.push(address);
+            }
+            if (latitude !== undefined) {
+                updateFields.push(`latitude = $${paramIndex++}`);
+                params.push(latitude);
+            }
+            if (longitude !== undefined) {
+                updateFields.push(`longitude = $${paramIndex++}`);
+                params.push(longitude);
+            }
+            if (source_type !== undefined) {
+                updateFields.push(`source_type = $${paramIndex++}`);
+                params.push(source_type);
+            }
+            if (capacity_m3_per_hour !== undefined) {
+                updateFields.push(`capacity_m3_per_hour = $${paramIndex++}`);
+                params.push(capacity_m3_per_hour);
+            }
+            if (operating_pressure_bar !== undefined) {
+                updateFields.push(`operating_pressure_bar = $${paramIndex++}`);
+                params.push(operating_pressure_bar);
+            }
+            if (installation_date !== undefined) {
+                updateFields.push(`installation_date = $${paramIndex++}`);
+                params.push(installation_date);
+            }
+            if (status !== undefined) {
+                updateFields.push(`status = $${paramIndex++}`);
+                params.push(status);
+            }
+            if (maintenance_contact !== undefined) {
+                updateFields.push(`maintenance_contact = $${paramIndex++}`);
+                params.push(maintenance_contact);
+            }
+            if (notes !== undefined) {
+                updateFields.push(`notes = $${paramIndex++}`);
+                params.push(notes);
+            }
+
+            if (updateFields.length === 0) {
+                return next(createError('No fields to update', 400));
+            }
+
+            params.push(id);
+
+            const query = `
+                UPDATE cold_water_sources 
+                SET ${updateFields.join(', ')}
+                WHERE id = $${paramIndex}
+                RETURNING *
+            `;
+
+            const result = await pool.query(query, params);
+
+            if (result.rows.length === 0) {
+                return next(createError('Cold water source not found', 404));
+            }
+
+            res.json({
+                success: true,
+                data: result.rows[0],
+                message: 'Cold water source updated successfully'
+            });
+
+        } catch (error) {
+            logger.error(`Error in updateColdWaterSource: ${error.message}`);
+            next(createError(`Failed to update cold water source: ${error.message}`, 500));
+        }
+    }
+
+    async deleteColdWaterSource(req, res, next) {
+        try {
+            const { id } = req.params;
+
+            const query = 'DELETE FROM cold_water_sources WHERE id = $1 RETURNING *';
+            const result = await pool.query(query, [id]);
+
+            if (result.rows.length === 0) {
+                return next(createError('Cold water source not found', 404));
+            }
+
+            res.json({
+                success: true,
+                message: 'Cold water source deleted successfully'
+            });
+
+        } catch (error) {
+            logger.error(`Error in deleteColdWaterSource: ${error.message}`);
+            next(createError(`Failed to delete cold water source: ${error.message}`, 500));
+        }
+    }
+
+    // ===============================================
+    // МЕТОДЫ ДЛЯ ИСТОЧНИКОВ ТЕПЛА
+    // ===============================================
+
+    async getOptimizedHeatSources(req, res, next) {
+        try {
+            const {
+                page = 1,
+                limit = 50,
+                sort = 'id',
+                order = 'asc',
+                search,
+                source_type,
+                status
+            } = req.query;
+
+            const pageNum = Math.max(1, parseInt(page));
+            const limitNum = Math.min(Math.max(1, parseInt(limit)), 200);
+            const offset = (pageNum - 1) * limitNum;
+
+            let query = 'SELECT * FROM heat_sources';
+            let countQuery = 'SELECT COUNT(*) FROM heat_sources';
+            let params = [];
+            let whereConditions = [];
+
+            if (search) {
+                whereConditions.push('name ILIKE $' + (params.length + 1));
+                params.push(`%${search}%`);
+            }
+            if (source_type) {
+                whereConditions.push('source_type = $' + (params.length + 1));
+                params.push(source_type);
+            }
+            if (status) {
+                whereConditions.push('status = $' + (params.length + 1));
+                params.push(status);
+            }
+
+            if (whereConditions.length > 0) {
+                const whereClause = ' WHERE ' + whereConditions.join(' AND ');
+                query += whereClause;
+                countQuery += whereClause;
+            }
+
+            query += ` ORDER BY ${sort} ${order.toUpperCase()} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+            params.push(limitNum, offset);
+
+            const [dataResult, countResult] = await Promise.all([
+                pool.query(query, params),
+                pool.query(countQuery, params.slice(0, -2))
+            ]);
+
+            const result = {
+                data: dataResult.rows,
+                pagination: {
+                    total: parseInt(countResult.rows[0].count),
+                    page: pageNum,
+                    limit: limitNum,
+                    totalPages: Math.ceil(parseInt(countResult.rows[0].count) / limitNum)
+                }
+            };
+
+            res.json(result);
+
+        } catch (error) {
+            logger.error(`Error in getOptimizedHeatSources: ${error.message}`);
+            next(createError(`Failed to get heat sources: ${error.message}`, 500));
+        }
+    }
+
+    async createHeatSource(req, res, next) {
+        try {
+            const {
+                name, address, latitude, longitude, source_type,
+                capacity_mw, fuel_type, installation_date,
+                status = 'active', maintenance_contact, notes
+            } = req.body;
+
+            if (!name || !latitude || !longitude || !source_type) {
+                return next(createError('Name, latitude, longitude, and source_type are required', 400));
+            }
+
+            const query = `
+                INSERT INTO heat_sources 
+                (id, name, address, latitude, longitude, source_type, capacity_mw, 
+                 fuel_type, installation_date, status, maintenance_contact, notes)
+                VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                RETURNING *
+            `;
+
+            const result = await pool.query(query, [
+                name, address, latitude, longitude, source_type, capacity_mw,
+                fuel_type, installation_date, status, maintenance_contact, notes
+            ]);
+
+            res.status(201).json({
+                success: true,
+                data: result.rows[0],
+                message: 'Heat source created successfully'
+            });
+
+        } catch (error) {
+            logger.error(`Error in createHeatSource: ${error.message}`);
+            next(createError(`Failed to create heat source: ${error.message}`, 500));
+        }
+    }
+
+    async getHeatSourceById(req, res, next) {
+        try {
+            const { id } = req.params;
+            const result = await pool.query('SELECT * FROM heat_sources WHERE id = $1', [id]);
+
+            if (result.rows.length === 0) {
+                return next(createError('Heat source not found', 404));
+            }
+
+            res.json({
+                success: true,
+                data: result.rows[0]
+            });
+
+        } catch (error) {
+            logger.error(`Error in getHeatSourceById: ${error.message}`);
+            next(createError(`Failed to get heat source: ${error.message}`, 500));
+        }
+    }
+
+    async updateHeatSource(req, res, next) {
+        try {
+            const { id } = req.params;
+            const {
+                name, address, latitude, longitude, source_type,
+                capacity_mw, fuel_type, installation_date,
+                status, maintenance_contact, notes
+            } = req.body;
+
+            const updateFields = [];
+            const params = [];
+            let paramIndex = 1;
+
+            if (name !== undefined) {
+                updateFields.push(`name = $${paramIndex++}`);
+                params.push(name);
+            }
+            if (address !== undefined) {
+                updateFields.push(`address = $${paramIndex++}`);
+                params.push(address);
+            }
+            if (latitude !== undefined) {
+                updateFields.push(`latitude = $${paramIndex++}`);
+                params.push(latitude);
+            }
+            if (longitude !== undefined) {
+                updateFields.push(`longitude = $${paramIndex++}`);
+                params.push(longitude);
+            }
+            if (source_type !== undefined) {
+                updateFields.push(`source_type = $${paramIndex++}`);
+                params.push(source_type);
+            }
+            if (capacity_mw !== undefined) {
+                updateFields.push(`capacity_mw = $${paramIndex++}`);
+                params.push(capacity_mw);
+            }
+            if (fuel_type !== undefined) {
+                updateFields.push(`fuel_type = $${paramIndex++}`);
+                params.push(fuel_type);
+            }
+            if (installation_date !== undefined) {
+                updateFields.push(`installation_date = $${paramIndex++}`);
+                params.push(installation_date);
+            }
+            if (status !== undefined) {
+                updateFields.push(`status = $${paramIndex++}`);
+                params.push(status);
+            }
+            if (maintenance_contact !== undefined) {
+                updateFields.push(`maintenance_contact = $${paramIndex++}`);
+                params.push(maintenance_contact);
+            }
+            if (notes !== undefined) {
+                updateFields.push(`notes = $${paramIndex++}`);
+                params.push(notes);
+            }
+
+            if (updateFields.length === 0) {
+                return next(createError('No fields to update', 400));
+            }
+
+            params.push(id);
+
+            const query = `
+                UPDATE heat_sources 
+                SET ${updateFields.join(', ')}
+                WHERE id = $${paramIndex}
+                RETURNING *
+            `;
+
+            const result = await pool.query(query, params);
+
+            if (result.rows.length === 0) {
+                return next(createError('Heat source not found', 404));
+            }
+
+            res.json({
+                success: true,
+                data: result.rows[0],
+                message: 'Heat source updated successfully'
+            });
+
+        } catch (error) {
+            logger.error(`Error in updateHeatSource: ${error.message}`);
+            next(createError(`Failed to update heat source: ${error.message}`, 500));
+        }
+    }
+
+    async deleteHeatSource(req, res, next) {
+        try {
+            const { id } = req.params;
+
+            const query = 'DELETE FROM heat_sources WHERE id = $1 RETURNING *';
+            const result = await pool.query(query, [id]);
+
+            if (result.rows.length === 0) {
+                return next(createError('Heat source not found', 404));
+            }
+
+            res.json({
+                success: true,
+                message: 'Heat source deleted successfully'
+            });
+
+        } catch (error) {
+            logger.error(`Error in deleteHeatSource: ${error.message}`);
+            next(createError(`Failed to delete heat source: ${error.message}`, 500));
+        }
+    }
 }
 
 const adminController = new AdminController();
@@ -1185,6 +1751,24 @@ module.exports = {
     globalSearch: adminController.globalSearch.bind(adminController),
     getAdminStats: adminController.getAdminStats.bind(adminController),
     exportData: adminController.exportData.bind(adminController),
+    
+    // CRUD для зданий
+    createBuilding: adminController.createBuilding.bind(adminController),
+    getBuildingById: adminController.getBuildingById.bind(adminController),
+    updateBuilding: adminController.updateBuilding.bind(adminController),
+    deleteBuilding: adminController.deleteBuilding.bind(adminController),
+    
+    // CRUD для контроллеров
+    createController: adminController.createController.bind(adminController),
+    getControllerById: adminController.getControllerById.bind(adminController),
+    updateController: adminController.updateController.bind(adminController),
+    deleteController: adminController.deleteController.bind(adminController),
+    
+    // CRUD для метрик
+    createMetric: adminController.createMetric.bind(adminController),
+    getMetricById: adminController.getMetricById.bind(adminController),
+    updateMetric: adminController.updateMetric.bind(adminController),
+    deleteMetric: adminController.deleteMetric.bind(adminController),
     
     // Трансформаторы
     getOptimizedTransformers: adminController.getOptimizedTransformers.bind(adminController),
@@ -1208,5 +1792,19 @@ module.exports = {
     getWaterLineById: adminController.getWaterLineById.bind(adminController),
     updateWaterLine: adminController.updateWaterLine.bind(adminController),
     deleteWaterLine: adminController.deleteWaterLine.bind(adminController),
-    batchWaterLinesOperation: adminController.batchWaterLinesOperation.bind(adminController)
+    batchWaterLinesOperation: adminController.batchWaterLinesOperation.bind(adminController),
+    
+    // Источники холодной воды
+    getOptimizedColdWaterSources: adminController.getOptimizedColdWaterSources.bind(adminController),
+    createColdWaterSource: adminController.createColdWaterSource.bind(adminController),
+    getColdWaterSourceById: adminController.getColdWaterSourceById.bind(adminController),
+    updateColdWaterSource: adminController.updateColdWaterSource.bind(adminController),
+    deleteColdWaterSource: adminController.deleteColdWaterSource.bind(adminController),
+    
+    // Источники тепла
+    getOptimizedHeatSources: adminController.getOptimizedHeatSources.bind(adminController),
+    createHeatSource: adminController.createHeatSource.bind(adminController),
+    getHeatSourceById: adminController.getHeatSourceById.bind(adminController),
+    updateHeatSource: adminController.updateHeatSource.bind(adminController),
+    deleteHeatSource: adminController.deleteHeatSource.bind(adminController)
 }; 

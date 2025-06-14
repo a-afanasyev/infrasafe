@@ -110,6 +110,12 @@ const router = express.Router();
  */
 router.get('/buildings', adminController.getOptimizedBuildings);
 
+// CRUD операции для зданий
+router.post('/buildings', rateLimitStrict, adminController.createBuilding);
+router.get('/buildings/:id', adminController.getBuildingById);
+router.put('/buildings/:id', rateLimitStrict, adminController.updateBuilding);
+router.delete('/buildings/:id', rateLimitStrict, adminController.deleteBuilding);
+
 /**
  * @swagger
  * /admin/buildings/batch:
@@ -208,6 +214,12 @@ router.post('/buildings/batch', rateLimitStrict, adminController.batchBuildingsO
  */
 router.get('/controllers', adminController.getOptimizedControllers);
 
+// CRUD операции для контроллеров
+router.post('/controllers', rateLimitStrict, adminController.createController);
+router.get('/controllers/:id', adminController.getControllerById);
+router.put('/controllers/:id', rateLimitStrict, adminController.updateController);
+router.delete('/controllers/:id', rateLimitStrict, adminController.deleteController);
+
 /**
  * @swagger
  * /admin/controllers/batch:
@@ -305,6 +317,12 @@ router.post('/controllers/batch', rateLimitStrict, adminController.batchControll
  *         description: Список метрик с метаданными
  */
 router.get('/metrics', adminController.getOptimizedMetrics);
+
+// CRUD операции для метрик
+router.post('/metrics', rateLimitStrict, adminController.createMetric);
+router.get('/metrics/:id', adminController.getMetricById);
+router.put('/metrics/:id', rateLimitStrict, adminController.updateMetric);
+router.delete('/metrics/:id', rateLimitStrict, adminController.deleteMetric);
 
 /**
  * @swagger
@@ -966,5 +984,25 @@ router.delete('/water-lines/:id', rateLimitStrict, adminController.deleteWaterLi
  *         description: Результат массовой операции
  */
 router.post('/water-lines/batch', rateLimitStrict, adminController.batchWaterLinesOperation);
+
+// ===============================================
+// ИСТОЧНИКИ ХОЛОДНОЙ ВОДЫ
+// ===============================================
+
+router.get('/cold-water-sources', adminController.getOptimizedColdWaterSources);
+router.post('/cold-water-sources', rateLimitStrict, adminController.createColdWaterSource);
+router.get('/cold-water-sources/:id', adminController.getColdWaterSourceById);
+router.put('/cold-water-sources/:id', rateLimitStrict, adminController.updateColdWaterSource);
+router.delete('/cold-water-sources/:id', rateLimitStrict, adminController.deleteColdWaterSource);
+
+// ===============================================
+// ИСТОЧНИКИ ТЕПЛА
+// ===============================================
+
+router.get('/heat-sources', adminController.getOptimizedHeatSources);
+router.post('/heat-sources', rateLimitStrict, adminController.createHeatSource);
+router.get('/heat-sources/:id', adminController.getHeatSourceById);
+router.put('/heat-sources/:id', rateLimitStrict, adminController.updateHeatSource);
+router.delete('/heat-sources/:id', rateLimitStrict, adminController.deleteHeatSource);
 
 module.exports = router; 

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Database Admin Panel</title>
-    <script defer src="public/admin.js"></script>
+    <!-- Скрипт подключается в конце body -->
     <style>
         /* Стили для предотвращения мерцания */
         html {
@@ -324,6 +324,120 @@
             cursor: not-allowed;
         }
 
+        /* Стили для улучшенной формы метрик */
+        .metrics-form {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        .form-section {
+            margin-bottom: 24px;
+            padding: 16px;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .form-section h3 {
+            margin: 0 0 16px 0;
+            color: #333;
+            font-size: 1.2rem;
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .form-group label {
+            margin-bottom: 6px;
+            font-weight: 600;
+            color: #555;
+            font-size: 0.9rem;
+        }
+        
+        .form-group input,
+        .form-group select {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        
+        .checkbox-group {
+            flex-direction: row !important;
+            align-items: center;
+        }
+        
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-weight: 600;
+            color: #555;
+        }
+        
+        .checkbox-label input[type="checkbox"] {
+            margin-right: 8px;
+            transform: scale(1.2);
+        }
+        
+        .form-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-top: 24px;
+        }
+        
+        .btn-primary {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .btn-primary:hover {
+            background: #218838;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
         /* Сортируемые заголовки */
         .sortable {
             cursor: pointer;
@@ -624,7 +738,9 @@
     </style>
 </head>
 <body>
-    <h1>InfraSafe - Администрирование</h1>
+    <div class="admin-header">
+        <h1>🏢 InfraSafe - Администрирование</h1>
+    </div>
 
     <!-- Навигационное меню -->
     <nav class="admin-nav">
@@ -813,15 +929,15 @@
                 
                 <div class="form-group">
                     <label for="building-cold-water-supplier">Поставщик ХВС</label>
-                    <select id="building-cold-water-supplier">
-                        <option value="">Выберите поставщика ХВС</option>
+                    <select id="building-cold-water-supplier" disabled>
+                        <option value="">Сначала выберите линию ХВС</option>
                     </select>
                 </div>
                 
                 <div class="form-group">
                     <label for="building-hot-water-supplier">Поставщик ГВС</label>
-                    <select id="building-hot-water-supplier">
-                        <option value="">Выберите поставщика ГВС</option>
+                    <select id="building-hot-water-supplier" disabled>
+                        <option value="">Сначала выберите линию ГВС</option>
                     </select>
                 </div>
             </div>
@@ -971,7 +1087,6 @@
         <input type="text" id="transformer-name" placeholder="Название трансформатора" required>
         <input type="number" step="0.1" id="transformer-power" placeholder="Мощность (кВА)" required>
         <input type="number" step="0.1" id="transformer-voltage" placeholder="Напряжение (кВ)" required>
-        <input type="number" id="transformer-building-id" placeholder="ID здания" required>
         <button type="submit">Добавить трансформатор</button>
     </form>
     </section>
@@ -1397,20 +1512,109 @@
     </div>
 
     <!-- Form to Add Test Metric -->
-    <h2>Add Test Metric</h2>
-    <form id="add-metric-form">
-        <input type="number" id="metric-controller-id" placeholder="Controller ID" required>
-        <input type="number" step="0.1" id="metric-electricity-ph1" placeholder="Electricity Ph1" value="220.0">
-        <input type="number" step="0.1" id="metric-electricity-ph2" placeholder="Electricity Ph2" value="220.0">
-        <input type="number" step="0.1" id="metric-electricity-ph3" placeholder="Electricity Ph3" value="220.0">
-        <input type="number" step="0.1" id="metric-cold-water-pressure" placeholder="Cold Water Pressure" value="5.0">
-        <input type="number" step="0.1" id="metric-hot-water-in-temp" placeholder="Hot Water In Temp" value="65.0">
-        <input type="number" step="0.1" id="metric-air-temp" placeholder="Air Temperature" value="22.0">
-        <input type="number" step="0.1" id="metric-humidity" placeholder="Humidity %" value="45.0">
-        <label>
-            <input type="checkbox" id="metric-leak-sensor"> Leak Detected
-        </label>
-        <button type="submit">Add Test Metric</button>
+    <h2>🏭 Создание тестовых метрик</h2>
+    <form id="add-metric-form" class="metrics-form">
+        <div class="form-section">
+            <h3>📊 Основные параметры</h3>
+            <div class="form-group">
+                <label for="metric-controller-id">🎛️ ID Контроллера *</label>
+                <select id="metric-controller-id" required>
+                    <option value="">Выберите контроллер</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>⚡ Электроснабжение</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="metric-electricity-ph1">🔌 Напряжение фаза 1 (В)</label>
+                    <input type="number" step="0.1" id="metric-electricity-ph1" placeholder="220.0" value="220.0">
+                </div>
+                <div class="form-group">
+                    <label for="metric-electricity-ph2">🔌 Напряжение фаза 2 (В)</label>
+                    <input type="number" step="0.1" id="metric-electricity-ph2" placeholder="220.0" value="220.0">
+                </div>
+                <div class="form-group">
+                    <label for="metric-electricity-ph3">🔌 Напряжение фаза 3 (В)</label>
+                    <input type="number" step="0.1" id="metric-electricity-ph3" placeholder="220.0" value="220.0">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="metric-amperage-ph1">⚡ Ток фаза 1 (А)</label>
+                    <input type="number" step="0.1" id="metric-amperage-ph1" placeholder="15.0" value="15.0">
+                </div>
+                <div class="form-group">
+                    <label for="metric-amperage-ph2">⚡ Ток фаза 2 (А)</label>
+                    <input type="number" step="0.1" id="metric-amperage-ph2" placeholder="15.0" value="15.0">
+                </div>
+                <div class="form-group">
+                    <label for="metric-amperage-ph3">⚡ Ток фаза 3 (А)</label>
+                    <input type="number" step="0.1" id="metric-amperage-ph3" placeholder="15.0" value="15.0">
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>💧 Водоснабжение</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="metric-cold-water-pressure">❄️ Давление ХВС (бар)</label>
+                    <input type="number" step="0.1" id="metric-cold-water-pressure" placeholder="5.0" value="5.0">
+                </div>
+                <div class="form-group">
+                    <label for="metric-cold-water-temp">❄️ Температура ХВС (°C)</label>
+                    <input type="number" step="0.1" id="metric-cold-water-temp" placeholder="15.0" value="15.0">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="metric-hot-water-in-pressure">🔥 Давление ГВС подача (бар)</label>
+                    <input type="number" step="0.1" id="metric-hot-water-in-pressure" placeholder="4.0" value="4.0">
+                </div>
+                <div class="form-group">
+                    <label for="metric-hot-water-out-pressure">🔥 Давление ГВС обратка (бар)</label>
+                    <input type="number" step="0.1" id="metric-hot-water-out-pressure" placeholder="3.5" value="3.5">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="metric-hot-water-in-temp">🔥 Температура ГВС подача (°C)</label>
+                    <input type="number" step="0.1" id="metric-hot-water-in-temp" placeholder="65.0" value="65.0">
+                </div>
+                <div class="form-group">
+                    <label for="metric-hot-water-out-temp">🔥 Температура ГВС обратка (°C)</label>
+                    <input type="number" step="0.1" id="metric-hot-water-out-temp" placeholder="45.0" value="45.0">
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>🌡️ Климат и безопасность</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="metric-air-temp">🌡️ Температура воздуха (°C)</label>
+                    <input type="number" step="0.1" id="metric-air-temp" placeholder="22.0" value="22.0">
+                </div>
+                <div class="form-group">
+                    <label for="metric-humidity">💨 Влажность (%)</label>
+                    <input type="number" step="0.1" id="metric-humidity" placeholder="45.0" value="45.0">
+                </div>
+            </div>
+            <div class="form-group checkbox-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="metric-leak-sensor">
+                    <span class="checkmark">💧</span>
+                    Обнаружена протечка
+                </label>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn-primary">✅ Создать метрику</button>
+            <button type="button" class="btn-secondary" onclick="resetMetricsForm()">🔄 Сброс</button>
+        </div>
     </form>
     </section>
 
@@ -1474,7 +1678,6 @@
                 <input type="text" id="edit-transformer-name" placeholder="Название" required>
                 <input type="number" step="0.1" id="edit-transformer-power" placeholder="Мощность (кВА)" required>
                 <input type="number" step="0.1" id="edit-transformer-voltage" placeholder="Напряжение (кВ)" required>
-                <input type="number" id="edit-transformer-building-id" placeholder="ID здания" required>
                 <div class="form-buttons">
                     <button type="submit">Сохранить</button>
                     <button type="button" id="cancel-edit-transformer">Отмена</button>
@@ -1564,6 +1767,10 @@
             </form>
         </div>
     </div>
+
+    <!-- Подключаем систему авторизации перед основным скриптом -->
+    <script src="public/admin-auth.js"></script>
+    <script src="public/admin.js"></script>
 
 </body>
 </html>

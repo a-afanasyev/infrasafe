@@ -83,50 +83,91 @@ test_endpoint() {
     fi
     
     echo -e "${PURPLE}═══════════════════════════════════════════════════════════════${NC}\n"
-    sleep 0.5
+    sleep 1.0
 }
 
 # Функция для получения JWT токена
 get_jwt_token() {
     echo -e "${CYAN}🔐 Получение JWT токена для тестирования...${NC}"
     
-    # Попробуем разные комбинации логин/пароль
-    LOGIN_ATTEMPTS=(
-        '{"username": "testapi", "password": "Password123"}'
-        '{"username": "admin", "password": "Admin123"}'
-        '{"username": "admin", "password": "admin123"}'
-        '{"username": "user", "password": "User123"}'
-        '{"username": "test", "password": "Test123"}'
-    )
+    # Сначала пытаемся использовать существующего пользователя jwttest2
+    echo -e "${YELLOW}🔍 Попытка авторизации с: jwttest2${NC}"
     
-    for LOGIN_DATA in "${LOGIN_ATTEMPTS[@]}"; do
-        echo -e "${YELLOW}🔍 Попытка авторизации с: $(echo "$LOGIN_DATA" | jq -r '.username')${NC}"
+    LOGIN_DATA='{"username": "jwttest2", "password": "Password123"}'
+    RESPONSE=$(curl -s -X POST "${API_URL}/api/auth/login" \
+        -H "Content-Type: application/json" \
+        -d "$LOGIN_DATA")
+    
+    JWT_TOKEN=$(echo "$RESPONSE" | jq -r '.accessToken' 2>/dev/null)
+    
+    # Если jwttest2 не работает, пытаемся создать нового пользователя
+    if [ "$JWT_TOKEN" = "null" ] || [ -z "$JWT_TOKEN" ] || [ "$JWT_TOKEN" = "" ]; then
+        echo -e "${YELLOW}🔧 Создание нового тестового пользователя...${NC}"
+        
+        # Создаем уникального пользователя с timestamp
+        TIMESTAMP=$(date +%s)
+        TEST_USERNAME="testapi_${TIMESTAMP}"
+        
+        REGISTER_DATA="{
+            \"username\": \"${TEST_USERNAME}\",
+            \"password\": \"Password123\",
+            \"email\": \"${TEST_USERNAME}@test.com\",
+            \"role\": \"admin\"
+        }"
+        
+        REGISTER_RESPONSE=$(curl -s -X POST "${API_URL}/api/auth/register" \
+            -H "Content-Type: application/json" \
+            -d "$REGISTER_DATA")
+        
+        echo -e "${BLUE}📝 Результат регистрации:${NC}"
+        echo "$REGISTER_RESPONSE" | jq '.' 2>/dev/null || echo "$REGISTER_RESPONSE"
+        
+        # Пытаемся войти с новым пользователем
+        LOGIN_DATA="{
+            \"username\": \"${TEST_USERNAME}\",
+            \"password\": \"Password123\"
+        }"
         
         RESPONSE=$(curl -s -X POST "${API_URL}/api/auth/login" \
             -H "Content-Type: application/json" \
             -d "$LOGIN_DATA")
         
-        # Проверяем разные форматы ответа
-        TOKEN1=$(echo "$RESPONSE" | jq -r '.accessToken' 2>/dev/null)
-        TOKEN2=$(echo "$RESPONSE" | jq -r '.token' 2>/dev/null)
-        TOKEN3=$(echo "$RESPONSE" | jq -r '.access_token' 2>/dev/null)
-        TOKEN4=$(echo "$RESPONSE" | jq -r '.data.token' 2>/dev/null)
+        JWT_TOKEN=$(echo "$RESPONSE" | jq -r '.accessToken' 2>/dev/null)
         
-        # Выбираем первый валидный токен
-        if [ "$TOKEN1" != "null" ] && [ ! -z "$TOKEN1" ] && [ "$TOKEN1" != "" ]; then
-            JWT_TOKEN="$TOKEN1"
-            break
-        elif [ "$TOKEN2" != "null" ] && [ ! -z "$TOKEN2" ] && [ "$TOKEN2" != "" ]; then
-            JWT_TOKEN="$TOKEN2"
-            break
-        elif [ "$TOKEN3" != "null" ] && [ ! -z "$TOKEN3" ] && [ "$TOKEN3" != "" ]; then
-            JWT_TOKEN="$TOKEN3"
-            break
-        elif [ "$TOKEN4" != "null" ] && [ ! -z "$TOKEN4" ] && [ "$TOKEN4" != "" ]; then
-            JWT_TOKEN="$TOKEN4"
-            break
+        if [ "$JWT_TOKEN" != "null" ] && [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "" ]; then
+            echo -e "${GREEN}✅ Успешно создан и авторизован пользователь: ${TEST_USERNAME}${NC}"
         fi
-    done
+    fi
+    
+    # Если все еще нет токена, пробуем другие существующие пользователи
+    if [ "$JWT_TOKEN" = "null" ] || [ -z "$JWT_TOKEN" ] || [ "$JWT_TOKEN" = "" ]; then
+        echo -e "${YELLOW}🔍 Попытка авторизации с существующими пользователями...${NC}"
+        
+        # Попробуем разные комбинации логин/пароль
+        LOGIN_ATTEMPTS=(
+            '{"username": "testadmin", "password": "TestPass123"}'
+            '{"username": "admin_tashkent", "password": "admin123"}'
+            '{"username": "testadmin", "password": "admin123"}'
+            '{"username": "admin", "password": "Admin123"}'
+            '{"username": "admin", "password": "admin123"}'
+        )
+        
+        for LOGIN_DATA in "${LOGIN_ATTEMPTS[@]}"; do
+            USERNAME=$(echo "$LOGIN_DATA" | jq -r '.username')
+            echo -e "${YELLOW}🔍 Попытка авторизации с: ${USERNAME}${NC}"
+            
+            RESPONSE=$(curl -s -X POST "${API_URL}/api/auth/login" \
+                -H "Content-Type: application/json" \
+                -d "$LOGIN_DATA")
+            
+            JWT_TOKEN=$(echo "$RESPONSE" | jq -r '.accessToken' 2>/dev/null)
+            
+            if [ "$JWT_TOKEN" != "null" ] && [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "" ]; then
+                echo -e "${GREEN}✅ Успешная авторизация с пользователем: ${USERNAME}${NC}"
+                break
+            fi
+        done
+    fi
     
     if [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "null" ] && [ "$JWT_TOKEN" != "" ]; then
         echo -e "${GREEN}✅ JWT токен получен успешно${NC}"
@@ -153,42 +194,9 @@ echo -e "${YELLOW}📅 Время: $(date)${NC}\n"
 # Получаем JWT токен для авторизации
 get_jwt_token
 
-# Если токен не получен, пытаемся создать тестового пользователя
+# Проверяем, что токен получен
 if [ -z "$JWT_TOKEN" ]; then
-    echo -e "${CYAN}🔧 Попытка создания тестового пользователя...${NC}"
-    
-    REGISTER_DATA='{
-        "username": "testadmin",
-        "password": "TestPass123",
-        "email": "testadmin@example.com",
-        "role": "admin"
-    }'
-    
-    RESPONSE=$(curl -s -X POST "${API_URL}/api/auth/register" \
-        -H "Content-Type: application/json" \
-        -d "$REGISTER_DATA")
-    
-    echo -e "${BLUE}📝 Результат регистрации:${NC}"
-    echo "$RESPONSE" | jq '.' 2>/dev/null || echo "$RESPONSE"
-    
-    # Пытаемся войти с новым пользователем
-    LOGIN_DATA='{
-        "username": "testadmin",
-        "password": "TestPass123"
-    }'
-    
-    RESPONSE=$(curl -s -X POST "${API_URL}/api/auth/login" \
-        -H "Content-Type: application/json" \
-        -d "$LOGIN_DATA")
-    
-    JWT_TOKEN=$(echo "$RESPONSE" | jq -r '.accessToken' 2>/dev/null)
-    
-    if [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "null" ]; then
-        echo -e "${GREEN}✅ Успешно создан и авторизован тестовый пользователь${NC}"
-        echo -e "${BLUE}🎫 Токен: ${JWT_TOKEN:0:30}...${NC}\n"
-    else
-        echo -e "${RED}❌ Не удалось создать тестового пользователя${NC}\n"
-    fi
+    echo -e "${RED}❌ Не удалось получить JWT токен для тестирования защищенных endpoints${NC}\n"
 fi
 
 # 1. БАЗОВЫЕ МАРШРУТЫ
@@ -467,6 +475,28 @@ test_endpoint "GET" "/api/admin/controllers?page=1&limit=10" "" "true" "Паги
 test_endpoint "GET" "/api/admin/controllers?search=SN-" "" "true" "Поиск контроллеров по серийному номеру"
 test_endpoint "GET" "/api/admin/controllers?status=active&manufacturer=Siemens" "" "true" "Фильтрация контроллеров по статусу и производителю"
 
+# CRUD операции с контроллерами через админ API
+echo -e "${CYAN}🎛️  CRUD операции с контроллерами (Админ API)${NC}"
+ADMIN_CONTROLLER_DATA='{
+    "serial_number": "ADMIN-TEST-'$(date +%s)'",
+    "vendor": "AdminVendor",
+    "model": "Admin-Model-X1",
+    "building_id": 34,
+    "status": "online"
+}'
+test_endpoint "POST" "/api/admin/controllers" "$ADMIN_CONTROLLER_DATA" "true" "Создание контроллера через админ API"
+
+test_endpoint "GET" "/api/admin/controllers/1" "" "true" "Получение контроллера по ID через админ API"
+
+ADMIN_UPDATE_CONTROLLER_DATA='{
+    "serial_number": "ADMIN-TEST-'$(date +%s)'-UPD",
+    "vendor": "AdminUpdatedVendor", 
+    "model": "Admin-Model-X2",
+    "building_id": 34,
+    "status": "maintenance"
+}'
+test_endpoint "PUT" "/api/admin/controllers/1" "$ADMIN_UPDATE_CONTROLLER_DATA" "true" "Обновление контроллера через админ API"
+
 # Batch операции с контроллерами
 echo -e "${CYAN}📦 Массовые операции с контроллерами${NC}"
 CONTROLLERS_BATCH_DATA='{
@@ -540,6 +570,40 @@ LINE_UPDATE_DATA='{
 test_endpoint "PUT" "/api/admin/lines/1" "$LINE_UPDATE_DATA" "true" "Обновление линии"
 
 test_endpoint "GET" "/api/admin/lines/1" "" "true" "Получение линии по ID"
+
+# CRUD операции с метриками через админ API
+echo -e "${CYAN}📊 CRUD операции с метриками (Админ API)${NC}"
+ADMIN_METRIC_DATA='{
+    "controller_id": 78,
+    "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'",
+    "electricity_ph1": 225.5,
+    "electricity_ph2": 226.0,
+    "electricity_ph3": 224.8,
+    "amperage_ph1": 16.2,
+    "amperage_ph2": 15.8,
+    "amperage_ph3": 16.5,
+    "cold_water_pressure": 2.8,
+    "cold_water_temp": 9.5,
+    "hot_water_in_pressure": 3.5,
+    "hot_water_out_pressure": 3.1,
+    "hot_water_in_temp": 68.0,
+    "hot_water_out_temp": 48.0,
+    "air_temp": 24.0,
+    "humidity": 48.0,
+    "leak_sensor": false
+}'
+test_endpoint "POST" "/api/admin/metrics" "$ADMIN_METRIC_DATA" "true" "Создание метрики через админ API"
+
+test_endpoint "GET" "/api/admin/metrics/1" "" "true" "Получение метрики по ID через админ API"
+
+ADMIN_UPDATE_METRIC_DATA='{
+    "controller_id": 78,
+    "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'",
+    "electricity_ph1": 230.0,
+    "air_temp": 25.0,
+    "humidity": 50.0
+}'
+test_endpoint "PUT" "/api/admin/metrics/1" "$ADMIN_UPDATE_METRIC_DATA" "true" "Обновление метрики через админ API"
 
 # Batch операции с метриками
 echo -e "${CYAN}📦 Массовые операции с метриками${NC}"
@@ -736,6 +800,312 @@ echo -e "${YELLOW}💡 Раскомментируйте строки ниже д
 # test_endpoint "DELETE" "/api/admin/transformers/1" "" "true" "Удаление трансформатора"
 # test_endpoint "DELETE" "/api/admin/lines/1" "" "true" "Удаление линии"
 
+# НОВЫЕ DELETE ОПЕРАЦИИ ЧЕРЕЗ АДМИН API (закомментированы для безопасности)
+# test_endpoint "DELETE" "/api/admin/controllers/1" "" "true" "Удаление контроллера через админ API"
+# test_endpoint "DELETE" "/api/admin/metrics/1" "" "true" "Удаление метрики через админ API"
+# test_endpoint "DELETE" "/api/admin/buildings/1" "" "true" "Удаление здания через админ API"
+# test_endpoint "DELETE" "/api/admin/cold-water-sources/1" "" "true" "Удаление источника холодной воды через админ API"
+# test_endpoint "DELETE" "/api/admin/heat-sources/1" "" "true" "Удаление источника тепла через админ API"
+# test_endpoint "DELETE" "/api/admin/water-lines/1" "" "true" "Удаление линии водоснабжения через админ API"
+
+# 🆕 НОВЫЕ ENDPOINTS ДЛЯ ВОДНОЙ ИНФРАСТРУКТУРЫ
+echo -e "${BLUE}╔═══════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${BLUE}║               💧 ВОДНАЯ ИНФРАСТРУКТУРА (НОВЫЕ API)            ║${NC}"
+echo -e "${BLUE}╚═══════════════════════════════════════════════════════════════╝${NC}"
+
+# Линии водоснабжения
+echo -e "${CYAN}🚰 Линии водоснабжения${NC}"
+test_endpoint "GET" "/api/water-lines" "" "false" "Получение всех линий водоснабжения"
+test_endpoint "GET" "/api/water-lines/1" "" "false" "Получение линии водоснабжения по ID"
+
+WATER_LINE_DATA='{
+    "name": "Линия ХВС Тестовая",
+    "description": "Тестовая линия холодного водоснабжения",
+    "diameter_mm": 200,
+    "material": "steel",
+    "pressure_rating": 6.0,
+    "length_km": 1.5,
+    "status": "active"
+}'
+test_endpoint "POST" "/api/water-lines" "$WATER_LINE_DATA" "true" "Создание новой линии водоснабжения"
+
+UPDATE_WATER_LINE_DATA='{
+    "name": "Линия ХВС Обновленная",
+    "description": "Обновленная тестовая линия",
+    "diameter_mm": 250,
+    "material": "plastic",
+    "pressure_rating": 8.0
+}'
+test_endpoint "PUT" "/api/water-lines/1" "$UPDATE_WATER_LINE_DATA" "true" "Обновление линии водоснабжения"
+
+# Специальный endpoint для получения поставщика по линии водоснабжения
+echo -e "${CYAN}🔗 Связь линий водоснабжения с поставщиками${NC}"
+test_endpoint "GET" "/api/water-lines/1/supplier" "" "false" "Получение поставщика по линии водоснабжения"
+
+# Поставщики воды
+echo -e "${CYAN}🏢 Поставщики водоснабжения${NC}"
+test_endpoint "GET" "/api/water-suppliers" "" "false" "Получение всех поставщиков воды"
+test_endpoint "GET" "/api/water-suppliers/1" "" "false" "Получение поставщика воды по ID"
+
+WATER_SUPPLIER_DATA='{
+    "name": "ХВС Тест",
+    "type": "cold_water",
+    "company_name": "ООО Тестовый Водоканал",
+    "contact_person": "Тестов Т.Т.",
+    "phone": "+998901234567",
+    "email": "test@watercompany.uz",
+    "address": "ул. Тестовая, 1",
+    "contract_number": "TEST-001",
+    "tariff_per_m3": 1200.00,
+    "status": "active"
+}'
+test_endpoint "POST" "/api/water-suppliers" "$WATER_SUPPLIER_DATA" "true" "Создание нового поставщика воды"
+
+UPDATE_WATER_SUPPLIER_DATA='{
+    "name": "ХВС Тест Обновленный",
+    "company_name": "ООО Новый Тестовый Водоканал",
+    "tariff_per_m3": 1300.00
+}'
+test_endpoint "PUT" "/api/water-suppliers/1" "$UPDATE_WATER_SUPPLIER_DATA" "true" "Обновление поставщика воды"
+
+# Источники холодной воды
+echo -e "${CYAN}❄️ Источники холодной воды${NC}"
+test_endpoint "GET" "/api/cold-water-sources" "" "false" "Получение всех источников холодной воды"
+test_endpoint "GET" "/api/cold-water-sources/1" "" "false" "Получение источника холодной воды по ID"
+
+COLD_WATER_SOURCE_DATA='{
+    "name": "Скважина Тестовая №1",
+    "type": "well",
+    "capacity_m3_per_hour": 50.0,
+    "depth_meters": 120,
+    "water_quality": "excellent",
+    "status": "active",
+    "location": "Тестовый район",
+    "installation_date": "2024-01-15"
+}'
+test_endpoint "POST" "/api/cold-water-sources" "$COLD_WATER_SOURCE_DATA" "true" "Создание нового источника холодной воды"
+
+# Источники тепла
+echo -e "${CYAN}🔥 Источники тепла${NC}"
+test_endpoint "GET" "/api/heat-sources" "" "false" "Получение всех источников тепла"
+test_endpoint "GET" "/api/heat-sources/1" "" "false" "Получение источника тепла по ID"
+
+HEAT_SOURCE_DATA='{
+    "name": "Котельная Тестовая №1",
+    "type": "boiler",
+    "capacity_mw": 5.0,
+    "fuel_type": "gas",
+    "efficiency_percent": 85.0,
+    "status": "active",
+    "location": "Тестовый район",
+    "installation_date": "2024-01-20"
+}'
+test_endpoint "POST" "/api/heat-sources" "$HEAT_SOURCE_DATA" "true" "Создание нового источника тепла"
+
+# CRUD операции с источниками холодной воды через админ API
+echo -e "${CYAN}❄️ CRUD операции с источниками холодной воды (Админ API)${NC}"
+test_endpoint "GET" "/api/admin/cold-water-sources" "" "true" "Получение всех источников холодной воды через админ API"
+
+ADMIN_COLD_WATER_SOURCE_DATA='{
+    "name": "Скважина Админ Тестовая №1",
+    "type": "well",
+    "capacity_m3_per_hour": 60.0,
+    "depth_meters": 150,
+    "water_quality": "good",
+    "status": "active",
+    "location": "Админ Тестовый район",
+    "installation_date": "2024-01-25",
+    "latitude": 41.347052,
+    "longitude": 69.203200
+}'
+test_endpoint "POST" "/api/admin/cold-water-sources" "$ADMIN_COLD_WATER_SOURCE_DATA" "true" "Создание источника холодной воды через админ API"
+
+test_endpoint "GET" "/api/admin/cold-water-sources/1" "" "true" "Получение источника холодной воды по ID через админ API"
+
+ADMIN_UPDATE_COLD_WATER_SOURCE_DATA='{
+    "name": "Скважина Админ Обновленная №1",
+    "capacity_m3_per_hour": 70.0,
+    "water_quality": "excellent",
+    "status": "maintenance"
+}'
+test_endpoint "PUT" "/api/admin/cold-water-sources/1" "$ADMIN_UPDATE_COLD_WATER_SOURCE_DATA" "true" "Обновление источника холодной воды через админ API"
+
+# CRUD операции с источниками тепла через админ API
+echo -e "${CYAN}🔥 CRUD операции с источниками тепла (Админ API)${NC}"
+test_endpoint "GET" "/api/admin/heat-sources" "" "true" "Получение всех источников тепла через админ API"
+
+ADMIN_HEAT_SOURCE_DATA='{
+    "name": "Котельная Админ Тестовая №1",
+    "type": "boiler",
+    "capacity_mw": 8.0,
+    "fuel_type": "gas",
+    "efficiency_percent": 90.0,
+    "status": "active",
+    "location": "Админ Тестовый район",
+    "installation_date": "2024-01-30",
+    "latitude": 41.347052,
+    "longitude": 69.203200
+}'
+test_endpoint "POST" "/api/admin/heat-sources" "$ADMIN_HEAT_SOURCE_DATA" "true" "Создание источника тепла через админ API"
+
+test_endpoint "GET" "/api/admin/heat-sources/1" "" "true" "Получение источника тепла по ID через админ API"
+
+ADMIN_UPDATE_HEAT_SOURCE_DATA='{
+    "name": "Котельная Админ Обновленная №1",
+    "capacity_mw": 10.0,
+    "efficiency_percent": 95.0,
+    "status": "maintenance"
+}'
+test_endpoint "PUT" "/api/admin/heat-sources/1" "$ADMIN_UPDATE_HEAT_SOURCE_DATA" "true" "Обновление источника тепла через админ API"
+
+# Админские API для водной инфраструктуры
+echo -e "${CYAN}👨‍💼 Админские API для водной инфраструктуры${NC}"
+test_endpoint "GET" "/api/admin/water-lines?page=1&limit=10" "" "true" "Пагинированный список линий водоснабжения"
+test_endpoint "GET" "/api/admin/water-lines?search=ХВС&type=ХВС" "" "true" "Поиск линий ХВС"
+test_endpoint "GET" "/api/admin/water-lines?diameter_min=100&diameter_max=300&sort=diameter_mm&order=asc" "" "true" "Фильтрация линий по диаметру"
+
+# Batch операции с линиями водоснабжения
+WATER_LINES_BATCH_DATA='{
+    "action": "update_status",
+    "ids": [1, 2, 3],
+    "data": {
+        "status": "maintenance"
+    }
+}'
+test_endpoint "POST" "/api/admin/water-lines/batch" "$WATER_LINES_BATCH_DATA" "true" "Массовое обновление статуса линий водоснабжения"
+
+WATER_LINES_MAINTENANCE_BATCH='{
+    "action": "set_maintenance",
+    "ids": [1, 2],
+    "data": {
+        "maintenance_date": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+    }
+}'
+test_endpoint "POST" "/api/admin/water-lines/batch" "$WATER_LINES_MAINTENANCE_BATCH" "true" "Массовая установка даты обслуживания линий водоснабжения"
+
+# 🆕 РАСШИРЕННАЯ АНАЛИТИКА
+echo -e "${BLUE}╔═══════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${BLUE}║               📊 РАСШИРЕННАЯ АНАЛИТИКА                        ║${NC}"
+echo -e "${BLUE}╚═══════════════════════════════════════════════════════════════╝${NC}"
+
+# Аналитика трансформаторов
+echo -e "${CYAN}⚡ Аналитика трансформаторов${NC}"
+test_endpoint "GET" "/api/analytics/transformers" "" "false" "Аналитика всех трансформаторов"
+test_endpoint "GET" "/api/analytics/transformers/1/load" "" "false" "Загрузка трансформатора"
+test_endpoint "GET" "/api/analytics/transformers/overloaded" "" "false" "Перегруженные трансформаторы"
+test_endpoint "GET" "/api/analytics/transformers/search?latitude=41.347052&longitude=69.203200&radius=5" "" "false" "Поиск трансформаторов в радиусе"
+test_endpoint "GET" "/api/analytics/transformers/1/buildings" "" "false" "Ближайшие здания к трансформатору"
+test_endpoint "GET" "/api/analytics/transformers/1/forecast" "" "false" "Прогноз пиковой нагрузки"
+test_endpoint "GET" "/api/analytics/zones/load" "" "false" "Анализ нагрузки по зонам"
+test_endpoint "GET" "/api/analytics/transformers/statistics" "" "false" "Статистика трансформаторов"
+
+# Системная аналитика
+echo -e "${CYAN}🖥️ Системная аналитика${NC}"
+test_endpoint "GET" "/api/analytics/status" "" "false" "Статус аналитической системы"
+
+# Административные операции аналитики (требуют авторизации)
+echo -e "${CYAN}🔧 Административные операции аналитики${NC}"
+test_endpoint "POST" "/api/analytics/refresh" "" "true" "Обновление аналитических данных"
+test_endpoint "POST" "/api/analytics/cache/invalidate" "" "true" "Очистка кеша аналитики"
+test_endpoint "POST" "/api/analytics/circuit-breakers/reset" "" "true" "Сброс автоматических выключателей"
+
+# Управление порогами
+THRESHOLDS_DATA='{
+    "overload_threshold": 0.85,
+    "critical_threshold": 0.95,
+    "warning_threshold": 0.75
+}'
+test_endpoint "PUT" "/api/analytics/thresholds" "$THRESHOLDS_DATA" "true" "Обновление пороговых значений"
+
+# CRUD операции с трансформаторами через аналитику
+ANALYTICS_TRANSFORMER_DATA='{
+    "name": "TR-ANALYTICS-001",
+    "power_kva": 1000,
+    "voltage_kv": 10,
+    "latitude": 41.347052,
+    "longitude": 69.203200
+}'
+test_endpoint "POST" "/api/analytics/transformers" "$ANALYTICS_TRANSFORMER_DATA" "true" "Создание трансформатора через аналитику"
+
+UPDATE_ANALYTICS_TRANSFORMER_DATA='{
+    "name": "TR-ANALYTICS-001-UPD",
+    "power_kva": 1200
+}'
+test_endpoint "PUT" "/api/analytics/transformers/1" "$UPDATE_ANALYTICS_TRANSFORMER_DATA" "true" "Обновление трансформатора через аналитику"
+
+# 🆕 ТЕСТЫ НА ОШИБКИ ДЛЯ НОВЫХ API
+echo -e "${BLUE}╔═══════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${BLUE}║               ⚠️  ТЕСТЫ ОШИБОК НОВЫХ API                     ║${NC}"
+echo -e "${BLUE}╚═══════════════════════════════════════════════════════════════╝${NC}"
+
+# Ошибки водной инфраструктуры
+test_endpoint "GET" "/api/water-lines/99999" "" "false" "Несуществующая линия водоснабжения"
+test_endpoint "GET" "/api/water-suppliers/99999" "" "false" "Несуществующий поставщик воды"
+test_endpoint "GET" "/api/cold-water-sources/99999" "" "false" "Несуществующий источник холодной воды"
+test_endpoint "GET" "/api/heat-sources/99999" "" "false" "Несуществующий источник тепла"
+
+INVALID_WATER_LINE_DATA='{
+    "name": "",
+    "diameter_mm": -100,
+    "pressure_rating": -5
+}'
+test_endpoint "POST" "/api/water-lines" "$INVALID_WATER_LINE_DATA" "true" "Создание линии с невалидными данными (должна быть ошибка)"
+
+INVALID_WATER_SUPPLIER_DATA='{
+    "name": "",
+    "type": "invalid_type",
+    "tariff_per_m3": -1000
+}'
+test_endpoint "POST" "/api/water-suppliers" "$INVALID_WATER_SUPPLIER_DATA" "true" "Создание поставщика с невалидными данными (должна быть ошибка)"
+
+# Ошибки аналитики
+test_endpoint "GET" "/api/analytics/transformers/99999/load" "" "false" "Загрузка несуществующего трансформатора (должна быть ошибка)"
+test_endpoint "GET" "/api/analytics/transformers/search?latitude=200&longitude=300" "" "false" "Поиск с невалидными координатами (должна быть ошибка)"
+
+INVALID_THRESHOLDS_DATA='{
+    "overload_threshold": 1.5,
+    "critical_threshold": -0.5
+}'
+test_endpoint "PUT" "/api/analytics/thresholds" "$INVALID_THRESHOLDS_DATA" "true" "Обновление с невалидными порогами (должна быть ошибка)"
+
+# Ошибки новых админских CRUD операций
+echo -e "${CYAN}⚠️  Ошибки новых админских CRUD операций${NC}"
+test_endpoint "GET" "/api/admin/controllers/99999" "" "true" "Несуществующий контроллер через админ API (должна быть ошибка)"
+test_endpoint "GET" "/api/admin/metrics/99999" "" "true" "Несуществующая метрика через админ API (должна быть ошибка)"
+test_endpoint "GET" "/api/admin/cold-water-sources/99999" "" "true" "Несуществующий источник холодной воды через админ API (должна быть ошибка)"
+test_endpoint "GET" "/api/admin/heat-sources/99999" "" "true" "Несуществующий источник тепла через админ API (должна быть ошибка)"
+
+INVALID_ADMIN_CONTROLLER_DATA='{
+    "serial_number": "",
+    "vendor": "",
+    "building_id": -1,
+    "status": "invalid_status"
+}'
+test_endpoint "POST" "/api/admin/controllers" "$INVALID_ADMIN_CONTROLLER_DATA" "true" "Создание контроллера с невалидными данными через админ API (должна быть ошибка)"
+
+INVALID_ADMIN_METRIC_DATA='{
+    "controller_id": -1,
+    "timestamp": "invalid_date",
+    "electricity_ph1": -100
+}'
+test_endpoint "POST" "/api/admin/metrics" "$INVALID_ADMIN_METRIC_DATA" "true" "Создание метрики с невалидными данными через админ API (должна быть ошибка)"
+
+INVALID_ADMIN_COLD_WATER_SOURCE_DATA='{
+    "name": "",
+    "type": "invalid_type",
+    "capacity_m3_per_hour": -50,
+    "depth_meters": -100
+}'
+test_endpoint "POST" "/api/admin/cold-water-sources" "$INVALID_ADMIN_COLD_WATER_SOURCE_DATA" "true" "Создание источника холодной воды с невалидными данными через админ API (должна быть ошибка)"
+
+INVALID_ADMIN_HEAT_SOURCE_DATA='{
+    "name": "",
+    "type": "invalid_type",
+    "capacity_mw": -10,
+    "fuel_type": "invalid_fuel"
+}'
+test_endpoint "POST" "/api/admin/heat-sources" "$INVALID_ADMIN_HEAT_SOURCE_DATA" "true" "Создание источника тепла с невалидными данными через админ API (должна быть ошибка)"
+
 # ИТОГИ
 echo -e "${PURPLE}╔═══════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${PURPLE}║                    📈 ИТОГИ ТЕСТИРОВАНИЯ                     ║${NC}"
@@ -762,11 +1132,27 @@ echo -e "${CYAN}   • Статистика для админского дашб
 echo -e "${CYAN}   • Экспорт данных в различных форматах (CSV, JSON, Excel)${NC}"
 echo -e "${CYAN}   • Данные для карты${NC}"
 echo -e "${CYAN}   • Обработка ошибок${NC}"
+echo -e "${GREEN}   🆕 НОВЫЕ АДМИНСКИЕ CRUD ОПЕРАЦИИ:${NC}"
+echo -e "${CYAN}   • Полные CRUD операции для контроллеров через /api/admin/controllers${NC}"
+echo -e "${CYAN}   • Полные CRUD операции для метрик через /api/admin/metrics${NC}"
+echo -e "${CYAN}   • Полные CRUD операции для источников холодной воды через /api/admin/cold-water-sources${NC}"
+echo -e "${CYAN}   • Полные CRUD операции для источников тепла через /api/admin/heat-sources${NC}"
+echo -e "${CYAN}   • Тесты ошибок для всех новых админских endpoints${NC}"
 echo -e "${GREEN}   ⚡ НОВЫЕ СУЩНОСТИ АДМИНКИ:${NC}"
 echo -e "${CYAN}   • Трансформаторы (CRUD + фильтрация + batch операции)${NC}"
 echo -e "${CYAN}   • Линии электропередач (CRUD + фильтрация + batch операции)${NC}"
 echo -e "${CYAN}   • Расширенный поиск по всем 5 типам сущностей${NC}"
 echo -e "${CYAN}   • Экспорт трансформаторов и линий${NC}"
+echo -e "${GREEN}   💧 ВОДНАЯ ИНФРАСТРУКТУРА:${NC}"
+echo -e "${CYAN}   • Линии водоснабжения (CRUD + админские API + batch операции)${NC}"
+echo -e "${CYAN}   • Поставщики воды (CRUD операции)${NC}"
+echo -e "${CYAN}   • Источники холодной воды (CRUD операции)${NC}"
+echo -e "${CYAN}   • Источники тепла (CRUD операции)${NC}"
+echo -e "${GREEN}   📊 РАСШИРЕННАЯ АНАЛИТИКА:${NC}"
+echo -e "${CYAN}   • Аналитика трансформаторов (загрузка, прогнозы, поиск)${NC}"
+echo -e "${CYAN}   • Анализ нагрузки по зонам${NC}"
+echo -e "${CYAN}   • Системная аналитика и мониторинг${NC}"
+echo -e "${CYAN}   • Административные операции (кеш, пороги, обновления)${NC}"
 
 echo -e "\n${YELLOW}📋 Для просмотра документации API: ${API_URL}/api-docs${NC}"
 echo -e "${YELLOW}🏠 Главная страница приложения: ${API_URL}${NC}"
