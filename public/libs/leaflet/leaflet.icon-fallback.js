@@ -7,14 +7,14 @@
     // Обработка ошибок при загрузке иконок
     if (L && L.Icon) {
         const originalIconCreateIcon = L.Icon.prototype._createIcon;
-        
+
         L.Icon.prototype._createIcon = function(name, oldIcon) {
             const icon = originalIconCreateIcon.call(this, name, oldIcon);
-            
+
             // Добавляем обработчик ошибки загрузки изображения
             icon.onerror = function() {
                 console.warn('Ошибка загрузки иконки Leaflet: ', icon.src);
-                
+
                 // Если произошла ошибка, используем запасное изображение или CSS для стилизации
                 if (name === 'icon') {
                     // Для основной иконки используем синий маркер как запасной вариант
@@ -30,8 +30,8 @@
                     icon.style.display = 'none';
                 }
             };
-            
+
             return icon;
         };
     }
-})(); 
+})();

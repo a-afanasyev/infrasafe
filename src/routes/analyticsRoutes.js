@@ -36,7 +36,7 @@ const { applyAnalyticsRateLimit, applyAdminRateLimit, applyCrudRateLimit } = req
  *           type: string
  *           enum: [active, maintenance, inactive]
  *           description: Статус трансформатора
- *     
+ *
  *     TransformerCreate:
  *       type: object
  *       required:
@@ -460,4 +460,4 @@ router.put('/transformers/:transformerId', applyCrudRateLimit, authenticateJWT, 
  */
 router.delete('/transformers/:transformerId', applyCrudRateLimit, authenticateJWT, analyticsController.deleteTransformer);
 
-module.exports = router; 
+module.exports = router;

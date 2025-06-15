@@ -1,16 +1,16 @@
 // Абсолютно минимальный статичный скрипт
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Минимальный статичный скрипт загружен:', new Date().toISOString());
-    
+
     try {
         // Инициализация карты
         const map = L.map('map').setView([55.75, 37.61], 10); // Москва
-        
+
         // Добавляем слой OpenStreetMap
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
-        
+
         // Статичные тестовые данные (никаких запросов к серверу)
         const testBuildings = [
             { id: 1, name: "Бизнес-центр Alpha", lat: 55.75, lng: 37.61, status: 'ok' },
@@ -18,14 +18,14 @@ document.addEventListener('DOMContentLoaded', function() {
             { id: 3, name: "Торговый центр Gamma", lat: 55.78, lng: 37.58, status: 'critical' },
             { id: 4, name: "Офисный центр Delta", lat: 55.76, lng: 37.55, status: 'no' }
         ];
-        
+
         // Добавляем тестовые маркеры
         testBuildings.forEach(building => {
             // Цвет маркера
-            const markerColor = building.status === 'ok' ? 'green' : 
-                              building.status === 'warning' ? 'orange' : 
+            const markerColor = building.status === 'ok' ? 'green' :
+                              building.status === 'warning' ? 'orange' :
                               building.status === 'critical' ? 'red' : 'gray';
-            
+
             // Создаем маркер
             const marker = L.circleMarker([building.lat, building.lng], {
                 radius: 8,
@@ -34,28 +34,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 fillColor: markerColor,
                 fillOpacity: 1
             });
-            
+
             // Привязываем всплывающее окно к маркеру
             marker.bindPopup(`<strong>${building.name}</strong><br>Статус: ${building.status}`)
                 .addTo(map);
-            
+
             // Добавляем информацию в боковую панель
             const sidebarGroup = document.querySelector(`#${building.status}-group .status-items`);
             if (sidebarGroup) {
                 const sidebarItem = document.createElement("div");
                 sidebarItem.classList.add("sidebar-item");
                 sidebarItem.textContent = building.name;
-                
+
                 // При клике на элемент в боковой панели центрируем карту на маркере
                 sidebarItem.addEventListener("click", function () {
                     map.setView([building.lat, building.lng], 14);
                     marker.openPopup();
                 });
-                
+
                 sidebarGroup.appendChild(sidebarItem);
             }
         });
-        
+
         // Добавляем кнопку возврата на главную страницу
         const homeButton = document.createElement('button');
         homeButton.textContent = 'Вернуться на главную';
@@ -68,14 +68,14 @@ document.addEventListener('DOMContentLoaded', function() {
         homeButton.style.borderRadius = '3px';
         homeButton.style.padding = '5px 10px';
         homeButton.style.cursor = 'pointer';
-        
+
         homeButton.addEventListener('click', function() {
             // Просто перенаправляем на индексную страницу
             window.location.href = '/';
         });
-        
+
         document.querySelector('.content').appendChild(homeButton);
-        
+
         // Добавляем статичный текст времени последнего обновления
         const timestamp = document.createElement('div');
         timestamp.textContent = 'СТАТИЧНЫЕ ДАННЫЕ (НЕТ АВТООБНОВЛЕНИЯ)';
@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', function() {
         timestamp.style.fontSize = '12px';
         timestamp.style.zIndex = '1000';
         document.querySelector('.content').appendChild(timestamp);
-        
+
     } catch (error) {
         // Отображаем ошибку на странице, если что-то пошло не так
         console.error("Ошибка:", error);
@@ -103,4 +103,4 @@ document.addEventListener('DOMContentLoaded', function() {
         errorDiv.style.zIndex = '1000';
         document.body.appendChild(errorDiv);
     }
-}); 
+});

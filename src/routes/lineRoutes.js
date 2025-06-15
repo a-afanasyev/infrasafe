@@ -12,4 +12,4 @@ router.delete('/:id', lineController.deleteLine);
 // Дополнительные маршруты
 router.get('/transformer/:transformerId', lineController.getLinesByTransformer);
 
-module.exports = router; 
+module.exports = router;

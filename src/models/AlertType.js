@@ -40,12 +40,12 @@ class AlertType {
     static async create(data) {
         try {
             const { type_name, description } = data;
-            
+
             const { rows } = await db.query(
                 'INSERT INTO alert_types (type_name, description) VALUES ($1, $2) RETURNING *',
                 [type_name, description]
             );
-            
+
             logger.info(`Created new alert type with ID: ${rows[0].alert_type_id}`);
             return rows[0];
         } catch (error) {
@@ -63,16 +63,16 @@ class AlertType {
     static async update(id, data) {
         try {
             const { type_name, description } = data;
-            
+
             const { rows } = await db.query(
                 'UPDATE alert_types SET type_name = $1, description = $2 WHERE alert_type_id = $3 RETURNING *',
                 [type_name, description, id]
             );
-            
+
             if (!rows.length) {
                 return null;
             }
-            
+
             logger.info(`Updated alert type with ID: ${id}`);
             return rows[0];
         } catch (error) {
@@ -92,11 +92,11 @@ class AlertType {
                 'DELETE FROM alert_types WHERE alert_type_id = $1 RETURNING *',
                 [id]
             );
-            
+
             if (!rows.length) {
                 return null;
             }
-            
+
             logger.info(`Deleted alert type with ID: ${id}`);
             return rows[0];
         } catch (error) {
@@ -106,4 +106,4 @@ class AlertType {
     }
 }
 
-module.exports = AlertType; 
+module.exports = AlertType;

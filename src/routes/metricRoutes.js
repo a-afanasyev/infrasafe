@@ -308,4 +308,4 @@ router.post('/', metricController.createMetric);
  */
 router.delete('/:id', metricController.deleteMetric);
 
-module.exports = router; 
+module.exports = router;

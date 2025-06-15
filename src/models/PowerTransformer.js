@@ -23,14 +23,14 @@ class PowerTransformer {
     // Создание нового трансформатора
     static async create(transformerData) {
         const query = `
-            INSERT INTO power_transformers 
-            (id, name, address, latitude, longitude, capacity_kva, voltage_primary, 
-             voltage_secondary, installation_date, manufacturer, model, status, 
+            INSERT INTO power_transformers
+            (id, name, address, latitude, longitude, capacity_kva, voltage_primary,
+             voltage_secondary, installation_date, manufacturer, model, status,
              maintenance_contact, notes)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING *
         `;
-        
+
         const values = [
             transformerData.id,
             transformerData.name,
@@ -47,7 +47,7 @@ class PowerTransformer {
             transformerData.maintenance_contact,
             transformerData.notes
         ];
-        
+
         const result = await db.query(query, values);
         return new PowerTransformer(result.rows[0]);
     }
@@ -55,14 +55,14 @@ class PowerTransformer {
     // Получение всех трансформаторов
     static async findAll(filters = {}) {
         let query = `
-            SELECT pt.*, 
+            SELECT pt.*,
                    COUNT(DISTINCT b.building_id) as buildings_count,
                    COUNT(DISTINCT c.controller_id) as controllers_count
             FROM power_transformers pt
             LEFT JOIN buildings b ON pt.id = b.power_transformer_id
             LEFT JOIN controllers c ON b.building_id = c.building_id
         `;
-        
+
         const conditions = [];
         const values = [];
         let paramIndex = 1;
@@ -90,7 +90,7 @@ class PowerTransformer {
         }
 
         query += `
-            GROUP BY pt.id, pt.name, pt.address, pt.latitude, pt.longitude, 
+            GROUP BY pt.id, pt.name, pt.address, pt.latitude, pt.longitude,
                      pt.capacity_kva, pt.voltage_primary, pt.voltage_secondary,
                      pt.installation_date, pt.manufacturer, pt.model, pt.status,
                      pt.maintenance_contact, pt.notes, pt.created_at, pt.updated_at
@@ -108,24 +108,24 @@ class PowerTransformer {
     // Получение трансформатора по ID
     static async findById(id) {
         const query = `
-            SELECT pt.*, 
+            SELECT pt.*,
                    COUNT(DISTINCT b.building_id) as buildings_count,
                    COUNT(DISTINCT c.controller_id) as controllers_count
             FROM power_transformers pt
             LEFT JOIN buildings b ON pt.id = b.power_transformer_id
             LEFT JOIN controllers c ON b.building_id = c.building_id
             WHERE pt.id = $1
-            GROUP BY pt.id, pt.name, pt.address, pt.latitude, pt.longitude, 
+            GROUP BY pt.id, pt.name, pt.address, pt.latitude, pt.longitude,
                      pt.capacity_kva, pt.voltage_primary, pt.voltage_secondary,
                      pt.installation_date, pt.manufacturer, pt.model, pt.status,
                      pt.maintenance_contact, pt.notes, pt.created_at, pt.updated_at
         `;
-        
+
         const result = await db.query(query, [id]);
         if (result.rows.length === 0) {
             return null;
         }
-        
+
         const row = result.rows[0];
         return {
             ...new PowerTransformer(row),
@@ -159,9 +159,9 @@ class PowerTransformer {
         }
 
         values.push(id);
-        
+
         const query = `
-            UPDATE power_transformers 
+            UPDATE power_transformers
             SET ${fields.join(', ')}, updated_at = NOW()
             WHERE id = $${paramIndex}
             RETURNING *
@@ -171,7 +171,7 @@ class PowerTransformer {
         if (result.rows.length === 0) {
             return null;
         }
-        
+
         return new PowerTransformer(result.rows[0]);
     }
 
@@ -182,14 +182,14 @@ class PowerTransformer {
             SELECT COUNT(*) as count FROM buildings WHERE power_transformer_id = $1
         `;
         const checkResult = await db.query(checkQuery, [id]);
-        
+
         if (parseInt(checkResult.rows[0].count) > 0) {
             throw new Error('Нельзя удалить трансформатор, к которому привязаны здания');
         }
 
         const query = 'DELETE FROM power_transformers WHERE id = $1 RETURNING *';
         const result = await db.query(query, [id]);
-        
+
         return result.rows.length > 0;
     }
 
@@ -198,22 +198,22 @@ class PowerTransformer {
         const query = `
             SELECT * FROM mv_transformer_load_realtime WHERE id = $1
         `;
-        
+
         const result = await db.query(query, [id]);
         if (result.rows.length === 0) {
             return null;
         }
-        
+
         return result.rows[0];
     }
 
     // Получение всех трансформаторов с аналитикой загрузки
     static async getAllWithLoadAnalytics() {
         const query = `
-            SELECT * FROM mv_transformer_load_realtime 
+            SELECT * FROM mv_transformer_load_realtime
             ORDER BY load_percent DESC, name
         `;
-        
+
         const result = await db.query(query);
         return result.rows;
     }
@@ -223,7 +223,7 @@ class PowerTransformer {
         const query = `
             SELECT * FROM find_nearest_buildings_to_transformer($1, $2, $3)
         `;
-        
+
         const result = await db.query(query, [id, maxDistance, limit]);
         return result.rows;
     }
@@ -231,11 +231,11 @@ class PowerTransformer {
     // Получение трансформаторов с высокой загрузкой
     static async getOverloadedTransformers(threshold = 80) {
         const query = `
-            SELECT * FROM mv_transformer_load_realtime 
-            WHERE load_percent >= $1 
+            SELECT * FROM mv_transformer_load_realtime
+            WHERE load_percent >= $1
             ORDER BY load_percent DESC
         `;
-        
+
         const result = await db.query(query, [threshold]);
         return result.rows;
     }
@@ -243,7 +243,7 @@ class PowerTransformer {
     // Поиск трансформаторов в радиусе от точки
     static async findInRadius(latitude, longitude, radiusMeters = 5000) {
         const query = `
-            SELECT pt.*, 
+            SELECT pt.*,
                    ST_Distance(
                        ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
                        pt.geom::geography
@@ -256,7 +256,7 @@ class PowerTransformer {
             )
             ORDER BY distance_meters
         `;
-        
+
         const result = await db.query(query, [latitude, longitude, radiusMeters]);
         return result.rows.map(row => ({
             ...new PowerTransformer(row),
@@ -267,7 +267,7 @@ class PowerTransformer {
     // Получение статистики по трансформаторам
     static async getStatistics() {
         const query = `
-            SELECT 
+            SELECT
                 COUNT(*) as total_count,
                 COUNT(CASE WHEN status = 'active' THEN 1 END) as active_count,
                 COUNT(CASE WHEN status = 'maintenance' THEN 1 END) as maintenance_count,
@@ -278,10 +278,10 @@ class PowerTransformer {
                 MAX(capacity_kva) as max_capacity
             FROM power_transformers
         `;
-        
+
         const result = await db.query(query);
         return result.rows[0];
     }
 }
 
-module.exports = PowerTransformer; 
+module.exports = PowerTransformer;

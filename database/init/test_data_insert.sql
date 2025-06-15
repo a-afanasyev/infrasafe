@@ -1,7 +1,7 @@
 -- Тестовые данные для InfraSafe
 
 -- Вставляем типы оповещений
-INSERT INTO alert_types (type_name, description) VALUES 
+INSERT INTO alert_types (type_name, description) VALUES
 ('electricity_failure', 'Отключение электроэнергии'),
 ('water_leak', 'Протечка воды'),
 ('pressure_low', 'Низкое давление воды'),
@@ -40,7 +40,7 @@ INSERT INTO metrics (
     air_temp, humidity, leak_sensor
 ) VALUES
 -- Здание 1 - нормальные показатели
-(1, NOW() - INTERVAL '2 minutes', 
+(1, NOW() - INTERVAL '2 minutes',
  220.5, 221.0, 219.8, 15.2, 14.8, 15.5,
  2.5, 8.5, 3.2, 2.8, 65.0, 45.0, 22.0, 45.0, false),
 
@@ -78,12 +78,12 @@ INSERT INTO metrics (
     hot_water_in_pressure, hot_water_out_pressure,
     hot_water_in_temp, hot_water_out_temp,
     air_temp, humidity, leak_sensor
-) 
-SELECT 
+)
+SELECT
     controller_id,
     NOW() - (interval '1 hour' * generate_series(1, 24)),
     220 + random() * 20 - 10, -- electricity_ph1: 210-230V
-    220 + random() * 20 - 10, -- electricity_ph2: 210-230V  
+    220 + random() * 20 - 10, -- electricity_ph2: 210-230V
     220 + random() * 20 - 10, -- electricity_ph3: 210-230V
     14 + random() * 4 - 2,    -- amperage_ph1: 12-16A
     14 + random() * 4 - 2,    -- amperage_ph2: 12-16A
@@ -97,5 +97,5 @@ SELECT
     20 + random() * 8 - 4,    -- air_temp: 16-24°C
     45 + random() * 20 - 10,  -- humidity: 35-55%
     false                     -- leak_sensor: обычно false
-FROM controllers 
-WHERE status = 'active'; 
+FROM controllers
+WHERE status = 'active';

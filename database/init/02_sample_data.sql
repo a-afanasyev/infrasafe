@@ -71,65 +71,65 @@ INSERT INTO controllers (serial_number, vendor, model, building_id, status, last
 ('TEST', 'WB', '7.4', null, 'active', NULL);
 
 -- Реалистичные метрики на основе данных Farabi-001
-INSERT INTO metrics (controller_id, timestamp, electricity_ph1, electricity_ph2, electricity_ph3, 
+INSERT INTO metrics (controller_id, timestamp, electricity_ph1, electricity_ph2, electricity_ph3,
                     amperage_ph1, amperage_ph2, amperage_ph3, cold_water_pressure, cold_water_temp,
                     hot_water_in_pressure, hot_water_out_pressure, hot_water_in_temp, hot_water_out_temp,
                     air_temp, humidity, leak_sensor)
-SELECT 
+SELECT
     c.controller_id,
     NOW() - INTERVAL '1 hour' * (random() * 24), -- Последние 24 часа
     -- Напряжение базируется на реальных данных 217-218V с вариациями
-    CASE 
+    CASE
         WHEN random() < 0.1 THEN 190 + random() * 20  -- 10% низкое напряжение (190-210V)
         WHEN random() < 0.05 THEN 245 + random() * 15  -- 5% высокое напряжение (245-260V)
         ELSE 215 + random() * 6  -- 85% нормальное (215-221V)
     END,
-    CASE 
+    CASE
         WHEN random() < 0.1 THEN 190 + random() * 20
         WHEN random() < 0.05 THEN 245 + random() * 15
         ELSE 215 + random() * 6
     END,
-    CASE 
+    CASE
         WHEN random() < 0.1 THEN 190 + random() * 20
         WHEN random() < 0.05 THEN 245 + random() * 15
         ELSE 215 + random() * 6
     END,
     -- Ток с возможными перегрузками для создания алертов
-    CASE 
+    CASE
         WHEN c.controller_id IN (1, 4, 5) THEN 35 + random() * 25  -- Перегруженные контроллеры (35-60A)
         ELSE 5 + random() * 30  -- Нормальная нагрузка (5-35A)
     END,
-    CASE 
+    CASE
         WHEN c.controller_id IN (1, 4, 5) THEN 35 + random() * 25
         ELSE 5 + random() * 30
     END,
-    CASE 
+    CASE
         WHEN c.controller_id IN (1, 4, 5) THEN 35 + random() * 25
         ELSE 5 + random() * 30
     END,
     -- Давление холодной воды на основе реальных 5.0 bar
-    CASE 
+    CASE
         WHEN random() < 0.15 THEN 1.5 + random() * 1  -- 15% низкое давление
         ELSE 4.5 + random() * 1  -- 85% нормальное (4.5-5.5 bar)
     END,
     -- Температура холодной воды на основе реальных 15°C
     12 + random() * 8,  -- 12-20°C
     -- Давление ГВС на основе реальных 2.84 bar
-    CASE 
+    CASE
         WHEN random() < 0.2 THEN 1.5 + random() * 1  -- 20% низкое давление
         ELSE 2.5 + random() * 1  -- 80% нормальное (2.5-3.5 bar)
     END,
-    CASE 
+    CASE
         WHEN random() < 0.2 THEN 1.5 + random() * 1
         ELSE 2.5 + random() * 1
     END,
     -- Температура ГВС на основе реальных 31.7°C
-    CASE 
+    CASE
         WHEN random() < 0.1 THEN 25 + random() * 10  -- 10% низкая температура
         WHEN random() < 0.05 THEN 65 + random() * 10  -- 5% перегрев
         ELSE 50 + random() * 15  -- 85% нормальная (50-65°C)
     END,
-    CASE 
+    CASE
         WHEN random() < 0.1 THEN 25 + random() * 10
         WHEN random() < 0.05 THEN 65 + random() * 10
         ELSE 45 + random() * 15  -- Выходная температура чуть ниже
@@ -153,7 +153,7 @@ INSERT INTO users (username, email, password_hash, role, is_active) VALUES
 -- Алерты инфраструктуры с реалистичными проблемами
 INSERT INTO infrastructure_alerts (type, infrastructure_id, infrastructure_type, severity, message, affected_buildings, data, status) VALUES
 -- Перегрузка трансформатора Фараби-2 (высокая нагрузка от зданий Farabi-005 до Farabi-009)
-('TRANSFORMER_OVERLOAD', 'TR-FARABI-02', 'transformer', 'WARNING', 'Высокая загрузка трансформатора Фараби-2: 87.3%', 5, 
+('TRANSFORMER_OVERLOAD', 'TR-FARABI-02', 'transformer', 'WARNING', 'Высокая загрузка трансформатора Фараби-2: 87.3%', 5,
  '{"load_percent": 87.3, "capacity_kva": 1000.0, "affected_buildings": ["Farabi-005", "Farabi-006", "Farabi-007", "Farabi-008", "Farabi-009"], "threshold_used": 85}', 'active'),
 
 -- Критическая перегрузка трансформатора Олмазор-1
@@ -180,5 +180,5 @@ INSERT INTO infrastructure_alerts (type, infrastructure_id, infrastructure_type,
 REFRESH MATERIALIZED VIEW mv_transformer_load_realtime;
 
 -- Логируем завершение загрузки данных Ташкента
-INSERT INTO logs (timestamp, log_level, message) 
-VALUES (NOW(), 'INFO', 'Тестовые данные на базе реального API Ташкента успешно загружены в InfraSafe'); 
+INSERT INTO logs (timestamp, log_level, message)
+VALUES (NOW(), 'INFO', 'Тестовые данные на базе реального API Ташкента успешно загружены в InfraSafe');

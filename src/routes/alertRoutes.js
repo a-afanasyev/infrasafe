@@ -54,7 +54,7 @@ const { applyAnalyticsRateLimit, applyAdminRateLimit, applyCrudRateLimit } = req
  *           type: string
  *           format: date-time
  *           description: Время закрытия
- *     
+ *
  *     AlertCreate:
  *       type: object
  *       required:
@@ -444,4 +444,4 @@ router.patch('/:alertId/resolve', authenticateJWT, applyCrudRateLimit, alertCont
 router.get('/thresholds', applyAnalyticsRateLimit, alertController.getThresholds);
 router.put('/thresholds', authenticateJWT, isAdmin, applyAdminRateLimit, alertController.updateThresholds);
 
-module.exports = router; 
+module.exports = router;

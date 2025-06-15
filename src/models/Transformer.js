@@ -24,19 +24,19 @@ class Transformer {
 
             // Построение WHERE клаузы для фильтров
             const conditions = [];
-            
+
             if (filters.name) {
                 paramCount++;
                 conditions.push(`t.name ILIKE $${paramCount}`);
                 values.push(`%${filters.name}%`);
             }
-            
+
             if (filters.power_kva) {
                 paramCount++;
                 conditions.push(`t.power_kva >= $${paramCount}`);
                 values.push(filters.power_kva);
             }
-            
+
             if (filters.voltage_kv) {
                 paramCount++;
                 conditions.push(`t.voltage_kv = $${paramCount}`);
@@ -54,14 +54,14 @@ class Transformer {
 
             // Запрос для получения данных с пагинацией и списком зданий
             const dataQuery = `
-                SELECT 
+                SELECT
                     t.*,
                     COALESCE(
-                        array_agg(DISTINCT pb.name) FILTER (WHERE pb.name IS NOT NULL), 
+                        array_agg(DISTINCT pb.name) FILTER (WHERE pb.name IS NOT NULL),
                         '{}'
                     ) as primary_buildings,
                     COALESCE(
-                        array_agg(DISTINCT bb.name) FILTER (WHERE bb.name IS NOT NULL), 
+                        array_agg(DISTINCT bb.name) FILTER (WHERE bb.name IS NOT NULL),
                         '{}'
                     ) as backup_buildings
                 FROM transformers t
@@ -69,13 +69,13 @@ class Transformer {
                 LEFT JOIN buildings bb ON t.transformer_id = bb.backup_transformer_id
                 ${whereClause}
                 GROUP BY t.transformer_id
-                ORDER BY t.transformer_id 
+                ORDER BY t.transformer_id
                 LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
             `;
             values.push(limit, offset);
 
             const { rows } = await db.query(dataQuery, values);
-            
+
             return {
                 data: rows.map(row => new Transformer(row)),
                 pagination: {
@@ -98,11 +98,11 @@ class Transformer {
                 'SELECT * FROM transformers WHERE transformer_id = $1',
                 [id]
             );
-            
+
             if (!rows.length) {
                 return null;
             }
-            
+
             return new Transformer(rows[0]);
         } catch (error) {
             logger.error(`Error in Transformer.findById: ${error.message}`);
@@ -114,14 +114,14 @@ class Transformer {
     static async create(transformerData) {
         try {
             const { name, power_kva, voltage_kv } = transformerData;
-            
+
             const { rows } = await db.query(
                 `INSERT INTO transformers (name, power_kva, voltage_kv)
-                VALUES ($1, $2, $3) 
+                VALUES ($1, $2, $3)
                 RETURNING *`,
                 [name, power_kva, voltage_kv]
             );
-            
+
             logger.info(`Created transformer: ${name}`);
             return new Transformer(rows[0]);
         } catch (error) {
@@ -134,19 +134,19 @@ class Transformer {
     static async update(id, transformerData) {
         try {
             const { name, power_kva, voltage_kv } = transformerData;
-            
+
             const { rows } = await db.query(
-                `UPDATE transformers 
+                `UPDATE transformers
                 SET name = $1, power_kva = $2, voltage_kv = $3, updated_at = NOW()
-                WHERE transformer_id = $4 
+                WHERE transformer_id = $4
                 RETURNING *`,
                 [name, power_kva, voltage_kv, id]
             );
-            
+
             if (!rows.length) {
                 return null;
             }
-            
+
             logger.info(`Updated transformer with ID: ${id}`);
             return new Transformer(rows[0]);
         } catch (error) {
@@ -162,11 +162,11 @@ class Transformer {
                 'DELETE FROM transformers WHERE transformer_id = $1 RETURNING *',
                 [id]
             );
-            
+
             if (!rows.length) {
                 return null;
             }
-            
+
             logger.info(`Deleted transformer with ID: ${id}`);
             return new Transformer(rows[0]);
         } catch (error) {
@@ -184,7 +184,7 @@ class Transformer {
                  WHERE b.building_id = $1`,
                 [buildingId]
             );
-            
+
             return rows.map(row => new Transformer(row));
         } catch (error) {
             logger.error(`Error in Transformer.findByBuildingId: ${error.message}`);
@@ -193,4 +193,4 @@ class Transformer {
     }
 }
 
-module.exports = Transformer; 
+module.exports = Transformer;

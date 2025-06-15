@@ -36,15 +36,15 @@ router.get('/:id/supplier', async (req, res, next) => {
         if (!waterLine) {
             return next(createError('Водная линия не найдена', 404));
         }
-        
+
         if (!waterLine.supplier_id) {
             return res.json({ supplier: null, message: 'К линии не привязан поставщик' });
         }
-        
+
         const WaterSupplier = require('../models/WaterSupplier');
         const supplier = await WaterSupplier.findById(waterLine.supplier_id);
-        
-        res.json({ 
+
+        res.json({
             supplier: supplier,
             line: {
                 id: waterLine.line_id,
@@ -97,4 +97,4 @@ router.delete('/:id', async (req, res, next) => {
     }
 });
 
-module.exports = router; 
+module.exports = router;

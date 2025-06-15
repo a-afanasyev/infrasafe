@@ -32,19 +32,19 @@ class WaterLine {
 
             // Построение WHERE клаузы для фильтров
             const conditions = [];
-            
+
             if (filters.name) {
                 paramCount++;
                 conditions.push(`wl.name ILIKE $${paramCount}`);
                 values.push(`%${filters.name}%`);
             }
-            
+
             if (filters.status) {
                 paramCount++;
                 conditions.push(`wl.status = $${paramCount}`);
                 values.push(filters.status);
             }
-            
+
             if (filters.material) {
                 paramCount++;
                 conditions.push(`wl.material = $${paramCount}`);
@@ -62,23 +62,23 @@ class WaterLine {
 
             // Запрос для получения данных с пагинацией и списком зданий
             const dataQuery = `
-                SELECT 
+                SELECT
                     wl.*,
                     COALESCE(
-                        array_agg(DISTINCT b.name) FILTER (WHERE b.name IS NOT NULL), 
+                        array_agg(DISTINCT b.name) FILTER (WHERE b.name IS NOT NULL),
                         '{}'
                     ) as connected_buildings
                 FROM water_lines wl
                 LEFT JOIN buildings b ON wl.line_id = b.cold_water_line_id OR wl.line_id = b.hot_water_line_id
                 ${whereClause}
                 GROUP BY wl.line_id
-                ORDER BY wl.line_id 
+                ORDER BY wl.line_id
                 LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
             `;
             values.push(limit, offset);
 
             const { rows } = await db.query(dataQuery, values);
-            
+
             return {
                 data: rows.map(row => new WaterLine(row)),
                 pagination: {
@@ -98,10 +98,10 @@ class WaterLine {
     static async findById(id) {
         try {
             const { rows } = await db.query(
-                `SELECT 
+                `SELECT
                     wl.*,
                     COALESCE(
-                        array_agg(DISTINCT b.name) FILTER (WHERE b.name IS NOT NULL), 
+                        array_agg(DISTINCT b.name) FILTER (WHERE b.name IS NOT NULL),
                         '{}'
                     ) as connected_buildings
                 FROM water_lines wl
@@ -110,11 +110,11 @@ class WaterLine {
                 GROUP BY wl.line_id`,
                 [id]
             );
-            
+
             if (!rows.length) {
                 return null;
             }
-            
+
             return new WaterLine(rows[0]);
         } catch (error) {
             logger.error(`Error in WaterLine.findById: ${error.message}`);
@@ -125,21 +125,21 @@ class WaterLine {
     // Создать новую линию водоснабжения
     static async create(lineData) {
         try {
-            const { 
-                name, description, diameter_mm, material, pressure_rating, 
-                installation_date, length_km, status, maintenance_contact, notes 
+            const {
+                name, description, diameter_mm, material, pressure_rating,
+                installation_date, length_km, status, maintenance_contact, notes
             } = lineData;
-            
+
             const { rows } = await db.query(
-                `INSERT INTO water_lines 
-                (name, description, diameter_mm, material, pressure_rating, 
+                `INSERT INTO water_lines
+                (name, description, diameter_mm, material, pressure_rating,
                  installation_date, length_km, status, maintenance_contact, notes)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 RETURNING *`,
-                [name, description, diameter_mm, material, pressure_rating, 
+                [name, description, diameter_mm, material, pressure_rating,
                  installation_date, length_km, status, maintenance_contact, notes]
             );
-            
+
             logger.info(`Created water line: ${name}`);
             return new WaterLine(rows[0]);
         } catch (error) {
@@ -151,26 +151,26 @@ class WaterLine {
     // Обновить линию водоснабжения
     static async update(id, lineData) {
         try {
-            const { 
-                name, description, diameter_mm, material, pressure_rating, 
-                installation_date, length_km, status, maintenance_contact, notes 
+            const {
+                name, description, diameter_mm, material, pressure_rating,
+                installation_date, length_km, status, maintenance_contact, notes
             } = lineData;
-            
+
             const { rows } = await db.query(
-                `UPDATE water_lines 
-                SET name = $1, description = $2, diameter_mm = $3, material = $4, 
-                    pressure_rating = $5, installation_date = $6, length_km = $7, 
+                `UPDATE water_lines
+                SET name = $1, description = $2, diameter_mm = $3, material = $4,
+                    pressure_rating = $5, installation_date = $6, length_km = $7,
                     status = $8, maintenance_contact = $9, notes = $10, updated_at = NOW()
-                WHERE line_id = $11 
+                WHERE line_id = $11
                 RETURNING *`,
-                [name, description, diameter_mm, material, pressure_rating, 
+                [name, description, diameter_mm, material, pressure_rating,
                  installation_date, length_km, status, maintenance_contact, notes, id]
             );
-            
+
             if (!rows.length) {
                 return null;
             }
-            
+
             logger.info(`Updated water line with ID: ${id}`);
             return new WaterLine(rows[0]);
         } catch (error) {
@@ -186,11 +186,11 @@ class WaterLine {
                 'DELETE FROM water_lines WHERE line_id = $1 RETURNING *',
                 [id]
             );
-            
+
             if (!rows.length) {
                 return null;
             }
-            
+
             logger.info(`Deleted water line with ID: ${id}`);
             return new WaterLine(rows[0]);
         } catch (error) {
@@ -208,7 +208,7 @@ class WaterLine {
                  WHERE b.building_id = $1`,
                 [buildingId]
             );
-            
+
             return rows.length ? new WaterLine(rows[0]) : null;
         } catch (error) {
             logger.error(`Error in WaterLine.findByBuildingId: ${error.message}`);
@@ -217,4 +217,4 @@ class WaterLine {
     }
 }
 
-module.exports = WaterLine; 
+module.exports = WaterLine;

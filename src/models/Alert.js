@@ -16,11 +16,11 @@ class Alert {
         try {
             const offset = (page - 1) * limit;
             const validOrder = ['asc', 'desc'].includes(order.toLowerCase()) ? order : 'desc';
-            
+
             // Проверка допустимости поля сортировки
             const validColumns = ['alert_id', 'severity', 'status', 'created_at', 'resolved_at'];
             const sortColumn = validColumns.includes(sort) ? sort : 'created_at';
-            
+
             let query = `
                 SELECT a.*, at.type_name, m.controller_id, c.serial_number as controller_serial, b.name as building_name
                 FROM alerts a
@@ -29,32 +29,32 @@ class Alert {
                 JOIN controllers c ON m.controller_id = c.controller_id
                 JOIN buildings b ON c.building_id = b.building_id
             `;
-            
+
             // Добавление фильтра по статусу
             const params = [];
             if (status !== 'all') {
                 query += ' WHERE a.status = $1';
                 params.push(status);
             }
-            
+
             // Добавление сортировки
             query += ` ORDER BY a.${sortColumn} ${validOrder}`;
-            
+
             // Добавление пагинации
             query += ' LIMIT $' + (params.length + 1) + ' OFFSET $' + (params.length + 2);
             params.push(limit, offset);
-            
+
             const { rows: alerts } = await db.query(query, params);
-            
+
             // Получение общего количества оповещений
             let countQuery = 'SELECT COUNT(*) FROM alerts';
             if (status !== 'all') {
                 countQuery += ' WHERE status = $1';
             }
-            
+
             const { rows: countResult } = await db.query(countQuery, status !== 'all' ? [status] : []);
             const totalCount = parseInt(countResult[0].count);
-            
+
             return {
                 data: alerts,
                 pagination: {
@@ -86,7 +86,7 @@ class Alert {
                 JOIN buildings b ON c.building_id = b.building_id
                 WHERE a.alert_id = $1
             `;
-            
+
             const { rows } = await db.query(query, [id]);
             return rows.length ? rows[0] : null;
         } catch (error) {
@@ -103,15 +103,15 @@ class Alert {
     static async create(alertData) {
         try {
             const { metric_id, alert_type_id, severity, status = 'active' } = alertData;
-            
+
             const { rows } = await db.query(
-                `INSERT INTO alerts 
-                (metric_id, alert_type_id, severity, status, created_at) 
-                VALUES ($1, $2, $3, $4, NOW()) 
+                `INSERT INTO alerts
+                (metric_id, alert_type_id, severity, status, created_at)
+                VALUES ($1, $2, $3, $4, NOW())
                 RETURNING *`,
                 [metric_id, alert_type_id, severity, status]
             );
-            
+
             logger.info(`Created new alert with ID: ${rows[0].alert_id}`);
             return rows[0];
         } catch (error) {
@@ -130,21 +130,21 @@ class Alert {
         try {
             let query = 'UPDATE alerts SET status = $1';
             const params = [status];
-            
+
             // Если статус "resolved", добавляем время разрешения
             if (status === 'resolved') {
                 query += ', resolved_at = NOW()';
             }
-            
+
             query += ' WHERE alert_id = $2 RETURNING *';
             params.push(id);
-            
+
             const { rows } = await db.query(query, params);
-            
+
             if (!rows.length) {
                 return null;
             }
-            
+
             logger.info(`Updated alert status to ${status} for alert ID: ${id}`);
             return rows[0];
         } catch (error) {
@@ -164,11 +164,11 @@ class Alert {
                 'DELETE FROM alerts WHERE alert_id = $1 RETURNING *',
                 [id]
             );
-            
+
             if (!rows.length) {
                 return null;
             }
-            
+
             logger.info(`Deleted alert with ID: ${id}`);
             return rows[0];
         } catch (error) {
@@ -178,4 +178,4 @@ class Alert {
     }
 }
 
-module.exports = Alert; 
+module.exports = Alert;

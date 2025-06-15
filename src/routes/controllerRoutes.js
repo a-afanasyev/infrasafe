@@ -339,4 +339,4 @@ router.patch('/:id/status', controllerController.updateControllerStatus);
  */
 router.delete('/:id', controllerController.deleteController);
 
-module.exports = router; 
+module.exports = router;

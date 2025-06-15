@@ -32,19 +32,19 @@ class WaterSupplier {
 
             // Построение WHERE клаузы для фильтров
             const conditions = [];
-            
+
             if (filters.name) {
                 paramCount++;
                 conditions.push(`ws.name ILIKE $${paramCount}`);
                 values.push(`%${filters.name}%`);
             }
-            
+
             if (filters.type) {
                 paramCount++;
                 conditions.push(`ws.type = $${paramCount}`);
                 values.push(filters.type);
             }
-            
+
             if (filters.status) {
                 paramCount++;
                 conditions.push(`ws.status = $${paramCount}`);
@@ -62,18 +62,18 @@ class WaterSupplier {
 
             // Запрос для получения данных с пагинацией и списком зданий
             const dataQuery = `
-                SELECT 
+                SELECT
                     ws.*,
                     COALESCE(
-                        array_agg(DISTINCT 
-                            CASE 
-                                WHEN ws.type = 'cold_water' THEN bc.name 
-                                WHEN ws.type = 'hot_water' THEN bh.name 
+                        array_agg(DISTINCT
+                            CASE
+                                WHEN ws.type = 'cold_water' THEN bc.name
+                                WHEN ws.type = 'hot_water' THEN bh.name
                             END
-                        ) FILTER (WHERE 
-                            (ws.type = 'cold_water' AND bc.name IS NOT NULL) OR 
+                        ) FILTER (WHERE
+                            (ws.type = 'cold_water' AND bc.name IS NOT NULL) OR
                             (ws.type = 'hot_water' AND bh.name IS NOT NULL)
-                        ), 
+                        ),
                         '{}'
                     ) as connected_buildings
                 FROM water_suppliers ws
@@ -81,13 +81,13 @@ class WaterSupplier {
                 LEFT JOIN buildings bh ON ws.supplier_id = bh.hot_water_supplier_id AND ws.type = 'hot_water'
                 ${whereClause}
                 GROUP BY ws.supplier_id
-                ORDER BY ws.supplier_id 
+                ORDER BY ws.supplier_id
                 LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
             `;
             values.push(limit, offset);
 
             const { rows } = await db.query(dataQuery, values);
-            
+
             return {
                 data: rows.map(row => new WaterSupplier(row)),
                 pagination: {
@@ -107,18 +107,18 @@ class WaterSupplier {
     static async findById(id) {
         try {
             const { rows } = await db.query(
-                `SELECT 
+                `SELECT
                     ws.*,
                     COALESCE(
-                        array_agg(DISTINCT 
-                            CASE 
-                                WHEN ws.type = 'cold_water' THEN bc.name 
-                                WHEN ws.type = 'hot_water' THEN bh.name 
+                        array_agg(DISTINCT
+                            CASE
+                                WHEN ws.type = 'cold_water' THEN bc.name
+                                WHEN ws.type = 'hot_water' THEN bh.name
                             END
-                        ) FILTER (WHERE 
-                            (ws.type = 'cold_water' AND bc.name IS NOT NULL) OR 
+                        ) FILTER (WHERE
+                            (ws.type = 'cold_water' AND bc.name IS NOT NULL) OR
                             (ws.type = 'hot_water' AND bh.name IS NOT NULL)
-                        ), 
+                        ),
                         '{}'
                     ) as connected_buildings
                 FROM water_suppliers ws
@@ -128,11 +128,11 @@ class WaterSupplier {
                 GROUP BY ws.supplier_id`,
                 [id]
             );
-            
+
             if (!rows.length) {
                 return null;
             }
-            
+
             return new WaterSupplier(rows[0]);
         } catch (error) {
             logger.error(`Error in WaterSupplier.findById: ${error.message}`);
@@ -143,21 +143,21 @@ class WaterSupplier {
     // Создать нового поставщика
     static async create(supplierData) {
         try {
-            const { 
+            const {
                 name, type, company_name, contact_person, phone, email, address,
                 contract_number, service_area, tariff_per_m3, status, notes
             } = supplierData;
-            
+
             const { rows } = await db.query(
-                `INSERT INTO water_suppliers 
+                `INSERT INTO water_suppliers
                 (name, type, company_name, contact_person, phone, email, address,
                  contract_number, service_area, tariff_per_m3, status, notes)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                 RETURNING *`,
                 [name, type, company_name, contact_person, phone, email, address,
                  contract_number, service_area, tariff_per_m3, status, notes]
             );
-            
+
             logger.info(`Created water supplier: ${name} (${type})`);
             return new WaterSupplier(rows[0]);
         } catch (error) {
@@ -169,27 +169,27 @@ class WaterSupplier {
     // Обновить поставщика
     static async update(id, supplierData) {
         try {
-            const { 
+            const {
                 name, type, company_name, contact_person, phone, email, address,
                 contract_number, service_area, tariff_per_m3, status, notes
             } = supplierData;
-            
+
             const { rows } = await db.query(
-                `UPDATE water_suppliers 
-                SET name = $1, type = $2, company_name = $3, contact_person = $4, 
+                `UPDATE water_suppliers
+                SET name = $1, type = $2, company_name = $3, contact_person = $4,
                     phone = $5, email = $6, address = $7, contract_number = $8,
-                    service_area = $9, tariff_per_m3 = $10, status = $11, 
+                    service_area = $9, tariff_per_m3 = $10, status = $11,
                     notes = $12, updated_at = NOW()
-                WHERE supplier_id = $13 
+                WHERE supplier_id = $13
                 RETURNING *`,
                 [name, type, company_name, contact_person, phone, email, address,
                  contract_number, service_area, tariff_per_m3, status, notes, id]
             );
-            
+
             if (!rows.length) {
                 return null;
             }
-            
+
             logger.info(`Updated water supplier with ID: ${id}`);
             return new WaterSupplier(rows[0]);
         } catch (error) {
@@ -205,11 +205,11 @@ class WaterSupplier {
                 'DELETE FROM water_suppliers WHERE supplier_id = $1 RETURNING *',
                 [id]
             );
-            
+
             if (!rows.length) {
                 return null;
             }
-            
+
             logger.info(`Deleted water supplier with ID: ${id}`);
             return new WaterSupplier(rows[0]);
         } catch (error) {
@@ -230,7 +230,7 @@ class WaterSupplier {
                  WHERE b.building_id = $1`,
                 [buildingId]
             );
-            
+
             return rows.map(row => new WaterSupplier(row));
         } catch (error) {
             logger.error(`Error in WaterSupplier.findByBuildingId: ${error.message}`);
@@ -245,7 +245,7 @@ class WaterSupplier {
                 'SELECT * FROM water_suppliers WHERE type = $1 AND status = $2 ORDER BY name',
                 [type, 'active']
             );
-            
+
             return rows.map(row => new WaterSupplier(row));
         } catch (error) {
             logger.error(`Error in WaterSupplier.findByType: ${error.message}`);
@@ -254,4 +254,4 @@ class WaterSupplier {
     }
 }
 
-module.exports = WaterSupplier; 
+module.exports = WaterSupplier;

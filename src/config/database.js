@@ -20,7 +20,7 @@ const init = async () => {
         const client = await pool.connect();
         logger.info('База данных успешно подключена');
         client.release();
-        
+
         return pool;
     } catch (error) {
         logger.error(`Ошибка подключения к базе данных: ${error.message}`);
@@ -33,14 +33,14 @@ const query = async (text, params) => {
     if (!pool) {
         throw new Error('База данных не инициализирована. Вызовите db.init() сначала.');
     }
-    
+
     try {
         const start = Date.now();
         const result = await pool.query(text, params);
         const duration = Date.now() - start;
-        
+
         logger.debug(`Выполнен запрос: ${text}, длительность: ${duration}ms, строк: ${result.rowCount}`);
-        
+
         return result;
     } catch (error) {
         logger.error(`Ошибка выполнения запроса: ${error.message}`);
@@ -69,4 +69,4 @@ module.exports = {
     query,
     getPool,
     close
-}; 
+};

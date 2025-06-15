@@ -276,4 +276,4 @@ router.post('/refresh', authenticateRefresh, authController.refreshToken);
  */
 router.post('/change-password', authenticateJWT, authController.changePassword);
 
-module.exports = router; 
+module.exports = router;

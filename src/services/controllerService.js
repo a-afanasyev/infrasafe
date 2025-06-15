@@ -14,7 +14,7 @@ class ControllerService {
     async getAllControllers(page = 1, limit = 10, sort = 'controller_id', order = 'asc') {
         try {
             const cacheKey = `${this.cachePrefix}:list:${page}:${limit}:${sort}:${order}`;
-            
+
             // Проверяем кэш
             const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
             if (cached) {
@@ -24,10 +24,10 @@ class ControllerService {
 
             // Получаем данные из БД
             const result = await Controller.findAll(page, limit, sort, order);
-            
+
             // Сохраняем в кэш
             await cacheService.set(cacheKey, result, { ttl: this.defaultCacheTTL });
-            
+
             logger.info(`Получено ${result.data?.length || 0} контроллеров (страница ${page})`);
             return result;
         } catch (error) {
@@ -40,7 +40,7 @@ class ControllerService {
     async getControllerById(id) {
         try {
             const cacheKey = `${this.cachePrefix}:${id}`;
-            
+
             // Проверяем кэш
             const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
             if (cached) {
@@ -56,7 +56,7 @@ class ControllerService {
 
             // Сохраняем в кэш
             await cacheService.set(cacheKey, controller, { ttl: this.defaultCacheTTL });
-            
+
             return controller;
         } catch (error) {
             logger.error(`Ошибка получения контроллера ${id}: ${error.message}`);
@@ -68,7 +68,7 @@ class ControllerService {
     async getControllersByBuildingId(buildingId) {
         try {
             const cacheKey = `${this.cachePrefix}:building:${buildingId}`;
-            
+
             // Проверяем кэш
             const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
             if (cached) {
@@ -77,10 +77,10 @@ class ControllerService {
             }
 
             const controllers = await Controller.findByBuildingId(buildingId);
-            
+
             // Сохраняем в кэш
             await cacheService.set(cacheKey, controllers, { ttl: this.defaultCacheTTL });
-            
+
             logger.info(`Получено ${controllers.length} контроллеров для здания ${buildingId}`);
             return controllers;
         } catch (error) {
@@ -102,7 +102,7 @@ class ControllerService {
 
             // Создаем ключ кэша с учетом временного диапазона
             const cacheKey = `${this.cachePrefix}:${controllerId}:metrics:${startDate || 'all'}:${endDate || 'all'}`;
-            
+
             // Для метрик используем более короткий TTL
             const metricsCache = await cacheService.get(cacheKey, { ttl: 60000 }); // 1 минута
             if (metricsCache) {
@@ -111,10 +111,10 @@ class ControllerService {
             }
 
             const metrics = await Metric.findByControllerId(controllerId, startDate, endDate);
-            
+
             // Сохраняем в кэш
             await cacheService.set(cacheKey, metrics, { ttl: 60 }); // 1 минута
-            
+
             logger.info(`Получено ${metrics.length} метрик для контроллера ${controllerId}`);
             return metrics;
         } catch (error) {
@@ -130,10 +130,10 @@ class ControllerService {
             this.validateControllerData(controllerData);
 
             const newController = await Controller.create(controllerData);
-            
+
             // Инвалидируем кэш списков
             await this.invalidateControllerListCache();
-            
+
             logger.info(`Создан новый контроллер: ${newController.serial_number} (ID: ${newController.controller_id})`);
             return newController;
         } catch (error) {
@@ -149,7 +149,7 @@ class ControllerService {
             this.validateControllerData(updateData, true);
 
             const updatedController = await Controller.update(id, updateData);
-            
+
             if (!updatedController) {
                 logger.warn(`Контроллер с ID ${id} не найден для обновления`);
                 return null;
@@ -157,7 +157,7 @@ class ControllerService {
 
             // Инвалидируем кэш
             await this.invalidateControllerCache(id);
-            
+
             logger.info(`Обновлен контроллер ${id}: ${updatedController.serial_number}`);
             return updatedController;
         } catch (error) {
@@ -177,7 +177,7 @@ class ControllerService {
             }
 
             const updatedController = await Controller.updateStatus(id, status);
-            
+
             if (!updatedController) {
                 logger.warn(`Контроллер с ID ${id} не найден для обновления статуса`);
                 return null;
@@ -185,7 +185,7 @@ class ControllerService {
 
             // Инвалидируем кэш
             await this.invalidateControllerCache(id);
-            
+
             logger.info(`Обновлен статус контроллера ${id}: ${status}`);
             return updatedController;
         } catch (error) {
@@ -207,7 +207,7 @@ class ControllerService {
             }
 
             const result = await Controller.delete(id);
-            
+
             if (!result) {
                 logger.warn(`Контроллер с ID ${id} не найден для удаления`);
                 return null;
@@ -215,7 +215,7 @@ class ControllerService {
 
             // Инвалидируем кэш
             await this.invalidateControllerCache(id);
-            
+
             logger.info(`Удален контроллер ${id}`);
             return result;
         } catch (error) {
@@ -228,7 +228,7 @@ class ControllerService {
     async findBySerialNumber(serialNumber) {
         try {
             const cacheKey = `${this.cachePrefix}:serial:${serialNumber}`;
-            
+
             const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
             if (cached) {
                 logger.debug(`Controller by serial ${serialNumber} получен из кэша`);
@@ -236,12 +236,12 @@ class ControllerService {
             }
 
             const controller = await Controller.findBySerialNumber(serialNumber);
-            
+
             if (controller) {
                 // Сохраняем в кэш
                 await cacheService.set(cacheKey, controller, { ttl: this.defaultCacheTTL });
             }
-            
+
             return controller;
         } catch (error) {
             logger.error(`Ошибка поиска контроллера по серийному номеру ${serialNumber}: ${error.message}`);
@@ -254,7 +254,7 @@ class ControllerService {
         try {
             const allControllers = await Controller.findAll(1, 10000, 'controller_id', 'asc');
             const controllers = allControllers.data || [];
-            
+
             const now = new Date();
             let updated = 0;
 
@@ -262,7 +262,7 @@ class ControllerService {
                 try {
                     // Получаем последнюю метрику контроллера
                     const lastMetrics = await Metric.findByControllerId(controller.controller_id, null, null, 1);
-                    
+
                     if (lastMetrics.length === 0) {
                         // Нет метрик - контроллер offline
                         if (controller.status !== 'offline') {
@@ -310,7 +310,7 @@ class ControllerService {
     async getControllersStatistics() {
         try {
             const cacheKey = `${this.cachePrefix}:statistics`;
-            
+
             const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
             if (cached) {
                 return cached;
@@ -346,7 +346,7 @@ class ControllerService {
             });
 
             await cacheService.set(cacheKey, stats, { ttl: this.defaultCacheTTL });
-            
+
             return stats;
         } catch (error) {
             logger.error(`Ошибка получения статистики контроллеров: ${error.message}`);
@@ -371,16 +371,16 @@ class ControllerService {
     async invalidateControllerCache(controllerId) {
         try {
             await cacheService.invalidate(`${this.cachePrefix}:${controllerId}`);
-            
+
             // Инвалидируем также кэш по серийному номеру, если есть
             const controller = await Controller.findById(controllerId);
             if (controller && controller.serial_number) {
                 await cacheService.invalidate(`${this.cachePrefix}:serial:${controller.serial_number}`);
             }
-            
+
             await this.invalidateControllerListCache();
             await cacheService.invalidate(`${this.cachePrefix}:statistics`);
-            
+
             // Инвалидируем кэш метрик
             await cacheService.invalidatePattern(`${this.cachePrefix}:${controllerId}:metrics:`);
         } catch (error) {
@@ -399,4 +399,4 @@ class ControllerService {
     }
 }
 
-module.exports = new ControllerService(); 
+module.exports = new ControllerService();

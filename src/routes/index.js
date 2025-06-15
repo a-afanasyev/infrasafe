@@ -27,10 +27,10 @@ const router = express.Router();
  *       type: http
  *       scheme: bearer
  *       bearerFormat: JWT
- * 
+ *
  * security:
  *   - bearerAuth: []
- * 
+ *
  * paths:
  *   /metrics/telemetry:
  *     post:
@@ -79,12 +79,12 @@ router.use((req, res, next) => {
     if (req.path === '/metrics/telemetry' && req.method === 'POST') {
         return next();
     }
-    
+
     // Исключаем маршруты авторизации из проверки
     if (req.path.startsWith('/auth/')) {
         return next();
     }
-    
+
     // Защищаем только маршруты, которые изменяют данные
     if (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE' || req.method === 'PATCH') {
         authenticateJWT(req, res, next);

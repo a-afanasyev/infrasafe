@@ -8,7 +8,7 @@ const logger = require('../utils/logger');
 const getBuildingsWithMetrics = async (req, res, next) => {
     try {
         const query = `
-            SELECT 
+            SELECT
                 b.building_id,
                 b.name as building_name,
                 b.address,
@@ -50,7 +50,7 @@ const getBuildingsWithMetrics = async (req, res, next) => {
         `;
 
         const result = await db.query(query);
-        
+
         const buildings = result.rows.map(row => ({
             building_id: row.building_id,
             building_name: row.building_name,
@@ -83,7 +83,7 @@ const getBuildingsWithMetrics = async (req, res, next) => {
         }));
 
         logger.info(`Retrieved ${buildings.length} buildings with metrics for map`);
-        
+
         res.json({
             data: buildings,
             pagination: {
@@ -102,4 +102,4 @@ const getBuildingsWithMetrics = async (req, res, next) => {
 
 module.exports = {
     getBuildingsWithMetrics
-}; 
+};

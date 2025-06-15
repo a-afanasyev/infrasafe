@@ -58,11 +58,11 @@ INSERT INTO controllers (serial_number, vendor, model, building_id, status, last
 
 -- Тестовые метрики (последние несколько часов)
 -- Генерируем данные для активных контроллеров
-INSERT INTO metrics (controller_id, timestamp, electricity_ph1, electricity_ph2, electricity_ph3, 
+INSERT INTO metrics (controller_id, timestamp, electricity_ph1, electricity_ph2, electricity_ph3,
                     amperage_ph1, amperage_ph2, amperage_ph3, cold_water_pressure, cold_water_temp,
                     hot_water_in_pressure, hot_water_out_pressure, hot_water_in_temp, hot_water_out_temp,
                     air_temp, humidity, leak_sensor)
-SELECT 
+SELECT
     c.controller_id,
     NOW() - INTERVAL '1 hour' * random() * 24, -- Последние 24 часа
     220 + random() * 20, -- Напряжение фаза 1 (220-240V)
@@ -92,7 +92,7 @@ INSERT INTO users (username, email, password_hash, role, is_active) VALUES
 
 -- Тестовые алерты инфраструктуры
 INSERT INTO infrastructure_alerts (type, infrastructure_id, infrastructure_type, severity, message, affected_buildings, data, status) VALUES
-('TRANSFORMER_OVERLOAD', 'TR-002', 'transformer', 'WARNING', 'Высокая загрузка трансформатора Южный-2: 87.5%', 2, 
+('TRANSFORMER_OVERLOAD', 'TR-002', 'transformer', 'WARNING', 'Высокая загрузка трансформатора Южный-2: 87.5%', 2,
  '{"load_percent": 87.5, "capacity_kva": 1000.0, "threshold_used": 85}', 'active'),
 ('WATER_PRESSURE_LOW', 'CW-002', 'water_source', 'WARNING', 'Низкое давление в скважине №2: 2.1 bar', 3,
  '{"pressure_bar": 2.1, "normal_pressure": 3.2, "threshold": 2.5}', 'acknowledged'),
@@ -105,5 +105,5 @@ INSERT INTO infrastructure_alerts (type, infrastructure_id, infrastructure_type,
 REFRESH MATERIALIZED VIEW mv_transformer_load_realtime;
 
 -- Логируем завершение вставки тестовых данных
-INSERT INTO logs (timestamp, log_level, message) 
-VALUES (NOW(), 'INFO', 'Тестовые данные успешно загружены в базу данных InfraSafe'); 
+INSERT INTO logs (timestamp, log_level, message)
+VALUES (NOW(), 'INFO', 'Тестовые данные успешно загружены в базу данных InfraSafe');

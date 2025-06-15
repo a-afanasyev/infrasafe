@@ -8,7 +8,7 @@ class MetricService {
         this.cachePrefix = 'metric';
         this.defaultCacheTTL = 60; // 1 минута для метрик
         this.realtimeCacheTTL = 30; // 30 секунд для real-time данных
-        
+
         // Пороговые значения для обнаружения аномалий
         this.thresholds = {
             voltage: { min: 200, max: 250 },
@@ -22,7 +22,7 @@ class MetricService {
     async getAllMetrics(page = 1, limit = 10, sort = 'timestamp', order = 'desc') {
         try {
             const cacheKey = `${this.cachePrefix}:list:${page}:${limit}:${sort}:${order}`;
-            
+
             // Для метрик используем короткий TTL
             const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
             if (cached) {
@@ -31,10 +31,10 @@ class MetricService {
             }
 
             const result = await Metric.findAll(page, limit, sort, order);
-            
+
             // Сохраняем в кэш
             await cacheService.set(cacheKey, result, { ttl: this.defaultCacheTTL });
-            
+
             logger.info(`Получено ${result.data?.length || 0} метрик (страница ${page})`);
             return result;
         } catch (error) {
@@ -47,7 +47,7 @@ class MetricService {
     async getMetricById(id) {
         try {
             const cacheKey = `${this.cachePrefix}:${id}`;
-            
+
             const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
             if (cached) {
                 logger.debug(`Metric ${id} получена из кэша`);
@@ -62,7 +62,7 @@ class MetricService {
 
             // Сохраняем в кэш
             await cacheService.set(cacheKey, metric, { ttl: this.defaultCacheTTL });
-            
+
             return metric;
         } catch (error) {
             logger.error(`Ошибка получения метрики ${id}: ${error.message}`);
@@ -74,7 +74,7 @@ class MetricService {
     async getLastMetricsForAllControllers() {
         try {
             const cacheKey = `${this.cachePrefix}:last_all_controllers`;
-            
+
             // Очень короткий TTL для актуальных данных
             const cached = await cacheService.get(cacheKey, { ttl: this.realtimeCacheTTL * 1000 });
             if (cached) {
@@ -83,10 +83,10 @@ class MetricService {
             }
 
             const metrics = await Metric.findLastForAllControllers();
-            
+
             // Сохраняем в кэш
             await cacheService.set(cacheKey, metrics, { ttl: this.realtimeCacheTTL });
-            
+
             logger.info(`Получено ${metrics.length} последних метрик для контроллеров`);
             return metrics;
         } catch (error) {
@@ -107,7 +107,7 @@ class MetricService {
             }
 
             const cacheKey = `${this.cachePrefix}:controller:${controllerId}:${startDate || 'all'}:${endDate || 'all'}`;
-            
+
             const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
             if (cached) {
                 logger.debug(`Metrics for controller ${controllerId} получены из кэша`);
@@ -115,10 +115,10 @@ class MetricService {
             }
 
             const metrics = await Metric.findByControllerId(controllerId, startDate, endDate);
-            
+
             // Сохраняем в кэш
             await cacheService.set(cacheKey, metrics, { ttl: this.defaultCacheTTL });
-            
+
             logger.info(`Получено ${metrics.length} метрик для контроллера ${controllerId}`);
             return metrics;
         } catch (error) {
@@ -152,7 +152,7 @@ class MetricService {
             }
 
             const newMetric = await Metric.create(metricData);
-            
+
             // Обновляем статус контроллера на online при получении метрики
             if (controllerId) {
                 try {
@@ -165,7 +165,7 @@ class MetricService {
 
             // Инвалидируем связанные кэши
             await this.invalidateMetricCaches(controllerId);
-            
+
             logger.info(`Создана новая метрика для контроллера ${controllerId} (ID: ${newMetric.metric_id})`);
             return newMetric;
         } catch (error) {
@@ -202,7 +202,7 @@ class MetricService {
             const newMetric = await this.createMetric(metricData);
 
             logger.info(`Телеметрия обработана для контроллера ${serial_number} (ID: ${controller.controller_id})`);
-            
+
             return {
                 message: 'Телеметрия успешно обработана',
                 controller_id: controller.controller_id,
@@ -218,7 +218,7 @@ class MetricService {
     async deleteMetric(id) {
         try {
             const result = await Metric.delete(id);
-            
+
             if (!result) {
                 logger.warn(`Метрика с ID ${id} не найдена для удаления`);
                 return null;
@@ -226,7 +226,7 @@ class MetricService {
 
             // Инвалидируем кэши
             await this.invalidateMetricCaches();
-            
+
             logger.info(`Удалена метрика ${id}`);
             return result;
         } catch (error) {
@@ -239,7 +239,7 @@ class MetricService {
     async getAggregatedMetrics(controllerId, timeFrame = '1h') {
         try {
             const cacheKey = `${this.cachePrefix}:aggregated:${controllerId}:${timeFrame}`;
-            
+
             const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
             if (cached) {
                 logger.debug(`Aggregated metrics for controller ${controllerId} получены из кэша`);
@@ -249,7 +249,7 @@ class MetricService {
             // Определяем временной диапазон
             const endDate = new Date();
             const startDate = new Date();
-            
+
             switch (timeFrame) {
                 case '1h':
                     startDate.setHours(endDate.getHours() - 1);
@@ -266,17 +266,17 @@ class MetricService {
 
             // Получаем метрики за период
             const metrics = await this.getMetricsByControllerId(
-                controllerId, 
-                startDate.toISOString(), 
+                controllerId,
+                startDate.toISOString(),
                 endDate.toISOString()
             );
 
             // Агрегируем данные
             const aggregated = this.aggregateMetrics(metrics);
-            
+
             // Сохраняем в кэш
             await cacheService.set(cacheKey, aggregated, { ttl: this.defaultCacheTTL });
-            
+
             return aggregated;
         } catch (error) {
             logger.error(`Ошибка получения агрегированных метрик для контроллера ${controllerId}: ${error.message}`);
@@ -292,11 +292,11 @@ class MetricService {
 
             // Здесь должен быть метод в модели Metric для удаления старых записей
             // const deletedCount = await Metric.deleteOlderThan(cutoffDate);
-            
+
             // Пока используем заглушку
             logger.info(`Cleanup старых метрик (старше ${daysToKeep} дней) - функция в разработке`);
-            
-            return { 
+
+            return {
                 message: `Удалены метрики старше ${daysToKeep} дней`,
                 cutoffDate: cutoffDate.toISOString()
             };
@@ -314,7 +314,7 @@ class MetricService {
 
         // Валидация числовых значений
         const numericFields = ['voltage', 'amperage', 'power', 'temperature', 'humidity'];
-        
+
         numericFields.forEach(field => {
             if (data[field] !== undefined && data[field] !== null) {
                 if (typeof data[field] !== 'number' || isNaN(data[field])) {
@@ -429,7 +429,7 @@ class MetricService {
             // Общие кэши
             await cacheService.invalidatePattern(`${this.cachePrefix}:list:`);
             await cacheService.invalidate(`${this.cachePrefix}:last_all_controllers`);
-            
+
             // Кэши конкретного контроллера
             if (controllerId) {
                 await cacheService.invalidatePattern(`${this.cachePrefix}:controller:${controllerId}:`);
@@ -441,4 +441,4 @@ class MetricService {
     }
 }
 
-module.exports = new MetricService(); 
+module.exports = new MetricService();

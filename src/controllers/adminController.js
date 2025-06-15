@@ -4,7 +4,7 @@ const logger = require('../utils/logger');
 const { createError } = require('../utils/helpers');
 
 class AdminController {
-    
+
     // Оптимизированное получение зданий
     async getOptimizedBuildings(req, res, next) {
         try {
@@ -77,7 +77,7 @@ class AdminController {
         }
     }
 
-    // Оптимизированное получение контроллеров  
+    // Оптимизированное получение контроллеров
     async getOptimizedControllers(req, res, next) {
         try {
             const {
@@ -220,10 +220,10 @@ class AdminController {
     async batchBuildingsOperation(req, res, next) {
         try {
             const { action, ids } = req.body;
-            res.json({ 
-                success: true, 
-                message: `Batch ${action} completed (stub)`, 
-                affected: ids ? ids.length : 0 
+            res.json({
+                success: true,
+                message: `Batch ${action} completed (stub)`,
+                affected: ids ? ids.length : 0
             });
         } catch (error) {
             next(createError('Batch operation failed', 500));
@@ -234,10 +234,10 @@ class AdminController {
     async batchControllersOperation(req, res, next) {
         try {
             const { action, ids } = req.body;
-            res.json({ 
-                success: true, 
-                message: `Batch ${action} completed (stub)`, 
-                affected: ids ? ids.length : 0 
+            res.json({
+                success: true,
+                message: `Batch ${action} completed (stub)`,
+                affected: ids ? ids.length : 0
             });
         } catch (error) {
             next(createError('Batch operation failed', 500));
@@ -248,10 +248,10 @@ class AdminController {
     async batchMetricsOperation(req, res, next) {
         try {
             const { action } = req.body;
-            res.json({ 
-                success: true, 
-                message: `Batch ${action} completed (stub)`, 
-                affected: 0 
+            res.json({
+                success: true,
+                message: `Batch ${action} completed (stub)`,
+                affected: 0
             });
         } catch (error) {
             next(createError('Batch operation failed', 500));
@@ -262,8 +262,8 @@ class AdminController {
     async globalSearch(req, res, next) {
         try {
             const { query, type = 'all', limit = 50 } = req.query;
-            res.json({ 
-                results: [], 
+            res.json({
+                results: [],
                 total: 0,
                 query,
                 type,
@@ -293,8 +293,8 @@ class AdminController {
     async exportData(req, res, next) {
         try {
             const { type, format } = req.body;
-            res.json({ 
-                success: true, 
+            res.json({
+                success: true,
                 message: `Export ${type} in ${format} initiated (stub)`,
                 downloadUrl: '/api/admin/download/export-123.csv'
             });
@@ -419,9 +419,9 @@ class AdminController {
             const { id } = req.params;
 
             const query = `
-                SELECT t.*, b.name as building_name 
-                FROM transformers t 
-                LEFT JOIN buildings b ON t.building_id = b.building_id 
+                SELECT t.*, b.name as building_name
+                FROM transformers t
+                LEFT JOIN buildings b ON t.building_id = b.building_id
                 WHERE t.transformer_id = $1
             `;
 
@@ -477,7 +477,7 @@ class AdminController {
             params.push(id);
 
             const query = `
-                UPDATE transformers 
+                UPDATE transformers
                 SET ${updateFields.join(', ')}
                 WHERE transformer_id = $${paramIndex}
                 RETURNING *
@@ -693,9 +693,9 @@ class AdminController {
             const { id } = req.params;
 
             const query = `
-                SELECT l.*, t.name as transformer_name 
-                FROM lines l 
-                LEFT JOIN transformers t ON l.transformer_id = t.transformer_id 
+                SELECT l.*, t.name as transformer_name
+                FROM lines l
+                LEFT JOIN transformers t ON l.transformer_id = t.transformer_id
                 WHERE l.line_id = $1
             `;
 
@@ -751,7 +751,7 @@ class AdminController {
             params.push(id);
 
             const query = `
-                UPDATE lines 
+                UPDATE lines
                 SET ${updateFields.join(', ')}
                 WHERE line_id = $${paramIndex}
                 RETURNING *
@@ -871,7 +871,7 @@ class AdminController {
             const offset = (pageNum - 1) * limitNum;
 
             let query = `
-                SELECT wl.*, 
+                SELECT wl.*,
                        COUNT(DISTINCT b.building_id) as connected_buildings_count,
                        ARRAY_AGG(DISTINCT b.name) FILTER (WHERE b.name IS NOT NULL) as connected_buildings
                 FROM water_lines wl
@@ -941,17 +941,17 @@ class AdminController {
     // Создание новой линии водоснабжения
     async createWaterLine(req, res, next) {
         try {
-            const { 
-                name, 
-                description, 
-                diameter_mm, 
-                material, 
-                pressure_rating, 
-                installation_date, 
+            const {
+                name,
+                description,
+                diameter_mm,
+                material,
+                pressure_rating,
+                installation_date,
                 length_km,
                 line_type,
                 supplier_id,
-                status = 'active' 
+                status = 'active'
             } = req.body;
 
             if (!name || !diameter_mm || !material) {
@@ -986,7 +986,7 @@ class AdminController {
             const { id } = req.params;
 
             const query = `
-                SELECT wl.*, 
+                SELECT wl.*,
                        COUNT(DISTINCT b.building_id) as connected_buildings_count,
                        ARRAY_AGG(DISTINCT b.name) FILTER (WHERE b.name IS NOT NULL) as connected_buildings
                 FROM water_lines wl
@@ -1016,17 +1016,17 @@ class AdminController {
     async updateWaterLine(req, res, next) {
         try {
             const { id } = req.params;
-            const { 
-                name, 
-                description, 
-                diameter_mm, 
-                material, 
-                pressure_rating, 
-                installation_date, 
+            const {
+                name,
+                description,
+                diameter_mm,
+                material,
+                pressure_rating,
+                installation_date,
                 length_km,
                 line_type,
                 supplier_id,
-                status 
+                status
             } = req.body;
 
             const updateFields = [];
@@ -1082,7 +1082,7 @@ class AdminController {
             params.push(id);
 
             const query = `
-                UPDATE water_lines 
+                UPDATE water_lines
                 SET ${updateFields.join(', ')}
                 WHERE line_id = $${paramIndex}
                 RETURNING *
@@ -1114,7 +1114,7 @@ class AdminController {
             // Проверяем, есть ли связанные здания
             const checkQuery = 'SELECT COUNT(*) FROM buildings WHERE cold_water_line_id = $1 OR hot_water_line_id = $1';
             const checkResult = await pool.query(checkQuery, [id]);
-            
+
             if (parseInt(checkResult.rows[0].count) > 0) {
                 return next(createError('Cannot delete water line: it has connected buildings', 400));
             }
@@ -1152,11 +1152,11 @@ class AdminController {
                     // Проверяем, есть ли связанные здания
                     const checkQuery = 'SELECT building_id FROM buildings WHERE cold_water_line_id = ANY($1) OR hot_water_line_id = ANY($1)';
                     const checkResult = await pool.query(checkQuery, [ids]);
-                    
+
                     if (checkResult.rows.length > 0) {
                         return next(createError('Cannot delete water lines: some have connected buildings', 400));
                     }
-                    
+
                     const deleteQuery = 'DELETE FROM water_lines WHERE line_id = ANY($1) RETURNING line_id';
                     result = await pool.query(deleteQuery, [ids]);
                     break;
@@ -1345,8 +1345,8 @@ class AdminController {
             }
 
             const query = `
-                INSERT INTO cold_water_sources 
-                (id, name, address, latitude, longitude, source_type, capacity_m3_per_hour, 
+                INSERT INTO cold_water_sources
+                (id, name, address, latitude, longitude, source_type, capacity_m3_per_hour,
                  operating_pressure_bar, installation_date, status, maintenance_contact, notes)
                 VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 RETURNING *
@@ -1454,7 +1454,7 @@ class AdminController {
             params.push(id);
 
             const query = `
-                UPDATE cold_water_sources 
+                UPDATE cold_water_sources
                 SET ${updateFields.join(', ')}
                 WHERE id = $${paramIndex}
                 RETURNING *
@@ -1583,8 +1583,8 @@ class AdminController {
             }
 
             const query = `
-                INSERT INTO heat_sources 
-                (id, name, address, latitude, longitude, source_type, capacity_mw, 
+                INSERT INTO heat_sources
+                (id, name, address, latitude, longitude, source_type, capacity_mw,
                  fuel_type, installation_date, status, maintenance_contact, notes)
                 VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 RETURNING *
@@ -1692,7 +1692,7 @@ class AdminController {
             params.push(id);
 
             const query = `
-                UPDATE heat_sources 
+                UPDATE heat_sources
                 SET ${updateFields.join(', ')}
                 WHERE id = $${paramIndex}
                 RETURNING *
@@ -1751,25 +1751,25 @@ module.exports = {
     globalSearch: adminController.globalSearch.bind(adminController),
     getAdminStats: adminController.getAdminStats.bind(adminController),
     exportData: adminController.exportData.bind(adminController),
-    
+
     // CRUD для зданий
     createBuilding: adminController.createBuilding.bind(adminController),
     getBuildingById: adminController.getBuildingById.bind(adminController),
     updateBuilding: adminController.updateBuilding.bind(adminController),
     deleteBuilding: adminController.deleteBuilding.bind(adminController),
-    
+
     // CRUD для контроллеров
     createController: adminController.createController.bind(adminController),
     getControllerById: adminController.getControllerById.bind(adminController),
     updateController: adminController.updateController.bind(adminController),
     deleteController: adminController.deleteController.bind(adminController),
-    
+
     // CRUD для метрик
     createMetric: adminController.createMetric.bind(adminController),
     getMetricById: adminController.getMetricById.bind(adminController),
     updateMetric: adminController.updateMetric.bind(adminController),
     deleteMetric: adminController.deleteMetric.bind(adminController),
-    
+
     // Трансформаторы
     getOptimizedTransformers: adminController.getOptimizedTransformers.bind(adminController),
     createTransformer: adminController.createTransformer.bind(adminController),
@@ -1777,7 +1777,7 @@ module.exports = {
     updateTransformer: adminController.updateTransformer.bind(adminController),
     deleteTransformer: adminController.deleteTransformer.bind(adminController),
     batchTransformersOperation: adminController.batchTransformersOperation.bind(adminController),
-    
+
     // Линии электропередач
     getOptimizedLines: adminController.getOptimizedLines.bind(adminController),
     createLine: adminController.createLine.bind(adminController),
@@ -1785,7 +1785,7 @@ module.exports = {
     updateLine: adminController.updateLine.bind(adminController),
     deleteLine: adminController.deleteLine.bind(adminController),
     batchLinesOperation: adminController.batchLinesOperation.bind(adminController),
-    
+
     // Линии водоснабжения
     getOptimizedWaterLines: adminController.getOptimizedWaterLines.bind(adminController),
     createWaterLine: adminController.createWaterLine.bind(adminController),
@@ -1793,18 +1793,18 @@ module.exports = {
     updateWaterLine: adminController.updateWaterLine.bind(adminController),
     deleteWaterLine: adminController.deleteWaterLine.bind(adminController),
     batchWaterLinesOperation: adminController.batchWaterLinesOperation.bind(adminController),
-    
+
     // Источники холодной воды
     getOptimizedColdWaterSources: adminController.getOptimizedColdWaterSources.bind(adminController),
     createColdWaterSource: adminController.createColdWaterSource.bind(adminController),
     getColdWaterSourceById: adminController.getColdWaterSourceById.bind(adminController),
     updateColdWaterSource: adminController.updateColdWaterSource.bind(adminController),
     deleteColdWaterSource: adminController.deleteColdWaterSource.bind(adminController),
-    
+
     // Источники тепла
     getOptimizedHeatSources: adminController.getOptimizedHeatSources.bind(adminController),
     createHeatSource: adminController.createHeatSource.bind(adminController),
     getHeatSourceById: adminController.getHeatSourceById.bind(adminController),
     updateHeatSource: adminController.updateHeatSource.bind(adminController),
     deleteHeatSource: adminController.deleteHeatSource.bind(adminController)
-}; 
+};

@@ -2,26 +2,26 @@ const alertService = require('../services/alertService');
 const logger = require('../utils/logger');
 
 class AlertController {
-    
+
     // Получение всех активных алертов
     static async getActiveAlerts(req, res) {
         try {
             const { severity, infrastructure_type, limit } = req.query;
-            
+
             const filters = {};
             if (severity) filters.severity = severity.toUpperCase();
             if (infrastructure_type) filters.infrastructure_type = infrastructure_type.toLowerCase();
             if (limit) filters.limit = parseInt(limit);
-            
+
             const alerts = await alertService.getActiveAlerts(filters);
-            
+
             res.json({
                 success: true,
                 data: alerts,
                 count: alerts.length,
                 filters: filters
             });
-            
+
         } catch (error) {
             logger.error('Ошибка получения активных алертов:', error);
             res.status(500).json({
@@ -30,28 +30,28 @@ class AlertController {
             });
         }
     }
-    
+
     // Подтверждение алерта (acknowledge)
     static async acknowledgeAlert(req, res) {
         try {
             const { alertId } = req.params;
             const userId = req.user?.user_id; // Из JWT токена
-            
+
             if (!userId) {
                 return res.status(401).json({
                     success: false,
                     message: 'Требуется авторизация для подтверждения алертов'
                 });
             }
-            
+
             const alert = await alertService.acknowledgeAlert(parseInt(alertId), userId);
-            
+
             res.json({
                 success: true,
                 message: 'Алерт успешно подтвержден',
                 data: alert
             });
-            
+
         } catch (error) {
             logger.error('Ошибка подтверждения алерта:', error);
             res.status(500).json({
@@ -60,28 +60,28 @@ class AlertController {
             });
         }
     }
-    
+
     // Закрытие алерта (resolve)
     static async resolveAlert(req, res) {
         try {
             const { alertId } = req.params;
             const userId = req.user?.user_id; // Из JWT токена
-            
+
             if (!userId) {
                 return res.status(401).json({
                     success: false,
                     message: 'Требуется авторизация для закрытия алертов'
                 });
             }
-            
+
             const alert = await alertService.resolveAlert(parseInt(alertId), userId);
-            
+
             res.json({
                 success: true,
                 message: 'Алерт успешно закрыт',
                 data: alert
             });
-            
+
         } catch (error) {
             logger.error('Ошибка закрытия алерта:', error);
             res.status(500).json({
@@ -90,7 +90,7 @@ class AlertController {
             });
         }
     }
-    
+
     // Создание алерта вручную
     static async createAlert(req, res) {
         try {
@@ -103,7 +103,7 @@ class AlertController {
                 affected_buildings,
                 data
             } = req.body;
-            
+
             // Валидация обязательных полей
             if (!type || !infrastructure_id || !infrastructure_type || !severity || !message) {
                 return res.status(400).json({
@@ -111,7 +111,7 @@ class AlertController {
                     message: 'Обязательные поля: type, infrastructure_id, infrastructure_type, severity, message'
                 });
             }
-            
+
             // Валидация severity
             const validSeverities = ['INFO', 'WARNING', 'CRITICAL'];
             if (!validSeverities.includes(severity.toUpperCase())) {
@@ -120,7 +120,7 @@ class AlertController {
                     message: `Недопустимый уровень severity. Разрешены: ${validSeverities.join(', ')}`
                 });
             }
-            
+
             const alertData = {
                 type,
                 infrastructure_id,
@@ -130,15 +130,15 @@ class AlertController {
                 affected_buildings: affected_buildings || 0,
                 data: data || {}
             };
-            
+
             const alert = await alertService.createAlert(alertData);
-            
+
             res.status(201).json({
                 success: true,
                 message: 'Алерт успешно создан',
                 data: alert
             });
-            
+
         } catch (error) {
             logger.error('Ошибка создания алерта:', error);
             res.status(500).json({
@@ -147,21 +147,21 @@ class AlertController {
             });
         }
     }
-    
+
     // Проверка конкретного трансформатора
     static async checkTransformer(req, res) {
         try {
             const { transformerId } = req.params;
-            
+
             if (!transformerId) {
                 return res.status(400).json({
                     success: false,
                     message: 'ID трансформатора обязателен'
                 });
             }
-            
+
             const alert = await alertService.checkTransformerLoad(transformerId);
-            
+
             if (alert) {
                 res.json({
                     success: true,
@@ -175,7 +175,7 @@ class AlertController {
                     data: null
                 });
             }
-            
+
         } catch (error) {
             logger.error('Ошибка проверки трансформатора:', error);
             res.status(500).json({
@@ -184,18 +184,18 @@ class AlertController {
             });
         }
     }
-    
+
     // Массовая проверка всех трансформаторов
     static async checkAllTransformers(req, res) {
         try {
             const result = await alertService.checkAllTransformers();
-            
+
             res.json({
                 success: true,
                 message: `Проверено ${result.checked} трансформаторов, создано ${result.alerts_created} алертов`,
                 data: result
             });
-            
+
         } catch (error) {
             logger.error('Ошибка массовой проверки трансформаторов:', error);
             res.status(500).json({
@@ -204,27 +204,27 @@ class AlertController {
             });
         }
     }
-    
+
     // Получение статистики алертов
     static async getAlertStatistics(req, res) {
         try {
             const { days } = req.query;
             const period = days ? parseInt(days) : 7;
-            
+
             if (period < 1 || period > 365) {
                 return res.status(400).json({
                     success: false,
                     message: 'Период должен быть от 1 до 365 дней'
                 });
             }
-            
+
             const statistics = await alertService.getAlertStatistics(period);
-            
+
             res.json({
                 success: true,
                 data: statistics
             });
-            
+
         } catch (error) {
             logger.error('Ошибка получения статистики алертов:', error);
             res.status(500).json({
@@ -233,17 +233,17 @@ class AlertController {
             });
         }
     }
-    
+
     // Получение и обновление порогов алертов
     static async getThresholds(req, res) {
         try {
             const thresholds = alertService.getThresholds();
-            
+
             res.json({
                 success: true,
                 data: thresholds
             });
-            
+
         } catch (error) {
             logger.error('Ошибка получения порогов алертов:', error);
             res.status(500).json({
@@ -252,11 +252,11 @@ class AlertController {
             });
         }
     }
-    
+
     static async updateThresholds(req, res) {
         try {
             const newThresholds = req.body;
-            
+
             // Валидация входящих данных
             const validKeys = [
                 'transformer_overload',
@@ -266,7 +266,7 @@ class AlertController {
                 'heating_temp_delta_low',
                 'heating_temp_delta_critical'
             ];
-            
+
             const invalidKeys = Object.keys(newThresholds).filter(key => !validKeys.includes(key));
             if (invalidKeys.length > 0) {
                 return res.status(400).json({
@@ -274,7 +274,7 @@ class AlertController {
                     message: `Недопустимые ключи: ${invalidKeys.join(', ')}. Разрешены: ${validKeys.join(', ')}`
                 });
             }
-            
+
             // Проверяем, что значения числовые и положительные
             for (const [key, value] of Object.entries(newThresholds)) {
                 if (typeof value !== 'number' || value <= 0) {
@@ -284,15 +284,15 @@ class AlertController {
                     });
                 }
             }
-            
+
             alertService.updateThresholds(newThresholds);
-            
+
             res.json({
                 success: true,
                 message: 'Пороги алертов обновлены',
                 data: alertService.getThresholds()
             });
-            
+
         } catch (error) {
             logger.error('Ошибка обновления порогов алертов:', error);
             res.status(500).json({
@@ -301,17 +301,17 @@ class AlertController {
             });
         }
     }
-    
+
     // Статус системы алертов
     static async getSystemStatus(req, res) {
         try {
             const status = alertService.getStatus();
-            
+
             res.json({
                 success: true,
                 data: status
             });
-            
+
         } catch (error) {
             logger.error('Ошибка получения статуса системы алертов:', error);
             res.status(500).json({
@@ -322,4 +322,4 @@ class AlertController {
     }
 }
 
-module.exports = AlertController; 
+module.exports = AlertController;

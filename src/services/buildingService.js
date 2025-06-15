@@ -13,7 +13,7 @@ class BuildingService {
     async getAllBuildings(page = 1, limit = 10, sort = 'building_id', order = 'asc') {
         try {
             const cacheKey = `${this.cachePrefix}:list:${page}:${limit}:${sort}:${order}`;
-            
+
             // Проверяем кэш
             const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
             if (cached) {
@@ -23,10 +23,10 @@ class BuildingService {
 
             // Получаем данные из БД
             const result = await Building.findAll(page, limit, sort, order);
-            
+
             // Сохраняем в кэш
             await cacheService.set(cacheKey, result, { ttl: this.defaultCacheTTL });
-            
+
             logger.info(`Получено ${result.data?.length || 0} зданий (страница ${page})`);
             return result;
         } catch (error) {
@@ -39,7 +39,7 @@ class BuildingService {
     async getBuildingById(id) {
         try {
             const cacheKey = `${this.cachePrefix}:${id}:with_controllers`;
-            
+
             // Проверяем кэш
             const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
             if (cached) {
@@ -56,7 +56,7 @@ class BuildingService {
 
             // Получаем контроллеры для здания
             const controllers = await Controller.findByBuildingId(id);
-            
+
             const result = {
                 ...building,
                 controllers
@@ -64,7 +64,7 @@ class BuildingService {
 
             // Сохраняем в кэш
             await cacheService.set(cacheKey, result, { ttl: this.defaultCacheTTL });
-            
+
             logger.info(`Получено здание ${id} с ${controllers.length} контроллерами`);
             return result;
         } catch (error) {
@@ -81,10 +81,10 @@ class BuildingService {
 
             // Создаем здание
             const newBuilding = await Building.create(buildingData);
-            
+
             // Инвалидируем кэш списков
             await this.invalidateBuildingListCache();
-            
+
             logger.info(`Создано новое здание: ${newBuilding.name} (ID: ${newBuilding.building_id})`);
             return newBuilding;
         } catch (error) {
@@ -102,7 +102,7 @@ class BuildingService {
             }
 
             const updatedBuilding = await Building.update(id, updateData);
-            
+
             if (!updatedBuilding) {
                 logger.warn(`Здание с ID ${id} не найдено для обновления`);
                 return null;
@@ -110,7 +110,7 @@ class BuildingService {
 
             // Инвалидируем кэш
             await this.invalidateBuildingCache(id);
-            
+
             logger.info(`Обновлено здание ${id}: ${updatedBuilding.name}`);
             return updatedBuilding;
         } catch (error) {
@@ -132,7 +132,7 @@ class BuildingService {
             }
 
             const result = await Building.delete(id);
-            
+
             if (!result) {
                 logger.warn(`Здание с ID ${id} не найдено для удаления`);
                 return null;
@@ -140,7 +140,7 @@ class BuildingService {
 
             // Инвалидируем кэш
             await this.invalidateBuildingCache(id);
-            
+
             logger.info(`Удалено здание ${id}`);
             return result;
         } catch (error) {
@@ -153,9 +153,9 @@ class BuildingService {
     async findBuildingsInRadius(latitude, longitude, radiusMeters = 1000) {
         try {
             this.validateCoordinates(latitude, longitude);
-            
+
             const cacheKey = `${this.cachePrefix}:geo:${latitude}:${longitude}:${radiusMeters}`;
-            
+
             // Проверяем кэш
             const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
             if (cached) {
@@ -166,15 +166,15 @@ class BuildingService {
             // Пока используем простой поиск через модель
             // В будущем можно добавить геопространственные запросы в Building модель
             const allBuildings = await Building.findAll(1, 1000, 'building_id', 'asc');
-            
+
             const buildingsInRadius = allBuildings.data.filter(building => {
                 if (!building.latitude || !building.longitude) return false;
-                
+
                 const distance = this.calculateDistance(
                     latitude, longitude,
                     building.latitude, building.longitude
                 );
-                
+
                 return distance <= radiusMeters;
             });
 
@@ -186,7 +186,7 @@ class BuildingService {
 
             // Сохраняем в кэш
             await cacheService.set(cacheKey, result, { ttl: this.defaultCacheTTL });
-            
+
             logger.info(`Найдено ${buildingsInRadius.length} зданий в радиусе ${radiusMeters}м`);
             return result;
         } catch (error) {
@@ -199,7 +199,7 @@ class BuildingService {
     async getBuildingsStatistics() {
         try {
             const cacheKey = `${this.cachePrefix}:statistics`;
-            
+
             // Проверяем кэш
             const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
             if (cached) {
@@ -238,7 +238,7 @@ class BuildingService {
 
             // Сохраняем в кэш
             await cacheService.set(cacheKey, stats, { ttl: this.defaultCacheTTL });
-            
+
             return stats;
         } catch (error) {
             logger.error(`Ошибка получения статистики зданий: ${error.message}`);
@@ -261,11 +261,11 @@ class BuildingService {
         const R = 6371000; // Радиус Земли в метрах
         const dLat = this.toRadians(lat2 - lat1);
         const dLon = this.toRadians(lon2 - lon1);
-        
+
         const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
                   Math.cos(this.toRadians(lat1)) * Math.cos(this.toRadians(lat2)) *
                   Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        
+
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
     }
@@ -296,4 +296,4 @@ class BuildingService {
     }
 }
 
-module.exports = new BuildingService(); 
+module.exports = new BuildingService();

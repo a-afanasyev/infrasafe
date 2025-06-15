@@ -23,19 +23,19 @@ class Line {
 
             // Построение WHERE клаузы для фильтров
             const conditions = [];
-            
+
             if (filters.name) {
                 paramCount++;
                 conditions.push(`name ILIKE $${paramCount}`);
                 values.push(`%${filters.name}%`);
             }
-            
+
             if (filters.voltage_kv) {
                 paramCount++;
                 conditions.push(`voltage_kv = $${paramCount}`);
                 values.push(filters.voltage_kv);
             }
-            
+
             if (filters.transformer_id) {
                 paramCount++;
                 conditions.push(`transformer_id = $${paramCount}`);
@@ -53,15 +53,15 @@ class Line {
 
             // Запрос для получения данных с пагинацией
             const dataQuery = `
-                SELECT * FROM lines 
+                SELECT * FROM lines
                 ${whereClause}
-                ORDER BY line_id 
+                ORDER BY line_id
                 LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
             `;
             values.push(limit, offset);
 
             const { rows } = await db.query(dataQuery, values);
-            
+
             return {
                 data: rows.map(row => new Line(row)),
                 pagination: {
@@ -84,11 +84,11 @@ class Line {
                 'SELECT * FROM lines WHERE line_id = $1',
                 [id]
             );
-            
+
             if (!rows.length) {
                 return null;
             }
-            
+
             return new Line(rows[0]);
         } catch (error) {
             logger.error(`Error in Line.findById: ${error.message}`);
@@ -100,14 +100,14 @@ class Line {
     static async create(lineData) {
         try {
             const { name, voltage_kv, length_km, transformer_id } = lineData;
-            
+
             const { rows } = await db.query(
                 `INSERT INTO lines (name, voltage_kv, length_km, transformer_id)
-                VALUES ($1, $2, $3, $4) 
+                VALUES ($1, $2, $3, $4)
                 RETURNING *`,
                 [name, voltage_kv, length_km, transformer_id]
             );
-            
+
             logger.info(`Created line: ${name}`);
             return new Line(rows[0]);
         } catch (error) {
@@ -120,19 +120,19 @@ class Line {
     static async update(id, lineData) {
         try {
             const { name, voltage_kv, length_km, transformer_id } = lineData;
-            
+
             const { rows } = await db.query(
-                `UPDATE lines 
+                `UPDATE lines
                 SET name = $1, voltage_kv = $2, length_km = $3, transformer_id = $4, updated_at = NOW()
-                WHERE line_id = $5 
+                WHERE line_id = $5
                 RETURNING *`,
                 [name, voltage_kv, length_km, transformer_id, id]
             );
-            
+
             if (!rows.length) {
                 return null;
             }
-            
+
             logger.info(`Updated line with ID: ${id}`);
             return new Line(rows[0]);
         } catch (error) {
@@ -148,11 +148,11 @@ class Line {
                 'DELETE FROM lines WHERE line_id = $1 RETURNING *',
                 [id]
             );
-            
+
             if (!rows.length) {
                 return null;
             }
-            
+
             logger.info(`Deleted line with ID: ${id}`);
             return new Line(rows[0]);
         } catch (error) {
@@ -168,7 +168,7 @@ class Line {
                 'SELECT * FROM lines WHERE transformer_id = $1',
                 [transformerId]
             );
-            
+
             return rows.map(row => new Line(row));
         } catch (error) {
             logger.error(`Error in Line.findByTransformerId: ${error.message}`);
@@ -177,4 +177,4 @@ class Line {
     }
 }
 
-module.exports = Line; 
+module.exports = Line;

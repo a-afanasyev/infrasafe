@@ -38,17 +38,17 @@ fi
 
 if [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "null" ]; then
     echo -e "${GREEN}✅ JWT токен получен: ${JWT_TOKEN:0:30}...${NC}"
-    
+
     # Функция для тестирования защищенного endpoint
     test_protected_endpoint() {
         METHOD=$1
         ENDPOINT=$2
         DATA=$3
         DESCRIPTION=$4
-        
+
         echo -e "\n${CYAN}🧪 Тестирование: ${DESCRIPTION}${NC}"
         echo -e "${YELLOW}${METHOD} ${ENDPOINT}${NC}"
-        
+
         if [ -z "$DATA" ]; then
             RESPONSE=$(curl -s -w '\nHTTP_STATUS:%{http_code}' -X "$METHOD" "${API_URL}${ENDPOINT}" \
                 -H "Content-Type: application/json" \
@@ -59,10 +59,10 @@ if [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "null" ]; then
                 -H "Authorization: Bearer $JWT_TOKEN" \
                 -d "$DATA")
         fi
-        
+
         STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS:" | cut -d':' -f2)
         BODY=$(echo "$RESPONSE" | sed '/HTTP_STATUS:/d')
-        
+
         if [[ $STATUS -ge 200 && $STATUS -lt 300 ]]; then
             echo -e "${GREEN}✅ Успех! Статус: $STATUS${NC}"
         elif [[ $STATUS -ge 400 && $STATUS -lt 500 ]]; then
@@ -70,20 +70,20 @@ if [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "null" ]; then
         else
             echo -e "${RED}❌ Ошибка сервера! Статус: $STATUS${NC}"
         fi
-        
+
         echo -e "${BLUE}📋 Ответ:${NC}"
         echo "$BODY" | jq '.' 2>/dev/null || echo "$BODY" | head -3
     }
-    
+
     echo -e "\n${BLUE}╔═══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${BLUE}║               🧪 ТЕСТИРОВАНИЕ ЗАЩИЩЕННЫХ API                  ║${NC}"
     echo -e "${BLUE}╚═══════════════════════════════════════════════════════════════╝${NC}"
-    
+
     # 1. Базовые защищенные endpoints
     echo -e "\n${CYAN}📊 Базовые защищенные операции${NC}"
     test_protected_endpoint "POST" "/api/controllers/update-status-by-activity" "" "Обновление статусов контроллеров"
     test_protected_endpoint "GET" "/api/auth/profile" "" "Получение профиля пользователя"
-    
+
     # 2. CRUD операции с зданиями
     echo -e "\n${CYAN}🏢 CRUD операции с зданиями${NC}"
     BUILDING_DATA='{
@@ -97,13 +97,13 @@ if [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "null" ]; then
         "hot_water": true
     }'
     test_protected_endpoint "POST" "/api/buildings" "$BUILDING_DATA" "Создание здания"
-    
+
     UPDATE_BUILDING_DATA='{
         "name": "JWT Test Building Updated",
         "address": "ул. JWT Обновленная, 456"
     }'
     test_protected_endpoint "PUT" "/api/buildings/1" "$UPDATE_BUILDING_DATA" "Обновление здания"
-    
+
     # 3. CRUD операции с контроллерами
     echo -e "\n${CYAN}🎛️  CRUD операции с контроллерами${NC}"
     CONTROLLER_DATA='{
@@ -114,10 +114,10 @@ if [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "null" ]; then
         "status": "online"
     }'
     test_protected_endpoint "POST" "/api/controllers" "$CONTROLLER_DATA" "Создание контроллера"
-    
+
     STATUS_UPDATE_DATA='{"status": "maintenance"}'
     test_protected_endpoint "PATCH" "/api/controllers/1/status" "$STATUS_UPDATE_DATA" "Обновление статуса контроллера"
-    
+
     # 4. Операции с метриками
     echo -e "\n${CYAN}📊 Операции с метриками${NC}"
     METRIC_DATA='{
@@ -134,10 +134,10 @@ if [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "null" ]; then
     }'
     test_protected_endpoint "POST" "/api/metrics" "$METRIC_DATA" "Создание метрики"
     test_protected_endpoint "DELETE" "/api/metrics/cleanup?days=90" "" "Очистка старых метрик"
-    
+
     # 5. 🆕 НОВЫЕ ЗАЩИЩЕННЫЕ ENDPOINTS - ВОДНАЯ ИНФРАСТРУКТУРА
     echo -e "\n${CYAN}💧 Водная инфраструктура (защищенные операции)${NC}"
-    
+
     # Линии водоснабжения
     WATER_LINE_DATA='{
         "name": "JWT Линия ХВС",
@@ -149,13 +149,13 @@ if [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "null" ]; then
         "status": "active"
     }'
     test_protected_endpoint "POST" "/api/water-lines" "$WATER_LINE_DATA" "Создание линии водоснабжения"
-    
+
     UPDATE_WATER_LINE_DATA='{
         "name": "JWT Линия ХВС Обновленная",
         "diameter_mm": 250
     }'
     test_protected_endpoint "PUT" "/api/water-lines/1" "$UPDATE_WATER_LINE_DATA" "Обновление линии водоснабжения"
-    
+
     # Поставщики воды
     WATER_SUPPLIER_DATA='{
         "name": "JWT ХВС Поставщик",
@@ -168,7 +168,7 @@ if [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "null" ]; then
         "status": "active"
     }'
     test_protected_endpoint "POST" "/api/water-suppliers" "$WATER_SUPPLIER_DATA" "Создание поставщика воды"
-    
+
     # Источники холодной воды
     COLD_WATER_SOURCE_DATA='{
         "name": "JWT Скважина №1",
@@ -180,7 +180,7 @@ if [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "null" ]; then
         "location": "JWT Район"
     }'
     test_protected_endpoint "POST" "/api/cold-water-sources" "$COLD_WATER_SOURCE_DATA" "Создание источника холодной воды"
-    
+
     # Источники тепла
     HEAT_SOURCE_DATA='{
         "name": "JWT Котельная №1",
@@ -192,10 +192,10 @@ if [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "null" ]; then
         "location": "JWT Район"
     }'
     test_protected_endpoint "POST" "/api/heat-sources" "$HEAT_SOURCE_DATA" "Создание источника тепла"
-    
+
     # 6. Админские API (защищенные)
     echo -e "\n${CYAN}👨‍💼 Админские API (защищенные операции)${NC}"
-    
+
     # Batch операции
     BUILDINGS_BATCH_DATA='{
         "action": "update_status",
@@ -203,14 +203,14 @@ if [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "null" ]; then
         "data": {"status": "active"}
     }'
     test_protected_endpoint "POST" "/api/admin/buildings/batch" "$BUILDINGS_BATCH_DATA" "Массовые операции с зданиями"
-    
+
     CONTROLLERS_BATCH_DATA='{
         "action": "update_status",
         "ids": [1, 2],
         "data": {"status": "inactive"}
     }'
     test_protected_endpoint "POST" "/api/admin/controllers/batch" "$CONTROLLERS_BATCH_DATA" "Массовые операции с контроллерами"
-    
+
     # Трансформаторы
     TRANSFORMER_DATA='{
         "name": "JWT-TR-001",
@@ -219,7 +219,7 @@ if [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "null" ]; then
         "building_id": 1
     }'
     test_protected_endpoint "POST" "/api/admin/transformers" "$TRANSFORMER_DATA" "Создание трансформатора"
-    
+
     # Линии электропередач
     LINE_DATA='{
         "name": "JWT-LINE-001",
@@ -228,7 +228,7 @@ if [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "null" ]; then
         "transformer_id": 1
     }'
     test_protected_endpoint "POST" "/api/admin/lines" "$LINE_DATA" "Создание линии электропередач"
-    
+
     # Водные линии (админские)
     WATER_LINES_BATCH_DATA='{
         "action": "update_status",
@@ -236,7 +236,7 @@ if [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "null" ]; then
         "data": {"status": "maintenance"}
     }'
     test_protected_endpoint "POST" "/api/admin/water-lines/batch" "$WATER_LINES_BATCH_DATA" "Массовые операции с водными линиями"
-    
+
     # Экспорт данных
     EXPORT_DATA='{
         "type": "buildings",
@@ -244,20 +244,20 @@ if [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "null" ]; then
         "filters": {"region": "JWT Район"}
     }'
     test_protected_endpoint "POST" "/api/admin/export" "$EXPORT_DATA" "Экспорт данных"
-    
+
     # 7. Аналитика (защищенные операции)
     echo -e "\n${CYAN}📊 Аналитика (защищенные операции)${NC}"
     test_protected_endpoint "POST" "/api/analytics/refresh" "" "Обновление аналитических данных"
     test_protected_endpoint "POST" "/api/analytics/cache/invalidate" "" "Очистка кеша аналитики"
     test_protected_endpoint "POST" "/api/analytics/circuit-breakers/reset" "" "Сброс автоматических выключателей"
-    
+
     THRESHOLDS_DATA='{
         "overload_threshold": 0.85,
         "critical_threshold": 0.95,
         "warning_threshold": 0.75
     }'
     test_protected_endpoint "PUT" "/api/analytics/thresholds" "$THRESHOLDS_DATA" "Обновление пороговых значений"
-    
+
     ANALYTICS_TRANSFORMER_DATA='{
         "name": "JWT-TR-ANALYTICS-001",
         "power_kva": 1000,
@@ -266,28 +266,28 @@ if [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "null" ]; then
         "longitude": 69.203200
     }'
     test_protected_endpoint "POST" "/api/analytics/transformers" "$ANALYTICS_TRANSFORMER_DATA" "Создание трансформатора через аналитику"
-    
+
     # 8. Расширенная аутентификация
     echo -e "\n${CYAN}🔐 Расширенная аутентификация${NC}"
     test_protected_endpoint "POST" "/api/auth/logout" "" "Выход из системы"
-    
+
     CHANGE_PASSWORD_DATA='{
         "currentPassword": "Password123",
         "newPassword": "NewPassword123"
     }'
     test_protected_endpoint "POST" "/api/auth/change-password" "$CHANGE_PASSWORD_DATA" "Смена пароля"
-    
+
     # Возвращаем пароль обратно
     RESTORE_PASSWORD_DATA='{
         "currentPassword": "NewPassword123",
         "newPassword": "Password123"
     }'
     test_protected_endpoint "POST" "/api/auth/change-password" "$RESTORE_PASSWORD_DATA" "Возврат к старому паролю"
-    
+
     echo -e "\n${BLUE}╔═══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${BLUE}║                    📈 ИТОГИ JWT ТЕСТИРОВАНИЯ                  ║${NC}"
     echo -e "${BLUE}╚═══════════════════════════════════════════════════════════════╝${NC}"
-    
+
     echo -e "${GREEN}✅ JWT авторизация работает${NC}"
     echo -e "${CYAN}🧪 Протестированы защищенные endpoints:${NC}"
     echo -e "${CYAN}   • Базовые CRUD операции (здания, контроллеры, метрики)${NC}"
@@ -296,11 +296,11 @@ if [ ! -z "$JWT_TOKEN" ] && [ "$JWT_TOKEN" != "null" ]; then
     echo -e "${CYAN}   • Аналитика (обновления, кеш, пороги)${NC}"
     echo -e "${CYAN}   • Расширенная аутентификация (logout, смена пароля)${NC}"
     echo -e "${CYAN}   • Трансформаторы и линии электропередач${NC}"
-    
+
 else
     echo -e "${RED}❌ Не удалось получить JWT токен${NC}"
     echo -e "${YELLOW}📝 Проверьте:${NC}"
     echo -e "${YELLOW}   • Запущен ли сервер API${NC}"
     echo -e "${YELLOW}   • Доступна ли база данных${NC}"
     echo -e "${YELLOW}   • Корректность учетных данных${NC}"
-fi 
+fi

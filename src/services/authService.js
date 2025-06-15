@@ -259,8 +259,8 @@ class AuthService {
 
             // Обновляем пароль в базе данных
             const query = `
-                UPDATE users 
-                SET password_hash = $1, password_changed_at = NOW() 
+                UPDATE users
+                SET password_hash = $1, password_changed_at = NOW()
                 WHERE user_id = $2
             `;
             await db.query(query, [hashedNewPassword, userId]);
@@ -287,7 +287,7 @@ class AuthService {
     async findUserById(userId) {
         try {
             const cacheKey = `${this.cachePrefix}:user:${userId}`;
-            
+
             const cached = await cacheService.get(cacheKey, { ttl: 300000 }); // 5 минут
             if (cached) {
                 return cached;
@@ -295,13 +295,13 @@ class AuthService {
 
             const query = 'SELECT * FROM users WHERE user_id = $1';
             const result = await db.query(query, [userId]);
-            
+
             if (result.rows.length > 0) {
                 const user = result.rows[0];
                 await cacheService.set(cacheKey, user, { ttl: 300 });
                 return user;
             }
-            
+
             return null;
         } catch (error) {
             logger.error(`Ошибка поиска пользователя по ID: ${error.message}`);
@@ -313,7 +313,7 @@ class AuthService {
     async findUserByUsernameOrEmail(login, email = null) {
         try {
             let query, params;
-            
+
             if (email && email !== login) {
                 // Если передан отдельный email, ищем по username ИЛИ email
                 query = 'SELECT * FROM users WHERE username = $1 OR email = $2';
@@ -323,9 +323,9 @@ class AuthService {
                 query = 'SELECT * FROM users WHERE username = $1 OR email = $1';
                 params = [login];
             }
-            
+
             const result = await db.query(query, params);
-            
+
             return result.rows.length > 0 ? result.rows[0] : null;
         } catch (error) {
             logger.error(`Ошибка поиска пользователя: ${error.message}`);
@@ -361,7 +361,7 @@ class AuthService {
     async checkAccountLockout(login) {
         const cacheKey = `${this.cachePrefix}:lockout:${login}`;
         const lockoutData = await cacheService.get(cacheKey);
-        
+
         if (lockoutData && Date.now() < lockoutData.lockedUntil) {
             const error = new Error(`Аккаунт заблокирован до ${new Date(lockoutData.lockedUntil).toLocaleString()}`);
             error.code = 'ACCOUNT_LOCKED';
@@ -373,7 +373,7 @@ class AuthService {
     async recordFailedAttempt(login) {
         const cacheKey = `${this.cachePrefix}:attempts:${login}`;
         let attempts = await cacheService.get(cacheKey) || { count: 0, firstAttempt: Date.now() };
-        
+
         attempts.count++;
         attempts.lastAttempt = Date.now();
 
@@ -395,7 +395,7 @@ class AuthService {
     async clearFailedAttempts(login) {
         const attemptsKey = `${this.cachePrefix}:attempts:${login}`;
         const lockoutKey = `${this.cachePrefix}:lockout:${login}`;
-        
+
         await cacheService.invalidate(attemptsKey);
         await cacheService.invalidate(lockoutKey);
     }
@@ -441,4 +441,4 @@ class AuthService {
     }
 }
 
-module.exports = new AuthService(); 
+module.exports = new AuthService();

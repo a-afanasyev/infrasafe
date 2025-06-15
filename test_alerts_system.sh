@@ -45,11 +45,11 @@ make_request() {
     local url="$2"
     local data="$3"
     local headers="$4"
-    
+
     # Используем временный файл для надежного разделения тела ответа и статуса
     local temp_file=$(mktemp)
     local status_file=$(mktemp)
-    
+
     if [ -n "$data" ] && [ -n "$headers" ]; then
         curl -s -w "%{http_code}" -X "$method" "$url" -H "$headers" -d "$data" -o "$temp_file" > "$status_file"
     elif [ -n "$headers" ]; then
@@ -59,11 +59,11 @@ make_request() {
     else
         curl -s -w "%{http_code}" "$url" -o "$temp_file" > "$status_file"
     fi
-    
+
     local status_code=$(cat "$status_file")
     local response_body=$(cat "$temp_file")
     rm -f "$temp_file" "$status_file"
-    
+
     echo "$response_body"
     return $status_code
 }
@@ -83,14 +83,14 @@ main() {
     local failed_tests=0
 
     print_header "📋 ПРОСМОТР И ФИЛЬТРАЦИЯ АЛЕРТОВ"
-    
+
     # Тест 1: Получение всех алертов
     ((total_tests++))
     print_test "Получение всех активных алертов"
     echo "GET /api/alerts"
     response=$(make_request "GET" "$BASE_URL/api/alerts")
     status=$?
-    
+
     if [ $status -eq 200 ]; then
         print_success $status
         ((passed_tests++))
@@ -115,7 +115,7 @@ main() {
     echo "GET /api/alerts?severity=CRITICAL"
     response=$(make_request "GET" "$BASE_URL/api/alerts?severity=CRITICAL")
     status=$?
-    
+
     if [ $status -eq 200 ]; then
         print_success $status
         ((passed_tests++))
@@ -136,7 +136,7 @@ main() {
     echo "GET /api/alerts?infrastructure_type=transformer"
     response=$(make_request "GET" "$BASE_URL/api/alerts?infrastructure_type=transformer")
     status=$?
-    
+
     if [ $status -eq 200 ]; then
         print_success $status
         ((passed_tests++))
@@ -161,7 +161,7 @@ main() {
     echo "GET /api/alerts?severity=CRITICAL&infrastructure_type=transformer"
     response=$(make_request "GET" "$BASE_URL/api/alerts?severity=CRITICAL&infrastructure_type=transformer")
     status=$?
-    
+
     if [ $status -eq 200 ]; then
         print_success $status
         ((passed_tests++))
@@ -184,7 +184,7 @@ main() {
     echo "GET /api/alerts/statistics"
     response=$(make_request "GET" "$BASE_URL/api/alerts/statistics")
     status=$?
-    
+
     if [ $status -eq 200 ]; then
         print_success $status
         ((passed_tests++))
@@ -205,7 +205,7 @@ main() {
     echo "GET /api/alerts/status"
     response=$(make_request "GET" "$BASE_URL/api/alerts/status")
     status=$?
-    
+
     if [ $status -eq 200 ]; then
         print_success $status
         ((passed_tests++))
@@ -228,7 +228,7 @@ main() {
     echo "GET /api/alerts/thresholds"
     response=$(make_request "GET" "$BASE_URL/api/alerts/thresholds")
     status=$?
-    
+
     if [ $status -eq 200 ]; then
         print_success $status
         ((passed_tests++))
@@ -251,7 +251,7 @@ main() {
     echo "GET /api/analytics/transformers"
     response=$(make_request "GET" "$BASE_URL/api/analytics/transformers")
     status=$?
-    
+
     if [ $status -eq 200 ]; then
         print_success $status
         ((passed_tests++))
@@ -274,7 +274,7 @@ main() {
     echo "GET /api/analytics/transformers (фильтрация нагрузки >85%)"
     response=$(make_request "GET" "$BASE_URL/api/analytics/transformers")
     status=$?
-    
+
     if [ $status -eq 200 ]; then
         print_success $status
         ((passed_tests++))
@@ -300,7 +300,7 @@ main() {
     echo "GET /api/alerts?limit=2"
     response=$(make_request "GET" "$BASE_URL/api/alerts?limit=2")
     status=$?
-    
+
     if [ $status -eq 200 ]; then
         print_success $status
         ((passed_tests++))
@@ -321,7 +321,7 @@ main() {
     echo "GET /api/alerts?sort=created_at&order=ASC"
     response=$(make_request "GET" "$BASE_URL/api/alerts?sort=created_at&order=ASC")
     status=$?
-    
+
     if [ $status -eq 200 ]; then
         print_success $status
         ((passed_tests++))
@@ -343,7 +343,7 @@ main() {
     echo "GET /api/alerts?created_after=$yesterday"
     response=$(make_request "GET" "$BASE_URL/api/alerts?created_after=$yesterday")
     status=$?
-    
+
     if [ $status -eq 200 ]; then
         print_success $status
         ((passed_tests++))
@@ -364,7 +364,7 @@ main() {
     echo "GET /api/alerts?severity=UNKNOWN"
     response=$(make_request "GET" "$BASE_URL/api/alerts?severity=UNKNOWN")
     status=$?
-    
+
     if [ $status -eq 200 ]; then
         print_success $status
         ((passed_tests++))
@@ -383,7 +383,7 @@ main() {
     echo "GET /api/alerts?limit=1000"
     response=$(make_request "GET" "$BASE_URL/api/alerts?limit=1000")
     status=$?
-    
+
     if [ $status -eq 200 ]; then
         print_success $status
         ((passed_tests++))
@@ -397,11 +397,11 @@ main() {
     echo ""
 
     print_header "📈 ИТОГИ ТЕСТИРОВАНИЯ СИСТЕМЫ АЛЕРТОВ"
-    
+
     echo -e "${GREEN}✅ Успешных тестов: $passed_tests${NC}"
     echo -e "${RED}❌ Неуспешных тестов: $failed_tests${NC}"
     echo -e "${BLUE}📊 Всего тестов: $total_tests${NC}"
-    
+
     if [ $failed_tests -eq 0 ]; then
         echo -e "${GREEN}🎉 ВСЕ ТЕСТЫ ПРОШЛИ УСПЕШНО!${NC}"
         echo -e "${GREEN}✨ Система алертов InfraSafe полностью функциональна${NC}"
@@ -409,7 +409,7 @@ main() {
         echo -e "${YELLOW}⚠️  Обнаружены проблемы в $failed_tests тестах${NC}"
         echo -e "${YELLOW}🔧 Рекомендуется проверить логи сервера${NC}"
     fi
-    
+
     echo ""
     echo -e "${CYAN}📋 ПРОТЕСТИРОВАННАЯ ФУНКЦИОНАЛЬНОСТЬ:${NC}"
     echo "• 📋 Получение и фильтрация алертов"
@@ -420,11 +420,11 @@ main() {
     echo "• 📄 Пагинация и сортировка"
     echo "• 🕐 Фильтрация по времени"
     echo "• ⚠️ Граничные случаи и валидация"
-    
+
     echo ""
     echo -e "${PURPLE}🎯 ОБНАРУЖЕННЫЕ АЛЕРТЫ В ТАШКЕНТЕ:${NC}"
     curl -s "$BASE_URL/api/alerts" | jq -r '.data[]? | "• " + .severity + " - " + .infrastructure_id + ": " + .message' 2>/dev/null | head -5
-    
+
     echo ""
     echo -e "${BLUE}🚀 Система алертов готова к эксплуатации!${NC}"
 }

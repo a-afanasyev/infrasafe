@@ -1005,4 +1005,4 @@ router.get('/heat-sources/:id', adminController.getHeatSourceById);
 router.put('/heat-sources/:id', rateLimitStrict, adminController.updateHeatSource);
 router.delete('/heat-sources/:id', rateLimitStrict, adminController.deleteHeatSource);
 
-module.exports = router; 
+module.exports = router;

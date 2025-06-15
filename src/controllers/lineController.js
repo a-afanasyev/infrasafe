@@ -6,7 +6,7 @@ const getAllLines = async (req, res, next) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
-        
+
         // Фильтры
         const filters = {};
         if (req.query.name) filters.name = req.query.name;
@@ -14,7 +14,7 @@ const getAllLines = async (req, res, next) => {
         if (req.query.transformer_id) filters.transformer_id = parseInt(req.query.transformer_id);
 
         const result = await Line.findAll(page, limit, filters);
-        
+
         return res.status(200).json({
             success: true,
             data: result.data,
@@ -31,14 +31,14 @@ const getLineById = async (req, res, next) => {
     try {
         const { id } = req.params;
         const line = await Line.findById(id);
-        
+
         if (!line) {
-            return res.status(404).json({ 
+            return res.status(404).json({
                 success: false,
-                error: 'Line not found' 
+                error: 'Line not found'
             });
         }
-        
+
         return res.status(200).json({
             success: true,
             data: line
@@ -53,7 +53,7 @@ const getLineById = async (req, res, next) => {
 const createLine = async (req, res, next) => {
     try {
         const line = await Line.create(req.body);
-        
+
         return res.status(201).json({
             success: true,
             data: line,
@@ -70,14 +70,14 @@ const updateLine = async (req, res, next) => {
     try {
         const { id } = req.params;
         const line = await Line.update(id, req.body);
-        
+
         if (!line) {
-            return res.status(404).json({ 
+            return res.status(404).json({
                 success: false,
-                error: 'Line not found' 
+                error: 'Line not found'
             });
         }
-        
+
         return res.status(200).json({
             success: true,
             data: line,
@@ -94,14 +94,14 @@ const deleteLine = async (req, res, next) => {
     try {
         const { id } = req.params;
         const line = await Line.delete(id);
-        
+
         if (!line) {
-            return res.status(404).json({ 
+            return res.status(404).json({
                 success: false,
-                error: 'Line not found' 
+                error: 'Line not found'
             });
         }
-        
+
         return res.status(200).json({
             success: true,
             data: line,
@@ -118,7 +118,7 @@ const getLinesByTransformer = async (req, res, next) => {
     try {
         const { transformerId } = req.params;
         const lines = await Line.findByTransformerId(transformerId);
-        
+
         return res.status(200).json({
             success: true,
             data: lines
@@ -136,4 +136,4 @@ module.exports = {
     updateLine,
     deleteLine,
     getLinesByTransformer
-}; 
+};

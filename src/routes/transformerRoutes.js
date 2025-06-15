@@ -12,4 +12,4 @@ router.delete('/:id', transformerController.deleteTransformer);
 // Дополнительные маршруты
 router.get('/building/:buildingId', transformerController.getTransformersByBuilding);
 
-module.exports = router; 
+module.exports = router;

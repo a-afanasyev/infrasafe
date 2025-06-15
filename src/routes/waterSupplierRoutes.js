@@ -9,11 +9,11 @@ router.get('/', async (req, res, next) => {
     try {
         const { page = 1, limit = 100, type, line_id } = req.query;
         const filters = {};
-        
+
         if (type) {
             filters.type = type;
         }
-        
+
         const waterSuppliers = await WaterSupplier.findAll(page, limit, filters);
         res.json(waterSuppliers);
     } catch (error) {
@@ -75,4 +75,4 @@ router.delete('/:id', async (req, res, next) => {
     }
 });
 
-module.exports = router; 
+module.exports = router;

@@ -8,14 +8,14 @@ const login = async (req, res, next) => {
         const { username, password } = req.body;
 
         if (!username || !password) {
-            return res.status(400).json({ 
-                error: 'Username and password are required' 
+            return res.status(400).json({
+                error: 'Username and password are required'
             });
         }
 
         // Аутентификация пользователя
         const user = await authService.authenticateUser(username, password);
-        
+
         // Генерация токенов
         const tokens = authService.generateTokens(user);
 
@@ -42,7 +42,7 @@ const login = async (req, res, next) => {
         if (error.code === 'ACCOUNT_LOCKED') {
             return res.status(423).json({ error: error.message });
         }
-        
+
         logger.error(`Login error: ${error.message}`);
         next(error);
     }
@@ -54,8 +54,8 @@ const register = async (req, res, next) => {
         const { username, email, password, role = 'user' } = req.body;
 
         if (!username || !password) {
-            return res.status(400).json({ 
-                error: 'Username and password are required' 
+            return res.status(400).json({
+                error: 'Username and password are required'
             });
         }
 
@@ -77,7 +77,7 @@ const register = async (req, res, next) => {
         if (error.code === 'USER_EXISTS') {
             return res.status(409).json({ error: error.message });
         }
-        
+
         logger.error(`Registration error: ${error.message}`);
         next(error);
     }
@@ -117,7 +117,7 @@ const getProfile = async (req, res, next) => {
 const logout = async (req, res, next) => {
     try {
         const token = req.headers.authorization?.replace('Bearer ', '');
-        
+
         if (!token) {
             return res.status(400).json({ error: 'Token required' });
         }
@@ -156,7 +156,7 @@ const refreshToken = async (req, res, next) => {
         if (error.code === 'INVALID_REFRESH_TOKEN' || error.code === 'USER_NOT_FOUND') {
             return res.status(401).json({ error: error.message });
         }
-        
+
         logger.error(`Refresh token error: ${error.message}`);
         next(error);
     }
@@ -169,8 +169,8 @@ const changePassword = async (req, res, next) => {
         const { currentPassword, newPassword } = req.body;
 
         if (!currentPassword || !newPassword) {
-            return res.status(400).json({ 
-                error: 'Current password and new password are required' 
+            return res.status(400).json({
+                error: 'Current password and new password are required'
             });
         }
 
@@ -188,7 +188,7 @@ const changePassword = async (req, res, next) => {
         if (error.code === 'INVALID_CURRENT_PASSWORD') {
             return res.status(400).json({ error: error.message });
         }
-        
+
         logger.error(`Change password error: ${error.message}`);
         next(error);
     }
@@ -201,4 +201,4 @@ module.exports = {
     logout,
     refreshToken,
     changePassword
-}; 
+};

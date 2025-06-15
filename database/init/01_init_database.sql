@@ -210,31 +210,31 @@ ALTER TABLE buildings ADD COLUMN cold_water_supplier_id INTEGER;
 ALTER TABLE buildings ADD COLUMN hot_water_supplier_id INTEGER;
 
 -- Добавление внешних ключей (старые связи)
-ALTER TABLE buildings ADD CONSTRAINT fk_buildings_power_transformer 
+ALTER TABLE buildings ADD CONSTRAINT fk_buildings_power_transformer
     FOREIGN KEY (power_transformer_id) REFERENCES power_transformers(id);
-ALTER TABLE buildings ADD CONSTRAINT fk_buildings_cold_water_source 
+ALTER TABLE buildings ADD CONSTRAINT fk_buildings_cold_water_source
     FOREIGN KEY (cold_water_source_id) REFERENCES cold_water_sources(id);
-ALTER TABLE buildings ADD CONSTRAINT fk_buildings_heat_source 
+ALTER TABLE buildings ADD CONSTRAINT fk_buildings_heat_source
     FOREIGN KEY (heat_source_id) REFERENCES heat_sources(id);
 
 -- Добавление внешних ключей (новая архитектура)
-ALTER TABLE buildings ADD CONSTRAINT fk_buildings_primary_transformer 
+ALTER TABLE buildings ADD CONSTRAINT fk_buildings_primary_transformer
     FOREIGN KEY (primary_transformer_id) REFERENCES transformers(transformer_id);
-ALTER TABLE buildings ADD CONSTRAINT fk_buildings_backup_transformer 
+ALTER TABLE buildings ADD CONSTRAINT fk_buildings_backup_transformer
     FOREIGN KEY (backup_transformer_id) REFERENCES transformers(transformer_id);
-ALTER TABLE buildings ADD CONSTRAINT fk_buildings_primary_line 
+ALTER TABLE buildings ADD CONSTRAINT fk_buildings_primary_line
     FOREIGN KEY (primary_line_id) REFERENCES lines(line_id);
-ALTER TABLE buildings ADD CONSTRAINT fk_buildings_backup_line 
+ALTER TABLE buildings ADD CONSTRAINT fk_buildings_backup_line
     FOREIGN KEY (backup_line_id) REFERENCES lines(line_id);
 
 -- Добавление внешних ключей для водоснабжения
-ALTER TABLE buildings ADD CONSTRAINT fk_buildings_cold_water_line 
+ALTER TABLE buildings ADD CONSTRAINT fk_buildings_cold_water_line
     FOREIGN KEY (cold_water_line_id) REFERENCES water_lines(line_id);
-ALTER TABLE buildings ADD CONSTRAINT fk_buildings_hot_water_line 
+ALTER TABLE buildings ADD CONSTRAINT fk_buildings_hot_water_line
     FOREIGN KEY (hot_water_line_id) REFERENCES water_lines(line_id);
-ALTER TABLE buildings ADD CONSTRAINT fk_buildings_cold_water_supplier 
+ALTER TABLE buildings ADD CONSTRAINT fk_buildings_cold_water_supplier
     FOREIGN KEY (cold_water_supplier_id) REFERENCES water_suppliers(supplier_id);
-ALTER TABLE buildings ADD CONSTRAINT fk_buildings_hot_water_supplier 
+ALTER TABLE buildings ADD CONSTRAINT fk_buildings_hot_water_supplier
     FOREIGN KEY (hot_water_supplier_id) REFERENCES water_suppliers(supplier_id);
 
 -- Индексы для связей (старые)
@@ -414,7 +414,7 @@ CREATE INDEX idx_analytics_history_date ON analytics_history(analysis_date);
 
 -- Материализованное представление для загрузки трансформаторов в реальном времени
 CREATE MATERIALIZED VIEW mv_transformer_load_realtime AS
-SELECT 
+SELECT
     pt.id,
     pt.name,
     pt.capacity_kva,
@@ -427,17 +427,17 @@ SELECT
     AVG(COALESCE(m.electricity_ph1, 0) + COALESCE(m.electricity_ph2, 0) + COALESCE(m.electricity_ph3, 0)) as avg_total_voltage,
     AVG(COALESCE(m.amperage_ph1, 0) + COALESCE(m.amperage_ph2, 0) + COALESCE(m.amperage_ph3, 0)) as avg_total_amperage,
     -- Примерный расчет загрузки
-    CASE 
-        WHEN pt.capacity_kva > 0 THEN 
+    CASE
+        WHEN pt.capacity_kva > 0 THEN
             LEAST(100, (AVG(COALESCE(m.amperage_ph1, 0) + COALESCE(m.amperage_ph2, 0) + COALESCE(m.amperage_ph3, 0)) * 0.4 / pt.capacity_kva) * 100)
-        ELSE 0 
+        ELSE 0
     END as load_percent,
     MAX(m.timestamp) as last_metric_time,
     COUNT(CASE WHEN m.timestamp > NOW() - INTERVAL '1 hour' THEN 1 END) as recent_metrics_count
 FROM power_transformers pt
 LEFT JOIN buildings b ON pt.id = b.power_transformer_id
 LEFT JOIN controllers c ON b.building_id = c.building_id
-LEFT JOIN metrics m ON c.controller_id = m.controller_id 
+LEFT JOIN metrics m ON c.controller_id = m.controller_id
     AND m.timestamp > NOW() - INTERVAL '24 hours'
 GROUP BY pt.id, pt.name, pt.capacity_kva, pt.status, pt.latitude, pt.longitude;
 
@@ -488,8 +488,8 @@ CREATE TRIGGER trig_buildings_geom
 -- Функция для обновления last_heartbeat в контроллерах
 CREATE OR REPLACE FUNCTION update_controller_heartbeat() RETURNS TRIGGER AS $$
 BEGIN
-    UPDATE controllers 
-    SET last_heartbeat = NEW.timestamp 
+    UPDATE controllers
+    SET last_heartbeat = NEW.timestamp
     WHERE controller_id = NEW.controller_id;
     RETURN NEW;
 END;
@@ -505,12 +505,12 @@ EXECUTE FUNCTION update_controller_heartbeat();
 CREATE OR REPLACE FUNCTION refresh_transformer_analytics() RETURNS void AS $$
 BEGIN
     REFRESH MATERIALIZED VIEW CONCURRENTLY mv_transformer_load_realtime;
-    
-    INSERT INTO logs (timestamp, log_level, message) 
+
+    INSERT INTO logs (timestamp, log_level, message)
     VALUES (NOW(), 'INFO', 'Материализованное представление трансформаторов обновлено');
-    
+
 EXCEPTION WHEN OTHERS THEN
-    INSERT INTO logs (timestamp, log_level, message) 
+    INSERT INTO logs (timestamp, log_level, message)
     VALUES (NOW(), 'ERROR', 'Ошибка обновления материализованного представления: ' || SQLERRM);
     RAISE;
 END;
@@ -521,7 +521,7 @@ CREATE OR REPLACE FUNCTION archive_daily_analytics() RETURNS void AS $$
 BEGIN
     -- Архивируем загрузку трансформаторов
     INSERT INTO analytics_history (analysis_type, infrastructure_id, infrastructure_type, analysis_date, analysis_data)
-    SELECT 
+    SELECT
         'daily_transformer_load',
         id,
         'transformer',
@@ -535,12 +535,12 @@ BEGIN
         )
     FROM mv_transformer_load_realtime
     WHERE last_metric_time > CURRENT_DATE - INTERVAL '1 day';
-    
-    INSERT INTO logs (timestamp, log_level, message) 
+
+    INSERT INTO logs (timestamp, log_level, message)
     VALUES (NOW(), 'INFO', 'Ежедневная аналитика заархивирована');
-    
+
 EXCEPTION WHEN OTHERS THEN
-    INSERT INTO logs (timestamp, log_level, message) 
+    INSERT INTO logs (timestamp, log_level, message)
     VALUES (NOW(), 'ERROR', 'Ошибка архивирования аналитики: ' || SQLERRM);
     RAISE;
 END;
@@ -557,7 +557,7 @@ CREATE OR REPLACE FUNCTION find_nearest_buildings_to_transformer(
 ) AS $$
 BEGIN
     RETURN QUERY
-    SELECT 
+    SELECT
         b.building_id,
         b.name,
         ST_Distance(
@@ -623,7 +623,7 @@ CREATE INDEX IF NOT EXISTS idx_cold_water_sources_name ON cold_water_sources(nam
 CREATE INDEX IF NOT EXISTS idx_heat_sources_name ON heat_sources(name);
 
 -- Частичные индексы для активных записей (экономия места и скорость)
-CREATE INDEX IF NOT EXISTS idx_controllers_active_status ON controllers(controller_id, status) 
+CREATE INDEX IF NOT EXISTS idx_controllers_active_status ON controllers(controller_id, status)
 WHERE status IN ('online', 'maintenance');
 
 -- Функциональные индексы для поиска (без учета регистра)
@@ -633,10 +633,10 @@ CREATE INDEX IF NOT EXISTS idx_controllers_serial_lower ON controllers(LOWER(ser
 
 -- Индексы для статистики и аналитики в админке
 CREATE INDEX IF NOT EXISTS idx_metrics_hourly_stats ON metrics(
-    DATE_TRUNC('hour', timestamp), 
-    controller_id, 
-    electricity_ph1, 
-    electricity_ph2, 
+    DATE_TRUNC('hour', timestamp),
+    controller_id,
+    electricity_ph1,
+    electricity_ph2,
     electricity_ph3
 );
 
@@ -767,5 +767,5 @@ ANALYZE water_suppliers;
 ANALYZE water_measurement_points;
 
 -- Логируем успешную инициализацию
-INSERT INTO logs (timestamp, log_level, message) 
-VALUES (NOW(), 'INFO', 'База данных InfraSafe с PostGIS и оптимизированными индексами успешно инициализирована'); 
+INSERT INTO logs (timestamp, log_level, message)
+VALUES (NOW(), 'INFO', 'База данных InfraSafe с PostGIS и оптимизированными индексами успешно инициализирована');

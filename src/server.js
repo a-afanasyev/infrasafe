@@ -116,4 +116,4 @@ process.on('unhandledRejection', (reason, promise) => {
     logger.error('Необработанное отклонение обещания:', reason);
 });
 
-module.exports = app; // Для тестирования 
+module.exports = app; // Для тестирования

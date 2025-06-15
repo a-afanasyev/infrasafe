@@ -11,52 +11,52 @@ class SimpleRateLimiter {
         this.legacyHeaders = options.legacyHeaders !== false;
         this.keyGenerator = options.keyGenerator || this.defaultKeyGenerator;
         this.skip = options.skip || (() => false);
-        
+
         // Хранилище счетчиков запросов
         this.store = new Map();
-        
+
         // Очистка устаревших записей каждую минуту
         setInterval(() => {
             this.cleanup();
         }, 60000);
-        
+
         logger.info(`Rate limiter инициализирован: ${this.max} запросов в ${this.windowMs}ms`);
     }
-    
+
     defaultKeyGenerator(req) {
         // Используем IP адрес и User-Agent для идентификации
         const ip = req.ip || req.connection.remoteAddress || req.socket.remoteAddress;
         const userAgent = req.get('User-Agent') || 'unknown';
         return `${ip}:${userAgent.substring(0, 50)}`;
     }
-    
+
     cleanup() {
         const now = Date.now();
         let cleanedCount = 0;
-        
+
         for (const [key, data] of this.store.entries()) {
             if (now - data.resetTime > this.windowMs) {
                 this.store.delete(key);
                 cleanedCount++;
             }
         }
-        
+
         if (cleanedCount > 0) {
             logger.debug(`Rate limiter: очищено ${cleanedCount} устаревших записей`);
         }
     }
-    
+
     middleware() {
         return (req, res, next) => {
             if (this.skip(req)) {
                 return next();
             }
-            
+
             const key = this.keyGenerator(req);
             const now = Date.now();
-            
+
             let hitData = this.store.get(key);
-            
+
             if (!hitData) {
                 hitData = {
                     hits: 0,
@@ -64,36 +64,36 @@ class SimpleRateLimiter {
                 };
                 this.store.set(key, hitData);
             }
-            
+
             // Если окно времени истекло, сбрасываем счетчик
             if (now > hitData.resetTime) {
                 hitData.hits = 0;
                 hitData.resetTime = now + this.windowMs;
             }
-            
+
             hitData.hits++;
-            
+
             const remaining = Math.max(0, this.max - hitData.hits);
             const msUntilReset = Math.max(0, hitData.resetTime - now);
-            
+
             // Устанавливаем заголовки
             if (this.standardHeaders) {
                 res.set('X-RateLimit-Limit', this.max);
                 res.set('X-RateLimit-Remaining', remaining);
                 res.set('X-RateLimit-Reset', new Date(hitData.resetTime).toISOString());
             }
-            
+
             if (this.legacyHeaders) {
                 res.set('X-RateLimit-Window', this.windowMs);
                 res.set('X-RateLimit-Current', hitData.hits);
             }
-            
+
             // Проверяем превышение лимита
             if (hitData.hits > this.max) {
                 logger.warn(`Rate limit exceeded for ${key}: ${hitData.hits}/${this.max}`);
-                
+
                 res.set('Retry-After', Math.ceil(msUntilReset / 1000));
-                
+
                 return res.status(429).json({
                     success: false,
                     message: this.message,
@@ -105,24 +105,24 @@ class SimpleRateLimiter {
                     retry_after_seconds: Math.ceil(msUntilReset / 1000)
                 });
             }
-            
+
             next();
         };
     }
-    
+
     // Статистика rate limiter'а
     getStats() {
         const now = Date.now();
         let activeKeys = 0;
         let totalHits = 0;
-        
+
         for (const [key, data] of this.store.entries()) {
             if (now <= data.resetTime) {
                 activeKeys++;
                 totalHits += data.hits;
             }
         }
-        
+
         return {
             active_keys: activeKeys,
             total_hits: totalHits,
@@ -131,7 +131,7 @@ class SimpleRateLimiter {
             max_requests: this.max
         };
     }
-    
+
     // Очистка всех данных
     reset() {
         const oldSize = this.store.size;
@@ -149,49 +149,49 @@ class SimpleSlowDown {
         this.maxDelayMs = options.maxDelayMs || 5000; // максимальная задержка
         this.keyGenerator = options.keyGenerator || this.defaultKeyGenerator;
         this.skip = options.skip || (() => false);
-        
+
         this.store = new Map();
-        
+
         // Очистка каждую минуту
         setInterval(() => {
             this.cleanup();
         }, 60000);
-        
+
         logger.info(`Slow down инициализирован: замедление после ${this.delayAfter} запросов`);
     }
-    
+
     defaultKeyGenerator(req) {
         const ip = req.ip || req.connection.remoteAddress || req.socket.remoteAddress;
         return ip;
     }
-    
+
     cleanup() {
         const now = Date.now();
         let cleanedCount = 0;
-        
+
         for (const [key, data] of this.store.entries()) {
             if (now - data.resetTime > this.windowMs) {
                 this.store.delete(key);
                 cleanedCount++;
             }
         }
-        
+
         if (cleanedCount > 0) {
             logger.debug(`Slow down: очищено ${cleanedCount} устаревших записей`);
         }
     }
-    
+
     middleware() {
         return async (req, res, next) => {
             if (this.skip(req)) {
                 return next();
             }
-            
+
             const key = this.keyGenerator(req);
             const now = Date.now();
-            
+
             let hitData = this.store.get(key);
-            
+
             if (!hitData) {
                 hitData = {
                     hits: 0,
@@ -199,30 +199,30 @@ class SimpleSlowDown {
                 };
                 this.store.set(key, hitData);
             }
-            
+
             // Сброс если окно истекло
             if (now > hitData.resetTime) {
                 hitData.hits = 0;
                 hitData.resetTime = now + this.windowMs;
             }
-            
+
             hitData.hits++;
-            
+
             // Вычисляем задержку
             if (hitData.hits > this.delayAfter) {
                 const extraHits = hitData.hits - this.delayAfter;
                 const delay = Math.min(extraHits * this.delayMs, this.maxDelayMs);
-                
+
                 if (delay > 0) {
                     logger.debug(`Slow down: задержка ${delay}ms для ${key} (${hitData.hits} запросов)`);
-                    
+
                     res.set('X-Delay-After', this.delayAfter);
                     res.set('X-Current-Delay', delay);
-                    
+
                     await new Promise(resolve => setTimeout(resolve, delay));
                 }
             }
-            
+
             next();
         };
     }
@@ -317,4 +317,4 @@ module.exports = {
     adminLimiter,
     crudLimiter,
     rateLimitStrict: adminLimiter.middleware()
-}; 
+};

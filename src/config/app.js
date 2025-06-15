@@ -15,4 +15,4 @@ app.use(express.static(path.join(__dirname, '../../public')));
 // Обработка ошибок
 app.use(errorHandler);
 
-module.exports = app; 
+module.exports = app;

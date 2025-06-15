@@ -6,7 +6,7 @@ const getAllTransformers = async (req, res, next) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
-        
+
         // Фильтры
         const filters = {};
         if (req.query.name) filters.name = req.query.name;
@@ -15,7 +15,7 @@ const getAllTransformers = async (req, res, next) => {
         if (req.query.building_id) filters.building_id = parseInt(req.query.building_id);
 
         const result = await Transformer.findAll(page, limit, filters);
-        
+
         return res.status(200).json({
             success: true,
             data: result.data,
@@ -32,14 +32,14 @@ const getTransformerById = async (req, res, next) => {
     try {
         const { id } = req.params;
         const transformer = await Transformer.findById(id);
-        
+
         if (!transformer) {
-            return res.status(404).json({ 
+            return res.status(404).json({
                 success: false,
-                error: 'Transformer not found' 
+                error: 'Transformer not found'
             });
         }
-        
+
         return res.status(200).json({
             success: true,
             data: transformer
@@ -54,7 +54,7 @@ const getTransformerById = async (req, res, next) => {
 const createTransformer = async (req, res, next) => {
     try {
         const transformer = await Transformer.create(req.body);
-        
+
         return res.status(201).json({
             success: true,
             data: transformer,
@@ -71,14 +71,14 @@ const updateTransformer = async (req, res, next) => {
     try {
         const { id } = req.params;
         const transformer = await Transformer.update(id, req.body);
-        
+
         if (!transformer) {
-            return res.status(404).json({ 
+            return res.status(404).json({
                 success: false,
-                error: 'Transformer not found' 
+                error: 'Transformer not found'
             });
         }
-        
+
         return res.status(200).json({
             success: true,
             data: transformer,
@@ -95,14 +95,14 @@ const deleteTransformer = async (req, res, next) => {
     try {
         const { id } = req.params;
         const transformer = await Transformer.delete(id);
-        
+
         if (!transformer) {
-            return res.status(404).json({ 
+            return res.status(404).json({
                 success: false,
-                error: 'Transformer not found' 
+                error: 'Transformer not found'
             });
         }
-        
+
         return res.status(200).json({
             success: true,
             data: transformer,
@@ -119,7 +119,7 @@ const getTransformersByBuilding = async (req, res, next) => {
     try {
         const { buildingId } = req.params;
         const transformers = await Transformer.findByBuildingId(buildingId);
-        
+
         return res.status(200).json({
             success: true,
             data: transformers
@@ -137,4 +137,4 @@ module.exports = {
     updateTransformer,
     deleteTransformer,
     getTransformersByBuilding
-}; 
+};

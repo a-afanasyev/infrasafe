@@ -73,4 +73,4 @@ const router = express.Router();
  */
 router.get('/', buildingMetricsController.getBuildingsWithMetrics);
 
-module.exports = router; 
+module.exports = router;

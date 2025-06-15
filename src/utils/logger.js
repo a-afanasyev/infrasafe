@@ -25,13 +25,13 @@ const logger = winston.createLogger({
             )
         }),
         // Запись всех логов в файл
-        new winston.transports.File({ 
-            filename: path.join(__dirname, '../../logs/combined.log') 
+        new winston.transports.File({
+            filename: path.join(__dirname, '../../logs/combined.log')
         }),
         // Запись только ошибок в отдельный файл
-        new winston.transports.File({ 
-            filename: path.join(__dirname, '../../logs/error.log'), 
-            level: 'error' 
+        new winston.transports.File({
+            filename: path.join(__dirname, '../../logs/error.log'),
+            level: 'error'
         })
     ]
 });
@@ -46,4 +46,4 @@ if (process.env.NODE_ENV !== 'production') {
     }));
 }
 
-module.exports = logger; 
+module.exports = logger;

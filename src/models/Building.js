@@ -15,13 +15,13 @@ class Building {
         try {
             const offset = (page - 1) * limit;
             const validOrder = ['asc', 'desc'].includes(order.toLowerCase()) ? order : 'asc';
-            
+
             // Проверка допустимости поля сортировки
             const validColumns = ['building_id', 'name', 'address', 'town', 'region', 'management_company'];
             const sortColumn = validColumns.includes(sort) ? sort : 'building_id';
-            
+
             const { rows: buildings } = await db.query(
-                `SELECT 
+                `SELECT
                     b.*,
                     pt.name as primary_transformer_name,
                     bt.name as backup_transformer_name,
@@ -40,14 +40,14 @@ class Building {
                 LEFT JOIN water_lines hwl ON b.hot_water_line_id = hwl.line_id
                 LEFT JOIN water_suppliers cws ON b.cold_water_supplier_id = cws.supplier_id
                 LEFT JOIN water_suppliers hws ON b.hot_water_supplier_id = hws.supplier_id
-                ORDER BY b.${sortColumn} ${validOrder} 
+                ORDER BY b.${sortColumn} ${validOrder}
                 LIMIT $1 OFFSET $2`,
                 [limit, offset]
             );
-            
+
             const { rows: countResult } = await db.query('SELECT COUNT(*) FROM buildings');
             const totalCount = parseInt(countResult[0].count);
-            
+
             return {
                 data: buildings,
                 pagination: {
@@ -71,7 +71,7 @@ class Building {
     static async findById(id) {
         try {
             const { rows } = await db.query(
-                `SELECT 
+                `SELECT
                     b.*,
                     pt.name as primary_transformer_name,
                     bt.name as backup_transformer_name,
@@ -107,24 +107,24 @@ class Building {
      */
     static async create(buildingData) {
         try {
-            const { 
+            const {
                 name, address, town, latitude, longitude, management_company, region, hot_water,
                 primary_transformer_id, backup_transformer_id, primary_line_id, backup_line_id,
                 cold_water_line_id, hot_water_line_id, cold_water_supplier_id, hot_water_supplier_id
             } = buildingData;
-            
+
             const { rows } = await db.query(
-                `INSERT INTO buildings 
+                `INSERT INTO buildings
                 (name, address, town, latitude, longitude, management_company, region, hot_water,
                  primary_transformer_id, backup_transformer_id, primary_line_id, backup_line_id,
-                 cold_water_line_id, hot_water_line_id, cold_water_supplier_id, hot_water_supplier_id) 
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) 
+                 cold_water_line_id, hot_water_line_id, cold_water_supplier_id, hot_water_supplier_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
                 RETURNING *`,
                 [name, address, town, latitude, longitude, management_company, region, hot_water,
                  primary_transformer_id, backup_transformer_id, primary_line_id, backup_line_id,
                  cold_water_line_id, hot_water_line_id, cold_water_supplier_id, hot_water_supplier_id]
             );
-            
+
             logger.info(`Created new building with ID: ${rows[0].building_id}`);
             return rows[0];
         } catch (error) {
@@ -141,31 +141,31 @@ class Building {
      */
     static async update(id, buildingData) {
         try {
-            const { 
+            const {
                 name, address, town, latitude, longitude, management_company, region, hot_water,
                 primary_transformer_id, backup_transformer_id, primary_line_id, backup_line_id,
                 cold_water_line_id, hot_water_line_id, cold_water_supplier_id, hot_water_supplier_id
             } = buildingData;
-            
+
             const { rows } = await db.query(
-                `UPDATE buildings 
-                SET name = $1, address = $2, town = $3, latitude = $4, longitude = $5, 
+                `UPDATE buildings
+                SET name = $1, address = $2, town = $3, latitude = $4, longitude = $5,
                     management_company = $6, region = $7, hot_water = $8,
                     primary_transformer_id = $9, backup_transformer_id = $10,
                     primary_line_id = $11, backup_line_id = $12,
-                    cold_water_line_id = $13, hot_water_line_id = $14, 
+                    cold_water_line_id = $13, hot_water_line_id = $14,
                     cold_water_supplier_id = $15, hot_water_supplier_id = $16
-                WHERE building_id = $17 
+                WHERE building_id = $17
                 RETURNING *`,
                 [name, address, town, latitude, longitude, management_company, region, hot_water,
                  primary_transformer_id, backup_transformer_id, primary_line_id, backup_line_id,
                  cold_water_line_id, hot_water_line_id, cold_water_supplier_id, hot_water_supplier_id, id]
             );
-            
+
             if (!rows.length) {
                 return null;
             }
-            
+
             logger.info(`Updated building with ID: ${id}`);
             return rows[0];
         } catch (error) {
@@ -185,11 +185,11 @@ class Building {
                 'DELETE FROM buildings WHERE building_id = $1 RETURNING *',
                 [id]
             );
-            
+
             if (rows.length) {
                 logger.info(`Deleted building with ID: ${id}`);
             }
-            
+
             return rows.length ? rows[0] : null;
         } catch (error) {
             logger.error(`Error in Building.delete: ${error.message}`);
@@ -198,4 +198,4 @@ class Building {
     }
 }
 
-module.exports = Building; 
+module.exports = Building;

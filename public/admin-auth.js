@@ -87,14 +87,14 @@ class AdminAuth {
                     'Authorization': `Bearer ${self.token}`
                 };
             }
-            
+
             // Перенаправляем запросы с 8080 на 3000 для API
             if (url.startsWith('http://localhost:8080/api/')) {
                 url = url.replace('http://localhost:8080/api/', 'http://localhost:3000/api/');
             } else if (url.startsWith('/api/')) {
                 url = 'http://localhost:3000' + url;
             }
-            
+
             return originalFetch(url, options).then(response => {
                 if (response.status === 401) {
                     self.logout();
@@ -112,12 +112,12 @@ class AdminAuth {
                     <form id="login-form">
                         <div class="form-group">
                             <label for="username">Логин:</label>
-                            <input type="text" id="username" name="username" required 
+                            <input type="text" id="username" name="username" required
                                    placeholder="admin" autocomplete="username">
                         </div>
                         <div class="form-group">
                             <label for="password">Пароль:</label>
-                            <input type="password" id="password" name="password" required 
+                            <input type="password" id="password" name="password" required
                                    placeholder="••••••••" autocomplete="current-password">
                         </div>
                         <div class="form-group">
@@ -146,13 +146,13 @@ class AdminAuth {
             e.preventDefault();
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
-            
+
             const loginBtn = document.querySelector('.login-btn');
             loginBtn.disabled = true;
             loginBtn.textContent = 'Вход...';
-            
+
             await this.login(username, password);
-            
+
             loginBtn.disabled = false;
             loginBtn.textContent = 'Войти';
         });
@@ -190,7 +190,7 @@ class AdminAuth {
                 </button>
             `;
             document.querySelector('.admin-header').insertAdjacentHTML('beforeend', logoutHTML);
-            
+
             document.getElementById('logout-btn').addEventListener('click', () => {
                 if (confirm('Вы действительно хотите выйти?')) {
                     this.logout();
@@ -226,7 +226,7 @@ class AdminAuth {
                         align-items: center;
                         z-index: 10000;
                     }
-                    
+
                     .login-form {
                         background: white;
                         padding: 2rem;
@@ -235,25 +235,25 @@ class AdminAuth {
                         max-width: 400px;
                         width: 90%;
                     }
-                    
+
                     .login-form h2 {
                         text-align: center;
                         margin-bottom: 1.5rem;
                         color: #333;
                         font-size: 1.5rem;
                     }
-                    
+
                     .form-group {
                         margin-bottom: 1rem;
                     }
-                    
+
                     .form-group label {
                         display: block;
                         margin-bottom: 0.5rem;
                         font-weight: 600;
                         color: #555;
                     }
-                    
+
                     .form-group input {
                         width: 100%;
                         padding: 0.75rem;
@@ -262,12 +262,12 @@ class AdminAuth {
                         font-size: 1rem;
                         transition: border-color 0.3s;
                     }
-                    
+
                     .form-group input:focus {
                         outline: none;
                         border-color: #007bff;
                     }
-                    
+
                     .login-btn {
                         width: 100%;
                         padding: 0.75rem;
@@ -280,16 +280,16 @@ class AdminAuth {
                         cursor: pointer;
                         transition: background 0.3s;
                     }
-                    
+
                     .login-btn:hover {
                         background: #0056b3;
                     }
-                    
+
                     .login-btn:disabled {
                         background: #ccc;
                         cursor: not-allowed;
                     }
-                    
+
                     .error-message {
                         color: #dc3545;
                         background: #f8d7da;
@@ -298,7 +298,7 @@ class AdminAuth {
                         margin-top: 1rem;
                         text-align: center;
                     }
-                    
+
                     .login-info {
                         margin-top: 1.5rem;
                         padding: 1rem;
@@ -306,14 +306,14 @@ class AdminAuth {
                         border-radius: 6px;
                         font-size: 0.9rem;
                     }
-                    
+
                     .login-info code {
                         background: #e9ecef;
                         padding: 0.2rem 0.4rem;
                         border-radius: 3px;
                         font-family: monospace;
                     }
-                    
+
                     .logout-btn {
                         position: fixed;
                         top: 20px;
@@ -327,11 +327,11 @@ class AdminAuth {
                         font-size: 0.9rem;
                         z-index: 1000;
                     }
-                    
+
                     .logout-btn:hover {
                         background: #c82333;
                     }
-                    
+
                     .admin-container {
                         display: none;
                     }
@@ -353,4 +353,4 @@ class AdminAuth {
 }
 
 // Создаем глобальный экземпляр
-window.adminAuth = new AdminAuth(); 
+window.adminAuth = new AdminAuth();

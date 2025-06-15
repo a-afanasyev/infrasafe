@@ -14,11 +14,11 @@ class Metric {
     static async findAll(page = 1, limit = 10, sort = 'timestamp', order = 'desc') {
         try {
             const offset = (page - 1) * limit;
-            
+
             // Проверка сортировки для безопасности
             const validOrder = ['asc', 'desc'].includes(order.toLowerCase()) ? order : 'desc';
             const validColumns = [
-                'metric_id', 'controller_id', 'timestamp', 
+                'metric_id', 'controller_id', 'timestamp',
                 'electricity_ph1', 'electricity_ph2', 'electricity_ph3',
                 'amperage_ph1', 'amperage_ph2', 'amperage_ph3',
                 'cold_water_pressure', 'cold_water_temp',
@@ -36,13 +36,13 @@ class Metric {
                 ORDER BY m.${sortColumn} ${validOrder}
                 LIMIT $1 OFFSET $2
             `;
-            
+
             const { rows: metrics } = await db.query(metricsQuery, [limit, offset]);
-            
+
             // Получение общего количества метрик
             const { rows: countResult } = await db.query('SELECT COUNT(*) FROM metrics');
             const totalCount = parseInt(countResult[0].count);
-            
+
             return {
                 data: metrics,
                 pagination: {
@@ -71,7 +71,7 @@ class Metric {
                 LEFT JOIN controllers c ON m.controller_id = c.controller_id
                 WHERE m.metric_id = $1
             `;
-            
+
             const { rows } = await db.query(query, [id]);
             return rows.length ? rows[0] : null;
         } catch (error) {
@@ -93,9 +93,9 @@ class Metric {
                 SELECT * FROM metrics
                 WHERE controller_id = $1
             `;
-            
+
             const params = [controllerId];
-            
+
             // Добавление фильтров по дате, если указаны
             if (startDate && endDate) {
                 query += ` AND timestamp BETWEEN $2 AND $3`;
@@ -107,9 +107,9 @@ class Metric {
                 query += ` AND timestamp <= $2`;
                 params.push(endDate);
             }
-            
+
             query += ` ORDER BY timestamp DESC`;
-            
+
             const { rows } = await db.query(query, params);
             return rows;
         } catch (error) {
@@ -127,29 +127,29 @@ class Metric {
             // Используем оконную функцию для выбора самой последней метрики для каждого контроллера
             const query = `
                 WITH ranked_metrics AS (
-                    SELECT 
+                    SELECT
                         m.*,
                         ROW_NUMBER() OVER (PARTITION BY m.controller_id ORDER BY m.timestamp DESC) as rn
-                    FROM 
+                    FROM
                         metrics m
                 )
-                SELECT 
+                SELECT
                     rm.*,
                     c.serial_number as controller_serial,
                     b.name as building_name,
                     b.building_id
-                FROM 
+                FROM
                     ranked_metrics rm
-                JOIN 
+                JOIN
                     controllers c ON rm.controller_id = c.controller_id
-                JOIN 
+                JOIN
                     buildings b ON c.building_id = b.building_id
-                WHERE 
+                WHERE
                     rm.rn = 1
-                ORDER BY 
+                ORDER BY
                     c.controller_id ASC
             `;
-            
+
             const { rows } = await db.query(query);
             return rows;
         } catch (error) {
@@ -174,22 +174,22 @@ class Metric {
                 hot_water_in_temp, hot_water_out_temp,
                 air_temp, humidity, leak_sensor
             } = metricData;
-            
+
             const currentTimestamp = timestamp || new Date().toISOString();
-            
+
             const query = `
-                INSERT INTO metrics 
+                INSERT INTO metrics
                 (controller_id, timestamp,
                  electricity_ph1, electricity_ph2, electricity_ph3,
                  amperage_ph1, amperage_ph2, amperage_ph3,
                  cold_water_pressure, cold_water_temp,
                  hot_water_in_pressure, hot_water_out_pressure,
                  hot_water_in_temp, hot_water_out_temp,
-                 air_temp, humidity, leak_sensor) 
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) 
+                 air_temp, humidity, leak_sensor)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
                 RETURNING *
             `;
-            
+
             const { rows } = await db.query(query, [
                 controller_id, currentTimestamp,
                 electricity_ph1, electricity_ph2, electricity_ph3,
@@ -199,7 +199,7 @@ class Metric {
                 hot_water_in_temp, hot_water_out_temp,
                 air_temp, humidity, leak_sensor
             ]);
-            
+
             return rows[0];
         } catch (error) {
             logger.error(`Error in Metric.create: ${error.message}`);
@@ -218,7 +218,7 @@ class Metric {
                 'DELETE FROM metrics WHERE metric_id = $1 RETURNING *',
                 [id]
             );
-            
+
             return rows.length ? rows[0] : null;
         } catch (error) {
             logger.error(`Error in Metric.delete: ${error.message}`);
@@ -227,4 +227,4 @@ class Metric {
     }
 }
 
-module.exports = Metric; 
+module.exports = Metric;

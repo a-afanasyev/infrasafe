@@ -96,8 +96,8 @@ router.get('/', async (req, res, next) => {
 
         // Получаем данные с пагинацией
         const result = await query(
-            `SELECT * FROM cold_water_sources 
-             ORDER BY ${sort} ${order} 
+            `SELECT * FROM cold_water_sources
+             ORDER BY ${sort} ${order}
              LIMIT $1 OFFSET $2`,
             [limit, offset]
         );
@@ -178,8 +178,8 @@ router.post('/', async (req, res, next) => {
         } = req.body;
 
         const result = await query(
-            `INSERT INTO cold_water_sources 
-             (id, name, address, latitude, longitude, source_type, capacity_m3_per_hour, 
+            `INSERT INTO cold_water_sources
+             (id, name, address, latitude, longitude, source_type, capacity_m3_per_hour,
               operating_pressure_bar, installation_date, status, maintenance_contact, notes)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
              RETURNING *`,
@@ -228,10 +228,10 @@ router.put('/:id', async (req, res, next) => {
         } = req.body;
 
         const result = await query(
-            `UPDATE cold_water_sources 
-             SET name = $2, address = $3, latitude = $4, longitude = $5, 
+            `UPDATE cold_water_sources
+             SET name = $2, address = $3, latitude = $4, longitude = $5,
                  source_type = $6, capacity_m3_per_hour = $7, operating_pressure_bar = $8,
-                 installation_date = $9, status = $10, maintenance_contact = $11, 
+                 installation_date = $9, status = $10, maintenance_contact = $11,
                  notes = $12, updated_at = NOW()
              WHERE id = $1
              RETURNING *`,
@@ -284,4 +284,4 @@ router.delete('/:id', async (req, res, next) => {
     }
 });
 
-module.exports = router; 
+module.exports = router;

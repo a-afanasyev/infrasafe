@@ -19,11 +19,11 @@ const getMetricById = async (req, res, next) => {
     try {
         const { id } = req.params;
         const metric = await metricService.getMetricById(id);
-        
+
         if (!metric) {
             return res.status(404).json({ error: 'Metric not found' });
         }
-        
+
         return res.status(200).json(metric);
     } catch (error) {
         logger.error(`Error in getMetricById: ${error.message}`);
@@ -47,14 +47,14 @@ const getMetricsByControllerId = async (req, res, next) => {
     try {
         const { controllerId } = req.params;
         const { startDate, endDate } = req.query;
-        
+
         const metrics = await metricService.getMetricsByControllerId(controllerId, startDate, endDate);
         return res.status(200).json(metrics);
     } catch (error) {
         if (error.code === 'CONTROLLER_NOT_FOUND') {
             return res.status(404).json({ error: error.message });
         }
-        
+
         logger.error(`Error in getMetricsByControllerId: ${error.message}`);
         next(error);
     }
@@ -69,7 +69,7 @@ const createMetric = async (req, res, next) => {
         if (error.code === 'CONTROLLER_NOT_FOUND') {
             return res.status(404).json({ error: error.message });
         }
-        
+
         logger.error(`Error in createMetric: ${error.message}`);
         next(error);
     }
@@ -84,7 +84,7 @@ const receiveTelementry = async (req, res, next) => {
         if (error.code === 'CONTROLLER_NOT_FOUND') {
             return res.status(404).json({ error: error.message });
         }
-        
+
         logger.error(`Error in receiveTelementry: ${error.message}`);
         next(error);
     }
@@ -94,16 +94,16 @@ const receiveTelementry = async (req, res, next) => {
 const deleteMetric = async (req, res, next) => {
     try {
         const { id } = req.params;
-        
+
         const result = await metricService.deleteMetric(id);
-        
+
         if (!result) {
             return res.status(404).json({ error: 'Metric not found' });
         }
-        
-        return res.status(200).json({ 
-            message: 'Metric deleted successfully', 
-            deleted: result 
+
+        return res.status(200).json({
+            message: 'Metric deleted successfully',
+            deleted: result
         });
     } catch (error) {
         logger.error(`Error in deleteMetric: ${error.message}`);
@@ -116,7 +116,7 @@ const getAggregatedMetrics = async (req, res, next) => {
     try {
         const { controllerId } = req.params;
         const { timeFrame = '1h' } = req.query;
-        
+
         const aggregated = await metricService.getAggregatedMetrics(controllerId, timeFrame);
         return res.status(200).json(aggregated);
     } catch (error) {
@@ -129,7 +129,7 @@ const getAggregatedMetrics = async (req, res, next) => {
 const cleanupOldMetrics = async (req, res, next) => {
     try {
         const { daysToKeep = 30 } = req.query;
-        
+
         const result = await metricService.cleanupOldMetrics(parseInt(daysToKeep));
         return res.status(200).json(result);
     } catch (error) {
@@ -148,4 +148,4 @@ module.exports = {
     deleteMetric,
     getAggregatedMetrics,
     cleanupOldMetrics
-}; 
+};

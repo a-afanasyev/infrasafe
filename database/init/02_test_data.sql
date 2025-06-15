@@ -43,7 +43,7 @@ INSERT INTO lines (name, voltage_kv, length_km, transformer_id) VALUES
 ('Линия-010 Аварийная', 6.0, 1.9, 2);
 
 -- Вставка тестовых данных для зданий с новой архитектурой связей
-INSERT INTO buildings (name, address, town, latitude, longitude, region, management_company, hot_water, has_hot_water, 
+INSERT INTO buildings (name, address, town, latitude, longitude, region, management_company, hot_water, has_hot_water,
                       primary_transformer_id, backup_transformer_id, primary_line_id, backup_line_id,
                       cold_water_line_id, hot_water_line_id, cold_water_supplier_id, hot_water_supplier_id) VALUES
 ('Навои-001', 'ул. Навои, 1', 'Ташкент', 41.311081, 69.240562, 'Ташкентская область', 'ООО "УК Навои"', true, true, 1, 2, 1, 9, 1, 4, 1, 2),
@@ -82,5 +82,5 @@ INSERT INTO water_measurement_points (building_id, point_type, location, meter_s
 (6, 'hot_water_return', 'Подвал, обратка ГВС', 'HWR-006-2024', '2024-02-15', 960.8, '2024-12-01', 'active');
 
 -- Логируем успешную загрузку тестовых данных
-INSERT INTO logs (timestamp, log_level, message) 
-VALUES (NOW(), 'INFO', 'Тестовые данные для InfraSafe (Ташкент) успешно загружены: 8 трансформаторов, 10 линий, 5 линий водоснабжения, 5 поставщиков воды, 17 зданий'); 
+INSERT INTO logs (timestamp, log_level, message)
+VALUES (NOW(), 'INFO', 'Тестовые данные для InfraSafe (Ташкент) успешно загружены: 8 трансформаторов, 10 линий, 5 линий водоснабжения, 5 поставщиков воды, 17 зданий');

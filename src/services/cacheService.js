@@ -6,15 +6,15 @@ class CacheService {
         this.analyticsCache = new Map(); // In-memory cache для критических данных
         this.memoryTTL = 60000; // 1 минута в памяти
         this.maxMemoryItems = 1000; // Максимум элементов в памяти
-        
+
         // Инициализация Redis (опционально)
         this.redisClient = null;
         this.redisAvailable = false;
-        
+
         this.initRedis();
         this.startCleanupTimer();
     }
-    
+
     // Инициализация Redis (если доступен)
     async initRedis() {
         try {
@@ -29,17 +29,17 @@ class CacheService {
                         lazyConnect: true
                     }
                 });
-                
+
                 this.redisClient.on('error', (err) => {
                     logger.warn('Redis недоступен:', err.message);
                     this.redisAvailable = false;
                 });
-                
+
                 this.redisClient.on('connect', () => {
                     logger.info('Redis подключен успешно');
                     this.redisAvailable = true;
                 });
-                
+
                 await this.redisClient.connect();
             }
         } catch (error) {
@@ -47,46 +47,46 @@ class CacheService {
             this.redisAvailable = false;
         }
     }
-    
+
     // Очистка устаревших записей из memory cache
     startCleanupTimer() {
         setInterval(() => {
             this.cleanupMemoryCache();
         }, 60000); // Очистка каждую минуту
     }
-    
+
     cleanupMemoryCache() {
         const now = Date.now();
         let cleanedCount = 0;
-        
+
         for (const [key, cached] of this.analyticsCache.entries()) {
             if (now - cached.timestamp > this.memoryTTL) {
                 this.analyticsCache.delete(key);
                 cleanedCount++;
             }
         }
-        
+
         // Если превышен лимит, удаляем самые старые записи
         if (this.analyticsCache.size > this.maxMemoryItems) {
             const entries = Array.from(this.analyticsCache.entries())
                 .sort((a, b) => a[1].timestamp - b[1].timestamp);
-            
+
             const toDelete = entries.slice(0, entries.length - this.maxMemoryItems);
             toDelete.forEach(([key]) => {
                 this.analyticsCache.delete(key);
                 cleanedCount++;
             });
         }
-        
+
         if (cleanedCount > 0) {
             logger.debug(`Очищено ${cleanedCount} записей из memory cache`);
         }
     }
-    
+
     // Для часто запрашиваемой аналитики трансформаторов
     async getTransformerAnalytics(transformerId) {
         const cacheKey = `transformer:${transformerId}:analytics`;
-        
+
         // Сначала проверяем memory cache
         if (this.analyticsCache.has(cacheKey)) {
             const cached = this.analyticsCache.get(cacheKey);
@@ -98,20 +98,20 @@ class CacheService {
                 this.analyticsCache.delete(cacheKey);
             }
         }
-        
+
         // Затем проверяем Redis
         if (this.redisAvailable) {
             try {
                 const redisData = await this.redisClient.get(cacheKey);
                 if (redisData) {
                     const parsed = JSON.parse(redisData);
-                    
+
                     // Сохраняем в memory cache для быстрого доступа
                     this.analyticsCache.set(cacheKey, {
                         data: parsed,
                         timestamp: Date.now()
                     });
-                    
+
                     logger.debug(`Cache hit (Redis) для ${cacheKey}`);
                     return parsed;
                 }
@@ -119,19 +119,19 @@ class CacheService {
                 logger.warn('Ошибка получения из Redis:', error.message);
             }
         }
-        
+
         return null; // Кэш пуст, нужно загрузить из БД
     }
-    
+
     async setTransformerAnalytics(transformerId, data) {
         const cacheKey = `transformer:${transformerId}:analytics`;
-        
+
         // Memory cache
         this.analyticsCache.set(cacheKey, {
             data,
             timestamp: Date.now()
         });
-        
+
         // Redis cache
         if (this.redisAvailable) {
             try {
@@ -141,17 +141,17 @@ class CacheService {
                 logger.warn('Не удалось сохранить в Redis:', error.message);
             }
         }
-        
+
         logger.debug(`Cache set (memory) для ${cacheKey}`);
     }
-    
+
     // Инвалидация кэша при обновлении данных
     async invalidateTransformerCache(transformerId) {
         const cacheKey = `transformer:${transformerId}:analytics`;
-        
+
         // Удаляем из memory cache
         this.analyticsCache.delete(cacheKey);
-        
+
         // Удаляем из Redis
         if (this.redisAvailable) {
             try {
@@ -161,14 +161,14 @@ class CacheService {
                 logger.warn('Не удалось очистить Redis:', error.message);
             }
         }
-        
+
         logger.debug(`Cache invalidated (memory) для ${cacheKey}`);
     }
-    
+
     // Универсальные методы кэширования
     async get(key, options = {}) {
         const ttl = options.ttl || this.memoryTTL;
-        
+
         // Memory cache
         if (this.analyticsCache.has(key)) {
             const cached = this.analyticsCache.get(key);
@@ -178,7 +178,7 @@ class CacheService {
                 this.analyticsCache.delete(key);
             }
         }
-        
+
         // Redis cache
         if (this.redisAvailable) {
             try {
@@ -195,19 +195,19 @@ class CacheService {
                 logger.warn('Ошибка получения из Redis:', error.message);
             }
         }
-        
+
         return null;
     }
-    
+
     async set(key, data, options = {}) {
         const ttl = options.ttl || this.defaultTTL;
-        
+
         // Memory cache
         this.analyticsCache.set(key, {
             data,
             timestamp: Date.now()
         });
-        
+
         // Redis cache
         if (this.redisAvailable) {
             try {
@@ -217,11 +217,11 @@ class CacheService {
             }
         }
     }
-    
+
     async invalidate(key) {
         // Memory cache
         this.analyticsCache.delete(key);
-        
+
         // Redis cache
         if (this.redisAvailable) {
             try {
@@ -231,7 +231,7 @@ class CacheService {
             }
         }
     }
-    
+
     // Паттерн для инвалидации группы ключей
     async invalidatePattern(pattern) {
         // Memory cache - проходим по всем ключам
@@ -240,7 +240,7 @@ class CacheService {
                 this.analyticsCache.delete(key);
             }
         }
-        
+
         // Redis cache - используем SCAN для поиска по паттерну
         if (this.redisAvailable) {
             try {
@@ -253,7 +253,7 @@ class CacheService {
             }
         }
     }
-    
+
     // Статистика кэша
     getStats() {
         return {
@@ -264,12 +264,12 @@ class CacheService {
             default_ttl_seconds: this.defaultTTL
         };
     }
-    
+
     // Очистка всего кэша
     async clearAll() {
         // Memory cache
         this.analyticsCache.clear();
-        
+
         // Redis cache
         if (this.redisAvailable) {
             try {
@@ -279,10 +279,10 @@ class CacheService {
                 logger.warn('Не удалось очистить Redis:', error.message);
             }
         }
-        
+
         logger.info('Memory cache очищен');
     }
-    
+
     // Закрытие соединений
     async close() {
         if (this.redisClient) {
@@ -297,4 +297,4 @@ class CacheService {
 }
 
 // Экспортируем синглтон
-module.exports = new CacheService(); 
+module.exports = new CacheService();

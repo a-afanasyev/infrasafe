@@ -19,11 +19,11 @@ const getBuildingById = async (req, res, next) => {
     try {
         const { id } = req.params;
         const building = await buildingService.getBuildingById(id);
-        
+
         if (!building) {
             return res.status(404).json({ error: 'Building not found' });
         }
-        
+
         return res.status(200).json(building);
     } catch (error) {
         logger.error(`Error in getBuildingById: ${error.message}`);
@@ -47,11 +47,11 @@ const updateBuilding = async (req, res, next) => {
     try {
         const { id } = req.params;
         const updatedBuilding = await buildingService.updateBuilding(id, req.body);
-        
+
         if (!updatedBuilding) {
             return res.status(404).json({ error: 'Building not found' });
         }
-        
+
         return res.status(200).json(updatedBuilding);
     } catch (error) {
         logger.error(`Error in updateBuilding: ${error.message}`);
@@ -63,26 +63,26 @@ const updateBuilding = async (req, res, next) => {
 const deleteBuilding = async (req, res, next) => {
     try {
         const { id } = req.params;
-        
+
         const result = await buildingService.deleteBuilding(id);
-        
+
         if (!result) {
             return res.status(404).json({ error: 'Building not found' });
         }
-        
-        return res.status(200).json({ 
-            message: 'Building deleted successfully', 
-            deleted: result 
+
+        return res.status(200).json({
+            message: 'Building deleted successfully',
+            deleted: result
         });
     } catch (error) {
         // Обрабатываем специфичные ошибки сервиса
         if (error.code === 'BUILDING_HAS_CONTROLLERS') {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: error.message,
                 controllers: error.controllers
             });
         }
-        
+
         logger.error(`Error in deleteBuilding: ${error.message}`);
         next(error);
     }
@@ -92,19 +92,19 @@ const deleteBuilding = async (req, res, next) => {
 const findBuildingsInRadius = async (req, res, next) => {
     try {
         const { latitude, longitude, radius = 1000 } = req.query;
-        
+
         if (!latitude || !longitude) {
-            return res.status(400).json({ 
-                error: 'Latitude and longitude are required' 
+            return res.status(400).json({
+                error: 'Latitude and longitude are required'
             });
         }
-        
+
         const result = await buildingService.findBuildingsInRadius(
-            parseFloat(latitude), 
-            parseFloat(longitude), 
+            parseFloat(latitude),
+            parseFloat(longitude),
             parseInt(radius)
         );
-        
+
         return res.status(200).json(result);
     } catch (error) {
         logger.error(`Error in findBuildingsInRadius: ${error.message}`);
@@ -131,4 +131,4 @@ module.exports = {
     deleteBuilding,
     findBuildingsInRadius,
     getBuildingsStatistics
-}; 
+};

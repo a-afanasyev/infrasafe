@@ -294,4 +294,4 @@ router.put('/:id', buildingController.updateBuilding);
  */
 router.delete('/:id', buildingController.deleteBuilding);
 
-module.exports = router; 
+module.exports = router;
