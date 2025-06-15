@@ -63,4 +63,4 @@ volumes:
 
 networks:
   leaflet-network:
-    driver: bridge 
+    driver: bridge

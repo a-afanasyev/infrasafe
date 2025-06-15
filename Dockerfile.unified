@@ -40,7 +40,7 @@ WORKDIR /usr/share/nginx/html
 
 # Копируем HTML файлы
 COPY index.html .
-COPY *.html . 
+COPY *.html .
 
 # Копируем статические ресурсы
 COPY css/ ./css/
@@ -63,4 +63,4 @@ USER nginx-user
 EXPOSE 8080
 
 # Запускаем Nginx
-CMD ["nginx", "-g", "daemon off;"] 
+CMD ["nginx", "-g", "daemon off;"]
