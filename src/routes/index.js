@@ -4,6 +4,15 @@ const controllerRoutes = require('./controllerRoutes');
 const metricRoutes = require('./metricRoutes');
 const authRoutes = require('./authRoutes');
 const buildingMetricsRoutes = require('./buildingMetricsRoutes');
+const analyticsRoutes = require('./analyticsRoutes');
+const alertRoutes = require('./alertRoutes');
+const adminRoutes = require('./adminRoutes');
+const transformerRoutes = require('./transformerRoutes');
+const lineRoutes = require('./lineRoutes');
+const waterSourceRoutes = require('./waterSourceRoutes');
+const heatSourceRoutes = require('./heatSourceRoutes');
+const waterLineRoutes = require('./waterLineRoutes');
+const waterSupplierRoutes = require('./waterSupplierRoutes');
 const metricController = require('../controllers/metricController');
 const { authenticateJWT } = require('../middleware/auth');
 const { createError } = require('../utils/helpers');
@@ -18,10 +27,10 @@ const router = express.Router();
  *       type: http
  *       scheme: bearer
  *       bearerFormat: JWT
- * 
+ *
  * security:
  *   - bearerAuth: []
- * 
+ *
  * paths:
  *   /metrics/telemetry:
  *     post:
@@ -70,12 +79,12 @@ router.use((req, res, next) => {
     if (req.path === '/metrics/telemetry' && req.method === 'POST') {
         return next();
     }
-    
+
     // Исключаем маршруты авторизации из проверки
     if (req.path.startsWith('/auth/')) {
         return next();
     }
-    
+
     // Защищаем только маршруты, которые изменяют данные
     if (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE' || req.method === 'PATCH') {
         authenticateJWT(req, res, next);
@@ -120,7 +129,16 @@ router.get('/', (req, res) => {
             '/api/auth - Авторизация и управление пользователями',
             '/api/buildings - Управление зданиями',
             '/api/controllers - Управление контроллерами',
+            '/api/transformers - Управление трансформаторами',
+            '/api/lines - Управление линиями электропередач',
+            '/api/cold-water-sources - Управление источниками воды',
+            '/api/heat-sources - Управление источниками тепла',
+            '/api/water-lines - Управление водными линиями',
+            '/api/water-suppliers - Управление поставщиками воды',
             '/api/metrics - Получение метрик',
+            '/api/analytics - Аналитика и инфраструктурные объекты',
+            '/api/alerts - Система алертов и уведомлений',
+            '/api/admin - Оптимизированные админские API',
             '/api-docs - Документация API'
         ],
         status: 'healthy'
@@ -131,8 +149,17 @@ router.get('/', (req, res) => {
 router.use('/auth', authRoutes);
 router.use('/buildings', buildingRoutes);
 router.use('/controllers', controllerRoutes);
+router.use('/transformers', transformerRoutes);
+router.use('/lines', lineRoutes);
+router.use('/cold-water-sources', waterSourceRoutes);
+router.use('/heat-sources', heatSourceRoutes);
+router.use('/water-lines', waterLineRoutes);
+router.use('/water-suppliers', waterSupplierRoutes);
 router.use('/metrics', metricRoutes);
 router.use('/buildings-metrics', buildingMetricsRoutes);
+router.use('/analytics', analyticsRoutes);
+router.use('/alerts', alertRoutes);
+router.use('/admin', adminRoutes);
 
 // Обработка 404 для API
 router.use((req, res, next) => {

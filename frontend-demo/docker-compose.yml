@@ -10,4 +10,4 @@ services:
       - NODE_ENV=production
     restart: unless-stopped
     volumes:
-      - ./src:/app/src:ro  # Только для разработки, можно убрать в продакшене 
+      - ./src:/app/src:ro  # Только для разработки, можно убрать в продакшене

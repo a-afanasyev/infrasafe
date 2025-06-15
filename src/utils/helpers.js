@@ -36,13 +36,13 @@ const validateCoordinates = (lat, lng) => {
  */
 const calculateBuildingStatus = (metrics) => {
     const {
-        electricity_ph1, 
-        electricity_ph2, 
+        electricity_ph1,
+        electricity_ph2,
         electricity_ph3,
         cold_water_pr,
         hot_water_pr
     } = metrics;
-    
+
     // Проверка критического состояния
     if (electricity_ph1 === 0 && electricity_ph2 === 0 && electricity_ph3 === 0) {
         return 'critical';
@@ -67,4 +67,4 @@ module.exports = {
     formatDateForDB,
     validateCoordinates,
     calculateBuildingStatus
-}; 
+};

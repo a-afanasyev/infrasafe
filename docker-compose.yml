@@ -37,9 +37,9 @@ services:
       - leaflet-network
     restart: unless-stopped
 
-  # База данных PostgreSQL
+  # База данных PostgreSQL с PostGIS
   postgres:
-    image: postgres:15
+    image: postgis/postgis:15-3.3
     ports:
       - "5432:5432"
     environment:
@@ -48,10 +48,10 @@ services:
       - POSTGRES_DB=infrasafe
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database.sql:/docker-entrypoint-initdb.d/database.sql
+      - ./database/init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U postgres && psql -U postgres -d infrasafe -c 'SELECT 1;'"]
+      interval: 10s
       timeout: 5s
       retries: 5
     networks:
@@ -63,4 +63,4 @@ volumes:
 
 networks:
   leaflet-network:
-    driver: bridge 
+    driver: bridge

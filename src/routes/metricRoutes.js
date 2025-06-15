@@ -56,6 +56,139 @@ router.get('/latest', metricController.getLastMetricsForAllControllers);
 
 /**
  * @swagger
+ * /metrics/cleanup:
+ *   delete:
+ *     summary: Очистка старых метрик
+ *     description: Удаляет метрики старше указанного количества дней (по умолчанию 30 дней)
+ *     security:
+ *       - bearerAuth: [] # Требуется авторизация
+ *     parameters:
+ *       - in: query
+ *         name: days
+ *         schema:
+ *           type: integer
+ *           default: 30
+ *           minimum: 1
+ *           maximum: 365
+ *         description: Количество дней для хранения метрик
+ *     responses:
+ *       200:
+ *         description: Старые метрики успешно удалены
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     deleted:
+ *                       type: integer
+ *                       description: Количество удаленных записей
+ *                     cutoff_date:
+ *                       type: string
+ *                       format: date-time
+ *                       description: Дата отсечения
+ *       401:
+ *         description: Отсутствует токен авторизации
+ *       403:
+ *         description: Недействительный токен
+ *       400:
+ *         description: Неверный параметр days
+ */
+router.delete('/cleanup', authenticateJWT, metricController.cleanupOldMetrics);
+
+/**
+ * @swagger
+ * /metrics/controller/{controllerId}/aggregated:
+ *   get:
+ *     summary: Получить агрегированные метрики
+ *     description: Возвращает агрегированные данные (мин/макс/среднее) для контроллера за период
+ *     parameters:
+ *       - in: path
+ *         name: controllerId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID контроллера
+ *       - in: query
+ *         name: timeFrame
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [hour, day, week, month]
+ *         description: Временной интервал для агрегации
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Начальная дата (ISO формат)
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Конечная дата (ISO формат)
+ *     responses:
+ *       200:
+ *         description: Агрегированные метрики
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       period:
+ *                         type: string
+ *                         format: date-time
+ *                       temperature:
+ *                         type: object
+ *                         properties:
+ *                           min:
+ *                             type: number
+ *                           max:
+ *                             type: number
+ *                           avg:
+ *                             type: number
+ *                       humidity:
+ *                         type: object
+ *                         properties:
+ *                           min:
+ *                             type: number
+ *                           max:
+ *                             type: number
+ *                           avg:
+ *                             type: number
+ *                       voltage:
+ *                         type: object
+ *                         properties:
+ *                           min:
+ *                             type: number
+ *                           max:
+ *                             type: number
+ *                           avg:
+ *                             type: number
+ *                       count:
+ *                         type: integer
+ *                         description: Количество записей в периоде
+ *       404:
+ *         description: Контроллер не найден
+ *       400:
+ *         description: Неверные параметры запроса
+ */
+router.get('/controller/:controllerId/aggregated', metricController.getAggregatedMetrics);
+
+/**
+ * @swagger
  * /metrics/controller/{controllerId}:
  *   get:
  *     summary: Получить метрики по ID контроллера
@@ -175,4 +308,4 @@ router.post('/', metricController.createMetric);
  */
 router.delete('/:id', metricController.deleteMetric);
 
-module.exports = router; 
+module.exports = router;

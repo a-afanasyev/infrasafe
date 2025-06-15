@@ -5,12 +5,12 @@ const GRAFANA_URL = 'http://localhost:3000/grafana'; // Пример URL, нуж
 export function buildGrafanaPanelUrl(dashboardId, panelId, params = {}) {
   // Базовый URL панели Grafana
   let url = `${GRAFANA_URL}/d-solo/${dashboardId}?panelId=${panelId}&theme=light`;
-  
+
   // Добавление временного диапазона, если он указан
   if (params.from && params.to) {
     url += `&from=${params.from}&to=${params.to}`;
   }
-  
+
   // Добавление переменных для фильтрации
   Object.entries(params).forEach(([key, value]) => {
     // Пропускаем временные параметры, так как они уже добавлены выше
@@ -18,7 +18,7 @@ export function buildGrafanaPanelUrl(dashboardId, panelId, params = {}) {
       url += `&var-${key}=${encodeURIComponent(value)}`;
     }
   });
-  
+
   return url;
 }
 
@@ -40,7 +40,7 @@ export const GRAFANA_PANELS = {
     panelId: 3,
     title: 'Водоснабжение'
   },
-  
+
   // Панели для контроллеров
   CONTROLLER_STATUS: {
     dashboardId: 'controller-status',
@@ -52,7 +52,7 @@ export const GRAFANA_PANELS = {
     panelId: 5,
     title: 'Метрики контроллера'
   },
-  
+
   // Общие панели
   SYSTEM_OVERVIEW: {
     dashboardId: 'system-overview',
@@ -78,4 +78,4 @@ export default {
   buildGrafanaPanelUrl,
   GRAFANA_PANELS,
   getTimeRanges
-}; 
+};

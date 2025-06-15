@@ -33,7 +33,7 @@ export const buildingsAPI = {
       throw error;
     }
   },
-  
+
   // Получить одно здание по ID
   getBuilding: async (id) => {
     try {
@@ -44,7 +44,7 @@ export const buildingsAPI = {
       throw error;
     }
   },
-  
+
   // Создать новое здание
   createBuilding: async (buildingData) => {
     try {
@@ -55,7 +55,7 @@ export const buildingsAPI = {
       throw error;
     }
   },
-  
+
   // Обновить здание
   updateBuilding: async (id, buildingData) => {
     try {
@@ -66,7 +66,7 @@ export const buildingsAPI = {
       throw error;
     }
   },
-  
+
   // Удалить здание
   deleteBuilding: async (id) => {
     try {
@@ -91,7 +91,7 @@ export const controllersAPI = {
       throw error;
     }
   },
-  
+
   // Получить контроллеры для конкретного здания
   getBuildingControllers: async (buildingId) => {
     try {
@@ -102,7 +102,7 @@ export const controllersAPI = {
       throw error;
     }
   },
-  
+
   // Получить один контроллер по ID
   getController: async (id) => {
     try {
@@ -113,7 +113,7 @@ export const controllersAPI = {
       throw error;
     }
   },
-  
+
   // Создать новый контроллер
   createController: async (controllerData) => {
     try {
@@ -124,7 +124,7 @@ export const controllersAPI = {
       throw error;
     }
   },
-  
+
   // Обновить контроллер
   updateController: async (id, controllerData) => {
     try {
@@ -135,7 +135,7 @@ export const controllersAPI = {
       throw error;
     }
   },
-  
+
   // Удалить контроллер
   deleteController: async (id) => {
     try {
@@ -160,7 +160,7 @@ export const metricsAPI = {
       throw error;
     }
   },
-  
+
   // Получить метрики для конкретного контроллера
   getControllerMetrics: async (controllerId) => {
     try {
@@ -171,7 +171,7 @@ export const metricsAPI = {
       throw error;
     }
   },
-  
+
   // Добавить новую метрику
   createMetric: async (metricData) => {
     try {
@@ -182,7 +182,7 @@ export const metricsAPI = {
       throw error;
     }
   },
-  
+
   // Удалить метрику
   deleteMetric: async (id) => {
     try {
@@ -199,4 +199,4 @@ export default {
   buildingsAPI,
   controllersAPI,
   metricsAPI
-}; 
+};

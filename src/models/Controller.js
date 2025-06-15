@@ -15,23 +15,23 @@ class Controller {
         try {
             const offset = (page - 1) * limit;
             const validOrder = ['asc', 'desc'].includes(order.toLowerCase()) ? order : 'asc';
-            
+
             // Проверка допустимости поля сортировки
             const validColumns = ['controller_id', 'serial_number', 'vendor', 'model', 'building_id', 'status', 'installed_at', 'last_heartbeat'];
             const sortColumn = validColumns.includes(sort) ? sort : 'controller_id';
-            
+
             const { rows: controllers } = await db.query(
-                `SELECT c.*, b.name as building_name 
+                `SELECT c.*, b.name as building_name
                  FROM controllers c
                  LEFT JOIN buildings b ON c.building_id = b.building_id
-                 ORDER BY c.${sortColumn} ${validOrder} 
+                 ORDER BY c.${sortColumn} ${validOrder}
                  LIMIT $1 OFFSET $2`,
                 [limit, offset]
             );
-            
+
             const { rows: countResult } = await db.query('SELECT COUNT(*) FROM controllers');
             const totalCount = parseInt(countResult[0].count);
-            
+
             return {
                 data: controllers,
                 pagination: {
@@ -55,7 +55,7 @@ class Controller {
     static async findById(id) {
         try {
             const { rows } = await db.query(
-                `SELECT c.*, b.name as building_name 
+                `SELECT c.*, b.name as building_name
                  FROM controllers c
                  LEFT JOIN buildings b ON c.building_id = b.building_id
                  WHERE c.controller_id = $1`,
@@ -94,15 +94,15 @@ class Controller {
     static async create(controllerData) {
         try {
             const { serial_number, vendor, model, building_id, status } = controllerData;
-            
+
             const { rows } = await db.query(
-                `INSERT INTO controllers 
-                (serial_number, vendor, model, building_id, status) 
-                VALUES ($1, $2, $3, $4, $5) 
+                `INSERT INTO controllers
+                (serial_number, vendor, model, building_id, status)
+                VALUES ($1, $2, $3, $4, $5)
                 RETURNING *`,
                 [serial_number, vendor, model, building_id, status]
             );
-            
+
             logger.info(`Created new controller with ID: ${rows[0].controller_id}`);
             return rows[0];
         } catch (error) {
@@ -120,20 +120,20 @@ class Controller {
     static async update(id, controllerData) {
         try {
             const { serial_number, vendor, model, building_id, status } = controllerData;
-            
+
             const { rows } = await db.query(
-                `UPDATE controllers 
-                SET serial_number = $1, vendor = $2, model = $3, 
+                `UPDATE controllers
+                SET serial_number = $1, vendor = $2, model = $3,
                     building_id = $4, status = $5
-                WHERE controller_id = $6 
+                WHERE controller_id = $6
                 RETURNING *`,
                 [serial_number, vendor, model, building_id, status, id]
             );
-            
+
             if (!rows.length) {
                 return null;
             }
-            
+
             logger.info(`Updated controller with ID: ${id}`);
             return rows[0];
         } catch (error) {
@@ -151,17 +151,17 @@ class Controller {
     static async updateStatus(id, status) {
         try {
             const { rows } = await db.query(
-                `UPDATE controllers 
-                SET status = $1 
-                WHERE controller_id = $2 
+                `UPDATE controllers
+                SET status = $1
+                WHERE controller_id = $2
                 RETURNING *`,
                 [status, id]
             );
-            
+
             if (rows.length) {
                 logger.info(`Updated status for controller with ID: ${id} to ${status}`);
             }
-            
+
             return rows.length ? rows[0] : null;
         } catch (error) {
             logger.error(`Error in Controller.updateStatus: ${error.message}`);
@@ -180,11 +180,11 @@ class Controller {
                 'DELETE FROM controllers WHERE controller_id = $1 RETURNING *',
                 [id]
             );
-            
+
             if (rows.length) {
                 logger.info(`Deleted controller with ID: ${id}`);
             }
-            
+
             return rows.length ? rows[0] : null;
         } catch (error) {
             logger.error(`Error in Controller.delete: ${error.message}`);
@@ -211,4 +211,4 @@ class Controller {
     }
 }
 
-module.exports = Controller; 
+module.exports = Controller;

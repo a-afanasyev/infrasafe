@@ -26,4 +26,4 @@ USER nodejs
 EXPOSE 3000
 
 # Запускаем приложение в dev режиме для тестирования
-CMD ["npm", "run", "dev"] 
+CMD ["npm", "run", "dev"]

@@ -43,6 +43,91 @@ router.get('/', controllerController.getAllControllers);
 
 /**
  * @swagger
+ * /controllers/update-status-by-activity:
+ *   post:
+ *     summary: Обновить статусы контроллеров по активности
+ *     description: Автоматически обновляет статусы всех контроллеров на основе их последней активности (timeout 10 минут)
+ *     security:
+ *       - bearerAuth: [] # Требуется авторизация
+ *     responses:
+ *       200:
+ *         description: Статусы контроллеров обновлены
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     updated:
+ *                       type: integer
+ *                       description: Количество обновленных контроллеров
+ *                     online:
+ *                       type: integer
+ *                       description: Количество онлайн контроллеров
+ *                     offline:
+ *                       type: integer
+ *                       description: Количество оффлайн контроллеров
+ *       401:
+ *         description: Отсутствует токен авторизации
+ *       403:
+ *         description: Недействительный токен
+ */
+router.post('/update-status-by-activity', controllerController.updateControllersStatusByActivity);
+
+/**
+ * @swagger
+ * /controllers/statistics:
+ *   get:
+ *     summary: Статистика контроллеров
+ *     description: Возвращает аналитику по контроллерам (по статусам и зданиям)
+ *     security: [] # Без авторизации
+ *     responses:
+ *       200:
+ *         description: Статистика контроллеров
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                       description: Общее количество контроллеров
+ *                     by_status:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           status:
+ *                             type: string
+ *                           count:
+ *                             type: integer
+ *                     by_building:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           building_name:
+ *                             type: string
+ *                           building_id:
+ *                             type: integer
+ *                           count:
+ *                             type: integer
+ *       500:
+ *         description: Ошибка сервера
+ */
+router.get('/statistics', controllerController.getControllersStatistics);
+
+/**
+ * @swagger
  * /controllers/{id}:
  *   get:
  *     summary: Получить контроллер по ID
@@ -254,4 +339,4 @@ router.patch('/:id/status', controllerController.updateControllerStatus);
  */
 router.delete('/:id', controllerController.deleteController);
 
-module.exports = router; 
+module.exports = router;

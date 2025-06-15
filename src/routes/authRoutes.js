@@ -1,6 +1,6 @@
 const express = require('express');
 const authController = require('../controllers/authController');
-const { authenticateJWT } = require('../middleware/auth');
+const { authenticateJWT, authenticateRefresh } = require('../middleware/auth');
 const router = express.Router();
 
 /**
@@ -159,4 +159,121 @@ router.post('/register', authController.register);
  */
 router.get('/profile', authenticateJWT, authController.getProfile);
 
-module.exports = router; 
+/**
+ * @swagger
+ * /auth/logout:
+ *   post:
+ *     summary: Выход из системы
+ *     description: Выход из системы с добавлением токена в черный список
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Успешный выход из системы
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *       401:
+ *         description: Отсутствует токен авторизации
+ *       403:
+ *         description: Недействительный токен
+ */
+router.post('/logout', authenticateJWT, authController.logout);
+
+/**
+ * @swagger
+ * /auth/refresh:
+ *   post:
+ *     summary: Обновление токенов
+ *     description: Обновляет access и refresh токены
+ *     security: [] # Без авторизации (используется refresh токен)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - refreshToken
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *                 description: Refresh токен для обновления
+ *     responses:
+ *       200:
+ *         description: Токены успешно обновлены
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 accessToken:
+ *                   type: string
+ *                   description: Новый access токен
+ *                 refreshToken:
+ *                   type: string
+ *                   description: Новый refresh токен
+ *       401:
+ *         description: Недействительный refresh токен
+ *       400:
+ *         description: Отсутствует refresh токен
+ */
+router.post('/refresh', authenticateRefresh, authController.refreshToken);
+
+/**
+ * @swagger
+ * /auth/change-password:
+ *   post:
+ *     summary: Смена пароля
+ *     description: Смена пароля для текущего пользователя
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - currentPassword
+ *               - newPassword
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *                 description: Текущий пароль
+ *               newPassword:
+ *                 type: string
+ *                 minLength: 8
+ *                 description: Новый пароль (минимум 8 символов, должен содержать буквы и цифры)
+ *     responses:
+ *       200:
+ *         description: Пароль успешно изменен
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *       401:
+ *         description: Неверный текущий пароль или отсутствует токен авторизации
+ *       400:
+ *         description: Недостаточно сложный новый пароль
+ *       403:
+ *         description: Недействительный токен
+ */
+router.post('/change-password', authenticateJWT, authController.changePassword);
+
+module.exports = router;

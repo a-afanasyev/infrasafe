@@ -4,17 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Database Admin Panel</title>
-    <script defer src="public/admin.js"></script>
+    <!-- Скрипт подключается в конце body -->
     <style>
         /* Стили для предотвращения мерцания */
         html {
             scroll-behavior: smooth;
         }
-        
+
         * {
             box-sizing: border-box;
         }
-        
+
         /* Базовые стили для страницы */
         body {
             font-family: Arial, sans-serif;
@@ -27,17 +27,17 @@
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }
-        
+
         h1, h2 {
             color: #333;
         }
-        
+
         /* Предотвращаем мерцание при загрузке таблиц */
         .table-wrapper {
             position: relative;
             min-height: 200px;
         }
-        
+
         table {
             width: 100%;
             border-collapse: collapse;
@@ -52,7 +52,7 @@
             transform: translateZ(0);
             -webkit-transform: translateZ(0);
         }
-        
+
         th, td {
             padding: 10px;
             text-align: left;
@@ -62,7 +62,7 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        
+
         th {
             background-color: #4CAF50;
             color: white;
@@ -70,11 +70,11 @@
             top: 0;
             z-index: 10;
         }
-        
+
         tr:nth-child(even) {
             background-color: #f2f2f2;
         }
-        
+
         form {
             background-color: white;
             padding: 20px;
@@ -86,50 +86,50 @@
             /* Добавляем тень для лучшего визуального разделения */
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
-        
+
         input, select {
             padding: 8px;
             margin-right: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
         }
-        
+
         button {
             padding: 8px 15px;
             background-color: #4CAF50;
-            color: white;
+            color: black;
             border: none;
             border-radius: 4px;
             cursor: pointer;
         }
-        
+
         button:hover {
             background-color: #45a049;
         }
-        
+
         button:disabled {
             background-color: #cccccc;
             color: #666666;
             cursor: not-allowed;
         }
-        
+
         .pagination {
             display: flex;
             justify-content: center;
             margin-top: 10px;
             margin-bottom: 20px;
         }
-        
+
         .pagination button {
             margin: 0 5px;
         }
-        
+
         .pagination span {
             padding: 8px 15px;
             background-color: #f2f2f2;
             border-radius: 4px;
         }
-        
+
         /* Стили для модальных окон редактирования */
         .edit-form-overlay {
             position: fixed;
@@ -150,12 +150,12 @@
             transform: translateZ(0);
             -webkit-transform: translateZ(0);
         }
-        
+
         .edit-form-overlay[style*="display: none"] {
             opacity: 0;
             pointer-events: none;
         }
-        
+
         .edit-form {
             background-color: white;
             padding: 20px;
@@ -169,31 +169,31 @@
             will-change: transform;
             backface-visibility: hidden;
         }
-        
+
         .edit-form-overlay[style*="display: none"] .edit-form {
             transform: translateY(-20px);
         }
-        
+
         .edit-form h3 {
             margin-top: 0;
         }
-        
+
         .edit-form form {
             display: flex;
             flex-direction: column;
         }
-        
+
         .edit-form input, .edit-form select {
             margin-bottom: 10px;
             padding: 8px;
         }
-        
+
         .form-buttons {
             display: flex;
             justify-content: space-between;
             margin-top: 10px;
         }
-        
+
         /* Стили для индикатора загрузки */
         .loading-row td {
             text-align: center;
@@ -201,7 +201,7 @@
             font-style: italic;
             color: #666;
         }
-        
+
         .table-container {
             position: relative;
             min-height: 100px;
@@ -218,7 +218,7 @@
             transform: translateZ(0);
             -webkit-transform: translateZ(0);
         }
-        
+
         /* Стили для сообщений об ошибках */
         .error-message {
             color: #d32f2f;
@@ -228,32 +228,597 @@
             margin-bottom: 10px;
             border-left: 4px solid #d32f2f;
         }
+
+        /* Навигационное меню */
+        .admin-nav {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav-btn {
+            padding: 10px 20px;
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .nav-btn.active {
+            background-color: #4CAF50;
+            color: black;
+            border-color: #4CAF50;
+        }
+
+        .nav-btn:hover:not(.active) {
+            background-color: #e8e8e8;
+        }
+
+        /* Глобальный поиск */
+        .global-search {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .global-search input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+
+        /* Секции админки */
+        .admin-section {
+            display: none;
+            margin-bottom: 30px;
+        }
+
+        .admin-section.active {
+            display: block;
+        }
+
+        /* Панель фильтров */
+        .filters-panel {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            flex-wrap: wrap;
+        }
+
+        .filters-panel input,
+        .filters-panel select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-width: 150px;
+        }
+
+        /* Batch операции */
+        .batch-operations {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: #fff3cd;
+            border-radius: 5px;
+            border: 1px solid #ffeaa7;
+            flex-wrap: wrap;
+        }
+
+        .batch-operations button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Стили для улучшенной формы метрик */
+        .metrics-form {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .form-section {
+            margin-bottom: 24px;
+            padding: 16px;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+
+        .form-section h3 {
+            margin: 0 0 16px 0;
+            color: #333;
+            font-size: 1.2rem;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group label {
+            margin-bottom: 6px;
+            font-weight: 600;
+            color: #555;
+            font-size: 0.9rem;
+        }
+
+        .form-group input,
+        .form-group select {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+
+        .checkbox-group {
+            flex-direction: row !important;
+            align-items: center;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .checkbox-label input[type="checkbox"] {
+            margin-right: 8px;
+            transform: scale(1.2);
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-top: 24px;
+        }
+
+        .btn-primary {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .btn-primary:hover {
+            background: #218838;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        /* Сортируемые заголовки */
+        .sortable {
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+        }
+
+        .sortable:hover {
+            background-color: #45a049;
+        }
+
+        /* Чекбоксы в таблицах */
+        table input[type="checkbox"] {
+            margin: 0;
+            transform: scale(1.2);
+        }
+
+        /* Toast уведомления */
+        #toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+        }
+
+        .toast {
+            background-color: #4CAF50;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            animation: slideIn 0.3s ease-out;
+            max-width: 300px;
+            word-wrap: break-word;
+        }
+
+        .toast.error {
+            background-color: #f44336;
+        }
+
+        .toast.warning {
+            background-color: #ff9800;
+        }
+
+        .toast.info {
+            background-color: #2196F3;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        /* Стили для многострочной таблицы зданий */
+        .multi-row-table {
+            border-collapse: collapse;
+        }
+
+        .multi-row-table th {
+            background-color: #4CAF50;
+            color: white;
+            padding: 8px;
+            text-align: center;
+            font-weight: bold;
+            border: 1px solid #ddd;
+        }
+
+        .multi-row-table .header-basic {
+            background-color: #4CAF50;
+        }
+
+        .multi-row-table .header-infra {
+            background-color: #45a049;
+        }
+
+        .multi-row-table .header-water {
+            background-color: #3d8b40;
+        }
+
+        /* Группировка строк одного здания */
+        .building-group {
+            border-bottom: 3px solid #2196F3;
+        }
+
+        .building-row-1 {
+            background-color: #f9f9f9;
+        }
+
+        .building-row-2 {
+            background-color: #f0f8ff;
+        }
+
+        .building-row-3 {
+            background-color: #e6f3ff;
+        }
+
+        .building-row-1 td,
+        .building-row-2 td,
+        .building-row-3 td {
+            padding: 6px;
+            border: 1px solid #ddd;
+            vertical-align: middle;
+        }
+
+        /* Основные колонки с увеличенной шириной */
+        .multi-row-table th:nth-child(2) { /* ID */
+            width: 60px;
+        }
+
+        .multi-row-table th:nth-child(3) { /* Название */
+            width: 150px;
+        }
+
+        .multi-row-table th:nth-child(9) { /* Действия */
+            width: 150px;
+        }
+
+        /* Стили для горизонтальной формы добавления */
+        .horizontal-form {
+            max-width: 1200px;
+            margin: 20px 0;
+            padding: 25px;
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e0e0e0;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 25px;
+        }
+
+        .form-column {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .form-group label {
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+            margin-bottom: 0;
+        }
+
+        .horizontal-form input,
+        .horizontal-form select {
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+            background-color: #fafafa;
+        }
+
+        .horizontal-form input:focus,
+        .horizontal-form select:focus {
+            outline: none;
+            border-color: #4CAF50;
+            background-color: white;
+            box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+        }
+
+        .horizontal-form input:required {
+            border-left: 4px solid #4CAF50;
+        }
+
+        .form-section-header {
+            font-weight: bold;
+            font-size: 16px;
+            color: #4CAF50;
+            padding: 10px 15px;
+            background-color: #f0f8f0;
+            border-radius: 6px;
+            border-left: 4px solid #4CAF50;
+            margin-bottom: 10px;
+        }
+
+        .checkbox-group {
+            margin-top: 10px;
+        }
+
+        .checkbox-label {
+            display: flex !important;
+            align-items: center;
+            font-weight: 500 !important;
+            color: #555;
+            cursor: pointer;
+            padding: 8px 0;
+        }
+
+        .checkbox-label input[type="checkbox"] {
+            margin-right: 10px;
+            margin-bottom: 0;
+            width: 18px;
+            height: 18px;
+            accent-color: #4CAF50;
+        }
+
+        .form-submit {
+            text-align: center;
+            border-top: 2px solid #f0f0f0;
+            padding-top: 25px;
+        }
+
+        .horizontal-form button[type="submit"] {
+            padding: 15px 40px;
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: black;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
+            min-width: 200px;
+        }
+
+        .horizontal-form button[type="submit"]:hover {
+            background: linear-gradient(135deg, #45a049, #3d8b40);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(76, 175, 80, 0.4);
+        }
+
+        .horizontal-form button[type="submit"]:active {
+            transform: translateY(0);
+        }
+
+        /* Адаптивность для мобильных устройств */
+        @media (max-width: 768px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .horizontal-form {
+                margin: 10px;
+                padding: 20px;
+            }
+        }
+
+        /* Улучшенные стили для форм */
+        form {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border: 1px solid #e1e5e9;
+        }
+
+        /* Адаптивность */
+        @media (max-width: 768px) {
+            .admin-nav {
+                flex-direction: column;
+            }
+
+            .filters-panel,
+            .batch-operations {
+                flex-direction: column;
+            }
+
+            .global-search {
+                flex-direction: column;
+            }
+
+            table {
+                font-size: 12px;
+            }
+
+            th, td {
+                padding: 5px;
+            }
+        }
     </style>
 </head>
 <body>
-    <h1>Database Administration</h1>
+    <div class="admin-header">
+        <h1>🏢 InfraSafe - Администрирование</h1>
+    </div>
+
+    <!-- Навигационное меню -->
+    <nav class="admin-nav">
+        <button class="nav-btn active" data-section="buildings">Здания</button>
+        <button class="nav-btn" data-section="controllers">Контроллеры</button>
+        <button class="nav-btn" data-section="transformers">Трансформаторы</button>
+        <button class="nav-btn" data-section="lines">Линии</button>
+        <button class="nav-btn" data-section="water-lines">Линии ХВС/ГВС</button>
+        <button class="nav-btn" data-section="water-sources">Источники воды</button>
+        <button class="nav-btn" data-section="heat-sources">Источники тепла</button>
+        <button class="nav-btn" data-section="metrics">Метрики</button>
+    </nav>
+
+    <!-- Глобальный поиск -->
+    <div class="global-search">
+        <input type="text" id="global-search" placeholder="Поиск по всем данным...">
+        <button id="search-btn">🔍</button>
+        <button id="clear-search">✕</button>
+    </div>
+
+    <!-- Buildings Section -->
+    <section id="buildings-section" class="admin-section active">
+    <h2>Здания</h2>
+
+    <!-- Фильтры для зданий -->
+    <div class="filters-panel">
+        <input type="text" id="buildings-name-filter" placeholder="Фильтр по названию">
+        <input type="text" id="buildings-town-filter" placeholder="Фильтр по городу">
+        <select id="buildings-region-filter">
+            <option value="">Все регионы</option>
+        </select>
+        <button id="buildings-apply-filters">Применить</button>
+        <button id="buildings-clear-filters">Очистить</button>
+    </div>
+
+    <!-- Batch операции для зданий -->
+    <div class="batch-operations">
+        <button id="buildings-select-all">Выбрать все</button>
+        <button id="buildings-bulk-delete" disabled>Удалить выбранные</button>
+        <button id="buildings-export">Экспорт в CSV</button>
+        <input type="file" id="buildings-import" accept=".csv" style="display: none;">
+        <button id="buildings-import-btn">Импорт из CSV</button>
+    </div>
 
     <!-- Buildings Table -->
     <h2>Buildings</h2>
     <div class="table-container">
-        <table id="buildings-table" border="1">
+        <table id="buildings-table" border="1" class="multi-row-table">
             <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Address</th>
-                    <th>Town</th>
-                    <th>Region</th>
-                    <th>Latitude</th>
-                    <th>Longitude</th>
-                    <th>Management Company</th>
-                    <th>Hot Water</th>
-                    <th>Actions</th>
+                <tr class="header-basic">
+                    <th rowspan="3"><input type="checkbox" id="buildings-select-all-checkbox"></th>
+                    <th rowspan="3" class="sortable" data-column="building_id">ID ↕</th>
+                    <th rowspan="3" class="sortable" data-column="name">Название ↕</th>
+                    <th class="sortable" data-column="address">Адрес ↕</th>
+                    <th class="sortable" data-column="town">Город ↕</th>
+                    <th class="sortable" data-column="region">Регион ↕</th>
+                    <th>Широта</th>
+                    <th>Долгота</th>
+                    <th rowspan="3">Действия</th>
+                </tr>
+                <tr class="header-infra">
+                    <th class="sortable" data-column="management_company">УК ↕</th>
+                    <th>Горячая вода</th>
+                    <th>Основной трансформатор</th>
+                    <th>Резервный трансформатор</th>
+                    <th>Основная линия</th>
+                </tr>
+                <tr class="header-water">
+                    <th>Резервная линия</th>
+                    <th>Линия ХВС</th>
+                    <th>Линия ГВС</th>
+                    <th>Поставщик ХВС</th>
+                    <th>Поставщик ГВС</th>
                 </tr>
             </thead>
             <tbody>
                 <tr>
-                    <td colspan="10" style="text-align: center;">Загрузка данных...</td>
+                    <td colspan="9" style="text-align: center;">Загрузка данных...</td>
                 </tr>
             </tbody>
         </table>
@@ -265,22 +830,158 @@
     </div>
 
     <!-- Form to Add New Building -->
-    <h2>Add New Building</h2>
-    <form id="add-building-form">
-        <input type="text" id="building-name" placeholder="Building Name" required>
-        <input type="text" id="building-address" placeholder="Address" required>
-        <input type="text" id="building-town" placeholder="Town" required>
-        <input type="text" id="building-region" placeholder="Region">
-        <input type="number" step="0.000001" id="building-latitude" placeholder="Latitude" required>
-        <input type="number" step="0.000001" id="building-longitude" placeholder="Longitude" required>
-        <input type="text" id="building-management" placeholder="Management Company">
-        <label>
-            <input type="checkbox" id="building-hot-water"> Hot Water Available
-        </label>
-        <button type="submit">Add Building</button>
+    <h2>Добавить новое здание</h2>
+    <form id="add-building-form" class="horizontal-form">
+        <div class="form-grid">
+            <!-- Левая колонка -->
+            <div class="form-column">
+                <div class="form-group">
+                    <label for="building-name">Название здания *</label>
+                    <input type="text" id="building-name" placeholder="Название здания" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="building-address">Адрес *</label>
+                    <input type="text" id="building-address" placeholder="Адрес" required>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="building-town">Город *</label>
+                        <input type="text" id="building-town" placeholder="Город" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="building-region">Регион</label>
+                        <input type="text" id="building-region" placeholder="Регион">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="building-latitude">Широта *</label>
+                        <input type="number" step="0.000001" id="building-latitude" placeholder="Широта" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="building-longitude">Долгота *</label>
+                        <input type="number" step="0.000001" id="building-longitude" placeholder="Долгота" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="building-management">Управляющая компания</label>
+                    <input type="text" id="building-management" placeholder="Управляющая компания">
+                </div>
+
+                <div class="form-group checkbox-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="building-hot-water"> Горячая вода доступна
+                    </label>
+                </div>
+            </div>
+
+            <!-- Правая колонка -->
+            <div class="form-column">
+                <div class="form-section-header">⚡ Электроснабжение</div>
+
+                <div class="form-group">
+                    <label for="building-primary-transformer">Основной трансформатор</label>
+                    <select id="building-primary-transformer">
+                        <option value="">Выберите основной трансформатор</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="building-backup-transformer">Резервный трансформатор</label>
+                    <select id="building-backup-transformer">
+                        <option value="">Выберите резервный трансформатор (опционально)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="building-primary-line">Основная линия</label>
+                    <select id="building-primary-line">
+                        <option value="">Выберите основную линию</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="building-backup-line">Резервная линия</label>
+                    <select id="building-backup-line">
+                        <option value="">Выберите резервную линию (опционально)</option>
+                    </select>
+                </div>
+
+                <div class="form-section-header">💧 Водоснабжение</div>
+
+                <div class="form-group">
+                    <label for="building-cold-water-line">Линия ХВС (холодная вода)</label>
+                    <select id="building-cold-water-line">
+                        <option value="">Выберите линию холодного водоснабжения</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="building-hot-water-line">Линия ГВС (горячая вода)</label>
+                    <select id="building-hot-water-line">
+                        <option value="">Выберите линию горячего водоснабжения</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="building-cold-water-supplier">Поставщик ХВС</label>
+                    <select id="building-cold-water-supplier" disabled>
+                        <option value="">Сначала выберите линию ХВС</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="building-hot-water-supplier">Поставщик ГВС</label>
+                    <select id="building-hot-water-supplier" disabled>
+                        <option value="">Сначала выберите линию ГВС</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-submit">
+            <button type="submit">✅ Добавить здание</button>
+        </div>
     </form>
 
-    <hr>
+    </section>
+
+    <!-- Controllers Section -->
+    <section id="controllers-section" class="admin-section">
+    <h2>Контроллеры</h2>
+
+    <!-- Фильтры для контроллеров -->
+    <div class="filters-panel">
+        <input type="text" id="controllers-serial-filter" placeholder="Фильтр по серийному номеру">
+        <select id="controllers-vendor-filter">
+            <option value="">Все производители</option>
+        </select>
+        <select id="controllers-status-filter">
+            <option value="">Все статусы</option>
+            <option value="online">Online</option>
+            <option value="offline">Offline</option>
+            <option value="maintenance">Maintenance</option>
+        </select>
+        <button id="controllers-apply-filters">Применить</button>
+        <button id="controllers-clear-filters">Очистить</button>
+    </div>
+
+    <!-- Batch операции для контроллеров -->
+    <div class="batch-operations">
+        <button id="controllers-select-all">Выбрать все</button>
+        <button id="controllers-bulk-delete" disabled>Удалить выбранные</button>
+        <button id="controllers-bulk-status" disabled>Изменить статус</button>
+        <select id="controllers-bulk-status-select" disabled>
+            <option value="online">Online</option>
+            <option value="offline">Offline</option>
+            <option value="maintenance">Maintenance</option>
+        </select>
+        <button id="controllers-export">Экспорт в CSV</button>
+    </div>
 
     <!-- Controllers Table -->
     <h2>Controllers</h2>
@@ -288,13 +989,14 @@
         <table id="controllers-table" border="1">
             <thead>
                 <tr>
-                    <th>ID</th>
-                    <th>Serial Number</th>
-                    <th>Vendor</th>
-                    <th>Model</th>
-                    <th>Building ID</th>
-                    <th>Status</th>
-                    <th>Actions</th>
+                    <th><input type="checkbox" id="controllers-select-all-checkbox"></th>
+                    <th class="sortable" data-column="controller_id">ID ↕</th>
+                    <th class="sortable" data-column="serial_number">Серийный номер ↕</th>
+                    <th class="sortable" data-column="vendor">Производитель ↕</th>
+                    <th class="sortable" data-column="model">Модель ↕</th>
+                    <th class="sortable" data-column="building_id">ID здания ↕</th>
+                    <th class="sortable" data-column="status">Статус ↕</th>
+                    <th>Действия</th>
                 </tr>
             </thead>
             <tbody>
@@ -324,8 +1026,456 @@
         </select>
         <button type="submit">Add Controller</button>
     </form>
+    </section>
 
-    <hr>
+    <!-- Transformers Section -->
+    <section id="transformers-section" class="admin-section">
+    <h2>Трансформаторы</h2>
+
+    <!-- Фильтры для трансформаторов -->
+    <div class="filters-panel">
+        <input type="text" id="transformers-name-filter" placeholder="Фильтр по названию">
+        <input type="number" id="transformers-power-filter" placeholder="Мощность (кВА)">
+        <select id="transformers-voltage-filter">
+            <option value="">Все напряжения</option>
+            <option value="0.4">0.4 кВ</option>
+            <option value="6">6 кВ</option>
+            <option value="10">10 кВ</option>
+            <option value="35">35 кВ</option>
+        </select>
+        <button id="transformers-apply-filters">Применить</button>
+        <button id="transformers-clear-filters">Очистить</button>
+    </div>
+
+    <!-- Batch операции для трансформаторов -->
+    <div class="batch-operations">
+        <button id="transformers-select-all">Выбрать все</button>
+        <button id="transformers-bulk-delete" disabled>Удалить выбранные</button>
+        <button id="transformers-export">Экспорт в CSV</button>
+    </div>
+
+    <!-- Transformers Table -->
+    <div class="table-container">
+        <table id="transformers-table" border="1">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="transformers-select-all-checkbox"></th>
+                    <th class="sortable" data-column="transformer_id">ID ↕</th>
+                    <th class="sortable" data-column="name">Название ↕</th>
+                    <th class="sortable" data-column="power_kva">Мощность (кВА) ↕</th>
+                    <th class="sortable" data-column="voltage_kv">Напряжение (кВ) ↕</th>
+                    <th>Обслуживаемые здания</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="7" style="text-align: center;">Загрузка данных...</td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="pagination" id="transformers-pagination">
+            <button id="transformers-prev-page">Предыдущая</button>
+            <span id="transformers-page-info">Страница 1</span>
+            <button id="transformers-next-page">Следующая</button>
+        </div>
+    </div>
+
+    <!-- Form to Add New Transformer -->
+    <h2>Добавить трансформатор</h2>
+    <form id="add-transformer-form">
+        <input type="text" id="transformer-name" placeholder="Название трансформатора" required>
+        <input type="number" step="0.1" id="transformer-power" placeholder="Мощность (кВА)" required>
+        <input type="number" step="0.1" id="transformer-voltage" placeholder="Напряжение (кВ)" required>
+        <button type="submit">Добавить трансформатор</button>
+    </form>
+    </section>
+
+    <!-- Lines Section -->
+    <section id="lines-section" class="admin-section">
+    <h2>Линии электропередач</h2>
+
+    <!-- Фильтры для линий -->
+    <div class="filters-panel">
+        <input type="text" id="lines-name-filter" placeholder="Фильтр по названию">
+        <select id="lines-voltage-filter">
+            <option value="">Все напряжения</option>
+            <option value="0.4">0.4 кВ</option>
+            <option value="6">6 кВ</option>
+            <option value="10">10 кВ</option>
+            <option value="35">35 кВ</option>
+        </select>
+        <button id="lines-apply-filters">Применить</button>
+        <button id="lines-clear-filters">Очистить</button>
+    </div>
+
+    <!-- Batch операции для линий -->
+    <div class="batch-operations">
+        <button id="lines-select-all">Выбрать все</button>
+        <button id="lines-bulk-delete" disabled>Удалить выбранные</button>
+        <button id="lines-export">Экспорт в CSV</button>
+    </div>
+
+    <!-- Lines Table -->
+    <div class="table-container">
+        <table id="lines-table" border="1">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="lines-select-all-checkbox"></th>
+                    <th class="sortable" data-column="line_id">ID ↕</th>
+                    <th class="sortable" data-column="name">Название ↕</th>
+                    <th class="sortable" data-column="voltage_kv">Напряжение (кВ) ↕</th>
+                    <th class="sortable" data-column="length_km">Длина (км) ↕</th>
+                    <th class="sortable" data-column="transformer_id">ID трансформатора ↕</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="7" style="text-align: center;">Загрузка данных...</td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="pagination" id="lines-pagination">
+            <button id="lines-prev-page">Предыдущая</button>
+            <span id="lines-page-info">Страница 1</span>
+            <button id="lines-next-page">Следующая</button>
+        </div>
+    </div>
+
+    <!-- Form to Add New Line -->
+    <h2>Добавить линию</h2>
+    <form id="add-line-form">
+        <input type="text" id="line-name" placeholder="Название линии" required>
+        <input type="number" step="0.1" id="line-voltage" placeholder="Напряжение (кВ)" required>
+        <input type="number" step="0.01" id="line-length" placeholder="Длина (км)" required>
+        <input type="number" id="line-transformer-id" placeholder="ID трансформатора" required>
+        <button type="submit">Добавить линию</button>
+    </form>
+    </section>
+
+    <!-- Water Lines Section -->
+    <section id="water-lines-section" class="admin-section">
+    <h2>Линии водоснабжения (ХВС/ГВС)</h2>
+
+    <!-- Фильтры для линий водоснабжения -->
+    <div class="filters-panel">
+        <input type="text" id="water-lines-name-filter" placeholder="Фильтр по названию">
+        <select id="water-lines-type-filter">
+            <option value="">Все типы</option>
+            <option value="ХВС">ХВС (холодная вода)</option>
+            <option value="ГВС">ГВС (горячая вода)</option>
+        </select>
+        <select id="water-lines-status-filter">
+            <option value="">Все статусы</option>
+            <option value="active">Активная</option>
+            <option value="maintenance">На обслуживании</option>
+            <option value="inactive">Неактивная</option>
+        </select>
+        <select id="water-lines-material-filter">
+            <option value="">Все материалы</option>
+            <option value="Сталь">Сталь</option>
+            <option value="Полиэтилен">Полиэтилен</option>
+            <option value="Чугун">Чугун</option>
+            <option value="Медь">Медь</option>
+        </select>
+        <input type="number" id="water-lines-diameter-min" placeholder="Диаметр от (мм)">
+        <input type="number" id="water-lines-diameter-max" placeholder="Диаметр до (мм)">
+        <button id="water-lines-apply-filters">Применить</button>
+        <button id="water-lines-clear-filters">Очистить</button>
+    </div>
+
+    <!-- Batch операции для линий водоснабжения -->
+    <div class="batch-operations">
+        <button id="water-lines-select-all">Выбрать все</button>
+        <button id="water-lines-bulk-delete" disabled>Удалить выбранные</button>
+        <button id="water-lines-bulk-maintenance" disabled>Перевести в обслуживание</button>
+        <button id="water-lines-export">Экспорт в CSV</button>
+    </div>
+
+    <!-- Water Lines Table -->
+    <div class="table-container">
+        <table id="water-lines-table" border="1">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="water-lines-select-all-checkbox"></th>
+                    <th class="sortable" data-column="line_id">ID ↕</th>
+                    <th class="sortable" data-column="name">Название ↕</th>
+                    <th class="sortable" data-column="description">Описание ↕</th>
+                    <th class="sortable" data-column="diameter_mm">Диаметр (мм) ↕</th>
+                    <th class="sortable" data-column="material">Материал ↕</th>
+                    <th class="sortable" data-column="pressure_bar">Давление (бар) ↕</th>
+                    <th class="sortable" data-column="installation_date">Дата установки ↕</th>
+                    <th class="sortable" data-column="status">Статус ↕</th>
+                    <th>Подключенные здания</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="11" style="text-align: center;">Загрузка данных...</td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="pagination" id="water-lines-pagination">
+            <button id="water-lines-prev-page">Предыдущая</button>
+            <span id="water-lines-page-info">Страница 1</span>
+            <button id="water-lines-next-page">Следующая</button>
+        </div>
+    </div>
+
+    <!-- Form to Add New Water Line -->
+    <h2>Добавить линию водоснабжения</h2>
+    <form id="add-water-line-form" class="horizontal-form">
+        <div class="form-grid">
+            <div class="form-column">
+                <div class="form-group">
+                    <label for="water-line-name">Название линии *</label>
+                    <input type="text" id="water-line-name" placeholder="Например: Линия ХВС Центральная" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="water-line-description">Описание</label>
+                    <textarea id="water-line-description" placeholder="Описание линии водоснабжения"></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="water-line-diameter">Диаметр (мм) *</label>
+                        <input type="number" id="water-line-diameter" placeholder="300" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="water-line-material">Материал *</label>
+                        <select id="water-line-material" required>
+                            <option value="">Выберите материал</option>
+                            <option value="Сталь">Сталь</option>
+                            <option value="Полиэтилен">Полиэтилен</option>
+                            <option value="Чугун">Чугун</option>
+                            <option value="Медь">Медь</option>
+                            <option value="ПВХ">ПВХ</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="water-line-pressure">Рабочее давление (бар) *</label>
+                        <input type="number" step="0.1" id="water-line-pressure" placeholder="6.0" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="water-line-installation-date">Дата установки</label>
+                        <input type="date" id="water-line-installation-date">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="water-line-status">Статус</label>
+                    <select id="water-line-status">
+                        <option value="active">Активная</option>
+                        <option value="maintenance">На обслуживании</option>
+                        <option value="inactive">Неактивная</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit">Добавить линию водоснабжения</button>
+        </div>
+    </form>
+    </section>
+
+    <!-- Water Sources Section -->
+    <section id="water-sources-section" class="admin-section">
+    <h2>Источники холодной воды</h2>
+
+    <!-- Фильтры для источников воды -->
+    <div class="filters-panel">
+        <input type="text" id="water-sources-name-filter" placeholder="Фильтр по названию">
+        <select id="water-sources-type-filter">
+            <option value="">Все типы</option>
+            <option value="pumping_station">Насосная станция</option>
+            <option value="well">Скважина</option>
+            <option value="reservoir">Резервуар</option>
+        </select>
+        <select id="water-sources-status-filter">
+            <option value="">Все статусы</option>
+            <option value="active">Активный</option>
+            <option value="inactive">Неактивный</option>
+            <option value="maintenance">На обслуживании</option>
+        </select>
+        <button id="water-sources-apply-filters">Применить</button>
+        <button id="water-sources-clear-filters">Очистить</button>
+    </div>
+
+    <!-- Batch операции для источников воды -->
+    <div class="batch-operations">
+        <button id="water-sources-select-all">Выбрать все</button>
+        <button id="water-sources-bulk-delete" disabled>Удалить выбранные</button>
+        <button id="water-sources-export">Экспорт в CSV</button>
+    </div>
+
+    <!-- Water Sources Table -->
+    <div class="table-container">
+        <table id="water-sources-table" border="1">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="water-sources-select-all-checkbox"></th>
+                    <th class="sortable" data-column="id">ID ↕</th>
+                    <th class="sortable" data-column="name">Название ↕</th>
+                    <th class="sortable" data-column="address">Адрес ↕</th>
+                    <th class="sortable" data-column="source_type">Тип ↕</th>
+                    <th class="sortable" data-column="capacity_m3_per_hour">Производительность (м³/ч) ↕</th>
+                    <th class="sortable" data-column="operating_pressure_bar">Давление (бар) ↕</th>
+                    <th class="sortable" data-column="status">Статус ↕</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="9" style="text-align: center;">Загрузка данных...</td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="pagination" id="water-sources-pagination">
+            <button id="water-sources-prev-page">Предыдущая</button>
+            <span id="water-sources-page-info">Страница 1</span>
+            <button id="water-sources-next-page">Следующая</button>
+        </div>
+    </div>
+
+    <!-- Form to Add New Water Source -->
+    <h2>Добавить источник воды</h2>
+    <form id="add-water-source-form">
+        <input type="text" id="water-source-id" placeholder="ID источника" required>
+        <input type="text" id="water-source-name" placeholder="Название" required>
+        <input type="text" id="water-source-address" placeholder="Адрес" required>
+        <input type="number" step="0.000001" id="water-source-latitude" placeholder="Широта" required>
+        <input type="number" step="0.000001" id="water-source-longitude" placeholder="Долгота" required>
+        <select id="water-source-type" required>
+            <option value="">Выберите тип</option>
+            <option value="pumping_station">Насосная станция</option>
+            <option value="well">Скважина</option>
+            <option value="reservoir">Резервуар</option>
+        </select>
+        <input type="number" step="0.1" id="water-source-capacity" placeholder="Производительность (м³/ч)">
+        <input type="number" step="0.1" id="water-source-pressure" placeholder="Рабочее давление (бар)">
+        <input type="text" id="water-source-contact" placeholder="Контакт для обслуживания">
+        <textarea id="water-source-notes" placeholder="Примечания"></textarea>
+        <select id="water-source-status">
+            <option value="active">Активный</option>
+            <option value="inactive">Неактивный</option>
+            <option value="maintenance">На обслуживании</option>
+        </select>
+        <button type="submit">Добавить источник воды</button>
+    </form>
+    </section>
+
+    <!-- Heat Sources Section -->
+    <section id="heat-sources-section" class="admin-section">
+    <h2>Источники тепла</h2>
+
+    <!-- Фильтры для источников тепла -->
+    <div class="filters-panel">
+        <input type="text" id="heat-sources-name-filter" placeholder="Фильтр по названию">
+        <select id="heat-sources-type-filter">
+            <option value="">Все типы</option>
+            <option value="boiler_house">Котельная</option>
+            <option value="heat_plant">Тепловая станция</option>
+            <option value="chp">ТЭЦ</option>
+        </select>
+        <select id="heat-sources-status-filter">
+            <option value="">Все статусы</option>
+            <option value="active">Активный</option>
+            <option value="inactive">Неактивный</option>
+            <option value="maintenance">На обслуживании</option>
+        </select>
+        <button id="heat-sources-apply-filters">Применить</button>
+        <button id="heat-sources-clear-filters">Очистить</button>
+    </div>
+
+    <!-- Batch операции для источников тепла -->
+    <div class="batch-operations">
+        <button id="heat-sources-select-all">Выбрать все</button>
+        <button id="heat-sources-bulk-delete" disabled>Удалить выбранные</button>
+        <button id="heat-sources-export">Экспорт в CSV</button>
+    </div>
+
+    <!-- Heat Sources Table -->
+    <div class="table-container">
+        <table id="heat-sources-table" border="1">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="heat-sources-select-all-checkbox"></th>
+                    <th class="sortable" data-column="id">ID ↕</th>
+                    <th class="sortable" data-column="name">Название ↕</th>
+                    <th class="sortable" data-column="address">Адрес ↕</th>
+                    <th class="sortable" data-column="source_type">Тип ↕</th>
+                    <th class="sortable" data-column="capacity_mw">Мощность (МВт) ↕</th>
+                    <th class="sortable" data-column="fuel_type">Тип топлива ↕</th>
+                    <th class="sortable" data-column="status">Статус ↕</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="9" style="text-align: center;">Загрузка данных...</td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="pagination" id="heat-sources-pagination">
+            <button id="heat-sources-prev-page">Предыдущая</button>
+            <span id="heat-sources-page-info">Страница 1</span>
+            <button id="heat-sources-next-page">Следующая</button>
+        </div>
+    </div>
+
+    <!-- Form to Add New Heat Source -->
+    <h2>Добавить источник тепла</h2>
+    <form id="add-heat-source-form">
+        <input type="text" id="heat-source-id" placeholder="ID источника" required>
+        <input type="text" id="heat-source-name" placeholder="Название" required>
+        <input type="text" id="heat-source-address" placeholder="Адрес" required>
+        <input type="number" step="0.000001" id="heat-source-latitude" placeholder="Широта" required>
+        <input type="number" step="0.000001" id="heat-source-longitude" placeholder="Долгота" required>
+        <select id="heat-source-type" required>
+            <option value="">Выберите тип</option>
+            <option value="boiler_house">Котельная</option>
+            <option value="heat_plant">Тепловая станция</option>
+            <option value="chp">ТЭЦ</option>
+        </select>
+        <input type="number" step="0.1" id="heat-source-capacity" placeholder="Тепловая мощность (МВт)">
+        <input type="text" id="heat-source-fuel" placeholder="Тип топлива">
+        <input type="text" id="heat-source-contact" placeholder="Контакт для обслуживания">
+        <textarea id="heat-source-notes" placeholder="Примечания"></textarea>
+        <select id="heat-source-status">
+            <option value="active">Активный</option>
+            <option value="inactive">Неактивный</option>
+            <option value="maintenance">На обслуживании</option>
+        </select>
+        <button type="submit">Добавить источник тепла</button>
+    </form>
+    </section>
+
+    <!-- Metrics Section -->
+    <section id="metrics-section" class="admin-section">
+    <h2>Метрики</h2>
+
+    <!-- Фильтры для метрик -->
+    <div class="filters-panel">
+        <input type="number" id="metrics-controller-filter" placeholder="ID контроллера">
+        <input type="date" id="metrics-date-from" placeholder="Дата от">
+        <input type="date" id="metrics-date-to" placeholder="Дата до">
+        <button id="metrics-apply-filters">Применить</button>
+        <button id="metrics-clear-filters">Очистить</button>
+    </div>
+
+    <!-- Batch операции для метрик -->
+    <div class="batch-operations">
+        <button id="metrics-select-all">Выбрать все</button>
+        <button id="metrics-bulk-delete" disabled>Удалить выбранные</button>
+        <button id="metrics-export">Экспорт в CSV</button>
+    </div>
 
     <!-- Metrics Table -->
     <h2>Latest Metrics</h2>
@@ -333,18 +1483,19 @@
         <table id="metrics-table" border="1">
             <thead>
                 <tr>
-                    <th>ID</th>
-                    <th>Controller ID</th>
-                    <th>Timestamp</th>
-                    <th>Electricity Ph1</th>
-                    <th>Electricity Ph2</th>
-                    <th>Electricity Ph3</th>
-                    <th>Cold Water Pressure</th>
-                    <th>Hot Water In Temp</th>
-                    <th>Air Temp</th>
-                    <th>Humidity</th>
-                    <th>Leak Sensor</th>
-                    <th>Actions</th>
+                    <th><input type="checkbox" id="metrics-select-all-checkbox"></th>
+                    <th class="sortable" data-column="metric_id">ID ↕</th>
+                    <th class="sortable" data-column="controller_id">ID контроллера ↕</th>
+                    <th class="sortable" data-column="timestamp">Время ↕</th>
+                    <th>Фаза 1 (В)</th>
+                    <th>Фаза 2 (В)</th>
+                    <th>Фаза 3 (В)</th>
+                    <th>Давление ХВ</th>
+                    <th>Темп. ГВ</th>
+                    <th>Темп. воздуха</th>
+                    <th>Влажность</th>
+                    <th>Протечка</th>
+                    <th>Действия</th>
                 </tr>
             </thead>
             <tbody>
@@ -361,21 +1512,114 @@
     </div>
 
     <!-- Form to Add Test Metric -->
-    <h2>Add Test Metric</h2>
-    <form id="add-metric-form">
-        <input type="number" id="metric-controller-id" placeholder="Controller ID" required>
-        <input type="number" step="0.1" id="metric-electricity-ph1" placeholder="Electricity Ph1" value="220.0">
-        <input type="number" step="0.1" id="metric-electricity-ph2" placeholder="Electricity Ph2" value="220.0">
-        <input type="number" step="0.1" id="metric-electricity-ph3" placeholder="Electricity Ph3" value="220.0">
-        <input type="number" step="0.1" id="metric-cold-water-pressure" placeholder="Cold Water Pressure" value="5.0">
-        <input type="number" step="0.1" id="metric-hot-water-in-temp" placeholder="Hot Water In Temp" value="65.0">
-        <input type="number" step="0.1" id="metric-air-temp" placeholder="Air Temperature" value="22.0">
-        <input type="number" step="0.1" id="metric-humidity" placeholder="Humidity %" value="45.0">
-        <label>
-            <input type="checkbox" id="metric-leak-sensor"> Leak Detected
-        </label>
-        <button type="submit">Add Test Metric</button>
+    <h2>🏭 Создание тестовых метрик</h2>
+    <form id="add-metric-form" class="metrics-form">
+        <div class="form-section">
+            <h3>📊 Основные параметры</h3>
+            <div class="form-group">
+                <label for="metric-controller-id">🎛️ ID Контроллера *</label>
+                <select id="metric-controller-id" required>
+                    <option value="">Выберите контроллер</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>⚡ Электроснабжение</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="metric-electricity-ph1">🔌 Напряжение фаза 1 (В)</label>
+                    <input type="number" step="0.1" id="metric-electricity-ph1" placeholder="220.0" value="220.0">
+                </div>
+                <div class="form-group">
+                    <label for="metric-electricity-ph2">🔌 Напряжение фаза 2 (В)</label>
+                    <input type="number" step="0.1" id="metric-electricity-ph2" placeholder="220.0" value="220.0">
+                </div>
+                <div class="form-group">
+                    <label for="metric-electricity-ph3">🔌 Напряжение фаза 3 (В)</label>
+                    <input type="number" step="0.1" id="metric-electricity-ph3" placeholder="220.0" value="220.0">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="metric-amperage-ph1">⚡ Ток фаза 1 (А)</label>
+                    <input type="number" step="0.1" id="metric-amperage-ph1" placeholder="15.0" value="15.0">
+                </div>
+                <div class="form-group">
+                    <label for="metric-amperage-ph2">⚡ Ток фаза 2 (А)</label>
+                    <input type="number" step="0.1" id="metric-amperage-ph2" placeholder="15.0" value="15.0">
+                </div>
+                <div class="form-group">
+                    <label for="metric-amperage-ph3">⚡ Ток фаза 3 (А)</label>
+                    <input type="number" step="0.1" id="metric-amperage-ph3" placeholder="15.0" value="15.0">
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>💧 Водоснабжение</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="metric-cold-water-pressure">❄️ Давление ХВС (бар)</label>
+                    <input type="number" step="0.1" id="metric-cold-water-pressure" placeholder="5.0" value="5.0">
+                </div>
+                <div class="form-group">
+                    <label for="metric-cold-water-temp">❄️ Температура ХВС (°C)</label>
+                    <input type="number" step="0.1" id="metric-cold-water-temp" placeholder="15.0" value="15.0">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="metric-hot-water-in-pressure">🔥 Давление ГВС подача (бар)</label>
+                    <input type="number" step="0.1" id="metric-hot-water-in-pressure" placeholder="4.0" value="4.0">
+                </div>
+                <div class="form-group">
+                    <label for="metric-hot-water-out-pressure">🔥 Давление ГВС обратка (бар)</label>
+                    <input type="number" step="0.1" id="metric-hot-water-out-pressure" placeholder="3.5" value="3.5">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="metric-hot-water-in-temp">🔥 Температура ГВС подача (°C)</label>
+                    <input type="number" step="0.1" id="metric-hot-water-in-temp" placeholder="65.0" value="65.0">
+                </div>
+                <div class="form-group">
+                    <label for="metric-hot-water-out-temp">🔥 Температура ГВС обратка (°C)</label>
+                    <input type="number" step="0.1" id="metric-hot-water-out-temp" placeholder="45.0" value="45.0">
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>🌡️ Климат и безопасность</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="metric-air-temp">🌡️ Температура воздуха (°C)</label>
+                    <input type="number" step="0.1" id="metric-air-temp" placeholder="22.0" value="22.0">
+                </div>
+                <div class="form-group">
+                    <label for="metric-humidity">💨 Влажность (%)</label>
+                    <input type="number" step="0.1" id="metric-humidity" placeholder="45.0" value="45.0">
+                </div>
+            </div>
+            <div class="form-group checkbox-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="metric-leak-sensor">
+                    <span class="checkmark">💧</span>
+                    Обнаружена протечка
+                </label>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn-primary">✅ Создать метрику</button>
+            <button type="button" class="btn-secondary" onclick="resetMetricsForm()">🔄 Сброс</button>
+        </div>
     </form>
+    </section>
+
+    <!-- Toast уведомления -->
+    <div id="toast-container"></div>
 
     <!-- Модальные окна редактирования (скрыты по умолчанию) -->
     <!-- Модальное окно редактирования здания -->
@@ -424,6 +1668,109 @@
             </form>
         </div>
     </div>
+
+    <!-- Модальное окно редактирования трансформатора -->
+    <div id="edit-transformer-modal" class="edit-form-overlay" style="display: none;">
+        <div class="edit-form">
+            <h3>Редактировать трансформатор</h3>
+            <form id="edit-transformer-form">
+                <input type="hidden" id="edit-transformer-id">
+                <input type="text" id="edit-transformer-name" placeholder="Название" required>
+                <input type="number" step="0.1" id="edit-transformer-power" placeholder="Мощность (кВА)" required>
+                <input type="number" step="0.1" id="edit-transformer-voltage" placeholder="Напряжение (кВ)" required>
+                <div class="form-buttons">
+                    <button type="submit">Сохранить</button>
+                    <button type="button" id="cancel-edit-transformer">Отмена</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модальное окно редактирования линии -->
+    <div id="edit-line-modal" class="edit-form-overlay" style="display: none;">
+        <div class="edit-form">
+            <h3>Редактировать линию</h3>
+            <form id="edit-line-form">
+                <input type="hidden" id="edit-line-id">
+                <input type="text" id="edit-line-name" placeholder="Название" required>
+                <input type="number" step="0.1" id="edit-line-voltage" placeholder="Напряжение (кВ)" required>
+                <input type="number" step="0.01" id="edit-line-length" placeholder="Длина (км)" required>
+                <input type="number" id="edit-line-transformer-id" placeholder="ID трансформатора" required>
+                <div class="form-buttons">
+                    <button type="submit">Сохранить</button>
+                    <button type="button" id="cancel-edit-line">Отмена</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модальное окно редактирования источника воды -->
+    <div id="edit-water-source-modal" class="edit-form-overlay" style="display: none;">
+        <div class="edit-form">
+            <h3>Редактировать источник воды</h3>
+            <form id="edit-water-source-form">
+                <input type="hidden" id="edit-water-source-id">
+                <input type="text" id="edit-water-source-name" placeholder="Название" required>
+                <input type="text" id="edit-water-source-address" placeholder="Адрес" required>
+                <input type="number" step="0.000001" id="edit-water-source-latitude" placeholder="Широта" required>
+                <input type="number" step="0.000001" id="edit-water-source-longitude" placeholder="Долгота" required>
+                <select id="edit-water-source-type" required>
+                    <option value="pumping_station">Насосная станция</option>
+                    <option value="well">Скважина</option>
+                    <option value="reservoir">Резервуар</option>
+                </select>
+                <input type="number" step="0.1" id="edit-water-source-capacity" placeholder="Производительность (м³/ч)">
+                <input type="number" step="0.1" id="edit-water-source-pressure" placeholder="Рабочее давление (бар)">
+                <input type="text" id="edit-water-source-contact" placeholder="Контакт для обслуживания">
+                <textarea id="edit-water-source-notes" placeholder="Примечания"></textarea>
+                <select id="edit-water-source-status">
+                    <option value="active">Активный</option>
+                    <option value="inactive">Неактивный</option>
+                    <option value="maintenance">На обслуживании</option>
+                </select>
+                <div class="form-buttons">
+                    <button type="submit">Сохранить</button>
+                    <button type="button" id="cancel-edit-water-source">Отмена</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модальное окно редактирования источника тепла -->
+    <div id="edit-heat-source-modal" class="edit-form-overlay" style="display: none;">
+        <div class="edit-form">
+            <h3>Редактировать источник тепла</h3>
+            <form id="edit-heat-source-form">
+                <input type="hidden" id="edit-heat-source-id">
+                <input type="text" id="edit-heat-source-name" placeholder="Название" required>
+                <input type="text" id="edit-heat-source-address" placeholder="Адрес" required>
+                <input type="number" step="0.000001" id="edit-heat-source-latitude" placeholder="Широта" required>
+                <input type="number" step="0.000001" id="edit-heat-source-longitude" placeholder="Долгота" required>
+                <select id="edit-heat-source-type" required>
+                    <option value="boiler_house">Котельная</option>
+                    <option value="heat_plant">Тепловая станция</option>
+                    <option value="chp">ТЭЦ</option>
+                </select>
+                <input type="number" step="0.1" id="edit-heat-source-capacity" placeholder="Тепловая мощность (МВт)">
+                <input type="text" id="edit-heat-source-fuel" placeholder="Тип топлива">
+                <input type="text" id="edit-heat-source-contact" placeholder="Контакт для обслуживания">
+                <textarea id="edit-heat-source-notes" placeholder="Примечания"></textarea>
+                <select id="edit-heat-source-status">
+                    <option value="active">Активный</option>
+                    <option value="inactive">Неактивный</option>
+                    <option value="maintenance">На обслуживании</option>
+                </select>
+                <div class="form-buttons">
+                    <button type="submit">Сохранить</button>
+                    <button type="button" id="cancel-edit-heat-source">Отмена</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Подключаем систему авторизации перед основным скриптом -->
+    <script src="public/admin-auth.js"></script>
+    <script src="public/admin.js"></script>
 
 </body>
 </html>
