@@ -1,0 +1,469 @@
+/* Панель управления слоями карты */
+.layers-control-panel {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 0;
+    min-width: 280px;
+    max-width: 320px;
+    max-height: 80vh;
+    overflow-y: auto;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.layers-control-panel.collapsed .layers-header ~ div {
+    display: none;
+}
+
+.layers-control-panel.collapsed {
+    max-height: 50px;
+}
+
+/* Заголовок панели */
+.layers-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 12px 16px;
+    border-radius: 8px 8px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 0;
+}
+
+.layers-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.toggle-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+
+.toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* Секции */
+.base-layers-section,
+.overlay-layers-section,
+.filters-section,
+.metrics-section {
+    padding: 16px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.base-layers-section:last-child,
+.overlay-layers-section:last-child,
+.filters-section:last-child,
+.metrics-section:last-child {
+    border-bottom: none;
+}
+
+.base-layers-section h4,
+.overlay-layers-section h4,
+.filters-section h4,
+.metrics-section h4 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Элементы управления слоями */
+.layer-control-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    border-radius: 4px;
+    padding: 6px 8px;
+    margin: 2px 0;
+}
+
+.layer-control-item:hover {
+    background-color: rgba(102, 126, 234, 0.1);
+}
+
+.layer-control-item input[type="radio"],
+.layer-control-item input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+}
+
+.layer-control-item span {
+    flex: 1;
+    font-size: 13px;
+}
+
+.layer-count {
+    color: #666;
+    font-size: 11px;
+    background: #f0f0f0;
+    padding: 2px 6px;
+    border-radius: 10px;
+    margin-left: auto;
+}
+
+/* Фильтры */
+.filters-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.filter-group label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #555;
+}
+
+.filter-group select,
+.filter-group input[type="range"] {
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.filter-group select[multiple] {
+    height: 80px;
+}
+
+.filter-group input[type="range"] {
+    -webkit-appearance: none;
+    height: 6px;
+    background: #ddd;
+    outline: none;
+    border-radius: 3px;
+}
+
+.filter-group input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: #667eea;
+    cursor: pointer;
+    border-radius: 50%;
+}
+
+.filter-group input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: #667eea;
+    cursor: pointer;
+    border-radius: 50%;
+    border: none;
+}
+
+#load-value {
+    font-size: 11px;
+    color: #666;
+    text-align: right;
+}
+
+/* Кнопки фильтров */
+.apply-filters-btn,
+.reset-filters-btn {
+    padding: 8px 12px;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin: 8px 4px 0 0;
+}
+
+.apply-filters-btn {
+    background: #667eea;
+    color: white;
+}
+
+.apply-filters-btn:hover {
+    background: #5a67d8;
+}
+
+.reset-filters-btn {
+    background: #e2e8f0;
+    color: #4a5568;
+}
+
+.reset-filters-btn:hover {
+    background: #cbd5e0;
+}
+
+/* Метрики в реальном времени */
+.metrics-section label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.metrics-section input[type="checkbox"] {
+    margin: 0;
+}
+
+/* Попапы объектов */
+.transformer-popup,
+.water-line-popup,
+.water-source-popup {
+    min-width: 250px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.transformer-popup h4,
+.water-line-popup h4,
+.water-source-popup h4 {
+    margin: 0 0 12px 0;
+    color: #333;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.transformer-info p,
+.water-line-popup p,
+.water-source-popup p {
+    margin: 6px 0;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.load-indicator {
+    font-weight: 600;
+}
+
+.status-badge {
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+}
+
+.status-active {
+    background: #c6f6d5;
+    color: #22543d;
+}
+
+.status-maintenance {
+    background: #fed7d7;
+    color: #742a2a;
+}
+
+.status-inactive {
+    background: #e2e8f0;
+    color: #4a5568;
+}
+
+.status-critical {
+    background: #feb2b2;
+    color: #742a2a;
+}
+
+/* Действия в попапах */
+.transformer-actions {
+    display: flex;
+    gap: 8px;
+    margin: 12px 0 8px 0;
+}
+
+.btn-metrics,
+.btn-buildings {
+    padding: 6px 10px;
+    border: none;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-metrics {
+    background: #667eea;
+    color: white;
+}
+
+.btn-metrics:hover {
+    background: #5a67d8;
+}
+
+.btn-buildings {
+    background: #48bb78;
+    color: white;
+}
+
+.btn-buildings:hover {
+    background: #38a169;
+}
+
+/* Контейнер метрик */
+.metrics-container {
+    margin-top: 12px;
+    padding: 12px;
+    background: #f7fafc;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+}
+
+.metrics-chart h5 {
+    margin: 0 0 10px 0;
+    font-size: 13px;
+    color: #333;
+}
+
+.metric-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0;
+    font-size: 12px;
+}
+
+.metric-item span:first-child {
+    min-width: 80px;
+    color: #666;
+}
+
+.metric-item span:last-child {
+    font-weight: 600;
+    color: #333;
+}
+
+/* Прогресс-бар */
+.progress-bar {
+    flex: 1;
+    height: 8px;
+    background: #e2e8f0;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress {
+    height: 100%;
+    background: linear-gradient(90deg, #48bb78, #38a169);
+    transition: width 0.3s ease;
+}
+
+/* Загрузка */
+.loading {
+    text-align: center;
+    color: #666;
+    font-size: 12px;
+    padding: 20px;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .layers-control-panel {
+        min-width: 260px;
+        max-width: 280px;
+        font-size: 13px;
+    }
+    
+    .layers-header h3 {
+        font-size: 15px;
+    }
+    
+    .transformer-popup,
+    .water-line-popup,
+    .water-source-popup {
+        min-width: 220px;
+    }
+}
+
+/* Кастомные иконки для разных типов объектов */
+.water-source-icon {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(66, 153, 225, 0.9);
+    border-radius: 50%;
+    color: white;
+    font-size: 16px;
+    width: 40px;
+    height: 40px;
+    border: 2px solid white;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.water-source-icon .capacity {
+    position: absolute;
+    bottom: -8px;
+    background: #2d3748;
+    color: white;
+    font-size: 8px;
+    padding: 1px 4px;
+    border-radius: 8px;
+    white-space: nowrap;
+}
+
+.water-source-icon.well {
+    background: rgba(139, 69, 19, 0.9);
+}
+
+.water-source-icon.plant {
+    background: rgba(56, 161, 105, 0.9);
+}
+
+/* Анимации */
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.layer-control-item:active {
+    animation: pulse 0.2s ease-in-out;
+}
+
+/* Скроллбар */
+.layers-control-panel::-webkit-scrollbar {
+    width: 6px;
+}
+
+.layers-control-panel::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.layers-control-panel::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+.layers-control-panel::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+} 
