@@ -253,9 +253,9 @@ docker-compose restart app
 ## Документация
 
 *   **API Documentation:** `/api-docs` (Swagger UI)
-*   **Руководство по тестированию:** `API_TESTING.md`
-*   **Docker деплой:** `DOCKER_DEPLOYMENT.md`
-*   **Исправления:** `BUGFIX_SUMMARY.md`
+*   **Руководство по тестированию:** `docs/API_TESTING.md`
+*   **Docker деплой:** `docs/DOCKER_DEPLOYMENT.md`
+*   **Исправления:** `docs/BUGFIX_SUMMARY.md`
 
 ## Лицензия (License)
 

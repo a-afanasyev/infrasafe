@@ -16,7 +16,7 @@ services:
       - ./contacts.html:/usr/share/nginx/html/contacts.html:ro
       - ./documentation.html:/usr/share/nginx/html/documentation.html:ro
       - ./test-layers.html:/usr/share/nginx/html/test-layers.html:ro
-      - ./MAP_LAYERS_GUIDE.md:/usr/share/nginx/html/MAP_LAYERS_GUIDE.md:ro
+      - ./docs/MAP_LAYERS_GUIDE.md:/usr/share/nginx/html/MAP_LAYERS_GUIDE.md:ro
       
       # Монтируем CSS
       - ./css:/usr/share/nginx/html/css:ro

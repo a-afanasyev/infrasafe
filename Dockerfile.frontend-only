@@ -18,7 +18,7 @@ COPY data/ ./data/
 # Явно копируем важные файлы слоев карты
 COPY public/map-layers-control.js ./public/map-layers-control.js
 COPY public/css/map-layers.css ./public/css/map-layers.css
-COPY MAP_LAYERS_GUIDE.md ./MAP_LAYERS_GUIDE.md
+COPY docs/MAP_LAYERS_GUIDE.md ./MAP_LAYERS_GUIDE.md
 
 # Добавляем curl для healthcheck
 RUN apk add --no-cache curl
