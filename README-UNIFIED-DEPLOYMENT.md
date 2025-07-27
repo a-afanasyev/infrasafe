@@ -51,7 +51,7 @@ docker compose -f docker-compose.unified.yml down
 ## Файловая структура
 
 ```
-leaflet/
+infrasafe/
 ├── docker-compose.unified.yml    # Единый compose файл
 ├── Dockerfile.unified            # Multi-stage Dockerfile
 ├── nginx.conf                   # Конфигурация Nginx

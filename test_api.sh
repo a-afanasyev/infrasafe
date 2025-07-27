@@ -93,7 +93,7 @@ get_jwt_token() {
     # Сначала пытаемся использовать существующего пользователя jwttest2
     echo -e "${YELLOW}🔍 Попытка авторизации с: jwttest2${NC}"
 
-    LOGIN_DATA='{"username": "jwttest2", "password": "Password123"}'
+    LOGIN_DATA='{"username": "admin", "password": "Admin123"}'
     RESPONSE=$(curl -s -X POST "${API_URL}/api/auth/login" \
         -H "Content-Type: application/json" \
         -d "$LOGIN_DATA")

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест слоев карты - InfraSafe</title>
+    
+    <!-- Стили -->
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="public/css/map-layers.css">
+    <link rel="stylesheet" href="public/libs/leaflet/leaflet.css" />
+    <link rel="stylesheet" href="public/libs/leaflet/leaflet-fixes.css" />
+    <link rel="stylesheet" href="public/libs/leaflet-markercluster/MarkerCluster.css" />
+    <link rel="stylesheet" href="public/libs/leaflet-markercluster/MarkerCluster.Default.css" />
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Roboto', Arial, sans-serif;
+        }
+        
+        #map {
+            width: 100%;
+            height: 100vh;
+        }
+        
+        .test-info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+            max-width: 300px;
+        }
+        
+        .test-info h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        
+        .test-info p {
+            margin: 5px 0;
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-info">
+        <h3>🗺️ Тест слоев карты</h3>
+        <p>✅ Базовые слои (Карта, Спутник, Рельеф)</p>
+        <p>✅ Слои объектов (Здания, Трансформаторы, и т.д.)</p>
+        <p>✅ Фильтры и метрики</p>
+        <p><strong>Справа:</strong> Панель управления слоями</p>
+    </div>
+
+    <div id="map"></div>
+
+    <!-- Скрипты -->
+    <script src="public/libs/leaflet/leaflet.js"></script>
+    <script src="public/libs/leaflet/leaflet.icon-fallback.js"></script>
+    <script src="public/libs/leaflet-markercluster/leaflet.markercluster.js"></script>
+    <script src="public/map-layers-control.js"></script>
+    
+    <script>
+        // Инициализация карты
+        const map = L.map('map').setView([41.32, 69.25], 13);
+        
+        // Добавляем базовый слой OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+        
+        // Инициализация контрола слоев
+        const layersControl = new MapLayersControl(map);
+        
+        console.log('🎯 Тест слоев карты инициализирован');
+        
+        // Добавляем тестовые данные
+        setTimeout(() => {
+            // Тестовые здания
+            const testBuilding = L.marker([41.32, 69.25]).addTo(map);
+            testBuilding.bindPopup(`
+                <div class="building-popup">
+                    <h4>🏢 Тестовое здание</h4>
+                    <p><strong>Адрес:</strong> Тестовая улица, 1</p>
+                    <p><strong>Статус:</strong> <span class="status-badge status-active">Активное</span></p>
+                </div>
+            `);
+            
+            // Тестовый трансформатор
+            const testTransformer = L.marker([41.325, 69.255]).addTo(map);
+            testTransformer.bindPopup(`
+                <div class="transformer-popup">
+                    <h4>⚡ Тестовый трансформатор</h4>
+                    <p><strong>Мощность:</strong> 1000 кВт</p>
+                    <p><strong>Загрузка:</strong> 65%</p>
+                    <p><strong>Статус:</strong> <span class="status-badge status-active">Активен</span></p>
+                </div>
+            `);
+            
+            console.log('✅ Тестовые данные добавлены');
+        }, 1000);
+    </script>
+</body>
+</html> 

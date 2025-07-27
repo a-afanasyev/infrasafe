@@ -392,13 +392,33 @@
     }
     
     .layers-header h3 {
-        font-size: 15px;
+        font-size: 14px;
     }
     
     .transformer-popup,
-    .water-line-popup,
     .water-source-popup {
-        min-width: 220px;
+        width: 90% !important;
+        max-width: 300px;
+    }
+
+    .filter-group select,
+    .filter-group input {
+        font-size: 14px;
+        padding: 8px;
+    }
+
+    .apply-filters-btn,
+    .reset-filters-btn {
+        font-size: 14px;
+        padding: 10px 16px;
+        margin: 4px 0;
+    }
+
+    /* Скрываем контрол слоев на очень маленьких экранах */
+    @media (max-width: 480px) {
+        .layers-control-panel {
+            display: none;
+        }
     }
 }
 

@@ -414,9 +414,9 @@
 
 ### 🎯 Статус контейнеров:
 ```
-✅ leaflet-postgres-1  - Healthy (порт 5432)
-✅ leaflet-app-1       - Running (порт 3000)
-✅ leaflet-frontend-1  - Running (порт 8080)
+✅ infrasafe-postgres-1  - Healthy (порт 5432)
+✅ infrasafe-app-1       - Running (порт 3000)
+✅ infrasafe-frontend-1  - Running (порт 8080)
 ```
 
 ### 📊 Результаты тестирования:
@@ -1036,9 +1036,9 @@ document.getElementById('add-metric-form').addEventListener('submit', async func
 ✅ docker-compose -f docker-compose.unified.yml up -d
 
 # Результат:
-✅ leaflet-frontend-1    Up 5 minutes   0.0.0.0:8080->8080/tcp
-✅ leaflet-app-1         Up 5 minutes   0.0.0.0:3000->3000/tcp
-✅ leaflet-postgres-1    Up 5 minutes   0.0.0.0:5432->5432/tcp (healthy)
+✅ infrasafe-frontend-1    Up 5 minutes   0.0.0.0:8080->8080/tcp
+✅ infrasafe-app-1         Up 5 minutes   0.0.0.0:3000->3000/tcp
+✅ infrasafe-postgres-1    Up 5 minutes   0.0.0.0:5432->5432/tcp (healthy)
 ```
 
 **Обновленные образы содержат:**

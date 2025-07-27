@@ -6,9 +6,22 @@ class MapLayersControl {
         this.activeFilters = {};
         this.metricsInterval = null;
         
+        // Ждем полной загрузки DOM
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                this.init();
+            });
+        } else {
+            this.init();
+        }
+    }
+
+    init() {
+        console.log('🗺️ Initializing map layers control...');
         this.initializeLayers();
         this.createLayerControl();
         this.setupEventHandlers();
+        console.log('✅ Map layers control initialized successfully');
     }
 
     initializeLayers() {

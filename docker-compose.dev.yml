@@ -1,0 +1,153 @@
+name: infrasafe
+
+services:
+  # 🌐 Фронтенд nginx с полным volume mounting
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend.dev
+    ports:
+      - "8080:8080"
+    volumes:
+      # Монтируем все статические файлы для мгновенного отражения изменений
+      - ./index.html:/usr/share/nginx/html/index.html:ro
+      - ./admin.html:/usr/share/nginx/html/admin.html:ro
+      - ./about.html:/usr/share/nginx/html/about.html:ro
+      - ./contacts.html:/usr/share/nginx/html/contacts.html:ro
+      - ./documentation.html:/usr/share/nginx/html/documentation.html:ro
+      - ./test-layers.html:/usr/share/nginx/html/test-layers.html:ro
+      - ./MAP_LAYERS_GUIDE.md:/usr/share/nginx/html/MAP_LAYERS_GUIDE.md:ro
+      
+      # Монтируем CSS
+      - ./css:/usr/share/nginx/html/css:ro
+      
+      # Монтируем все публичные файлы
+      - ./public:/usr/share/nginx/html/public:ro
+      
+      # Монтируем данные и изображения
+      - ./data:/usr/share/nginx/html/data:ro
+      
+      # Монтируем конфигурацию nginx для быстрого изменения
+      - ./nginx.dev.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app
+    networks:
+      - infrasafe-dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      - "description=InfraSafe Frontend Development"
+      - "version=dev"
+
+  # 🚀 Бэкенд Node.js с volume mounting исходного кода
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      # Монтируем весь исходный код для hot reload
+      - ./src:/app/src:ro
+      - ./package.json:/app/package.json:ro
+      
+      # Монтируем логи для доступа с хоста
+      - ./logs:/app/logs
+      
+      # Исключаем node_modules из синхронизации (будет в контейнере)
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=infrasafe
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - JWT_SECRET=dev-secret-key-change-in-production
+      - CORS_ORIGINS=http://localhost:8080,http://localhost:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - infrasafe-dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    labels:
+      - "description=InfraSafe Backend Development"
+      - "version=dev"
+
+  # 🗄️ База данных PostgreSQL с PostGIS
+  postgres:
+    image: postgis/postgis:15-3.3
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=infrasafe
+      - POSTGRES_INITDB_ARGS=--encoding=UTF8 --lc-collate=en_US.utf8 --lc-ctype=en_US.utf8
+    volumes:
+      # Персистентные данные БД
+      - postgres_dev_data:/var/lib/postgresql/data
+      
+      # Инициализация БД
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres && psql -U postgres -d infrasafe -c 'SELECT 1;'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - infrasafe-dev
+    restart: unless-stopped
+    command: >
+      postgres
+      -c log_statement=all
+      -c log_destination=stderr
+      -c log_min_duration_statement=0
+      -c shared_preload_libraries=pg_stat_statements
+    labels:
+      - "description=PostgreSQL with PostGIS for Development"
+      - "version=dev"
+
+  # 🔧 Дополнительный сервис для разработки - файл watcher (опционально)
+  # Раскомментируйте если нужен file watcher для автоматического перезапуска
+  # file-watcher:
+  #   image: alpine:latest
+  #   volumes:
+  #     - ./src:/watch/src:ro
+  #     - ./public:/watch/public:ro
+  #     - ./css:/watch/css:ro
+  #   command: >
+  #     sh -c "apk add --no-cache inotify-tools && 
+  #            while true; do
+  #              inotifywait -r -e modify,create,delete /watch/ && 
+  #              echo 'Files changed at $(date)' && 
+  #              sleep 1
+  #            done"
+  #   networks:
+  #     - infrasafe-dev
+  #   restart: unless-stopped
+
+volumes:
+  postgres_dev_data:
+    driver: local
+
+networks:
+  infrasafe-dev:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16 

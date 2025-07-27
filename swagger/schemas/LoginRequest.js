@@ -1,0 +1,15 @@
+module.exports = {
+  type: "object",
+  required: ["username", "password"],
+  properties: {
+    username: {
+      type: "string",
+      description: "Имя пользователя"
+    },
+    password: {
+      type: "string",
+      description: "Пароль пользователя",
+      format: "password"
+    }
+  }
+}; 

@@ -142,6 +142,15 @@ const backendURL = window.BACKEND_URL || "/api/buildings-metrics";
         prefix: false  // Это убирает "Leaflet"
     }).addAttribution('&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors').addTo(map);
 
+    // Инициализация контрола слоев карты
+    let mapLayersControl = null;
+    if (typeof MapLayersControl !== 'undefined') {
+        mapLayersControl = new MapLayersControl(map);
+        console.log('✅ MapLayersControl initialized');
+    } else {
+        console.warn('⚠️ MapLayersControl not found');
+    }
+
     // Создаем элемент для отображения УК
     const ukControl = L.control({ position: 'topright' });
     ukControl.onAdd = function(map) {

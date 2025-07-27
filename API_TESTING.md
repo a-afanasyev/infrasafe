@@ -229,7 +229,7 @@ docker-compose logs postgres
 
 ### Проверка подключения к базе данных
 ```bash
-docker exec -it leaflet-postgres-1 psql -U postgres -d infrasafe -c "SELECT COUNT(*) FROM buildings;"
+docker exec -it infrasafe-postgres-1 psql -U postgres -d infrasafe -c "SELECT COUNT(*) FROM buildings;"
 ```
 
 ### Ручная проверка endpoint'а

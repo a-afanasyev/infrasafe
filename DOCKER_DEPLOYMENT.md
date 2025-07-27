@@ -14,7 +14,7 @@
 ```bash
 # Клонировать репозиторий
 git clone <repository-url>
-cd leaflet
+cd infrasafe
 
 # Запустить все сервисы
 docker compose up -d
@@ -77,7 +77,7 @@ docker compose logs -f
 ## Структура проекта
 
 ```
-leaflet/
+infrasafe/
 ├── src/                       # 🚀 Backend (Node.js)
 │   ├── controllers/           # Контроллеры API
 │   ├── models/               # Модели данных
@@ -135,7 +135,7 @@ docker compose logs app
 docker compose logs postgres
 
 # Подключиться к базе данных
-docker exec -it leaflet-postgres-1 psql -U postgres -d infrasafe
+docker exec -it infrasafe-postgres-1 psql -U postgres -d infrasafe
 
 # Перезапустить сервис
 docker compose restart frontend
@@ -226,7 +226,7 @@ curl http://localhost:8080/api/buildings
 docker compose logs frontend
 
 # Проверить файлы в контейнере
-docker exec -it leaflet-frontend-1 ls -la /usr/share/nginx/html/
+docker exec -it infrasafe-frontend-1 ls -la /usr/share/nginx/html/
 ```
 
 ### API недоступен
@@ -244,7 +244,7 @@ curl http://localhost:3000/api/buildings
 docker compose logs postgres | grep "ready to accept"
 
 # Тест подключения
-docker exec leaflet-postgres-1 pg_isready -U postgres
+docker exec infrasafe-postgres-1 pg_isready -U postgres
 ```
 
 ## Ports Summary
