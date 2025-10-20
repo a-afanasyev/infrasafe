@@ -1,0 +1,41 @@
+{
+  "api": {
+    "defaultPort": 3000,
+    "alternativePort": 8080,
+    "timeout": 3000,
+    "healthEndpoint": "/api/health"
+  },
+  "tests": {
+    "bash": {
+      "enabled": true,
+      "timeout": 30,
+      "retries": 3
+    },
+    "jest": {
+      "enabled": true,
+      "timeout": 10000,
+      "retries": 2
+    },
+    "load": {
+      "enabled": true,
+      "timeout": 60,
+      "concurrent": 10
+    },
+    "smoke": {
+      "enabled": true,
+      "timeout": 15,
+      "retries": 1
+    }
+  },
+  "logging": {
+    "level": "info",
+    "format": "colored",
+    "saveReports": true,
+    "reportsDir": "tests/reports"
+  },
+  "ci": {
+    "enabled": false,
+    "parallel": false,
+    "artifacts": true
+  }
+} 

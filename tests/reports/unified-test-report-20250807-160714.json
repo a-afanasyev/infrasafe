@@ -1,0 +1,39 @@
+{
+    "framework_info": {
+        "name": "InfraSafe Unified Test Framework",
+        "version": "1.0.0",
+        "timestamp": "2025-08-07T16:07:16+05:00",
+        "api_url": "http://localhost:3000",
+        "total_duration": 1
+    },
+    "execution_summary": {
+        "total_modules": 1,
+        "modules_passed": 0,
+        "modules_failed": 1,
+        "overall_status": "FAIL"
+    },
+    "module_results": [
+        [0;36m🚬 Выполнение Smart Smoke тестов...[0m
+[0;34m   Всего тестов: 9[0m
+[0;32m   Пройдено: 6[0m
+[0;31m   Провалено: 3[0m
+[0;34m   Успешность: 66.6%[0m
+[0;34m   Время: 1с[0m
+{
+    "module": "smoke",
+    "total_tests": 9,
+    "passed_tests": 6,
+    "failed_tests": 3,
+    "success_rate": 66.6,
+    "duration": 1,
+    "exit_code": 1,
+    "status": "FAIL",
+    "report_file": "tests/reports/smoke-test-20250807-160715.json"
+}
+    ],
+    "environment": {
+        "api_port": "3000",
+        "db_url": "postgresql://postgres@localhost:5432/infrasafe",
+        "test_user": "testuser"
+    }
+}

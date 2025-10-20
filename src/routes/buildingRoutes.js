@@ -1,5 +1,7 @@
 const express = require('express');
 const buildingController = require('../controllers/buildingController');
+const { authenticateJWT } = require('../middleware/auth');
+const { validateBuildingCreate } = require('../middleware/validators');
 const router = express.Router();
 
 /**
@@ -219,7 +221,7 @@ router.get('/:id', buildingController.getBuildingById);
  *       403:
  *         description: Недействительный токен
  */
-router.post('/', buildingController.createBuilding);
+router.post('/', authenticateJWT, validateBuildingCreate, buildingController.createBuilding);
 
 /**
  * @swagger
@@ -263,7 +265,7 @@ router.post('/', buildingController.createBuilding);
  *       403:
  *         description: Недействительный токен
  */
-router.put('/:id', buildingController.updateBuilding);
+router.put('/:id', authenticateJWT, validateBuildingCreate, buildingController.updateBuilding);
 
 /**
  * @swagger
@@ -292,6 +294,6 @@ router.put('/:id', buildingController.updateBuilding);
  *       403:
  *         description: Недействительный токен
  */
-router.delete('/:id', buildingController.deleteBuilding);
+router.delete('/:id', authenticateJWT, buildingController.deleteBuilding);
 
 module.exports = router;

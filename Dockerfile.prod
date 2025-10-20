@@ -1,38 +1,46 @@
-# Multi-stage build для production
+# Builder stage
 FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Копируем файлы зависимостей
+# Копируем только файлы для установки зависимостей
 COPY package*.json ./
 
-# Устанавливаем только production зависимости
-RUN npm ci --only=production && npm cache clean --force
+# Устанавливаем зависимости с exact versions и очищаем кэш
+RUN npm install --only=production && \
+    npm cache clean --force
 
 # Production stage
 FROM node:18-alpine AS production
 
 WORKDIR /app
 
-# Создаем пользователя для безопасности
+# Устанавливаем необходимые инструменты для мониторинга
+RUN apk add --no-cache curl procps
+
+# Создаем пользователя с минимальными правами
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
-# Копируем зависимости из builder stage
+# Копируем только необходимые файлы из builder
 COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
-
-# Копируем исходный код
-COPY --chown=nodejs:nodejs src/ ./src/
 COPY --chown=nodejs:nodejs package*.json ./
+COPY --chown=nodejs:nodejs src/ ./src/
+COPY --chown=nodejs:nodejs public/ ./public/
 
-# Создаем директорию для логов
-RUN mkdir -p logs && chown nodejs:nodejs logs
+# Создаем и настраиваем директории для логов и мониторинга
+RUN mkdir -p /app/logs /app/monitoring && \
+    chown -R nodejs:nodejs /app
+
+# Настройка переменных окружения
+ENV NODE_ENV=production \
+    NODE_OPTIONS="--max-old-space-size=512"
 
 USER nodejs
 
-# Healthcheck
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+# Улучшенный healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
 
 EXPOSE 3000
 

@@ -2,6 +2,7 @@ const pool = require('../config/database');
 const cacheService = require('../services/cacheService');
 const logger = require('../utils/logger');
 const { createError } = require('../utils/helpers');
+const { validateSortOrder, validatePagination, validateSearchString } = require('../utils/queryValidation');
 
 class AdminController {
 
@@ -19,18 +20,20 @@ class AdminController {
                 management_company
             } = req.query;
 
-            const pageNum = Math.max(1, parseInt(page));
-            const limitNum = Math.min(Math.max(1, parseInt(limit)), 200);
-            const offset = (pageNum - 1) * limitNum;
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем валидацию параметров
+            const { validSort, validOrder } = validateSortOrder('buildings', sort, order);
+            const { pageNum, limitNum, offset } = validatePagination(page, limit);
+            const cleanSearch = validateSearchString(search);
 
             let query = 'SELECT * FROM buildings';
             let countQuery = 'SELECT COUNT(*) FROM buildings';
             let params = [];
             let whereConditions = [];
 
-            if (search) {
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем очищенную строку поиска
+            if (cleanSearch) {
                 whereConditions.push('name ILIKE $' + (params.length + 1));
-                params.push(`%${search}%`);
+                params.push(`%${cleanSearch}%`);
             }
             if (town) {
                 whereConditions.push('town = $' + (params.length + 1));
@@ -51,7 +54,8 @@ class AdminController {
                 countQuery += whereClause;
             }
 
-            query += ` ORDER BY ${sort} ${order.toUpperCase()} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем валидированные параметры сортировки
+            query += ` ORDER BY ${validSort} ${validOrder} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
             params.push(limitNum, offset);
 
             const [dataResult, countResult] = await Promise.all([
@@ -91,18 +95,20 @@ class AdminController {
                 building_id
             } = req.query;
 
-            const pageNum = Math.max(1, parseInt(page));
-            const limitNum = Math.min(Math.max(1, parseInt(limit)), 200);
-            const offset = (pageNum - 1) * limitNum;
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем валидацию параметров
+            const { validSort, validOrder } = validateSortOrder('controllers', sort, order);
+            const { pageNum, limitNum, offset } = validatePagination(page, limit);
+            const cleanSearch = validateSearchString(search);
 
             let query = 'SELECT * FROM controllers';
             let countQuery = 'SELECT COUNT(*) FROM controllers';
             let params = [];
             let whereConditions = [];
 
-            if (search) {
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем очищенную строку поиска
+            if (cleanSearch) {
                 whereConditions.push('serial_number ILIKE $' + (params.length + 1));
-                params.push(`%${search}%`);
+                params.push(`%${cleanSearch}%`);
             }
             if (status) {
                 whereConditions.push('status = $' + (params.length + 1));
@@ -123,7 +129,8 @@ class AdminController {
                 countQuery += whereClause;
             }
 
-            query += ` ORDER BY ${sort} ${order.toUpperCase()} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем валидированные параметры сортировки
+            query += ` ORDER BY ${validSort} ${validOrder} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
             params.push(limitNum, offset);
 
             const [dataResult, countResult] = await Promise.all([
@@ -162,9 +169,9 @@ class AdminController {
                 end_date
             } = req.query;
 
-            const pageNum = Math.max(1, parseInt(page));
-            const limitNum = Math.min(Math.max(1, parseInt(limit)), 500);
-            const offset = (pageNum - 1) * limitNum;
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем валидацию параметров
+            const { validSort, validOrder } = validateSortOrder('metrics', sort, order);
+            const { pageNum, limitNum, offset } = validatePagination(page, limit);
 
             let query = 'SELECT * FROM metrics';
             let countQuery = 'SELECT COUNT(*) FROM metrics';
@@ -190,7 +197,8 @@ class AdminController {
                 countQuery += whereClause;
             }
 
-            query += ` ORDER BY ${sort} ${order.toUpperCase()} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем валидированные параметры сортировки
+            query += ` ORDER BY ${validSort} ${validOrder} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
             params.push(limitNum, offset);
 
             const [dataResult, countResult] = await Promise.all([
@@ -320,18 +328,20 @@ class AdminController {
                 building_id
             } = req.query;
 
-            const pageNum = Math.max(1, parseInt(page));
-            const limitNum = Math.min(Math.max(1, parseInt(limit)), 200);
-            const offset = (pageNum - 1) * limitNum;
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем валидацию параметров
+            const { validSort, validOrder } = validateSortOrder('transformers', sort, order);
+            const { pageNum, limitNum, offset } = validatePagination(page, limit);
+            const cleanSearch = validateSearchString(search);
 
             let query = 'SELECT t.*, b.name as building_name FROM transformers t LEFT JOIN buildings b ON t.building_id = b.building_id';
             let countQuery = 'SELECT COUNT(*) FROM transformers t LEFT JOIN buildings b ON t.building_id = b.building_id';
             let params = [];
             let whereConditions = [];
 
-            if (search) {
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем очищенную строку поиска
+            if (cleanSearch) {
                 whereConditions.push('t.name ILIKE $' + (params.length + 1));
-                params.push(`%${search}%`);
+                params.push(`%${cleanSearch}%`);
             }
             if (power_min) {
                 whereConditions.push('t.power_kva >= $' + (params.length + 1));
@@ -356,9 +366,10 @@ class AdminController {
                 countQuery += whereClause;
             }
 
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем валидированные параметры сортировки
             // Исправляем сортировку для transformer_id (для обратной совместимости)
-            const sortField = sort === 'id' ? 'transformer_id' : sort;
-            query += ` ORDER BY t.${sortField} ${order.toUpperCase()} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+            const sortField = validSort === 'id' ? 'transformer_id' : validSort;
+            query += ` ORDER BY t.${sortField} ${validOrder} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
             params.push(limitNum, offset);
 
             const [dataResult, countResult] = await Promise.all([
@@ -590,18 +601,20 @@ class AdminController {
                 transformer_id
             } = req.query;
 
-            const pageNum = Math.max(1, parseInt(page));
-            const limitNum = Math.min(Math.max(1, parseInt(limit)), 200);
-            const offset = (pageNum - 1) * limitNum;
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем валидацию параметров
+            const { validSort, validOrder } = validateSortOrder('lines', sort, order);
+            const { pageNum, limitNum, offset } = validatePagination(page, limit);
+            const cleanSearch = validateSearchString(search);
 
             let query = 'SELECT l.*, t.name as transformer_name FROM lines l LEFT JOIN transformers t ON l.transformer_id = t.transformer_id';
             let countQuery = 'SELECT COUNT(*) FROM lines l LEFT JOIN transformers t ON l.transformer_id = t.transformer_id';
             let params = [];
             let whereConditions = [];
 
-            if (search) {
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем очищенную строку поиска
+            if (cleanSearch) {
                 whereConditions.push('l.name ILIKE $' + (params.length + 1));
-                params.push(`%${search}%`);
+                params.push(`%${cleanSearch}%`);
             }
             if (voltage_min) {
                 whereConditions.push('l.voltage_kv >= $' + (params.length + 1));
@@ -630,9 +643,10 @@ class AdminController {
                 countQuery += whereClause;
             }
 
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем валидированные параметры сортировки
             // Исправляем сортировку для line_id (для обратной совместимости)
-            const sortField = sort === 'id' ? 'line_id' : sort;
-            query += ` ORDER BY l.${sortField} ${order.toUpperCase()} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+            const sortField = validSort === 'id' ? 'line_id' : validSort;
+            query += ` ORDER BY l.${sortField} ${validOrder} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
             params.push(limitNum, offset);
 
             const [dataResult, countResult] = await Promise.all([
@@ -866,9 +880,10 @@ class AdminController {
                 diameter_max
             } = req.query;
 
-            const pageNum = Math.max(1, parseInt(page));
-            const limitNum = Math.min(Math.max(1, parseInt(limit)), 200);
-            const offset = (pageNum - 1) * limitNum;
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем валидацию параметров
+            const { validSort, validOrder } = validateSortOrder('water_lines', sort, order);
+            const { pageNum, limitNum, offset } = validatePagination(page, limit);
+            const cleanSearch = validateSearchString(search);
 
             let query = `
                 SELECT wl.*,
@@ -881,9 +896,10 @@ class AdminController {
             let params = [];
             let whereConditions = [];
 
-            if (search) {
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем очищенную строку поиска
+            if (cleanSearch) {
                 whereConditions.push('wl.name ILIKE $' + (params.length + 1));
-                params.push(`%${search}%`);
+                params.push(`%${cleanSearch}%`);
             }
             if (type) {
                 whereConditions.push('wl.name ILIKE $' + (params.length + 1));
@@ -912,7 +928,8 @@ class AdminController {
                 countQuery += whereClause;
             }
 
-            query += ` GROUP BY wl.line_id ORDER BY wl.${sort} ${order.toUpperCase()} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем валидированные параметры сортировки
+            query += ` GROUP BY wl.line_id ORDER BY wl.${validSort} ${validOrder} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
             params.push(limitNum, offset);
 
             const [dataResult, countResult] = await Promise.all([
@@ -1271,16 +1288,17 @@ class AdminController {
             const {
                 page = 1,
                 limit = 50,
-                sort = 'id',
+                sort = 'source_id',
                 order = 'asc',
                 search,
                 source_type,
                 status
             } = req.query;
 
-            const pageNum = Math.max(1, parseInt(page));
-            const limitNum = Math.min(Math.max(1, parseInt(limit)), 200);
-            const offset = (pageNum - 1) * limitNum;
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем валидацию параметров
+            const { validSort, validOrder } = validateSortOrder('water_sources', sort, order);
+            const { pageNum, limitNum, offset } = validatePagination(page, limit);
+            const cleanSearch = validateSearchString(search);
 
             let query = 'SELECT * FROM cold_water_sources';
             let countQuery = 'SELECT COUNT(*) FROM cold_water_sources';
@@ -1306,7 +1324,8 @@ class AdminController {
                 countQuery += whereClause;
             }
 
-            query += ` ORDER BY ${sort} ${order.toUpperCase()} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем валидированные параметры сортировки
+            query += ` ORDER BY ${validSort} ${validOrder} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
             params.push(limitNum, offset);
 
             const [dataResult, countResult] = await Promise.all([
@@ -1509,16 +1528,17 @@ class AdminController {
             const {
                 page = 1,
                 limit = 50,
-                sort = 'id',
+                sort = 'source_id',
                 order = 'asc',
                 search,
                 source_type,
                 status
             } = req.query;
 
-            const pageNum = Math.max(1, parseInt(page));
-            const limitNum = Math.min(Math.max(1, parseInt(limit)), 200);
-            const offset = (pageNum - 1) * limitNum;
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем валидацию параметров
+            const { validSort, validOrder } = validateSortOrder('heat_sources', sort, order);
+            const { pageNum, limitNum, offset } = validatePagination(page, limit);
+            const cleanSearch = validateSearchString(search);
 
             let query = 'SELECT * FROM heat_sources';
             let countQuery = 'SELECT COUNT(*) FROM heat_sources';
@@ -1544,7 +1564,8 @@ class AdminController {
                 countQuery += whereClause;
             }
 
-            query += ` ORDER BY ${sort} ${order.toUpperCase()} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+            // ИСПРАВЛЕНИЕ SQL INJECTION: используем валидированные параметры сортировки
+            query += ` ORDER BY ${validSort} ${validOrder} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
             params.push(limitNum, offset);
 
             const [dataResult, countResult] = await Promise.all([

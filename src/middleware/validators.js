@@ -20,14 +20,46 @@ const validateBuildingCreate = [
     handleValidationErrors
 ];
 
+// Функция для проверки XSS
+const isXSSFree = (value) => {
+    const xssPatterns = [
+        /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,
+        /javascript:/gi,
+        /on\w+\s*=/gi,
+        /<iframe/gi,
+        /<object/gi,
+        /<embed/gi
+    ];
+    return !xssPatterns.some(pattern => pattern.test(value));
+};
+
 // Валидация для создания/обновления контроллера
 const validateControllerCreate = [
-    body('serial_number').notEmpty().withMessage('Серийный номер обязателен'),
-    body('vendor').optional(),
-    body('model').optional(),
+    body('serial_number')
+        .notEmpty().withMessage('Серийный номер обязателен')
+        .custom((value) => {
+            if (!isXSSFree(value)) {
+                throw new Error('Серийный номер содержит недопустимые символы');
+            }
+            return true;
+        }),
+    body('vendor').optional()
+        .custom((value) => {
+            if (value && !isXSSFree(value)) {
+                throw new Error('Производитель содержит недопустимые символы');
+            }
+            return true;
+        }),
+    body('model').optional()
+        .custom((value) => {
+            if (value && !isXSSFree(value)) {
+                throw new Error('Модель содержит недопустимые символы');
+            }
+            return true;
+        }),
     body('building_id').isInt().withMessage('ID здания должен быть целым числом'),
-    body('status').isIn(['active', 'offline', 'warning', 'error'])
-        .withMessage('Статус должен быть одним из: active, offline, warning, error'),
+    body('status').isIn(['online', 'offline', 'maintenance'])
+        .withMessage('Статус должен быть одним из: online, offline, maintenance'),
     handleValidationErrors
 ];
 

@@ -76,7 +76,7 @@ const createMetric = async (req, res, next) => {
 };
 
 // Получение телеметрии от контроллеров
-const receiveTelementry = async (req, res, next) => {
+const receiveTelemetry = async (req, res, next) => {
     try {
         const result = await metricService.processTelemetry(req.body);
         return res.status(201).json(result);
@@ -85,7 +85,7 @@ const receiveTelementry = async (req, res, next) => {
             return res.status(404).json({ error: error.message });
         }
 
-        logger.error(`Error in receiveTelementry: ${error.message}`);
+        logger.error(`Error in receiveTelemetry: ${error.message}`);
         next(error);
     }
 };
@@ -144,7 +144,7 @@ module.exports = {
     getLastMetricsForAllControllers,
     getMetricsByControllerId,
     createMetric,
-    receiveTelementry,
+    receiveTelemetry,
     deleteMetric,
     getAggregatedMetrics,
     cleanupOldMetrics

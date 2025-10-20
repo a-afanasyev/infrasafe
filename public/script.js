@@ -1,7 +1,79 @@
 document.addEventListener('DOMContentLoaded', async function () {
+    // API Client для работы с JWT токенами
+    class APIClient {
+        constructor(baseURL) {
+            this.baseURL = baseURL;
+            this.token = localStorage.getItem('admin_token');
+        }
+
+        // Обновить токен
+        setToken(token) {
+            this.token = token;
+            if (token) {
+                localStorage.setItem('admin_token', token);
+            } else {
+                localStorage.removeItem('admin_token');
+            }
+        }
+
+        // Выполнить fetch запрос с автоматическим добавлением авторизации
+        async fetch(url, options = {}) {
+            // Подготавливаем заголовки
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+
+            // Добавляем авторизацию если есть токен
+            if (this.token) {
+                headers['Authorization'] = `Bearer ${this.token}`;
+            }
+
+            // Формируем полный URL
+            const fullURL = url.startsWith('http') ? url : `${this.baseURL}${url}`;
+
+            try {
+                const response = await fetch(fullURL, {
+                    ...options,
+                    headers
+                });
+
+                // Обрабатываем 401 ошибки (неавторизован)
+                if (response.status === 401) {
+                    console.warn('Токен недействителен, очищаем локальное хранилище');
+                    this.setToken(null);
+                    // Показываем уведомление и перенаправляем на логин если нужно
+                    this.handleUnauthorized();
+                }
+
+                return response;
+            } catch (error) {
+                console.error('Ошибка API запроса:', error);
+                throw error;
+            }
+        }
+
+        // Обработка ошибок авторизации
+        handleUnauthorized() {
+            // Показываем уведомление об ошибке авторизации
+            if (typeof showToast === 'function') {
+                showToast('Сессия истекла. Необходимо войти заново.', 'warning');
+            }
+            
+            // Если это админская страница, перенаправляем на логин
+            if (window.location.pathname.includes('admin.html')) {
+                setTimeout(() => {
+                    window.location.href = '/login.html';
+                }, 2000);
+            }
+        }
+    }
+
     // Define backend API URL (can be modified externally)
-//    const backendURL = window.BACKEND_URL || "https://infrasafe.aisolutions.uz/api/metrics";
-const backendURL = window.BACKEND_URL || "/api/buildings-metrics";
+    const backendURL = window.BACKEND_URL || "/api";
+    
+    // Создаем экземпляр API клиента
+    const apiClient = new APIClient(backendURL);
 
     // Добавляем необходимые CSS-стили для сворачиваемости сайдбара
     const sidebarStyles = document.createElement('style');
@@ -111,23 +183,402 @@ const backendURL = window.BACKEND_URL || "/api/buildings-metrics";
         .update-button:hover {
             background-color: #1565C0;
         }
+
+        /* Стили для Toast уведомлений */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            max-width: 300px;
+        }
+
+        .toast {
+            margin-bottom: 10px;
+            padding: 12px 16px 12px 45px;
+            border-radius: 5px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            font-size: 14px;
+            font-weight: 500;
+            color: white;
+            animation: toast-slide-in 0.3s ease-out;
+            cursor: pointer;
+            transition: opacity 0.3s ease;
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .toast::before {
+            content: '';
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 18px;
+            height: 18px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+
+        .toast-info::before {
+            content: 'ℹ️';
+            font-size: 16px;
+        }
+
+        .toast-success::before {
+            content: '✅';
+            font-size: 16px;
+        }
+
+        .toast-warning::before {
+            content: '⚠️';
+            font-size: 16px;
+        }
+
+        .toast-error::before {
+            content: '❌';
+            font-size: 16px;
+        }
+
+        .toast:hover {
+            opacity: 0.9;
+        }
+
+        .toast-info {
+            background-color: #2196F3;
+        }
+
+        .toast-success {
+            background-color: #4CAF50;
+        }
+
+        .toast-warning {
+            background-color: #FF9800;
+        }
+
+        .toast-error {
+            background-color: #F44336;
+        }
+
+        @keyframes toast-slide-in {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes toast-slide-out {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+
+        .toast.removing {
+            animation: toast-slide-out 0.3s ease-in forwards;
+        }
+
+        /* Skeleton Loading Styles */
+        .skeleton {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: skeleton-loading 1.5s infinite;
+        }
+
+        @keyframes skeleton-loading {
+            0% {
+                background-position: 200% 0;
+            }
+            100% {
+                background-position: -200% 0;
+            }
+        }
+
+        .skeleton-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .skeleton-table td {
+            padding: 12px 8px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .skeleton-row {
+            height: 16px;
+            border-radius: 4px;
+        }
+
+        .skeleton-row.wide {
+            width: 80%;
+        }
+
+        .skeleton-row.medium {
+            width: 60%;
+        }
+
+        .skeleton-row.narrow {
+            width: 40%;
+        }
+
+        .skeleton-map {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: skeleton-loading 1.5s infinite;
+            z-index: 999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: #666;
+        }
+
+        .skeleton-map::before {
+            content: '🗺️';
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.7;
+        }
+
+        .skeleton-map::after {
+            content: 'Загрузка карты...';
+            font-weight: 500;
+        }
+
+        .skeleton-dots {
+            display: inline-block;
+            animation: skeleton-dots 1.5s infinite;
+        }
+
+        @keyframes skeleton-dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60% { content: '...'; }
+            80%, 100% { content: ''; }
+        }
     `;
     document.head.appendChild(sidebarStyles);
 
-    // Создаём элемент для индикатора загрузки
-    const loadingIndicator = document.createElement('div');
-    loadingIndicator.id = 'loading-indicator';
-    loadingIndicator.innerHTML = 'Загрузка карты...';
-    loadingIndicator.style.position = 'absolute';
-    loadingIndicator.style.top = '50%';
-    loadingIndicator.style.left = '50%';
-    loadingIndicator.style.transform = 'translate(-50%, -50%)';
-    loadingIndicator.style.background = 'rgba(255, 255, 255, 0.8)';
-    loadingIndicator.style.padding = '10px 20px';
-    loadingIndicator.style.borderRadius = '5px';
-    loadingIndicator.style.zIndex = '1000';
-    loadingIndicator.style.boxShadow = '0 0 10px rgba(0,0,0,0.2)';
-    document.body.appendChild(loadingIndicator);
+    // Toast Manager для отображения уведомлений
+    class ToastManager {
+        constructor() {
+            this.container = this.createContainer();
+            this.queue = [];
+            this.maxVisible = 5; // Максимальное количество видимых уведомлений
+        }
+
+        createContainer() {
+            let container = document.querySelector('.toast-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.className = 'toast-container';
+                document.body.appendChild(container);
+            }
+            return container;
+        }
+
+        show(message, type = 'info', duration = 4000) {
+            // Проверяем количество видимых уведомлений
+            const visibleToasts = this.container.children.length;
+            if (visibleToasts >= this.maxVisible) {
+                // Добавляем в очередь если превышен лимит
+                this.queue.push({ message, type, duration });
+                return null;
+            }
+
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            
+            // Создаем контент с иконкой
+            const content = document.createElement('span');
+            content.textContent = message;
+            toast.appendChild(content);
+
+            // Добавляем кнопку закрытия
+            const closeBtn = document.createElement('span');
+            // ИСПРАВЛЕНИЕ XSS: Используем textContent вместо innerHTML
+            closeBtn.textContent = '×';
+            closeBtn.style.cssText = `
+                position: absolute;
+                top: 5px;
+                right: 10px;
+                cursor: pointer;
+                font-size: 18px;
+                font-weight: bold;
+                opacity: 0.7;
+                transition: opacity 0.2s;
+            `;
+            closeBtn.addEventListener('mouseover', () => closeBtn.style.opacity = '1');
+            closeBtn.addEventListener('mouseout', () => closeBtn.style.opacity = '0.7');
+            toast.appendChild(closeBtn);
+
+            // Добавляем возможность закрыть по клику
+            const removeToast = () => {
+                this.remove(toast);
+                this.processQueue(); // Обрабатываем очередь после удаления
+            };
+
+            toast.addEventListener('click', removeToast);
+            closeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                removeToast();
+            });
+
+            // Добавляем эффект прогресс-бара для автоматического удаления
+            if (duration > 0) {
+                const progressBar = document.createElement('div');
+                progressBar.style.cssText = `
+                    position: absolute;
+                    bottom: 0;
+                    left: 0;
+                    height: 3px;
+                    background: rgba(255, 255, 255, 0.3);
+                    width: 100%;
+                    animation: toast-progress ${duration}ms linear;
+                `;
+                toast.appendChild(progressBar);
+
+                // Добавляем CSS для анимации прогресс-бара
+                if (!document.querySelector('#toast-progress-style')) {
+                    const style = document.createElement('style');
+                    style.id = 'toast-progress-style';
+                    style.textContent = `
+                        @keyframes toast-progress {
+                            from { width: 100%; }
+                            to { width: 0%; }
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+
+                setTimeout(removeToast, duration);
+            }
+
+            this.container.appendChild(toast);
+            return toast;
+        }
+
+        processQueue() {
+            // Обрабатываем очередь уведомлений
+            if (this.queue.length > 0 && this.container.children.length < this.maxVisible) {
+                const next = this.queue.shift();
+                this.show(next.message, next.type, next.duration);
+            }
+        }
+
+        remove(toast) {
+            if (toast && toast.parentNode) {
+                toast.classList.add('removing');
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                }, 300); // Время анимации исчезновения
+            }
+        }
+
+        // Удобные методы для разных типов уведомлений
+        success(message, duration = 4000) {
+            return this.show(message, 'success', duration);
+        }
+
+        error(message, duration = 6000) {
+            return this.show(message, 'error', duration);
+        }
+
+        warning(message, duration = 5000) {
+            return this.show(message, 'warning', duration);
+        }
+
+        info(message, duration = 4000) {
+            return this.show(message, 'info', duration);
+        }
+    }
+
+    // Создаем глобальный экземпляр Toast Manager
+    const toastManager = new ToastManager();
+    
+    // Глобальная функция для показа Toast уведомлений
+    window.showToast = function(message, type = 'info', duration = 4000) {
+        return toastManager.show(message, type, duration);
+    };
+
+    // Создаём skeleton loader для карты
+    function createMapSkeleton() {
+        const skeleton = document.createElement('div');
+        skeleton.id = 'map-skeleton';
+        skeleton.className = 'skeleton-map';
+        return skeleton;
+    }
+
+    // Создаём skeleton loader для таблиц
+    function createTableSkeleton(rows = 5, columns = 4) {
+        const table = document.createElement('table');
+        table.className = 'skeleton-table';
+        
+        for (let i = 0; i < rows; i++) {
+            const row = document.createElement('tr');
+            for (let j = 0; j < columns; j++) {
+                const cell = document.createElement('td');
+                const skeletonDiv = document.createElement('div');
+                skeletonDiv.className = `skeleton skeleton-row ${j === 0 ? 'wide' : j === 1 ? 'medium' : 'narrow'}`;
+                cell.appendChild(skeletonDiv);
+                row.appendChild(cell);
+            }
+            table.appendChild(row);
+        }
+        
+        return table;
+    }
+
+    // Функции для управления skeleton loaders
+    function showMapSkeleton() {
+        const mapContainer = document.getElementById('map');
+        if (mapContainer && !document.getElementById('map-skeleton')) {
+            const skeleton = createMapSkeleton();
+            mapContainer.appendChild(skeleton);
+        }
+    }
+
+    function hideMapSkeleton() {
+        const skeleton = document.getElementById('map-skeleton');
+        if (skeleton) {
+            skeleton.remove();
+        }
+    }
+
+    function showTableSkeleton(container, rows = 5, columns = 4) {
+        if (container && !container.querySelector('.skeleton-table')) {
+            const skeleton = createTableSkeleton(rows, columns);
+            container.appendChild(skeleton);
+        }
+    }
+
+    function hideTableSkeleton(container) {
+        const skeleton = container?.querySelector('.skeleton-table');
+        if (skeleton) {
+            skeleton.remove();
+        }
+    }
+
+    // Добавляем skeleton для карты на начальном этапе
+    showMapSkeleton();
 
     // Инициализация карты
     const map = L.map('map').setView([41.32, 69.25], 13);
@@ -142,10 +593,9 @@ const backendURL = window.BACKEND_URL || "/api/buildings-metrics";
         prefix: false  // Это убирает "Leaflet"
     }).addAttribution('&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors').addTo(map);
 
-    // Инициализация контрола слоев карты
-    let mapLayersControl = null;
+    // Инициализация контрола слоев карты  
     if (typeof MapLayersControl !== 'undefined') {
-        mapLayersControl = new MapLayersControl(map);
+        window.mapLayersControl = new MapLayersControl(map);
         console.log('✅ MapLayersControl initialized');
     } else {
         console.warn('⚠️ MapLayersControl not found');
@@ -164,12 +614,21 @@ const backendURL = window.BACKEND_URL || "/api/buildings-metrics";
         container.style.color = '#333';
         container.style.backdropFilter = 'blur(8px)';
         container.style.border = '1px solid rgba(255, 255, 255, 0.2)';
-        container.innerHTML = `
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <img src="public/images/BSK-Logo-transparent.png" alt="BSK Logo" style="width: 35px; height: 35px; object-fit: contain;">
-                <span>Olmazor Holding Grand</span>
-            </div>
-        `;
+        // ИСПРАВЛЕНИЕ XSS: Создаем логотип через DOM API вместо innerHTML
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'display: flex; align-items: center; gap: 10px;';
+        
+        const img = document.createElement('img');
+        img.src = 'public/images/BSK-Logo-transparent.png';
+        img.alt = 'BSK Logo';
+        img.style.cssText = 'width: 35px; height: 35px; object-fit: contain;';
+        
+        const span = document.createElement('span');
+        span.textContent = 'Olmazor Holding Grand';
+        
+        wrapper.appendChild(img);
+        wrapper.appendChild(span);
+        container.appendChild(wrapper);
         return container;
     };
     ukControl.addTo(map);
@@ -226,23 +685,58 @@ const backendURL = window.BACKEND_URL || "/api/buildings-metrics";
                 switch(groupId) {
                     case 'ok-group':
                         text = `Нормальное (${count})`;
-                        header.innerHTML = `<div class="icon normal-icon"></div><span>${text}</span>`;
+                        // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                        header.innerHTML = '';
+                        const iconDiv1 = document.createElement('div');
+                        iconDiv1.className = 'icon normal-icon';
+                        const textSpan1 = document.createElement('span');
+                        textSpan1.textContent = text;
+                        header.appendChild(iconDiv1);
+                        header.appendChild(textSpan1);
                         break;
                     case 'warning-group':
                         text = `Предупреждение (${count})`;
-                        header.innerHTML = `<div class="icon warning-icon"></div><span>${text}</span>`;
+                        // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                        header.innerHTML = '';
+                        const iconDiv2 = document.createElement('div');
+                        iconDiv2.className = 'icon warning-icon';
+                        const textSpan2 = document.createElement('span');
+                        textSpan2.textContent = text;
+                        header.appendChild(iconDiv2);
+                        header.appendChild(textSpan2);
                         break;
                     case 'critical-group':
                         text = `Критическое (${count})`;
-                        header.innerHTML = `<div class="icon critical-icon"></div><span>${text}</span>`;
+                        // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                        header.innerHTML = '';
+                        const iconDiv3 = document.createElement('div');
+                        iconDiv3.className = 'icon critical-icon';
+                        const textSpan3 = document.createElement('span');
+                        textSpan3.textContent = text;
+                        header.appendChild(iconDiv3);
+                        header.appendChild(textSpan3);
                         break;
                     case 'no-group':
                         text = `Нет контроллеров (${count})`;
-                        header.innerHTML = `<div class="icon no-controller-icon"></div><span>${text}</span>`;
+                        // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                        header.innerHTML = '';
+                        const iconDiv4 = document.createElement('div');
+                        iconDiv4.className = 'icon no-controller-icon';
+                        const textSpan4 = document.createElement('span');
+                        textSpan4.textContent = text;
+                        header.appendChild(iconDiv4);
+                        header.appendChild(textSpan4);
                         break;
                     case 'leak-group':
                         text = `Протечка (${count})`;
-                        header.innerHTML = `<div class="icon leak-icon"></div><span>${text}</span>`;
+                        // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                        header.innerHTML = '';
+                        const iconDiv5 = document.createElement('div');
+                        iconDiv5.className = 'icon leak-icon';
+                        const textSpan5 = document.createElement('span');
+                        textSpan5.textContent = text;
+                        header.appendChild(iconDiv5);
+                        header.appendChild(textSpan5);
                         if (count > 0) {
                             header.classList.add('blinking-leak-header');
                         } else {
@@ -462,8 +956,8 @@ const backendURL = window.BACKEND_URL || "/api/buildings-metrics";
                 group.innerHTML = '';
             });
 
-            // Fetch data from the backend
-            const response = await fetch(backendURL);
+            // Fetch data from the backend using API client
+            const response = await apiClient.fetch('/buildings-metrics');
             const result = await response.json();
             const data = result.data || result; // Поддержка как нового формата (с pagination), так и старого
 
@@ -529,13 +1023,15 @@ const backendURL = window.BACKEND_URL || "/api/buildings-metrics";
                     : 'data/images/Water_No_Blue.png';
 
                 // Determine hot water status
-                //need to update procedure for hot water to show houses withoit hot water and check the difference betwee in and out pressure and temperature
-
-                const isHotWaterOK = item.hot_water_in_pressure && item.hot_water_out_pressure &&
-                                   item.hot_water_in_pressure >= 1 && item.hot_water_out_pressure >= 1;
-                const hotWaterImage = isHotWaterOK
-                    ? 'data/images/Water_Red.png'
-                    : 'data/images/Water_No_Red.png';
+                // Если здание не подключено к ГВС (hot_water === false), то это не ошибка
+                // Если подключено к ГВС (hot_water === true), то проверяем наличие и корректность данных
+                const isHotWaterOK = item.hot_water === false || 
+                                   (item.hot_water === true && 
+                                    item.hot_water_in_pressure && item.hot_water_out_pressure &&
+                                    item.hot_water_in_pressure >= 1 && item.hot_water_out_pressure >= 1);
+                const hotWaterImage = (item.hot_water === false) 
+                    ? 'data/images/Water_Red.png'  // Серая иконка для неподключенных зданий
+                    : (isHotWaterOK ? 'data/images/Water_Red.png' : 'data/images/Water_No_Red.png');
 
                 // Определяем статус датчика протечки
                 const hasLeak = item.leak_sensor === true;
@@ -654,7 +1150,9 @@ const backendURL = window.BACKEND_URL || "/api/buildings-metrics";
                     </tr>` : `
                     <tr>
                         <td><img src="data/images/Water_Red.png" alt="Hot_Water" style="width: 20px;" /></td>
-                        <td colspan="3" class="blinking-text-red"><strong>ГВС:</strong> Нет данных</td>
+                        <td colspan="3" ${item.hot_water === false ? '' : 'class="blinking-text-red"'}>
+                            <strong>ГВС:</strong> ${item.hot_water === false ? 'Не подключен к ГВС' : 'Нет данных'}
+                        </td>
                     </tr>`}
 
                     <!-- Leak Sensor Data -->
@@ -680,16 +1178,49 @@ const backendURL = window.BACKEND_URL || "/api/buildings-metrics";
                 if (sidebarGroup) {
                     const sidebarItem = document.createElement("div");
                     sidebarItem.classList.add("sidebar-item");
-                    sidebarItem.innerHTML = item.controller_id ? `
-                        <img src="${electricityImage}" alt="Electricity_Status" style="width: 15px;">
-                        ${isColdWaterOK ? `<img src="${coldWaterImage}" alt="Cold_Water_Status" style="width: 15px;">` : ''}
-                        ${isHotWaterOK ? `<img src="${hotWaterImage}" alt="Hot_Water_Status" style="width: 15px;">` : ''}
-                        <img src="${leakSensorImage}" alt="Leak_Sensor_Status" style="width: 15px;">
-                        ${item.building_name}
-                    ` : `
-                        <img src="data/images/no_controller.png" alt="No_Controller" style="width: 15px;">
-                        ${item.building_name}
-                    `;
+                    // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                    if (item.controller_id) {
+                        // Создаем элементы безопасным способом
+                        const elecImg = document.createElement('img');
+                        elecImg.src = electricityImage;
+                        elecImg.alt = 'Electricity_Status';
+                        elecImg.style.width = '15px';
+                        sidebarItem.appendChild(elecImg);
+                        
+                        if (isColdWaterOK) {
+                            const coldWaterImg = document.createElement('img');
+                            coldWaterImg.src = coldWaterImage;
+                            coldWaterImg.alt = 'Cold_Water_Status';
+                            coldWaterImg.style.width = '15px';
+                            sidebarItem.appendChild(coldWaterImg);
+                        }
+                        
+                        if (item.hot_water !== false) {
+                            const hotWaterImg = document.createElement('img');
+                            hotWaterImg.src = hotWaterImage;
+                            hotWaterImg.alt = 'Hot_Water_Status';
+                            hotWaterImg.style.width = '15px';
+                            sidebarItem.appendChild(hotWaterImg);
+                        }
+                        
+                        const leakImg = document.createElement('img');
+                        leakImg.src = leakSensorImage;
+                        leakImg.alt = 'Leak_Sensor_Status';
+                        leakImg.style.width = '15px';
+                        sidebarItem.appendChild(leakImg);
+                        
+                        const buildingNameText = document.createTextNode(item.building_name || '');
+                        sidebarItem.appendChild(buildingNameText);
+                    } else {
+                        const noControllerImg = document.createElement('img');
+                        noControllerImg.src = 'data/images/no_controller.png';
+                        noControllerImg.alt = 'No_Controller';
+                        noControllerImg.style.width = '15px';
+                        sidebarItem.appendChild(noControllerImg);
+                        
+                        const buildingNameText = document.createTextNode(item.building_name || '');
+                        sidebarItem.appendChild(buildingNameText);
+                    }
 
                     sidebarItem.addEventListener("click", function () {
                         // Сохраняем координаты и уникальный ID маркера для надежности
@@ -725,11 +1256,8 @@ const backendURL = window.BACKEND_URL || "/api/buildings-metrics";
             // Обновляем счетчики элементов в заголовках и заголовок группы протечек
             updateGroupHeaders();
 
-            // Скрываем индикатор загрузки
-            const loadingIndicator = document.getElementById('loading-indicator');
-            if (loadingIndicator) {
-                loadingIndicator.style.display = 'none';
-            }
+            // Скрываем skeleton loader карты
+            hideMapSkeleton();
 
             // Обновляем время последнего обновления
             lastUpdateTime = new Date(); // Устанавливаем новое время обновления
@@ -745,12 +1273,12 @@ const backendURL = window.BACKEND_URL || "/api/buildings-metrics";
             return true;
         } catch (error) {
             console.error("Error loading data:", error);
-            // Показываем ошибку в индикаторе загрузки
-            const loadingIndicator = document.getElementById('loading-indicator');
-            if (loadingIndicator) {
-                loadingIndicator.innerHTML = 'Ошибка загрузки данных';
-                loadingIndicator.style.background = 'rgba(255, 200, 200, 0.9)';
-            }
+            
+            // Показываем Toast уведомление об ошибке
+            showToast(`Ошибка загрузки данных: ${error.message || 'Неизвестная ошибка'}`, 'error');
+            
+            // Скрываем skeleton и показываем ошибку
+            hideMapSkeleton();
             return false;
         }
     }

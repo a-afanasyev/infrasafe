@@ -17,9 +17,14 @@ class Alert {
             const offset = (page - 1) * limit;
             const validOrder = ['asc', 'desc'].includes(order.toLowerCase()) ? order : 'desc';
 
-            // Проверка допустимости поля сортировки
-            const validColumns = ['alert_id', 'severity', 'status', 'created_at', 'resolved_at'];
-            const sortColumn = validColumns.includes(sort) ? sort : 'created_at';
+            // ИСПРАВЛЕНИЕ SQL INJECTION: Валидация параметров сортировки
+            const { validateSortOrder } = require('../utils/queryValidation');
+            
+            // Определяем доступные колонки для алертов
+            const allowedSortColumns = ['alert_id', 'severity', 'status', 'created_at', 'resolved_at'];
+            
+            // Валидируем параметры сортировки через систему безопасности
+            const { validSort, validOrder: validOrderSecure } = validateSortOrder('alerts', sort, validOrder);
 
             let query = `
                 SELECT a.*, at.type_name, m.controller_id, c.serial_number as controller_serial, b.name as building_name
@@ -37,8 +42,8 @@ class Alert {
                 params.push(status);
             }
 
-            // Добавление сортировки
-            query += ` ORDER BY a.${sortColumn} ${validOrder}`;
+            // Добавление сортировки с защитой от SQL injection
+            query += ` ORDER BY a.${validSort} ${validOrderSecure}`;
 
             // Добавление пагинации
             query += ' LIMIT $' + (params.length + 1) + ' OFFSET $' + (params.length + 2);

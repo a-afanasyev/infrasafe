@@ -81,6 +81,103 @@ INSERT INTO water_measurement_points (building_id, point_type, location, meter_s
 (6, 'hot_water_supply', 'Подвал, подача ГВС', 'HWS-006-2024', '2024-02-15', 965.2, '2024-12-01', 'active'),
 (6, 'hot_water_return', 'Подвал, обратка ГВС', 'HWR-006-2024', '2024-02-15', 960.8, '2024-12-01', 'active');
 
+-- Вставка контроллеров для каждого здания (1 контроллер на здание)
+INSERT INTO controllers (serial_number, vendor, model, building_id, status, installed_at, last_heartbeat) VALUES
+('CTRL-NAV-001', 'Schneider Electric', 'PowerLogic PM8000', 1, 'online', '2024-01-15 10:00:00', NOW() - INTERVAL '5 minutes'),
+('CTRL-NAV-002', 'Siemens', 'SICAM P855', 2, 'online', '2024-01-15 10:30:00', NOW() - INTERVAL '3 minutes'),
+('CTRL-NAV-003', 'ABB', 'REC670', 3, 'online', '2024-01-15 11:00:00', NOW() - INTERVAL '7 minutes'),
+('CTRL-CHI-004', 'General Electric', 'Multilin 869', 4, 'online', '2024-01-16 09:00:00', NOW() - INTERVAL '2 minutes'),
+('CTRL-CHI-005', 'Schneider Electric', 'Micom P139', 5, 'online', '2024-01-16 09:30:00', NOW() - INTERVAL '4 minutes'),
+('CTRL-CHI-006', 'Siemens', 'SICAM A8000', 6, 'online', '2024-01-16 10:00:00', NOW() - INTERVAL '6 minutes'),
+('CTRL-MUS-007', 'ABB', 'REF615', 7, 'warning', '2024-01-17 08:00:00', NOW() - INTERVAL '15 minutes'),
+('CTRL-MUS-008', 'General Electric', 'Multilin F650', 8, 'online', '2024-01-17 08:30:00', NOW() - INTERVAL '1 minute'),
+('CTRL-RUS-009', 'Schneider Electric', 'Sepam 1000+', 9, 'online', '2024-01-18 14:00:00', NOW() - INTERVAL '8 minutes'),
+('CTRL-RUS-010', 'Siemens', 'SICAM P855', 10, 'online', '2024-01-18 14:30:00', NOW() - INTERVAL '3 minutes'),
+('CTRL-YUN-011', 'ABB', 'REC670', 11, 'online', '2024-01-19 11:00:00', NOW() - INTERVAL '5 minutes'),
+('CTRL-YUN-012', 'General Electric', 'Multilin 869', 12, 'offline', '2024-01-19 11:30:00', NOW() - INTERVAL '2 hours'),
+('CTRL-BAB-013', 'Schneider Electric', 'PowerLogic PM8000', 13, 'online', '2024-01-20 13:00:00', NOW() - INTERVAL '10 minutes'),
+('CTRL-BAB-014', 'Siemens', 'SICAM A8000', 14, 'online', '2024-01-20 13:30:00', NOW() - INTERVAL '7 minutes'),
+('CTRL-TEM-015', 'ABB', 'REF615', 15, 'online', '2024-01-21 16:00:00', NOW() - INTERVAL '4 minutes'),
+('CTRL-TEM-016', 'General Electric', 'Multilin F650', 16, 'warning', '2024-01-21 16:30:00', NOW() - INTERVAL '20 minutes'),
+('CTRL-TEM-017', 'Schneider Electric', 'Sepam 1000+', 17, 'online', '2024-01-21 17:00:00', NOW() - INTERVAL '2 minutes');
+
+-- Создание партиции для текущего месяца (если не существует)
+CREATE TABLE IF NOT EXISTS metrics_2025_09 PARTITION OF metrics
+FOR VALUES FROM ('2025-09-01 00:00:00+00') TO ('2025-10-01 00:00:00+00');
+
+-- Вставка реалистичных метрик на основе данных infrasafe.uz (по 2 записи на каждый контроллер)
+INSERT INTO metrics (controller_id, timestamp, electricity_ph1, electricity_ph2, electricity_ph3, 
+                    cold_water_pressure, cold_water_temp, hot_water_in_pressure, hot_water_out_pressure, 
+                    hot_water_in_temp, hot_water_out_temp, leak_sensor, air_temp, humidity) VALUES
+
+-- Контроллер 1 (Навои-001) - 2 записи
+(1, NOW() - INTERVAL '1 hour', 217.00, 216.00, 218.00, 5.00, 15.00, 2.84, 2.87, 31.70, 31.90, false, 22.5, 45.2),
+(1, NOW() - INTERVAL '30 minutes', 219.50, 217.30, 220.10, 5.20, 15.50, 2.90, 2.85, 32.10, 32.20, false, 23.1, 44.8),
+
+-- Контроллер 2 (Навои-002) - 2 записи  
+(2, NOW() - INTERVAL '1 hour', 191.03, 205.10, 229.25, 6.83, 19.17, NULL, NULL, NULL, NULL, false, 20.55, 36.63),
+(2, NOW() - INTERVAL '30 minutes', 193.50, 207.80, 231.00, 6.90, 19.50, NULL, NULL, NULL, NULL, false, 21.20, 37.10),
+
+-- Контроллер 3 (Навои-003) - 2 записи
+(3, NOW() - INTERVAL '1 hour', 206.11, 223.00, 212.20, 6.94, 18.66, NULL, NULL, NULL, NULL, false, 26.53, 40.20),
+(3, NOW() - INTERVAL '30 minutes', 208.30, 225.50, 214.80, 7.10, 18.90, NULL, NULL, NULL, NULL, false, 27.00, 39.80),
+
+-- Контроллер 4 (Чиланзар-004) - 2 записи
+(4, NOW() - INTERVAL '1 hour', 219.66, 210.37, 222.14, 6.08, 12.55, NULL, NULL, NULL, NULL, false, 20.68, 45.27),
+(4, NOW() - INTERVAL '30 minutes', 221.20, 212.80, 224.50, 6.25, 13.10, NULL, NULL, NULL, NULL, false, 21.30, 44.90),
+
+-- Контроллер 5 (Чиланзар-005) - 2 записи
+(5, NOW() - INTERVAL '1 hour', 215.82, 203.15, 205.82, 6.32, 18.12, 6.81, 6.02, 60.78, 52.03, false, 27.70, 45.58),
+(5, NOW() - INTERVAL '30 minutes', 218.10, 205.70, 208.30, 6.50, 18.80, 6.95, 6.15, 61.20, 52.50, false, 28.20, 46.10),
+
+-- Контроллер 6 (Чиланзар-006) - 2 записи
+(6, NOW() - INTERVAL '1 hour', 196.47, 231.94, 214.90, 6.86, 14.78, 7.03, 6.03, 45.87, 62.53, true, 20.98, 37.71),
+(6, NOW() - INTERVAL '30 minutes', 198.80, 234.20, 217.30, 7.00, 15.20, 7.20, 6.20, 46.50, 63.10, false, 21.50, 38.20),
+
+-- Контроллер 7 (Мустакиллик-007) - 2 записи
+(7, NOW() - INTERVAL '1 hour', 203.81, 212.17, 208.62, 6.36, 13.06, 6.83, 6.30, 49.30, 62.57, false, 26.27, 47.41),
+(7, NOW() - INTERVAL '30 minutes', 206.20, 214.80, 211.10, 6.50, 13.70, 7.00, 6.45, 50.10, 63.20, false, 26.90, 48.00),
+
+-- Контроллер 8 (Мустакиллик-008) - 2 записи
+(8, NOW() - INTERVAL '1 hour', 223.18, 228.91, 219.54, 6.82, 18.40, 6.55, 6.09, 64.04, 56.15, false, 23.26, 59.18),
+(8, NOW() - INTERVAL '30 minutes', 225.70, 231.50, 222.10, 7.00, 19.10, 6.70, 6.25, 64.80, 56.90, false, 24.00, 60.20),
+
+-- Контроллер 9 (Руставели-009) - 2 записи
+(9, NOW() - INTERVAL '1 hour', 216.23, 202.41, 234.19, 6.11, 17.89, 7.18, 5.96, 56.87, 55.30, false, 25.58, 58.21),
+(9, NOW() - INTERVAL '30 minutes', 218.90, 205.10, 237.00, 6.30, 18.50, 7.35, 6.10, 57.50, 56.00, false, 26.20, 59.00),
+
+-- Контроллер 10 (Руставели-010) - 2 записи
+(10, NOW() - INTERVAL '1 hour', 220.87, 201.54, 207.44, 6.91, 13.32, 5.84, 5.88, 56.15, 60.52, true, 22.60, 55.79),
+(10, NOW() - INTERVAL '30 minutes', 223.50, 204.20, 210.10, 7.10, 14.00, 6.00, 6.05, 56.90, 61.20, false, 23.30, 56.50),
+
+-- Контроллер 11 (Юнусабад-011) - 2 записи
+(11, NOW() - INTERVAL '1 hour', 200.23, 207.83, 220.64, 6.95, 13.86, 7.05, 6.10, 59.35, 60.64, false, 20.57, 33.61),
+(11, NOW() - INTERVAL '30 minutes', 202.80, 210.50, 223.30, 7.15, 14.50, 7.25, 6.30, 60.10, 61.40, false, 21.20, 34.30),
+
+-- Контроллер 12 (Юнусабад-012) - 2 записи (offline controller)
+(12, NOW() - INTERVAL '3 hours', 213.69, 207.52, 221.90, 6.00, 14.92, 6.45, 5.95, 52.80, 58.45, false, 24.15, 42.30),
+(12, NOW() - INTERVAL '2.5 hours', 215.20, 209.10, 224.50, 6.20, 15.40, 6.60, 6.10, 53.50, 59.20, false, 24.80, 43.00),
+
+-- Контроллер 13 (Бабура-013) - 2 записи
+(13, NOW() - INTERVAL '1 hour', 198.45, 224.78, 211.33, 6.67, 16.23, 6.92, 6.18, 61.47, 57.82, false, 22.94, 51.05),
+(13, NOW() - INTERVAL '30 minutes', 201.10, 227.40, 214.00, 6.85, 16.90, 7.10, 6.35, 62.20, 58.50, false, 23.60, 52.20),
+
+-- Контроллер 14 (Бабура-014) - 2 записи
+(14, NOW() - INTERVAL '1 hour', 210.89, 215.63, 207.26, 6.28, 15.47, 6.73, 6.25, 58.91, 61.08, false, 25.72, 49.84),
+(14, NOW() - INTERVAL '30 minutes', 213.50, 218.20, 210.00, 6.45, 16.10, 6.90, 6.40, 59.70, 61.80, false, 26.40, 50.60),
+
+-- Контроллер 15 (Темура-015) - 2 записи
+(15, NOW() - INTERVAL '1 hour', 205.72, 218.94, 213.58, 6.55, 17.81, 6.89, 6.14, 55.43, 59.76, false, 21.83, 44.67),
+(15, NOW() - INTERVAL '30 minutes', 208.30, 221.60, 216.20, 6.75, 18.50, 7.05, 6.30, 56.20, 60.50, false, 22.50, 45.40),
+
+-- Контроллер 16 (Темура-016) - 2 записи (warning status)
+(16, NOW() - INTERVAL '1 hour', 192.15, 209.87, 224.36, 5.83, 12.94, NULL, NULL, NULL, NULL, false, 23.48, 38.92),
+(16, NOW() - INTERVAL '30 minutes', 194.80, 212.50, 227.00, 6.00, 13.60, NULL, NULL, NULL, NULL, false, 24.10, 39.70),
+
+-- Контроллер 17 (Темура-017) - 2 записи
+(17, NOW() - INTERVAL '1 hour', 217.34, 203.76, 219.82, 6.41, 14.35, NULL, NULL, NULL, NULL, false, 26.15, 47.29),
+(17, NOW() - INTERVAL '30 minutes', 220.00, 206.40, 222.50, 6.60, 15.00, NULL, NULL, NULL, NULL, false, 26.80, 48.10);
+
 -- Логируем успешную загрузку тестовых данных
 INSERT INTO logs (timestamp, log_level, message)
-VALUES (NOW(), 'INFO', 'Тестовые данные для InfraSafe (Ташкент) успешно загружены: 8 трансформаторов, 10 линий, 5 линий водоснабжения, 5 поставщиков воды, 17 зданий');
+VALUES (NOW(), 'INFO', 'Тестовые данные для InfraSafe (Ташкент) успешно загружены: 8 трансформаторов, 10 линий, 5 линий водоснабжения, 5 поставщиков воды, 17 зданий, 17 контроллеров, 34 записи метрик');

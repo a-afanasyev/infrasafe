@@ -1,0 +1,27 @@
+[]
+{
+    "test_name": "Get Buildings List",
+    "endpoint": "GET /api/buildings",
+    "requests": 100,
+    "concurrency": 10,
+    "success_count": 0,
+    "error_count": 100,
+    "success_rate": 0,
+    "total_duration": 3.890204000,
+    "avg_response_time": .002,
+    "requests_per_second": 25.70,
+    "timestamp": "2025-08-07T10:57:44Z"
+}
+{
+    "test_name": "Get Controllers List",
+    "endpoint": "GET /api/controllers",
+    "requests": 100,
+    "concurrency": 10,
+    "success_count": 0,
+    "error_count": 100,
+    "success_rate": 0,
+    "total_duration": 3.658717000,
+    "avg_response_time": .001,
+    "requests_per_second": 27.33,
+    "timestamp": "2025-08-07T10:57:48Z"
+}

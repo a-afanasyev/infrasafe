@@ -28,12 +28,16 @@ class Metric {
             ];
             const sortColumn = validColumns.includes(sort) ? sort : 'timestamp';
 
+            // ИСПРАВЛЕНИЕ SQL INJECTION: Валидация параметров сортировки
+            const { validateSortOrder } = require('../utils/queryValidation');
+            const { validSort, validOrder: validOrderSecure } = validateSortOrder('metrics', sortColumn, validOrder);
+            
             // Выборка с JOIN для получения данных о контроллерах
             const metricsQuery = `
                 SELECT m.*, c.serial_number as controller_serial
                 FROM metrics m
                 LEFT JOIN controllers c ON m.controller_id = c.controller_id
-                ORDER BY m.${sortColumn} ${validOrder}
+                ORDER BY m.${validSort} ${validOrderSecure}
                 LIMIT $1 OFFSET $2
             `;
 

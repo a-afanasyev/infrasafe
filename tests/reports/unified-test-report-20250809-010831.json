@@ -1,0 +1,39 @@
+{
+    "framework_info": {
+        "name": "InfraSafe Unified Test Framework",
+        "version": "1.0.0",
+        "timestamp": "2025-08-09T01:08:41+05:00",
+        "api_url": "http://localhost:3000",
+        "total_duration": 9
+    },
+    "execution_summary": {
+        "total_modules": 1,
+        "modules_passed": 0,
+        "modules_failed": 1,
+        "overall_status": "FAIL"
+    },
+    "module_results": [
+        [0;36m⚡ Выполнение Enhanced Load тестов...[0m
+[0;34m   Всего запросов: [0m
+[0;32m   Успешно: [0m
+[0;31m   Ошибки: [0m
+[0;34m   Успешность: %[0m
+[0;34m   Время: 9с[0m
+{
+    "module": "load",
+    "total_requests": ,
+    "successful_requests": ,
+    "failed_requests": ,
+    "success_rate": ,
+    "duration": 9,
+    "exit_code": 1,
+    "status": "FAIL",
+    "report_file": "tests/reports/load-test-report-20250809-010832.json"
+}
+    ],
+    "environment": {
+        "api_port": "3000",
+        "db_url": "postgresql://postgres@localhost:5432/infrasafe",
+        "test_user": "testuser"
+    }
+}

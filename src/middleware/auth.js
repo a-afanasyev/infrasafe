@@ -37,7 +37,7 @@ const authenticateJWT = async (req, res, next) => {
         jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', async (err, decoded) => {
             if (err) {
                 logger.warn(`Неудачная попытка аутентификации: ${err.message}`);
-                return res.status(403).json({
+                return res.status(401).json({
                     success: false,
                     message: 'Invalid or expired token'
                 });

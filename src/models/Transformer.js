@@ -8,6 +8,12 @@ class Transformer {
         this.name = data.name;
         this.power_kva = data.power_kva;
         this.voltage_kv = data.voltage_kv;
+        this.latitude = data.latitude;
+        this.longitude = data.longitude;
+        this.location = data.location;
+        this.status = data.status;
+        this.manufacturer = data.manufacturer;
+        this.model = data.model;
         this.created_at = data.created_at;
         this.updated_at = data.updated_at;
         this.primary_buildings = data.primary_buildings || [];

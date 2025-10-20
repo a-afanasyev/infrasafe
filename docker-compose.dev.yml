@@ -16,6 +16,7 @@ services:
       - ./contacts.html:/usr/share/nginx/html/contacts.html:ro
       - ./documentation.html:/usr/share/nginx/html/documentation.html:ro
       - ./test-layers.html:/usr/share/nginx/html/test-layers.html:ro
+      - ./public/login.html:/usr/share/nginx/html/login.html:ro
       - ./docs/MAP_LAYERS_GUIDE.md:/usr/share/nginx/html/MAP_LAYERS_GUIDE.md:ro
       
       # Монтируем CSS
@@ -70,6 +71,7 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - JWT_SECRET=dev-secret-key-change-in-production
+      - JWT_REFRESH_SECRET=dev-refresh-secret-key-change-in-production
       - CORS_ORIGINS=http://localhost:8080,http://localhost:3000
     depends_on:
       postgres:
@@ -91,7 +93,7 @@ services:
   postgres:
     image: postgis/postgis:15-3.3
     ports:
-      - "5432:5432"
+      - "5435:5432"
     environment:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_USER=postgres

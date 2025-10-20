@@ -84,6 +84,122 @@ document.addEventListener("DOMContentLoaded", function () {
         return value !== null && value !== undefined && value !== '' ? value : defaultValue;
     }
 
+    // БЕЗОПАСНАЯ функция для создания ячеек таблицы (ИСПРАВЛЕНИЕ XSS)
+    function createSecureTableCell(content, attributes = {}) {
+        const cell = document.createElement('td');
+        
+        // Добавляем атрибуты
+        Object.keys(attributes).forEach(key => {
+            if (key === 'rowspan' || key === 'colspan') {
+                cell.setAttribute(key, attributes[key]);
+            } else if (key === 'class') {
+                cell.className = attributes[key];
+            }
+        });
+        
+        // Безопасно устанавливаем содержимое
+        if (typeof content === 'string') {
+            cell.textContent = content;
+        } else if (content && content.nodeType) {
+            // Если передан DOM элемент
+            cell.appendChild(content);
+        } else {
+            cell.textContent = String(content || '');
+        }
+        
+        return cell;
+    }
+
+    // БЕЗОПАСНЫЕ функции для отображения статических сообщений (ИСПРАВЛЕНИЕ СРЕДНИХ XSS)
+    function showLoadingMessage(tableBodySelector, colSpan) {
+        const tableBody = document.querySelector(tableBodySelector);
+        if (tableBody) {
+            const loadingRow = document.createElement('tr');
+            loadingRow.className = 'loading-row';
+            const loadingCell = document.createElement('td');
+            loadingCell.setAttribute('colspan', colSpan);
+            loadingCell.textContent = 'Загрузка данных...';
+            loadingRow.appendChild(loadingCell);
+            tableBody.innerHTML = ''; // Очищаем перед добавлением
+            tableBody.appendChild(loadingRow);
+        }
+    }
+
+    function showErrorMessage(tableBodySelector, colSpan, message = 'Ошибка загрузки данных') {
+        const tableBody = document.querySelector(tableBodySelector);
+        if (tableBody) {
+            const errorRow = document.createElement('tr');
+            const errorCell = document.createElement('td');
+            errorCell.setAttribute('colspan', colSpan);
+            errorCell.style.textAlign = 'center';
+            errorCell.style.color = 'red';
+            errorCell.textContent = message;
+            errorRow.appendChild(errorCell);
+            tableBody.innerHTML = ''; // Очищаем перед добавлением
+            tableBody.appendChild(errorRow);
+        }
+    }
+
+    function showNoDataMessage(tableBody, colSpan, message = 'Нет данных') {
+        const noDataRow = document.createElement('tr');
+        const noDataCell = document.createElement('td');
+        noDataCell.setAttribute('colspan', colSpan);
+        noDataCell.style.textAlign = 'center';
+        noDataCell.textContent = message;
+        noDataRow.appendChild(noDataCell);
+        return noDataRow;
+    }
+
+    // БЕЗОПАСНАЯ функция для создания строки таблицы buildings (ИСПРАВЛЕНИЕ XSS)
+    function createSecureBuildingRow(building, rowType) {
+        const row = document.createElement('tr');
+        row.className = `building-row-${rowType}`;
+        
+        if (rowType === 1) {
+            // Строка 1: Основная информация
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'item-checkbox';
+            checkbox.setAttribute('data-id', building.building_id);
+            
+            const editBtn = document.createElement('button');
+            editBtn.className = 'btn-sm';
+            editBtn.textContent = 'Изменить';
+            editBtn.onclick = () => editBuilding(building.building_id);
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'btn-sm btn-danger';
+            deleteBtn.textContent = 'Удалить';
+            deleteBtn.onclick = () => deleteBuilding(building.building_id);
+            
+            const buttonCell = document.createElement('td');
+            buttonCell.setAttribute('rowspan', '3');
+            buttonCell.appendChild(editBtn);
+            buttonCell.appendChild(document.createElement('br'));
+            buttonCell.appendChild(deleteBtn);
+            
+            row.appendChild(createSecureTableCell(checkbox, {rowspan: 3}));
+            row.appendChild(createSecureTableCell(safeValue(building.building_id), {rowspan: 3}));
+            row.appendChild(createSecureTableCell(safeValue(building.name), {rowspan: 3}));
+            row.appendChild(createSecureTableCell(safeValue(building.address)));
+            row.appendChild(createSecureTableCell(safeValue(building.town)));
+            row.appendChild(createSecureTableCell(safeValue(building.region)));
+            row.appendChild(createSecureTableCell(formatNumber(building.latitude, 6)));
+            row.appendChild(createSecureTableCell(formatNumber(building.longitude, 6)));
+            row.appendChild(buttonCell);
+            
+        } else if (rowType === 2) {
+            // Строка 2: Инфраструктура
+            row.appendChild(createSecureTableCell(safeValue(building.management_company)));
+            row.appendChild(createSecureTableCell(building.hot_water ? "Да" : "Нет"));
+            row.appendChild(createSecureTableCell(safeValue(building.primary_transformer_name)));
+            row.appendChild(createSecureTableCell(safeValue(building.backup_transformer_name)));
+            row.appendChild(createSecureTableCell(safeValue(building.primary_line_name)));
+        }
+        
+        return row;
+    }
+
     // Функция для форматирования чисел
     function formatNumber(value, decimals = 2) {
         if (value === null || value === undefined || value === '') return 'N/A';
@@ -182,8 +298,8 @@ document.addEventListener("DOMContentLoaded", function () {
         console.log('✅ loadControllers function called successfully');
         if (dataLoaded.controllers) return;
 
-        const tableBody = document.querySelector("#controllers-table tbody");
-        tableBody.innerHTML = `<tr class="loading-row"><td colspan="7">Загрузка данных...</td></tr>`;
+        // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
+        showLoadingMessage("#controllers-table tbody", "8");
 
         try {
             const data = await loadData('/api/admin/controllers', 'controllers');
@@ -192,7 +308,8 @@ document.addEventListener("DOMContentLoaded", function () {
             dataLoaded.controllers = true;
         } catch (error) {
             console.error("Error loading controllers:", error);
-            tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: red;">Ошибка загрузки данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение ошибки
+            showErrorMessage("#controllers-table tbody", "8");
         }
     }
 
@@ -206,23 +323,52 @@ document.addEventListener("DOMContentLoaded", function () {
                 const statusClass = controller.status === 'online' ? 'status-online' :
                                   controller.status === 'offline' ? 'status-offline' : 'status-maintenance';
 
-                row.innerHTML = `
-                    <td><input type="checkbox" class="item-checkbox" data-id="${controller.controller_id}"></td>
-                    <td>${safeValue(controller.controller_id)}</td>
-                    <td>${safeValue(controller.serial_number)}</td>
-                    <td>${safeValue(controller.vendor)}</td>
-                    <td>${safeValue(controller.model)}</td>
-                    <td>${safeValue(controller.building_id)}</td>
-                    <td><span class="status-badge ${statusClass}">${getStatusLabel(controller.status)}</span></td>
-                    <td>
-                        <button onclick="editController(${controller.controller_id})" class="btn-sm">Изменить</button>
-                        <button onclick="deleteController(${controller.controller_id})" class="btn-sm btn-danger">Удалить</button>
-                    </td>
-                `;
+                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'item-checkbox';
+                checkbox.setAttribute('data-id', controller.controller_id);
+                
+                const statusSpan = document.createElement('span');
+                statusSpan.className = `status-badge ${statusClass}`;
+                statusSpan.textContent = getStatusLabel(controller.status);
+                
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn-sm';
+                editBtn.textContent = 'Изменить';
+                editBtn.onclick = () => editController(controller.controller_id);
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn-sm btn-danger';
+                deleteBtn.textContent = 'Удалить';
+                deleteBtn.onclick = () => deleteController(controller.controller_id);
+                
+                const buttonCell = document.createElement('td');
+                buttonCell.appendChild(editBtn);
+                buttonCell.appendChild(deleteBtn);
+                
+                const statusCell = document.createElement('td');
+                statusCell.appendChild(statusSpan);
+                
+                row.appendChild(createSecureTableCell(checkbox));
+                row.appendChild(createSecureTableCell(safeValue(controller.controller_id)));
+                row.appendChild(createSecureTableCell(safeValue(controller.serial_number)));
+                row.appendChild(createSecureTableCell(safeValue(controller.vendor)));
+                row.appendChild(createSecureTableCell(safeValue(controller.model)));
+                row.appendChild(createSecureTableCell(safeValue(controller.building_id)));
+                row.appendChild(statusCell);
+                row.appendChild(buttonCell);
                 newTableBody.appendChild(row);
             });
         } else {
-            newTableBody.innerHTML = `<tr><td colspan="8" style="text-align: center;">Нет данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
+            const noDataRow = document.createElement('tr');
+            const noDataCell = document.createElement('td');
+            noDataCell.setAttribute('colspan', '8');
+            noDataCell.style.textAlign = 'center';
+            noDataCell.textContent = 'Нет данных';
+            noDataRow.appendChild(noDataCell);
+            newTableBody.appendChild(noDataRow);
         }
 
         const table = document.querySelector("#controllers-table");
@@ -239,8 +385,8 @@ document.addEventListener("DOMContentLoaded", function () {
         console.log('✅ loadMetrics function called successfully');
         if (dataLoaded.metrics) return;
 
-        const tableBody = document.querySelector("#metrics-table tbody");
-        tableBody.innerHTML = `<tr class="loading-row"><td colspan="13">Загрузка данных...</td></tr>`;
+        // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
+        showLoadingMessage("#metrics-table tbody", "13");
 
         try {
             const data = await loadData('/api/admin/metrics', 'metrics');
@@ -249,7 +395,8 @@ document.addEventListener("DOMContentLoaded", function () {
             dataLoaded.metrics = true;
         } catch (error) {
             console.error("Error loading metrics:", error);
-            tableBody.innerHTML = `<tr><td colspan="13" style="text-align: center; color: red;">Ошибка загрузки данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение ошибки
+            showErrorMessage("#metrics-table tbody", "13");
         }
     }
 
@@ -260,27 +407,51 @@ document.addEventListener("DOMContentLoaded", function () {
         if (data && data.length > 0) {
             data.forEach((metric) => {
                 const row = document.createElement("tr");
-                row.innerHTML = `
-                    <td><input type="checkbox" class="item-checkbox" data-id="${metric.metric_id}"></td>
-                    <td>${safeValue(metric.metric_id)}</td>
-                    <td>${safeValue(metric.controller_id)}</td>
-                    <td>${formatDate(metric.timestamp)}</td>
-                    <td>${formatNumber(metric.electricity_ph1, 1)}</td>
-                    <td>${formatNumber(metric.electricity_ph2, 1)}</td>
-                    <td>${formatNumber(metric.electricity_ph3, 1)}</td>
-                    <td>${formatNumber(metric.cold_water_pressure, 2)}</td>
-                    <td>${formatNumber(metric.hot_water_in_temp, 1)}</td>
-                    <td>${formatNumber(metric.air_temp, 1)}</td>
-                    <td>${formatNumber(metric.humidity, 1)}</td>
-                    <td>${metric.leak_sensor ? '<span class="alert-badge">Есть</span>' : '<span class="ok-badge">Нет</span>'}</td>
-                    <td>
-                        <button onclick="deleteMetric(${metric.metric_id})" class="btn-sm btn-danger">Удалить</button>
-                    </td>
-                `;
+                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'item-checkbox';
+                checkbox.setAttribute('data-id', metric.metric_id);
+                
+                const leakSensorSpan = document.createElement('span');
+                leakSensorSpan.className = metric.leak_sensor ? 'alert-badge' : 'ok-badge';
+                leakSensorSpan.textContent = metric.leak_sensor ? 'Есть' : 'Нет';
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn-sm btn-danger';
+                deleteBtn.textContent = 'Удалить';
+                deleteBtn.onclick = () => deleteMetric(metric.metric_id);
+                
+                const leakSensorCell = document.createElement('td');
+                leakSensorCell.appendChild(leakSensorSpan);
+                
+                const buttonCell = document.createElement('td');
+                buttonCell.appendChild(deleteBtn);
+                
+                row.appendChild(createSecureTableCell(checkbox));
+                row.appendChild(createSecureTableCell(safeValue(metric.metric_id)));
+                row.appendChild(createSecureTableCell(safeValue(metric.controller_id)));
+                row.appendChild(createSecureTableCell(formatDate(metric.timestamp)));
+                row.appendChild(createSecureTableCell(formatNumber(metric.electricity_ph1, 1)));
+                row.appendChild(createSecureTableCell(formatNumber(metric.electricity_ph2, 1)));
+                row.appendChild(createSecureTableCell(formatNumber(metric.electricity_ph3, 1)));
+                row.appendChild(createSecureTableCell(formatNumber(metric.cold_water_pressure, 2)));
+                row.appendChild(createSecureTableCell(formatNumber(metric.hot_water_in_temp, 1)));
+                row.appendChild(createSecureTableCell(formatNumber(metric.air_temp, 1)));
+                row.appendChild(createSecureTableCell(formatNumber(metric.humidity, 1)));
+                row.appendChild(leakSensorCell);
+                row.appendChild(buttonCell);
                 newTableBody.appendChild(row);
             });
         } else {
-            newTableBody.innerHTML = `<tr><td colspan="13" style="text-align: center;">Нет данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
+            const noDataRow = document.createElement('tr');
+            const noDataCell = document.createElement('td');
+            noDataCell.setAttribute('colspan', '13');
+            noDataCell.style.textAlign = 'center';
+            noDataCell.textContent = 'Нет данных';
+            noDataRow.appendChild(noDataCell);
+            newTableBody.appendChild(noDataRow);
         }
 
         const table = document.querySelector("#metrics-table");
@@ -297,8 +468,8 @@ document.addEventListener("DOMContentLoaded", function () {
         console.log('✅ loadWaterLines function called successfully');
         if (dataLoaded['water-lines']) return;
 
-        const tableBody = document.querySelector("#water-lines-table tbody");
-        tableBody.innerHTML = `<tr class="loading-row"><td colspan="11">Загрузка данных...</td></tr>`;
+        // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
+        showLoadingMessage("#water-lines-table tbody", "7");
 
         try {
             const data = await loadData('/api/admin/water-lines', 'water-lines');
@@ -307,7 +478,8 @@ document.addEventListener("DOMContentLoaded", function () {
             dataLoaded['water-lines'] = true;
         } catch (error) {
             console.error("Error loading water lines:", error);
-            tableBody.innerHTML = `<tr><td colspan="11" style="text-align: center; color: red;">Ошибка загрузки данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение ошибки
+            showErrorMessage("#water-lines-table tbody", "7");
         }
     }
 
@@ -344,7 +516,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 newTableBody.appendChild(row);
             });
         } else {
-            newTableBody.innerHTML = `<tr><td colspan="11" style="text-align: center;">Нет данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
+            newTableBody.appendChild(showNoDataMessage(newTableBody, "7"));
         }
 
         const table = document.querySelector("#water-lines-table");
@@ -477,8 +650,8 @@ document.addEventListener("DOMContentLoaded", function () {
     async function loadBuildings() {
         if (dataLoaded.buildings) return;
 
-        const tableBody = document.querySelector("#buildings-table tbody");
-        tableBody.innerHTML = `<tr class="loading-row"><td colspan="11">Загрузка данных...</td></tr>`;
+        // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
+        showLoadingMessage("#buildings-table tbody", "9");
 
         try {
             const data = await loadData('/api/buildings', 'buildings');
@@ -487,7 +660,8 @@ document.addEventListener("DOMContentLoaded", function () {
             dataLoaded.buildings = true;
         } catch (error) {
             console.error("Error loading buildings:", error);
-            tableBody.innerHTML = `<tr><td colspan="11" style="text-align: center; color: red;">Ошибка загрузки данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение ошибки
+            showErrorMessage("#buildings-table tbody", "9");
         }
     }
 
@@ -500,49 +674,71 @@ document.addEventListener("DOMContentLoaded", function () {
                 // Строка 1: Основная информация
                 const row1 = document.createElement("tr");
                 row1.className = "building-row-1";
-                row1.innerHTML = `
-                    <td rowspan="3"><input type="checkbox" class="item-checkbox" data-id="${building.building_id}"></td>
-                    <td rowspan="3">${safeValue(building.building_id)}</td>
-                    <td rowspan="3">${safeValue(building.name)}</td>
-                    <td>${safeValue(building.address)}</td>
-                    <td>${safeValue(building.town)}</td>
-                    <td>${safeValue(building.region)}</td>
-                    <td>${formatNumber(building.latitude, 6)}</td>
-                    <td>${formatNumber(building.longitude, 6)}</td>
-                    <td rowspan="3">
-                        <button onclick="editBuilding(${building.building_id})" class="btn-sm">Изменить</button><br>
-                        <button onclick="deleteBuilding(${building.building_id})" class="btn-sm btn-danger">Удалить</button>
-                    </td>
-                `;
+                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'item-checkbox';
+                checkbox.setAttribute('data-id', building.building_id);
+                
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn-sm';
+                editBtn.textContent = 'Изменить';
+                editBtn.onclick = () => editBuilding(building.building_id);
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn-sm btn-danger';
+                deleteBtn.textContent = 'Удалить';
+                deleteBtn.onclick = () => deleteBuilding(building.building_id);
+                
+                const buttonCell = document.createElement('td');
+                buttonCell.setAttribute('rowspan', '3');
+                buttonCell.appendChild(editBtn);
+                buttonCell.appendChild(document.createElement('br'));
+                buttonCell.appendChild(deleteBtn);
+                
+                row1.appendChild(createSecureTableCell(checkbox, {rowspan: 3}));
+                row1.appendChild(createSecureTableCell(safeValue(building.building_id), {rowspan: 3}));
+                row1.appendChild(createSecureTableCell(safeValue(building.name), {rowspan: 3}));
+                row1.appendChild(createSecureTableCell(safeValue(building.address)));
+                row1.appendChild(createSecureTableCell(safeValue(building.town)));
+                row1.appendChild(createSecureTableCell(safeValue(building.region)));
+                row1.appendChild(createSecureTableCell(formatNumber(building.latitude, 6)));
+                row1.appendChild(createSecureTableCell(formatNumber(building.longitude, 6)));
+                row1.appendChild(buttonCell);
 
                 // Строка 2: Инфраструктура
                 const row2 = document.createElement("tr");
                 row2.className = "building-row-2";
-                row2.innerHTML = `
-                    <td>${safeValue(building.management_company)}</td>
-                    <td>${building.hot_water ? "Да" : "Нет"}</td>
-                    <td>${safeValue(building.primary_transformer_name)}</td>
-                    <td>${safeValue(building.backup_transformer_name)}</td>
-                    <td>${safeValue(building.primary_line_name)}</td>
-                `;
+                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                row2.appendChild(createSecureTableCell(safeValue(building.management_company)));
+                row2.appendChild(createSecureTableCell(building.hot_water ? "Да" : "Нет"));
+                row2.appendChild(createSecureTableCell(safeValue(building.primary_transformer_name)));
+                row2.appendChild(createSecureTableCell(safeValue(building.backup_transformer_name)));
+                row2.appendChild(createSecureTableCell(safeValue(building.primary_line_name)));
 
                 // Строка 3: Водоснабжение
                 const row3 = document.createElement("tr");
                 row3.className = "building-row-3 building-group";
-                row3.innerHTML = `
-                    <td>${safeValue(building.backup_line_name)}</td>
-                    <td>${safeValue(building.cold_water_line_name)}</td>
-                    <td>${safeValue(building.hot_water_line_name)}</td>
-                    <td>${safeValue(building.cold_water_supplier_name)}</td>
-                    <td>${safeValue(building.hot_water_supplier_name)}</td>
-                `;
+                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                row3.appendChild(createSecureTableCell(safeValue(building.backup_line_name)));
+                row3.appendChild(createSecureTableCell(safeValue(building.cold_water_line_name)));
+                row3.appendChild(createSecureTableCell(safeValue(building.hot_water_line_name)));
+                row3.appendChild(createSecureTableCell(safeValue(building.cold_water_supplier_name)));
+                row3.appendChild(createSecureTableCell(safeValue(building.hot_water_supplier_name)));
 
                 newTableBody.appendChild(row1);
                 newTableBody.appendChild(row2);
                 newTableBody.appendChild(row3);
             });
         } else {
-            newTableBody.innerHTML = `<tr><td colspan="9" style="text-align: center;">Нет данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
+            const noDataRow = document.createElement('tr');
+            const noDataCell = document.createElement('td');
+            noDataCell.setAttribute('colspan', '9');
+            noDataCell.style.textAlign = 'center';
+            noDataCell.textContent = 'Нет данных';
+            noDataRow.appendChild(noDataCell);
+            newTableBody.appendChild(noDataRow);
         }
 
         const table = document.querySelector("#buildings-table");
@@ -559,8 +755,8 @@ document.addEventListener("DOMContentLoaded", function () {
     async function loadTransformers() {
         if (dataLoaded.transformers) return;
 
-        const tableBody = document.querySelector("#transformers-table tbody");
-        tableBody.innerHTML = `<tr class="loading-row"><td colspan="7">Загрузка данных...</td></tr>`;
+        // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
+        showLoadingMessage("#transformers-table tbody", "7");
 
         try {
             const data = await loadData('/api/transformers', 'transformers');
@@ -569,7 +765,8 @@ document.addEventListener("DOMContentLoaded", function () {
             dataLoaded.transformers = true;
         } catch (error) {
             console.error("Error loading transformers:", error);
-            tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: red;">Ошибка загрузки данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение ошибки
+            showErrorMessage("#transformers-table tbody", "7");
         }
     }
 
@@ -591,22 +788,38 @@ document.addEventListener("DOMContentLoaded", function () {
                 if (primaryBuildings) buildingsText.push(`Основные: ${primaryBuildings}`);
                 if (backupBuildings) buildingsText.push(`Резервные: ${backupBuildings}`);
 
-                row.innerHTML = `
-                    <td><input type="checkbox" class="item-checkbox" data-id="${transformer.transformer_id}"></td>
-                    <td>${safeValue(transformer.transformer_id)}</td>
-                    <td>${safeValue(transformer.name)}</td>
-                    <td>${formatNumber(transformer.power_kva, 1)}</td>
-                    <td>${formatNumber(transformer.voltage_kv, 1)}</td>
-                    <td>${buildingsText.join('<br>') || 'Нет подключенных зданий'}</td>
-                    <td>
-                        <button onclick="editTransformer(${transformer.transformer_id})" class="btn-sm">Изменить</button>
-                        <button onclick="deleteTransformer(${transformer.transformer_id})" class="btn-sm btn-danger">Удалить</button>
-                    </td>
-                `;
+                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'item-checkbox';
+                checkbox.setAttribute('data-id', transformer.transformer_id);
+                
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn-sm';
+                editBtn.textContent = 'Изменить';
+                editBtn.onclick = () => editTransformer(transformer.transformer_id);
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn-sm btn-danger';
+                deleteBtn.textContent = 'Удалить';
+                deleteBtn.onclick = () => deleteTransformer(transformer.transformer_id);
+                
+                const buttonCell = document.createElement('td');
+                buttonCell.appendChild(editBtn);
+                buttonCell.appendChild(deleteBtn);
+                
+                row.appendChild(createSecureTableCell(checkbox));
+                row.appendChild(createSecureTableCell(safeValue(transformer.transformer_id)));
+                row.appendChild(createSecureTableCell(safeValue(transformer.name)));
+                row.appendChild(createSecureTableCell(formatNumber(transformer.power_kva, 1)));
+                row.appendChild(createSecureTableCell(formatNumber(transformer.voltage_kv, 1)));
+                row.appendChild(createSecureTableCell(buildingsText.join(', ') || 'Нет подключенных зданий'));
+                row.appendChild(buttonCell);
                 newTableBody.appendChild(row);
             });
         } else {
-            newTableBody.innerHTML = `<tr><td colspan="7" style="text-align: center;">Нет данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
+            newTableBody.appendChild(showNoDataMessage(newTableBody, "7"));
         }
 
         const table = document.querySelector("#transformers-table");
@@ -622,8 +835,8 @@ document.addEventListener("DOMContentLoaded", function () {
     async function loadLines() {
         if (dataLoaded.lines) return;
 
-        const tableBody = document.querySelector("#lines-table tbody");
-        tableBody.innerHTML = `<tr class="loading-row"><td colspan="7">Загрузка данных...</td></tr>`;
+        // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
+        showLoadingMessage("#lines-table tbody", "7");
 
         try {
             const data = await loadData('/api/lines', 'lines');
@@ -632,7 +845,8 @@ document.addEventListener("DOMContentLoaded", function () {
             dataLoaded.lines = true;
         } catch (error) {
             console.error("Error loading lines:", error);
-            tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: red;">Ошибка загрузки данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение ошибки
+            showErrorMessage("#lines-table tbody", "7");
         }
     }
 
@@ -658,7 +872,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 newTableBody.appendChild(row);
             });
         } else {
-            newTableBody.innerHTML = `<tr><td colspan="7" style="text-align: center;">Нет данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
+            newTableBody.appendChild(showNoDataMessage(newTableBody, "7"));
         }
 
         const table = document.querySelector("#lines-table");
@@ -674,8 +889,8 @@ document.addEventListener("DOMContentLoaded", function () {
     async function loadWaterSources() {
         if (dataLoaded.waterSources) return;
 
-        const tableBody = document.querySelector("#water-sources-table tbody");
-        tableBody.innerHTML = `<tr class="loading-row"><td colspan="9">Загрузка данных...</td></tr>`;
+        // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
+        showLoadingMessage("#water-sources-table tbody", "9");
 
         try {
             const data = await loadData('/api/cold-water-sources', 'waterSources');
@@ -684,7 +899,8 @@ document.addEventListener("DOMContentLoaded", function () {
             dataLoaded.waterSources = true;
         } catch (error) {
             console.error("Error loading water sources:", error);
-            tableBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: red;">Ошибка загрузки данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение ошибки
+            showErrorMessage("#water-sources-table tbody", "9");
         }
     }
 
@@ -712,7 +928,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 newTableBody.appendChild(row);
             });
         } else {
-            newTableBody.innerHTML = `<tr><td colspan="9" style="text-align: center;">Нет данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
+            newTableBody.appendChild(showNoDataMessage(newTableBody, "9"));
         }
 
         const table = document.querySelector("#water-sources-table");
@@ -728,8 +945,8 @@ document.addEventListener("DOMContentLoaded", function () {
     async function loadHeatSources() {
         if (dataLoaded.heatSources) return;
 
-        const tableBody = document.querySelector("#heat-sources-table tbody");
-        tableBody.innerHTML = `<tr class="loading-row"><td colspan="9">Загрузка данных...</td></tr>`;
+        // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
+        showLoadingMessage("#heat-sources-table tbody", "9");
 
         try {
             const data = await loadData('/api/heat-sources', 'heatSources');
@@ -738,7 +955,8 @@ document.addEventListener("DOMContentLoaded", function () {
             dataLoaded.heatSources = true;
         } catch (error) {
             console.error("Error loading heat sources:", error);
-            tableBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: red;">Ошибка загрузки данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение ошибки
+            showErrorMessage("#heat-sources-table tbody", "9");
         }
     }
 
@@ -766,7 +984,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 newTableBody.appendChild(row);
             });
         } else {
-            newTableBody.innerHTML = `<tr><td colspan="9" style="text-align: center;">Нет данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
+            newTableBody.appendChild(showNoDataMessage(newTableBody, "9"));
         }
 
         const table = document.querySelector("#heat-sources-table");
@@ -959,9 +1178,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
     window.deleteBuilding = async function(id) {
         console.log('🗑️ deleteBuilding вызвана для ID:', id);
-        if (!confirm('Вы уверены, что хотите удалить это здание? Это может повлиять на связанные контроллеры и метрики.')) return;
-
+        
         try {
+            // Сначала пробуем удалить без каскада
             const response = await fetch(`/api/buildings/${id}`, {
                 method: 'DELETE',
                 headers: {
@@ -971,7 +1190,28 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.message || 'Ошибка удаления здания');
+                
+                // Специальная обработка ошибки BUILDING_HAS_CONTROLLERS
+                if (response.status === 400 && errorData.controllers) {
+                    const controllerList = errorData.controllers
+                        .map(c => `  • Контроллер #${c.controller_id} (${c.serial_number}) - ${c.status}`)
+                        .join('\n');
+                    
+                    const message = `⚠️ ВНИМАНИЕ: Невозможно удалить здание\n\n` +
+                                  `${errorData.error}\n\n` +
+                                  `Привязанные контроллеры:\n${controllerList}\n\n` +
+                                  `Выберите действие:\n` +
+                                  `• ОК - Удалить здание вместе с контроллерами и всеми метриками (НЕОБРАТИМО)\n` +
+                                  `• Отмена - Отменить удаление`;
+                    
+                    if (confirm(message)) {
+                        // Пользователь согласился на каскадное удаление
+                        await deleteBuildingCascade(id, errorData.controllers);
+                    }
+                    return;
+                }
+                
+                throw new Error(errorData.error || errorData.message || 'Ошибка удаления здания');
             }
 
             showToast('Здание успешно удалено', 'success');
@@ -982,6 +1222,67 @@ document.addEventListener("DOMContentLoaded", function () {
             showToast(error.message || 'Ошибка удаления здания', 'error');
         }
     };
+
+    // Каскадное удаление здания с контроллерами
+    async function deleteBuildingCascade(buildingId, controllers) {
+        console.log('🔥 Каскадное удаление здания', buildingId, 'с', controllers.length, 'контроллерами');
+        
+        try {
+            let deletedControllers = 0;
+            let errors = [];
+
+            // Удаляем контроллеры
+            for (const controller of controllers) {
+                try {
+                    const response = await fetch(`/api/controllers/${controller.controller_id}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                        }
+                    });
+
+                    if (response.ok) {
+                        deletedControllers++;
+                        console.log(`✅ Контроллер ${controller.controller_id} удален`);
+                    } else {
+                        const errorData = await response.json();
+                        errors.push(`Контроллер #${controller.controller_id}: ${errorData.error || 'Ошибка удаления'}`);
+                    }
+                } catch (error) {
+                    errors.push(`Контроллер #${controller.controller_id}: ${error.message}`);
+                }
+            }
+
+            // Теперь удаляем здание
+            const buildingResponse = await fetch(`/api/buildings/${buildingId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                }
+            });
+
+            if (!buildingResponse.ok) {
+                const errorData = await buildingResponse.json();
+                throw new Error(errorData.error || 'Ошибка удаления здания после удаления контроллеров');
+            }
+
+            // Показываем результат
+            if (errors.length > 0) {
+                showToast(`Здание удалено. Контроллеров удалено: ${deletedControllers}/${controllers.length}. Ошибки: ${errors.length}`, 'warning');
+                console.warn('Ошибки при удалении:', errors);
+            } else {
+                showToast(`Здание и ${deletedControllers} контроллер(ов) успешно удалены`, 'success');
+            }
+
+            // Обновляем список зданий
+            dataLoaded.buildings = false;
+            loadBuildings();
+
+        } catch (error) {
+            console.error('Error in cascade delete:', error);
+            showToast(error.message || 'Ошибка каскадного удаления', 'error');
+        }
+    }
     window.editController = function(id) { /* реализация */ };
     window.deleteController = function(id) { /* реализация */ };
     window.deleteMetric = function(id) { /* реализация */ };

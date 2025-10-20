@@ -1,0 +1,29 @@
+name: infrasafe-generator-only
+
+services:
+  generator:
+    build:
+      context: ./generator
+    image: infrasafe-generator:latest
+    env_file:
+      - ./generator/.env
+    ports:
+      - "8081:8081"
+    volumes:
+      # Персистентность локального файла настроек диапазонов
+      - generator_data:/app/generator-data.json
+    depends_on:
+      - app
+    networks:
+      - infrasafe-dev
+    restart: unless-stopped
+    labels:
+      - "description=InfraSafe Test Data Generator"
+      - "role=generator"
+
+volumes:
+  generator_data: {}
+
+networks:
+  infrasafe-dev:
+    external: true

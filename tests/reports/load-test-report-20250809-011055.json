@@ -1,0 +1,30 @@
+{
+    "report_info": {
+        "timestamp": "2025-08-09T01:11:04+05:00",
+        "api_url": "http://localhost:3000",
+        "total_duration": 9,
+        "configuration": {
+            "requests_per_test": 100,
+            "concurrency": 10,
+            "success_threshold": 95,
+            "response_time_threshold": 200
+        }
+    },
+    "tests": [
+        {"test_name": "Get Buildings List", "endpoint": "/api/buildings", "method": "GET", "requests": 100, "concurrency": 10, "success_count": 100, "error_count": 0, "success_rate": 100.0, "avg_response_time": .026, "rps": 255.00, "total_time": .392151000}
+,
+        {"test_name": "Get Controllers List", "endpoint": "/api/controllers", "method": "GET", "requests": 100, "concurrency": 10, "success_count": 100, "error_count": 0, "success_rate": 100.0, "avg_response_time": .029, "rps": 238.31, "total_time": .419609000}
+,
+        {"test_name": "Get Metrics", "endpoint": "/api/metrics", "method": "GET", "requests": 50, "concurrency": 10, "success_count": 50, "error_count": 0, "success_rate": 100.0, "avg_response_time": .029, "rps": 239.14, "total_time": .209080000}
+,
+        {"test_name": "Authentication Load", "endpoint": "/api/auth/login", "method": "POST", "requests": 50, "concurrency": 5, "success_count": 50, "error_count": 0, "success_rate": 100.0, "avg_response_time": .256, "rps": 12.19, "total_time": 4.100809000}
+,
+        {"test_name": "Create Buildings (Auth Required)", "endpoint": "/api/buildings", "method": "POST", "requests": 20, "concurrency": 3, "success_count": 20, "error_count": 0, "success_rate": 100.0, "avg_response_time": .025, "rps": 81.63, "total_time": .244979000}
+    ],
+    "summary": {
+        "total_requests": 320,
+        "total_success": 320,
+        "total_errors": 0,
+        "overall_success_rate": 100.0
+    }
+}

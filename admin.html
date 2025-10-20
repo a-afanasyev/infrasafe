@@ -1768,6 +1768,12 @@
         </div>
     </div>
 
+    <!-- Подключение DOMPurify для защиты от XSS -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.7/dist/purify.min.js"></script>
+    
+    <!-- Подключение утилит безопасности -->
+    <script src="public/utils/domSecurity.js"></script>
+    
     <!-- Подключаем систему авторизации перед основным скриптом -->
     <script src="public/admin-auth.js"></script>
     <script src="public/admin.js"></script>

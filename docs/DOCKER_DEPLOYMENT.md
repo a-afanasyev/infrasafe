@@ -201,6 +201,72 @@ curl http://localhost:8080/api/buildings
 - **CORS:** настроен для кросс-доменных запросов
 - **Nginx:** скрытие версии сервера
 
+### 🔐 JWT Конфигурация для Production
+
+**КРИТИЧНО:** Для Production развертывания необходимо настроить безопасные JWT секреты.
+
+#### Создание .env.prod файла
+
+```bash
+# Создайте .env.prod файл в корне проекта
+# ВНИМАНИЕ: Этот файл не должен попасть в git!
+
+# JWT секреты (сгенерированы безопасно)
+JWT_SECRET=your_512_bit_secret_here
+JWT_REFRESH_SECRET=your_512_bit_refresh_secret_here
+JWT_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
+
+# Другие критичные настройки
+DB_PASSWORD=your_secure_database_password
+CORS_ORIGIN=https://yourdomain.com
+```
+
+#### Генерация безопасных секретов
+
+```bash
+# Генерация JWT_SECRET (512-bit)
+openssl rand -base64 64
+
+# Генерация JWT_REFRESH_SECRET (512-bit)  
+openssl rand -base64 64
+```
+
+#### Структура JWT токенов
+
+- **Access Token:** Время жизни 15 минут, содержит user_id, role, permissions
+- **Refresh Token:** Время жизни 7 дней, используется для обновления access токенов
+- **Алгоритм:** HS256 (HMAC SHA-256)
+- **Blacklist:** Поддержка отзыва токенов через Redis
+
+#### Безопасность JWT
+
+✅ **Реализовано:**
+- Безопасные 512-битные секреты
+- Короткое время жизни access токенов (15м)
+- Отдельный секрет для refresh токенов
+- Валидация на каждом запросе
+- Логирование неудачных попыток
+
+❌ **TODO для Production:**
+- Ротация секретов каждые 90 дней
+- Мониторинг подозрительной активности
+- Rate limiting на JWT endpoints
+
+#### Развертывание с JWT
+
+```bash
+# 1. Создайте .env.prod с безопасными секретами
+# 2. Убедитесь что .env.prod в .gitignore
+# 3. Запустите production compose
+docker compose -f docker-compose.prod.yml up -d
+
+# 4. Проверьте JWT аутентификацию
+curl -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"Admin123"}'
+```
+
 ## Производительность
 
 - **Alpine Linux:** минимальные образы

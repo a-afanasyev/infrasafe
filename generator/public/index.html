@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>InfraSafe Generator</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; }
+      h1 { margin-bottom: 8px; }
+      .card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+      label { display: inline-block; margin: 6px 12px 6px 0; }
+      input { padding: 6px 8px; }
+      button { padding: 8px 12px; margin-top: 12px; cursor: pointer; }
+      code { background: #f7f7f7; padding: 2px 6px; border-radius: 4px; }
+      .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+      .group { margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Сервис генерации метрик</h1>
+    <p>Настройте диапазоны для всех показателей здания и запускайте генерацию. Сервис отправляет данные в основной API.</p>
+
+    <div class="card">
+      <div class="row">
+        <label>Building ID: <input id="buildingId" type="text" placeholder="например, 1" /></label>
+      </div>
+
+      <div class="group">
+        <h3>Электричество (напряжение, В)</h3>
+        <div class="row">
+          <label>PH1: min <input id="e1min" type="number" step="0.1" style="width:90px"> max <input id="e1max" type="number" step="0.1" style="width:90px"></label>
+          <label>PH2: min <input id="e2min" type="number" step="0.1" style="width:90px"> max <input id="e2max" type="number" step="0.1" style="width:90px"></label>
+          <label>PH3: min <input id="e3min" type="number" step="0.1" style="width:90px"> max <input id="e3max" type="number" step="0.1" style="width:90px"></label>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3>Сила тока (А)</h3>
+        <div class="row">
+          <label>PH1: min <input id="a1min" type="number" step="0.1" style="width:90px"> max <input id="a1max" type="number" step="0.1" style="width:90px"></label>
+          <label>PH2: min <input id="a2min" type="number" step="0.1" style="width:90px"> max <input id="a2max" type="number" step="0.1" style="width:90px"></label>
+          <label>PH3: min <input id="a3min" type="number" step="0.1" style="width:90px"> max <input id="a3max" type="number" step="0.1" style="width:90px"></label>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3>Давление воды (бар)</h3>
+        <div class="row">
+          <label>ХВС: min <input id="cmin" type="number" step="0.1" style="width:90px"> max <input id="cmax" type="number" step="0.1" style="width:90px"></label>
+          <label>ГВС вход: min <input id="hinmin" type="number" step="0.1" style="width:90px"> max <input id="hinmax" type="number" step="0.1" style="width:90px"></label>
+          <label>ГВС выход: min <input id="houtmin" type="number" step="0.1" style="width:90px"> max <input id="houtmax" type="number" step="0.1" style="width:90px"></label>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3>Температура воды (°C)</h3>
+        <div class="row">
+          <label>ХВС: min <input id="tcmin" type="number" step="0.1" style="width:90px"> max <input id="tcmax" type="number" step="0.1" style="width:90px"></label>
+          <label>ГВС вход: min <input id="thinmin" type="number" step="0.1" style="width:90px"> max <input id="thinmax" type="number" step="0.1" style="width:90px"></label>
+          <label>ГВС выход: min <input id="thoutmin" type="number" step="0.1" style="width:90px"> max <input id="thoutmax" type="number" step="0.1" style="width:90px"></label>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3>Окружение</h3>
+        <div class="row">
+          <label>Воздух (°C): min <input id="airmin" type="number" step="0.1" style="width:90px"> max <input id="airmax" type="number" step="0.1" style="width:90px"></label>
+          <label>Влажность (%): min <input id="hummin" type="number" step="0.1" style="width:90px"> max <input id="hummax" type="number" step="0.1" style="width:90px"></label>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3>Протечки</h3>
+        <div class="row">
+          <label>Вероятность протечки (0..1): <input id="leakp" type="number" step="0.01" min="0" max="1" style="width:120px"></label>
+        </div>
+      </div>
+
+      <button id="save">Сохранить диапазоны</button>
+    </div>
+
+    <div class="card">
+      <button id="run">Выполнить генерацию один раз</button>
+      <div id="result" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card">
+      <h3>Текущие диапазоны</h3>
+      <pre id="ranges"><code>{}</code></pre>
+    </div>
+
+    <script>
+      async function loadRanges() {
+        const resp = await fetch('/api/ranges');
+        const data = await resp.json();
+        document.getElementById('ranges').textContent = JSON.stringify(data.data, null, 2);
+      }
+
+      document.getElementById('save').addEventListener('click', async () => {
+        const buildingId = document.getElementById('buildingId').value.trim();
+        if (!buildingId) { alert('Укажите Building ID'); return; }
+
+        const payload = {
+          electricity: {
+            ph1: [Number(document.getElementById('e1min').value), Number(document.getElementById('e1max').value)],
+            ph2: [Number(document.getElementById('e2min').value), Number(document.getElementById('e2max').value)],
+            ph3: [Number(document.getElementById('e3min').value), Number(document.getElementById('e3max').value)]
+          },
+          amperage: {
+            ph1: [Number(document.getElementById('a1min').value), Number(document.getElementById('a1max').value)],
+            ph2: [Number(document.getElementById('a2min').value), Number(document.getElementById('a2max').value)],
+            ph3: [Number(document.getElementById('a3min').value), Number(document.getElementById('a3max').value)]
+          },
+          waterPressure: {
+            cold: [Number(document.getElementById('cmin').value), Number(document.getElementById('cmax').value)],
+            hotIn: [Number(document.getElementById('hinmin').value), Number(document.getElementById('hinmax').value)],
+            hotOut: [Number(document.getElementById('houtmin').value), Number(document.getElementById('houtmax').value)]
+          },
+          waterTemp: {
+            cold: [Number(document.getElementById('tcmin').value), Number(document.getElementById('tcmax').value)],
+            hotIn: [Number(document.getElementById('thinmin').value), Number(document.getElementById('thinmax').value)],
+            hotOut: [Number(document.getElementById('thoutmin').value), Number(document.getElementById('thoutmax').value)]
+          },
+          environment: {
+            airTemp: [Number(document.getElementById('airmin').value), Number(document.getElementById('airmax').value)],
+            humidity: [Number(document.getElementById('hummin').value), Number(document.getElementById('hummax').value)]
+          },
+          leakProbability: Number(document.getElementById('leakp').value)
+        };
+
+        const resp = await fetch(`/api/ranges/${encodeURIComponent(buildingId)}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          alert(err.message || 'Ошибка сохранения');
+          return;
+        }
+        await loadRanges();
+        alert('Сохранено');
+      });
+
+      document.getElementById('run').addEventListener('click', async () => {
+        const resp = await fetch('/api/generate/run-once', { method: 'POST' });
+        const json = await resp.json();
+        document.getElementById('result').textContent = JSON.stringify(json, null, 2);
+      });
+
+      loadRanges();
+    </script>
+  </body>
+</html>

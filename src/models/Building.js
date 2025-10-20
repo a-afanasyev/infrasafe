@@ -16,9 +16,9 @@ class Building {
             const offset = (page - 1) * limit;
             const validOrder = ['asc', 'desc'].includes(order.toLowerCase()) ? order : 'asc';
 
-            // Проверка допустимости поля сортировки
-            const validColumns = ['building_id', 'name', 'address', 'town', 'region', 'management_company'];
-            const sortColumn = validColumns.includes(sort) ? sort : 'building_id';
+            // ИСПРАВЛЕНИЕ SQL INJECTION: Валидация параметров сортировки
+            const { validateSortOrder } = require('../utils/queryValidation');
+            const { validSort, validOrder: validOrderSecure } = validateSortOrder('buildings', sort, validOrder);
 
             const { rows: buildings } = await db.query(
                 `SELECT
@@ -40,7 +40,7 @@ class Building {
                 LEFT JOIN water_lines hwl ON b.hot_water_line_id = hwl.line_id
                 LEFT JOIN water_suppliers cws ON b.cold_water_supplier_id = cws.supplier_id
                 LEFT JOIN water_suppliers hws ON b.hot_water_supplier_id = hws.supplier_id
-                ORDER BY b.${sortColumn} ${validOrder}
+                ORDER BY b.${validSort} ${validOrderSecure}
                 LIMIT $1 OFFSET $2`,
                 [limit, offset]
             );

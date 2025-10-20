@@ -94,10 +94,14 @@ router.get('/', async (req, res, next) => {
         const countResult = await query('SELECT COUNT(*) FROM heat_sources');
         const total = parseInt(countResult.rows[0].count);
 
+        // ИСПРАВЛЕНИЕ SQL INJECTION: Валидация параметров сортировки
+        const { validateSortOrder } = require('../utils/queryValidation');
+        const { validSort, validOrder } = validateSortOrder('heat_sources', sort, order);
+        
         // Получаем данные с пагинацией
         const result = await query(
             `SELECT * FROM heat_sources
-             ORDER BY ${sort} ${order}
+             ORDER BY ${validSort} ${validOrder}
              LIMIT $1 OFFSET $2`,
             [limit, offset]
         );
