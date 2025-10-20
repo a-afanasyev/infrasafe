@@ -1031,7 +1031,36 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     function updateCheckboxHandlers(section) {
-        // Обработчик для "выбрать все"
+        // Обработчик для кнопки "Выбрать все" (button, не checkbox!)
+        const selectAllBtn = document.getElementById(`${section}-select-all`);
+        if (selectAllBtn && !selectAllBtn.dataset.handlerSet) {
+            selectAllBtn.addEventListener('click', function() {
+                const checkboxes = document.querySelectorAll(`#${section}-section .item-checkbox`);
+                const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+                
+                console.log(`🔘 Выбрать все в секции ${section}: текущее состояние all checked = ${allChecked}`);
+                
+                // Если все выбраны - снимаем выбор, иначе выбираем все
+                checkboxes.forEach(checkbox => {
+                    checkbox.checked = !allChecked;
+                    const id = checkbox.dataset.id;
+                    if (!allChecked) {
+                        selectedItems[section].add(id);
+                    } else {
+                        selectedItems[section].delete(id);
+                    }
+                });
+                
+                // Обновляем текст кнопки
+                this.textContent = allChecked ? 'Выбрать все' : 'Снять выбор';
+                updateBatchButtons(section);
+                
+                console.log(`✅ Выбрано элементов: ${selectedItems[section].size}`);
+            });
+            selectAllBtn.dataset.handlerSet = 'true';
+        }
+        
+        // Обработчик для чекбокса "выбрать все" (если есть в заголовке таблицы)
         const selectAllCheckbox = document.getElementById(`${section}-select-all-checkbox`);
         if (selectAllCheckbox) {
             selectAllCheckbox.addEventListener('change', function() {
@@ -1061,7 +1090,14 @@ document.addEventListener("DOMContentLoaded", function () {
                 }
                 updateBatchButtons(section);
 
-                // Обновляем состояние "выбрать все"
+                // Обновляем текст кнопки "Выбрать все"
+                const selectAllBtn = document.getElementById(`${section}-select-all`);
+                if (selectAllBtn) {
+                    const allChecked = Array.from(itemCheckboxes).every(cb => cb.checked);
+                    selectAllBtn.textContent = allChecked ? 'Снять выбор' : 'Выбрать все';
+                }
+                
+                // Обновляем состояние чекбокса "выбрать все" (если есть)
                 if (selectAllCheckbox) {
                     selectAllCheckbox.checked = itemCheckboxes.length > 0 &&
                         Array.from(itemCheckboxes).every(cb => cb.checked);
@@ -1079,16 +1115,212 @@ document.addEventListener("DOMContentLoaded", function () {
         if (bulkDeleteBtn) {
             bulkDeleteBtn.disabled = selectedCount === 0;
             bulkDeleteBtn.textContent = `Удалить выбранные (${selectedCount})`;
+            
+            // Устанавливаем обработчик только один раз
+            if (!bulkDeleteBtn.dataset.handlerSet) {
+                bulkDeleteBtn.addEventListener('click', () => handleBulkDelete(section));
+                bulkDeleteBtn.dataset.handlerSet = 'true';
+            }
         }
 
         if (bulkStatusBtn) {
             bulkStatusBtn.disabled = selectedCount === 0;
             bulkStatusBtn.textContent = `Изменить статус (${selectedCount})`;
+            
+            // Устанавливаем обработчик только один раз
+            if (!bulkStatusBtn.dataset.handlerSet) {
+                bulkStatusBtn.addEventListener('click', () => handleBulkStatusChange(section));
+                bulkStatusBtn.dataset.handlerSet = 'true';
+            }
         }
 
         if (bulkStatusSelect) {
             bulkStatusSelect.disabled = selectedCount === 0;
         }
+    }
+    
+    // Обработчик массового удаления
+    async function handleBulkDelete(section) {
+        const selectedCount = selectedItems[section].size;
+        const selectedIds = Array.from(selectedItems[section]);
+        
+        if (selectedCount === 0) {
+            showToast('Не выбрано элементов для удаления', 'warning');
+            return;
+        }
+        
+        const sectionNames = {
+            'buildings': 'зданий',
+            'controllers': 'контроллеров',
+            'transformers': 'трансформаторов',
+            'lines': 'линий электропередач',
+            'water-lines': 'линий водоснабжения',
+            'water-sources': 'источников воды',
+            'heat-sources': 'источников тепла',
+            'metrics': 'метрик'
+        };
+        
+        const sectionName = sectionNames[section] || 'элементов';
+        
+        if (!confirm(`⚠️ ВНИМАНИЕ!\n\nВы уверены, что хотите удалить ${selectedCount} ${sectionName}?\n\nЭта операция необратима!`)) {
+            return;
+        }
+        
+        console.log(`🔥 Массовое удаление ${selectedCount} элементов из секции ${section}`);
+        
+        let deleted = 0;
+        let errors = [];
+        
+        // Показываем прогресс
+        showToast(`Удаление ${selectedCount} ${sectionName}...`, 'info');
+        
+        // Определяем endpoint для каждой секции
+        const endpoints = {
+            'buildings': '/api/buildings',
+            'controllers': '/api/controllers',
+            'transformers': '/api/transformers',
+            'lines': '/api/lines',
+            'water-lines': '/api/water-lines',
+            'water-sources': '/api/water-sources',
+            'heat-sources': '/api/heat-sources',
+            'metrics': '/api/metrics'
+        };
+        
+        const endpoint = endpoints[section];
+        
+        if (!endpoint) {
+            showToast(`Ошибка: неизвестная секция ${section}`, 'error');
+            return;
+        }
+        
+        // Удаляем элементы по одному
+        for (const id of selectedIds) {
+            try {
+                const response = await fetch(`${endpoint}/${id}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                    }
+                });
+                
+                if (response.ok) {
+                    deleted++;
+                    console.log(`  ✅ Удалён ${section} #${id}`);
+                } else {
+                    const errorData = await response.json();
+                    const errorMsg = errorData.error || errorData.message || 'Ошибка удаления';
+                    errors.push(`${section} #${id}: ${errorMsg}`);
+                    console.error(`  ❌ Ошибка удаления ${section} #${id}:`, errorMsg);
+                }
+            } catch (error) {
+                errors.push(`${section} #${id}: ${error.message}`);
+                console.error(`  ❌ Ошибка удаления ${section} #${id}:`, error);
+            }
+        }
+        
+        // Показываем результат
+        console.log(`✅ Завершено: Удалено ${deleted}/${selectedCount}`);
+        
+        if (errors.length > 0) {
+            showToast(`Удалено: ${deleted}/${selectedCount}. Ошибок: ${errors.length}`, 'warning');
+            console.warn('Ошибки при массовом удалении:', errors);
+        } else {
+            showToast(`✅ Успешно удалено ${deleted} ${sectionName}`, 'success');
+        }
+        
+        // Очищаем выбранные элементы
+        selectedItems[section].clear();
+        
+        // Перезагружаем данные
+        dataLoaded[section] = false;
+        loadSectionData(section);
+    }
+    
+    // Обработчик массового изменения статуса
+    async function handleBulkStatusChange(section) {
+        const selectedCount = selectedItems[section].size;
+        const selectedIds = Array.from(selectedItems[section]);
+        const statusSelect = document.getElementById(`${section}-bulk-status-select`);
+        
+        if (selectedCount === 0) {
+            showToast('Не выбрано элементов для изменения статуса', 'warning');
+            return;
+        }
+        
+        if (!statusSelect || !statusSelect.value) {
+            showToast('Выберите новый статус', 'warning');
+            return;
+        }
+        
+        const newStatus = statusSelect.value;
+        
+        if (!confirm(`Изменить статус для ${selectedCount} элементов на "${newStatus}"?`)) {
+            return;
+        }
+        
+        console.log(`🔄 Массовое изменение статуса ${selectedCount} элементов из секции ${section}`);
+        
+        let updated = 0;
+        let errors = [];
+        
+        // Показываем прогресс
+        showToast(`Изменение статуса для ${selectedCount} элементов...`, 'info');
+        
+        // Определяем endpoint для каждой секции
+        const endpoints = {
+            'controllers': '/api/controllers'
+        };
+        
+        const endpoint = endpoints[section];
+        
+        if (!endpoint) {
+            showToast(`Массовое изменение статуса не поддерживается для ${section}`, 'error');
+            return;
+        }
+        
+        // Обновляем статус для каждого элемента
+        for (const id of selectedIds) {
+            try {
+                const response = await fetch(`${endpoint}/${id}/status`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                
+                if (response.ok) {
+                    updated++;
+                    console.log(`  ✅ Обновлён статус ${section} #${id} на ${newStatus}`);
+                } else {
+                    const errorData = await response.json();
+                    const errorMsg = errorData.error || errorData.message || 'Ошибка обновления';
+                    errors.push(`${section} #${id}: ${errorMsg}`);
+                    console.error(`  ❌ Ошибка обновления ${section} #${id}:`, errorMsg);
+                }
+            } catch (error) {
+                errors.push(`${section} #${id}: ${error.message}`);
+                console.error(`  ❌ Ошибка обновления ${section} #${id}:`, error);
+            }
+        }
+        
+        // Показываем результат
+        console.log(`✅ Завершено: Обновлено ${updated}/${selectedCount}`);
+        
+        if (errors.length > 0) {
+            showToast(`Обновлено: ${updated}/${selectedCount}. Ошибок: ${errors.length}`, 'warning');
+            console.warn('Ошибки при массовом изменении статуса:', errors);
+        } else {
+            showToast(`✅ Успешно обновлено ${updated} элементов`, 'success');
+        }
+        
+        // Очищаем выбранные элементы
+        selectedItems[section].clear();
+        
+        // Перезагружаем данные
+        dataLoaded[section] = false;
+        loadSectionData(section);
     }
 
     // ===============================================

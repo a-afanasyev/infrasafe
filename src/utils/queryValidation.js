@@ -59,15 +59,15 @@ const allowedSortColumns = {
     
     // Источники воды
     water_sources: [
-        'source_id', 'name', 'type', 'capacity', 'status',
-        'pressure', 'temperature', 'quality', 'location',
+        'id', 'name', 'source_type', 'capacity_m3_per_hour', 'status',
+        'operating_pressure_bar', 'latitude', 'longitude', 'address',
         'created_at', 'updated_at'
     ],
     
     // Источники тепла
     heat_sources: [
-        'source_id', 'name', 'type', 'capacity', 'status',
-        'temperature', 'pressure', 'efficiency', 'location',
+        'id', 'name', 'source_type', 'capacity_mw', 'status',
+        'fuel_type', 'latitude', 'longitude', 'address',
         'created_at', 'updated_at'
     ],
     
@@ -93,8 +93,8 @@ const defaultSortParams = {
     transformers: { column: 'transformer_id', order: 'ASC' },
     lines: { column: 'line_id', order: 'ASC' },
     water_lines: { column: 'line_id', order: 'ASC' },
-    water_sources: { column: 'source_id', order: 'ASC' },
-    heat_sources: { column: 'source_id', order: 'ASC' },
+    water_sources: { column: 'id', order: 'ASC' },
+    heat_sources: { column: 'id', order: 'ASC' },
     alerts: { column: 'created_at', order: 'DESC' }
 };
 

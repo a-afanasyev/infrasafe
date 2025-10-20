@@ -46,3 +46,16 @@ export function setBuildingRange(buildingId, ranges) {
   config.rangesByBuildingId[buildingId] = ranges;
   saveConfig();
 }
+
+/**
+ * Удалить конфигурацию диапазонов для здания
+ * @param {string} buildingId - ID здания для удаления конфигурации
+ */
+export function deleteBuildingRange(buildingId) {
+  if (config.rangesByBuildingId[buildingId]) {
+    delete config.rangesByBuildingId[buildingId];
+    saveConfig();
+    return true;
+  }
+  return false;
+}

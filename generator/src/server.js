@@ -4,7 +4,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { getAllRanges, setBuildingRange, loadConfig } from './store.js';
+import { getAllRanges, setBuildingRange, deleteBuildingRange, loadConfig } from './store.js';
 import { startScheduler, runOnce } from './scheduler.js';
 
 // Инициализация переменных окружения
@@ -52,6 +52,22 @@ app.post('/api/ranges/:buildingId', (req, res) => {
 
   setBuildingRange(buildingId, { electricity, amperage, waterPressure, waterTemp, environment, leakProbability: lp });
   return res.json({ success: true, data: getAllRanges() });
+});
+
+// Удалить диапазоны для здания
+app.delete('/api/ranges/:buildingId', (req, res) => {
+  const buildingId = String(req.params.buildingId);
+  
+  // Проверяем, существует ли конфигурация
+  const all = getAllRanges();
+  if (!all[buildingId]) {
+    return res.status(404).json({ success: false, message: `Конфигурация для здания #${buildingId} не найдена` });
+  }
+
+  // Удаляем конфигурацию
+  deleteBuildingRange(buildingId);
+  
+  return res.json({ success: true, message: `Конфигурация для здания #${buildingId} удалена`, data: getAllRanges() });
 });
 
 // Одноразовый запуск генерации и отправки данных

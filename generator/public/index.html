@@ -23,7 +23,14 @@
     <div class="card">
       <div class="row">
         <label>Building ID: <input id="buildingId" type="text" placeholder="например, 1" /></label>
+        <button id="loadConfig" style="margin-top:0;">📥 Загрузить конфигурацию</button>
+        <button id="clearForm" style="margin-top:0; background:#f44336; color:white;">🗑️ Очистить форму</button>
       </div>
+      <div id="existingConfigs" style="margin-top: 12px;"></div>
+    </div>
+
+    <div class="card" id="formCard" style="display:none;">
+      <h3>📝 Редактирование диапазонов для здания <span id="currentBuildingId"></span></h3>
 
       <div class="group">
         <h3>Электричество (напряжение, В)</h3>
@@ -90,10 +97,185 @@
     </div>
 
     <script>
+      // Глобальная переменная для хранения всех конфигураций
+      let allRanges = {};
+
+      /**
+       * Загрузить все сохранённые диапазоны с сервера
+       */
       async function loadRanges() {
         const resp = await fetch('/api/ranges');
         const data = await resp.json();
-        document.getElementById('ranges').textContent = JSON.stringify(data.data, null, 2);
+        allRanges = data.data;
+        document.getElementById('ranges').textContent = JSON.stringify(allRanges, null, 2);
+        displayExistingConfigs();
+      }
+
+      /**
+       * Отобразить список существующих конфигураций
+       */
+      function displayExistingConfigs() {
+        const container = document.getElementById('existingConfigs');
+        const buildingIds = Object.keys(allRanges);
+        
+        if (buildingIds.length === 0) {
+          container.innerHTML = '<p style="color:#999;">Нет сохранённых конфигураций</p>';
+          return;
+        }
+
+        container.innerHTML = `
+          <h4>📋 Сохранённые конфигурации (${buildingIds.length}):</h4>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            ${buildingIds.map(id => `
+              <div style="display:flex; gap:4px; align-items:center; background:#f5f5f5; padding:4px; border-radius:6px;">
+                <button class="config-btn" data-building-id="${id}" 
+                        style="padding:8px 12px; background:#2196F3; color:white; border:none; border-radius:4px; cursor:pointer;">
+                  🏢 Здание #${id}
+                </button>
+                <button class="delete-config-btn" data-building-id="${id}"
+                        style="padding:8px 10px; background:#f44336; color:white; border:none; border-radius:4px; cursor:pointer;" title="Удалить конфигурацию">
+                  🗑️
+                </button>
+              </div>
+            `).join('')}
+          </div>
+        `;
+
+        // Добавляем обработчики для кнопок конфигураций
+        container.querySelectorAll('.config-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const buildingId = btn.dataset.buildingId;
+            loadConfigForBuilding(buildingId);
+          });
+        });
+
+        // Добавляем обработчики для кнопок удаления
+        container.querySelectorAll('.delete-config-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const buildingId = btn.dataset.buildingId;
+            if (confirm(`⚠️ Удалить конфигурацию для здания #${buildingId}?\n\nЭто действие нельзя отменить.`)) {
+              await deleteConfig(buildingId);
+            }
+          });
+        });
+      }
+
+      /**
+       * Удалить конфигурацию для здания
+       */
+      async function deleteConfig(buildingId) {
+        try {
+          const resp = await fetch(`/api/ranges/${encodeURIComponent(buildingId)}`, {
+            method: 'DELETE'
+          });
+          
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            alert(err.message || 'Ошибка удаления');
+            return;
+          }
+
+          // Обновляем список конфигураций
+          await loadRanges();
+          
+          // Если удалённая конфигурация была открыта в форме - очищаем форму
+          if (document.getElementById('buildingId').value === buildingId) {
+            clearForm();
+          }
+
+          alert(`✅ Конфигурация для здания #${buildingId} удалена`);
+        } catch (error) {
+          alert('Ошибка при удалении: ' + error.message);
+        }
+      }
+
+      /**
+       * Загрузить конфигурацию для конкретного здания в форму
+       */
+      function loadConfigForBuilding(buildingId) {
+        const config = allRanges[buildingId];
+        if (!config) {
+          alert(`Конфигурация для здания #${buildingId} не найдена`);
+          return;
+        }
+
+        // Устанавливаем Building ID
+        document.getElementById('buildingId').value = buildingId;
+        document.getElementById('currentBuildingId').textContent = buildingId;
+
+        // Заполняем форму значениями из конфигурации
+        if (config.electricity) {
+          document.getElementById('e1min').value = config.electricity.ph1[0];
+          document.getElementById('e1max').value = config.electricity.ph1[1];
+          document.getElementById('e2min').value = config.electricity.ph2[0];
+          document.getElementById('e2max').value = config.electricity.ph2[1];
+          document.getElementById('e3min').value = config.electricity.ph3[0];
+          document.getElementById('e3max').value = config.electricity.ph3[1];
+        }
+
+        if (config.amperage) {
+          document.getElementById('a1min').value = config.amperage.ph1[0];
+          document.getElementById('a1max').value = config.amperage.ph1[1];
+          document.getElementById('a2min').value = config.amperage.ph2[0];
+          document.getElementById('a2max').value = config.amperage.ph2[1];
+          document.getElementById('a3min').value = config.amperage.ph3[0];
+          document.getElementById('a3max').value = config.amperage.ph3[1];
+        }
+
+        if (config.waterPressure) {
+          document.getElementById('cmin').value = config.waterPressure.cold[0];
+          document.getElementById('cmax').value = config.waterPressure.cold[1];
+          document.getElementById('hinmin').value = config.waterPressure.hotIn[0];
+          document.getElementById('hinmax').value = config.waterPressure.hotIn[1];
+          document.getElementById('houtmin').value = config.waterPressure.hotOut[0];
+          document.getElementById('houtmax').value = config.waterPressure.hotOut[1];
+        }
+
+        if (config.waterTemp) {
+          document.getElementById('tcmin').value = config.waterTemp.cold[0];
+          document.getElementById('tcmax').value = config.waterTemp.cold[1];
+          document.getElementById('thinmin').value = config.waterTemp.hotIn[0];
+          document.getElementById('thinmax').value = config.waterTemp.hotIn[1];
+          document.getElementById('thoutmin').value = config.waterTemp.hotOut[0];
+          document.getElementById('thoutmax').value = config.waterTemp.hotOut[1];
+        }
+
+        if (config.environment) {
+          document.getElementById('airmin').value = config.environment.airTemp[0];
+          document.getElementById('airmax').value = config.environment.airTemp[1];
+          document.getElementById('hummin').value = config.environment.humidity[0];
+          document.getElementById('hummax').value = config.environment.humidity[1];
+        }
+
+        if (config.leakProbability !== undefined) {
+          document.getElementById('leakp').value = config.leakProbability;
+        }
+
+        // Показываем форму редактирования
+        document.getElementById('formCard').style.display = 'block';
+
+        // Прокручиваем к форме
+        document.getElementById('formCard').scrollIntoView({ behavior: 'smooth' });
+      }
+
+      /**
+       * Очистить форму
+       */
+      function clearForm() {
+        document.getElementById('buildingId').value = '';
+        document.getElementById('currentBuildingId').textContent = '';
+        
+        // Очищаем все поля
+        ['e1min', 'e1max', 'e2min', 'e2max', 'e3min', 'e3max',
+         'a1min', 'a1max', 'a2min', 'a2max', 'a3min', 'a3max',
+         'cmin', 'cmax', 'hinmin', 'hinmax', 'houtmin', 'houtmax',
+         'tcmin', 'tcmax', 'thinmin', 'thinmax', 'thoutmin', 'thoutmax',
+         'airmin', 'airmax', 'hummin', 'hummax', 'leakp'].forEach(id => {
+          document.getElementById(id).value = '';
+        });
+
+        // Скрываем форму
+        document.getElementById('formCard').style.display = 'none';
       }
 
       document.getElementById('save').addEventListener('click', async () => {
@@ -146,6 +328,24 @@
         document.getElementById('result').textContent = JSON.stringify(json, null, 2);
       });
 
+      // Обработчик кнопки "Загрузить конфигурацию"
+      document.getElementById('loadConfig').addEventListener('click', () => {
+        const buildingId = document.getElementById('buildingId').value.trim();
+        if (!buildingId) {
+          alert('Сначала укажите Building ID');
+          return;
+        }
+        loadConfigForBuilding(buildingId);
+      });
+
+      // Обработчик кнопки "Очистить форму"
+      document.getElementById('clearForm').addEventListener('click', () => {
+        if (confirm('Очистить форму? Несохранённые изменения будут потеряны.')) {
+          clearForm();
+        }
+      });
+
+      // Загружаем диапазоны при старте
       loadRanges();
     </script>
   </body>
