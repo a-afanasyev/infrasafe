@@ -66,7 +66,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     // Toast уведомления
-    function showToast(message, type = 'success') {
+    window.showToast = function(message, type = 'success') {
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
         toast.textContent = message;
@@ -1388,7 +1388,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
             const building = await response.json();
 
-            // Заполняем существующую форму редактирования
+            // Заполняем базовые поля
             document.getElementById('edit-building-id').value = building.building_id;
             document.getElementById('edit-building-name').value = building.name || '';
             document.getElementById('edit-building-address').value = building.address || '';
@@ -1398,6 +1398,27 @@ document.addEventListener("DOMContentLoaded", function () {
             document.getElementById('edit-building-longitude').value = building.longitude || '';
             document.getElementById('edit-building-management').value = building.management_company || '';
             document.getElementById('edit-building-hot-water').checked = building.has_hot_water || false;
+
+            // Заполняем dropdown'ы (они должны быть предварительно загружены через loadFormData)
+            // Электроснабжение
+            document.getElementById('edit-building-primary-transformer').value = building.primary_transformer_id || '';
+            document.getElementById('edit-building-backup-transformer').value = building.backup_transformer_id || '';
+            document.getElementById('edit-building-primary-line').value = building.primary_line_id || '';
+            document.getElementById('edit-building-backup-line').value = building.backup_line_id || '';
+            
+            // Водоснабжение
+            document.getElementById('edit-building-cold-water-line').value = building.cold_water_line_id || '';
+            document.getElementById('edit-building-hot-water-line').value = building.hot_water_line_id || '';
+            document.getElementById('edit-building-cold-water-supplier').value = building.cold_water_supplier_id || '';
+            document.getElementById('edit-building-hot-water-supplier').value = building.hot_water_supplier_id || '';
+            
+            // Включаем select'ы поставщиков если выбраны линии
+            if (building.cold_water_line_id) {
+                document.getElementById('edit-building-cold-water-supplier').disabled = false;
+            }
+            if (building.hot_water_line_id) {
+                document.getElementById('edit-building-hot-water-supplier').disabled = false;
+            }
 
             // Показываем модальное окно
             document.getElementById('edit-building-modal').style.display = 'flex';
@@ -1668,42 +1689,29 @@ document.addEventListener("DOMContentLoaded", function () {
             const waterLine = await response.json();
             const data = waterLine.data || waterLine;
 
-            // Открываем универсальное модальное окно
-            openUniversalModal('water-line', data, {
-                title: 'Редактировать линию водоснабжения',
-                fields: [
-                    { name: 'name', label: 'Название', type: 'text', required: true },
-                    { name: 'description', label: 'Описание', type: 'textarea' },
-                    { name: 'diameter_mm', label: 'Диаметр (мм)', type: 'number', required: true },
-                    { name: 'material', label: 'Материал', type: 'select', required: true, options: [
-                        { value: 'Сталь', text: 'Сталь' },
-                        { value: 'Полиэтилен', text: 'Полиэтилен' },
-                        { value: 'Чугун', text: 'Чугун' },
-                        { value: 'Медь', text: 'Медь' },
-                        { value: 'ПВХ', text: 'ПВХ' }
-                    ]},
-                    { name: 'pressure_bar', label: 'Давление (бар)', type: 'number', step: '0.1', required: true },
-                    { name: 'installation_date', label: 'Дата установки', type: 'date' },
-                    { name: 'status', label: 'Статус', type: 'select', options: [
-                        { value: 'active', text: 'Активная' },
-                        { value: 'maintenance', text: 'На обслуживании' },
-                        { value: 'inactive', text: 'Неактивная' }
-                    ]}
-                ],
-                onSave: async (formData) => {
-                    const updateResponse = await fetch(`/api/admin/water-lines/${id}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(formData)
-                    });
+            // Определяем тип линии (ХВС или ГВС)
+            // ВАЖНО: используем 'ХВС' или 'ГВС' напрямую для правильного отображения полей
+            const lineType = data.line_type || (data.line_type === 'ГВС' ? 'ГВС' : 'ХВС');
 
-                    if (!updateResponse.ok) throw new Error('Ошибка обновления линии водоснабжения');
-
-                    showToast('Линия водоснабжения успешно обновлена', 'success');
+            // Открываем универсальный редактор с картой
+            const editor = new InfrastructureLineEditor({
+                lineType: lineType,
+                lineId: id,
+                existingData: data,
+                apiEndpoint: '/api/water-lines',
+                additionalFields: {
+                    diameter_mm: data.diameter_mm,
+                    material: data.material,
+                    pressure_rating: data.pressure_rating,
+                    installation_date: data.installation_date
+                },
+                onSave: () => {
                     dataLoaded['water-lines'] = false;
                     loadWaterLines();
                 }
             });
+            
+            editor.show();
         } catch (error) {
             console.error('Error loading water line:', error);
             showToast('Ошибка загрузки данных линии водоснабжения', 'error');
@@ -1741,13 +1749,16 @@ document.addEventListener("DOMContentLoaded", function () {
             const response = await fetch(`/api/transformers/${id}`);
             if (!response.ok) throw new Error('Ошибка загрузки трансформатора');
 
-            const transformer = await response.json();
+            const transformerResponse = await response.json();
+            const transformer = transformerResponse.data || transformerResponse;
 
             // Заполняем форму редактирования
             document.getElementById('edit-transformer-id').value = transformer.transformer_id;
-                    document.getElementById('edit-transformer-name').value = transformer.name || '';
-        document.getElementById('edit-transformer-power').value = transformer.power_kva || '';
-        document.getElementById('edit-transformer-voltage').value = transformer.voltage_kv || '';
+            document.getElementById('edit-transformer-name').value = transformer.name || '';
+            document.getElementById('edit-transformer-power').value = transformer.power_kva || '';
+            document.getElementById('edit-transformer-voltage').value = transformer.voltage_kv || '';
+            document.getElementById('edit-transformer-latitude').value = transformer.latitude || '';
+            document.getElementById('edit-transformer-longitude').value = transformer.longitude || '';
 
             // Показываем модальное окно
             document.getElementById('edit-transformer-modal').style.display = 'flex';
@@ -1785,17 +1796,31 @@ document.addEventListener("DOMContentLoaded", function () {
             const response = await fetch(`/api/lines/${id}`);
             if (!response.ok) throw new Error('Ошибка загрузки линии');
 
-            const line = await response.json();
+            const lineResponse = await response.json();
+            const line = lineResponse.data || lineResponse;
 
-            // Заполняем форму редактирования
-            document.getElementById('edit-line-id').value = line.line_id;
-            document.getElementById('edit-line-name').value = line.name || '';
-            document.getElementById('edit-line-voltage').value = line.voltage_kv || '';
-            document.getElementById('edit-line-length').value = line.length_km || '';
-            document.getElementById('edit-line-transformer-id').value = line.transformer_id || '';
+            console.log('📋 Загружены данные линии для редактирования:', line);
+            console.log('📍 main_path:', line.main_path);
+            console.log('🌿 branches:', line.branches);
 
-            // Показываем модальное окно
-            document.getElementById('edit-line-modal').style.display = 'flex';
+            // Открываем универсальный редактор линий с картой
+            const editor = new InfrastructureLineEditor({
+                lineType: 'electricity', // Линии электропередач
+                lineId: id,
+                existingData: line,
+                apiEndpoint: '/api/lines', // Используем endpoint для обычных линий
+                additionalFields: {
+                    voltage_kv: line.voltage_kv,
+                    transformer_id: line.transformer_id,
+                    length_km: line.length_km
+                },
+                onSave: () => {
+                    dataLoaded.lines = false;
+                    loadLines();
+                }
+            });
+            
+            editor.show();
         } catch (error) {
             console.error('Error loading line:', error);
             showToast('Ошибка загрузки данных линии', 'error');
@@ -1935,7 +1960,9 @@ document.addEventListener("DOMContentLoaded", function () {
         const data = {
             name: document.getElementById('edit-transformer-name').value,
             power_kva: parseFloat(document.getElementById('edit-transformer-power').value),
-            voltage_kv: parseFloat(document.getElementById('edit-transformer-voltage').value)
+            voltage_kv: parseFloat(document.getElementById('edit-transformer-voltage').value),
+            latitude: parseFloat(document.getElementById('edit-transformer-latitude').value),
+            longitude: parseFloat(document.getElementById('edit-transformer-longitude').value)
         };
 
         try {
@@ -2112,13 +2139,21 @@ document.addEventListener("DOMContentLoaded", function () {
                 });
             }
 
-            // Заполняем dropdown трансформаторов
+            // Заполняем dropdown трансформаторов (форма создания)
             fillDropdown('building-primary-transformer', transformersData, 'transformer_id', 'name');
             fillDropdown('building-backup-transformer', transformersData, 'transformer_id', 'name');
+            
+            // Заполняем dropdown трансформаторов (форма редактирования)
+            fillDropdown('edit-building-primary-transformer', transformersData, 'transformer_id', 'name');
+            fillDropdown('edit-building-backup-transformer', transformersData, 'transformer_id', 'name');
 
-            // Заполняем dropdown линий
+            // Заполняем dropdown линий (форма создания)
             fillDropdown('building-primary-line', linesData, 'line_id', 'name');
             fillDropdown('building-backup-line', linesData, 'line_id', 'name');
+            
+            // Заполняем dropdown линий (форма редактирования)
+            fillDropdown('edit-building-primary-line', linesData, 'line_id', 'name');
+            fillDropdown('edit-building-backup-line', linesData, 'line_id', 'name');
 
             // Разделяем водные линии на ХВС и ГВС
             const coldWaterLines = Array.isArray(waterLinesData) ?
@@ -2126,9 +2161,13 @@ document.addEventListener("DOMContentLoaded", function () {
             const hotWaterLines = Array.isArray(waterLinesData) ?
                 waterLinesData.filter(line => line.name.includes('ГВС')) : [];
 
-            // Заполняем dropdown линий водоснабжения
+            // Заполняем dropdown линий водоснабжения (форма создания)
             fillDropdown('building-cold-water-line', coldWaterLines, 'line_id', 'name');
             fillDropdown('building-hot-water-line', hotWaterLines, 'line_id', 'name');
+            
+            // Заполняем dropdown линий водоснабжения (форма редактирования)
+            fillDropdown('edit-building-cold-water-line', coldWaterLines, 'line_id', 'name');
+            fillDropdown('edit-building-hot-water-line', hotWaterLines, 'line_id', 'name');
 
             // Разделяем поставщиков на ХВС и ГВС
             console.log('🔍 ОТЛАДКА: waterSuppliersData before filtering:', waterSuppliersData);
@@ -2156,8 +2195,13 @@ document.addEventListener("DOMContentLoaded", function () {
             console.log('🔍 ОТЛАДКА: Cold suppliers result:', coldSuppliers);
             console.log('🔍 ОТЛАДКА: Hot suppliers result:', hotSuppliers);
 
+            // Заполняем dropdown поставщиков (форма создания)
             fillDropdown('building-cold-water-supplier', coldSuppliers, 'supplier_id', 'name');
             fillDropdown('building-hot-water-supplier', hotSuppliers, 'supplier_id', 'name');
+            
+            // Заполняем dropdown поставщиков (форма редактирования)
+            fillDropdown('edit-building-cold-water-supplier', coldSuppliers, 'supplier_id', 'name');
+            fillDropdown('edit-building-hot-water-supplier', hotSuppliers, 'supplier_id', 'name');
 
             // Настраиваем связанные выпадающие списки после загрузки данных
             setupCascadingDropdowns();
@@ -2555,9 +2599,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // ===============================================
     // ОБРАБОТЧИК ФОРМЫ ДОБАВЛЕНИЯ ЛИНИЙ ВОДОСНАБЖЕНИЯ
+    // ОТКЛЮЧЕН - используется InfrastructureLineEditor
     // ===============================================
 
-    document.getElementById('add-water-line-form').addEventListener('submit', async function(e) {
+    /* document.getElementById('add-water-line-form')?.addEventListener('submit', async function(e) {
         e.preventDefault();
 
         const data = {
@@ -2588,7 +2633,7 @@ document.addEventListener("DOMContentLoaded", function () {
             showToast('Линия водоснабжения успешно добавлена', 'success');
 
             // Очищаем форму
-            document.getElementById('add-water-line-form').reset();
+            document.getElementById('add-water-line-form')?.reset();
 
             // Перезагружаем данные линий водоснабжения
             dataLoaded['water-lines'] = false;
@@ -2598,7 +2643,7 @@ document.addEventListener("DOMContentLoaded", function () {
             console.error('Error creating water line:', error);
             showToast('Ошибка создания линии водоснабжения: ' + error.message, 'error');
         }
-    });
+    }); */
 
     // ===============================================
     // ОБРАБОТЧИК ФОРМЫ ДОБАВЛЕНИЯ ТРАНСФОРМАТОРА
@@ -2610,7 +2655,9 @@ document.addEventListener("DOMContentLoaded", function () {
         const data = {
             name: document.getElementById('transformer-name').value,
             power_kva: parseFloat(document.getElementById('transformer-power').value),
-            voltage_kv: parseFloat(document.getElementById('transformer-voltage').value)
+            voltage_kv: parseFloat(document.getElementById('transformer-voltage').value),
+            latitude: parseFloat(document.getElementById('transformer-latitude').value),
+            longitude: parseFloat(document.getElementById('transformer-longitude').value)
         };
 
         try {
@@ -2844,6 +2891,28 @@ document.addEventListener("DOMContentLoaded", function () {
             has_hot_water: document.getElementById('edit-building-hot-water').checked
         };
 
+        // Добавляем поля электроснабжения (если выбраны)
+        const primaryTransformer = document.getElementById('edit-building-primary-transformer').value;
+        const backupTransformer = document.getElementById('edit-building-backup-transformer').value;
+        const primaryLine = document.getElementById('edit-building-primary-line').value;
+        const backupLine = document.getElementById('edit-building-backup-line').value;
+        
+        if (primaryTransformer) data.primary_transformer_id = parseInt(primaryTransformer);
+        if (backupTransformer) data.backup_transformer_id = parseInt(backupTransformer);
+        if (primaryLine) data.primary_line_id = parseInt(primaryLine);
+        if (backupLine) data.backup_line_id = parseInt(backupLine);
+        
+        // Добавляем поля водоснабжения (если выбраны)
+        const coldWaterLine = document.getElementById('edit-building-cold-water-line').value;
+        const hotWaterLine = document.getElementById('edit-building-hot-water-line').value;
+        const coldWaterSupplier = document.getElementById('edit-building-cold-water-supplier').value;
+        const hotWaterSupplier = document.getElementById('edit-building-hot-water-supplier').value;
+        
+        if (coldWaterLine) data.cold_water_line_id = parseInt(coldWaterLine);
+        if (hotWaterLine) data.hot_water_line_id = parseInt(hotWaterLine);
+        if (coldWaterSupplier) data.cold_water_supplier_id = parseInt(coldWaterSupplier);
+        if (hotWaterSupplier) data.hot_water_supplier_id = parseInt(hotWaterSupplier);
+
         try {
             const response = await fetch(`/api/buildings/${id}`, {
                 method: 'PUT',
@@ -2870,6 +2939,78 @@ document.addEventListener("DOMContentLoaded", function () {
     // Обработчик кнопки отмены редактирования здания
     document.getElementById('cancel-edit-building').addEventListener('click', () => {
         document.getElementById('edit-building-modal').style.display = 'none';
+    });
+
+    // Обработчики для включения поставщиков при выборе линий (форма редактирования)
+    document.getElementById('edit-building-cold-water-line').addEventListener('change', function() {
+        const supplierSelect = document.getElementById('edit-building-cold-water-supplier');
+        supplierSelect.disabled = !this.value;
+        if (!this.value) {
+            supplierSelect.value = '';
+        }
+    });
+
+    document.getElementById('edit-building-hot-water-line').addEventListener('change', function() {
+        const supplierSelect = document.getElementById('edit-building-hot-water-supplier');
+        supplierSelect.disabled = !this.value;
+        if (!this.value) {
+            supplierSelect.value = '';
+        }
+    });
+
+    // ===============================================
+    // ОБРАБОТЧИКИ КНОПОК СОЗДАНИЯ ЛИНИЙ С КАРТОЙ
+    // ===============================================
+    
+    // Кнопка создания линии ХВС
+    document.getElementById('create-new-cold-water-line')?.addEventListener('click', () => {
+        const editor = new InfrastructureLineEditor({
+            lineType: 'ХВС',
+            lineId: null,
+            existingData: null,
+            apiEndpoint: '/api/water-lines',
+            additionalFields: {
+                line_type: 'ХВС'
+            },
+            onSave: () => {
+                dataLoaded['water-lines'] = false;
+                loadWaterLines();
+            }
+        });
+        editor.show();
+    });
+    
+    // Кнопка создания линии ГВС
+    document.getElementById('create-new-hot-water-line')?.addEventListener('click', () => {
+        const editor = new InfrastructureLineEditor({
+            lineType: 'ГВС',
+            lineId: null,
+            existingData: null,
+            apiEndpoint: '/api/water-lines',
+            additionalFields: {
+                line_type: 'ГВС'
+            },
+            onSave: () => {
+                dataLoaded['water-lines'] = false;
+                loadWaterLines();
+            }
+        });
+        editor.show();
+    });
+    
+    // Кнопка создания линии электропередач
+    document.getElementById('create-new-electricity-line')?.addEventListener('click', () => {
+        const editor = new InfrastructureLineEditor({
+            lineType: 'electricity',
+            lineId: null,
+            existingData: null,
+            apiEndpoint: '/api/lines',
+            onSave: () => {
+                dataLoaded.lines = false;
+                loadLines();
+            }
+        });
+        editor.show();
     });
 
     // Загружаем данные для форм после инициализации всех функций

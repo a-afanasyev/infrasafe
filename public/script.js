@@ -765,12 +765,16 @@ document.addEventListener('DOMContentLoaded', async function () {
             let hasLeak = false;
             let hasCritical = false;
             let hasWarning = false;
+            let hasOk = false;
+            let hasNoController = false;
 
             for (let marker of markers) {
                 const status = marker.options.status;
                 if (status === 'leak') hasLeak = true;
                 if (status === 'critical') hasCritical = true;
                 if (status === 'warning') hasWarning = true;
+                if (status === 'ok') hasOk = true;
+                if (status === 'no') hasNoController = true; // Здание без контроллера
             }
 
             // Задаем цвет кластера в зависимости от приоритета статусов
@@ -778,23 +782,35 @@ document.addEventListener('DOMContentLoaded', async function () {
             let style = '';
 
             if (hasLeak) {
+                // Приоритет 1: Протечка (синий, мигающий)
                 className += ' marker-cluster-leak';
                 style = 'background-color: rgba(33, 150, 243, 0.8); color: white;';
             } else if (hasCritical) {
+                // Приоритет 2: Критическая ситуация (красный)
                 className += ' marker-cluster-critical';
                 style = 'background-color: rgba(255, 0, 0, 0.8); color: white;';
             } else if (hasWarning) {
+                // Приоритет 3: Предупреждение (оранжевый)
                 className += ' marker-cluster-warning';
                 style = 'background-color: rgba(255, 165, 0, 0.8); color: white;';
-            } else {
+            } else if (hasOk && !hasNoController) {
+                // Приоритет 4: Все здания с контроллерами в норме (зеленый)
                 className += ' marker-cluster-ok';
                 style = 'background-color: rgba(0, 128, 0, 0.8); color: white;';
+            } else if (hasNoController && !hasOk) {
+                // Приоритет 5: Все здания БЕЗ контроллеров (серый)
+                className += ' marker-cluster-no-controller';
+                style = 'background-color: rgba(102, 102, 102, 0.8); color: white;';
+            } else {
+                // Смешанная группа: есть здания с контроллерами и без (светло-серый)
+                className += ' marker-cluster-mixed';
+                style = 'background-color: rgba(158, 158, 158, 0.8); color: white;';
             }
 
             return L.divIcon({
                 html: `<div style="${style}"><span>${cluster.getChildCount()}</span></div>`,
                 className: className,
-                iconSize: L.point(40, 40)
+                iconSize: L.point(25, 25) // Уменьшено с 40x40 до 25x25 (в 2.56 раза меньше по площади)
             });
         }
     }).addTo(map);

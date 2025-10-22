@@ -187,3 +187,4 @@ ${item.hot_water !== false ? `<img src="${hotWaterImage}"...` : ''}
 
 
 
+

@@ -301,13 +301,15 @@ class MapLayersControl {
                     await this.loadTransformers(headers);
                     break;
                 case "🔌 Линии электропередач":
-                    await this.loadPowerLines(headers);
+                    await this.loadPowerLines();
                     break;
                 case "💧 Источники воды":
                     await this.loadWaterSources(headers);
                     break;
                 case "🚰 Линии водоснабжения":
-                    await this.loadWaterLines(headers);
+                    // Загружаем оба типа линий водоснабжения (ХВС и ГВС)
+                    await this.loadColdWaterLines();
+                    await this.loadHotWaterLines();
                     break;
                 case "🔥 Источники тепла":
                     await this.loadHeatSources(headers);
@@ -1038,6 +1040,442 @@ class MapLayersControl {
             'low': '#388e3c'
         };
         return colors[severity] || '#757575';
+    }
+
+    /**
+     * Загрузка линий холодного водоснабжения (ХВС)
+     * Цвет: синий (#0066FF)
+     */
+    async loadColdWaterLines() {
+        try {
+            const response = await fetch('/api/water-lines');
+            
+            if (!response.ok) {
+                if (response.status === 404 || response.status === 500) {
+                    console.warn('Линии водоснабжения не доступны');
+                    this.updateLayerCount("🚰 Линии водоснабжения", 0);
+                    return;
+                }
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const result = await response.json();
+            const allLines = result.data || [];
+            
+            // Фильтруем только ХВС линии
+            const lines = allLines.filter(line => line.line_type === 'ХВС');
+
+            const layer = this.overlays["🚰 Линии водоснабжения"];
+            layer.clearLayers();
+
+            // Отрисовываем каждую линию (если есть main_path)
+            lines.forEach(line => {
+                if (line.main_path && line.main_path.length >= 2) {
+                    const adaptedLine = {
+                        ...line,
+                        line_type: 'cold_water',
+                        display_color: '#0066FF',
+                        line_width: 4,
+                        branches: line.branches || []
+                    };
+                    this.drawInfrastructureLine(adaptedLine, layer);
+                }
+            });
+
+            this.updateLayerCount("🚰 Линии водоснабжения", lines.length);
+        } catch (error) {
+            console.warn('Ошибка при загрузке линий ХВС:', error);
+            this.updateLayerCount("🚰 Линии водоснабжения", 0);
+        }
+    }
+
+    /**
+     * Загрузка линий горячего водоснабжения (ГВС)
+     * Цвет: красный (#FF0000)
+     */
+    async loadHotWaterLines() {
+        try {
+            const response = await fetch('/api/water-lines');
+            
+            if (!response.ok) {
+                if (response.status === 404 || response.status === 500) {
+                    console.warn('Линии водоснабжения не доступны');
+                    return;
+                }
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const result = await response.json();
+            const allLines = result.data || [];
+            
+            // Фильтруем только ГВС линии
+            const lines = allLines.filter(line => line.line_type === 'ГВС');
+
+            const layer = this.overlays["🚰 Линии водоснабжения"];
+            
+            // Добавляем к существующим линиям ХВС
+            lines.forEach(line => {
+                if (line.main_path && line.main_path.length >= 2) {
+                    const adaptedLine = {
+                        ...line,
+                        line_type: 'hot_water',
+                        display_color: '#FF0000',
+                        line_width: 4,
+                        branches: line.branches || []
+                    };
+                    this.drawInfrastructureLine(adaptedLine, layer);
+                }
+            });
+
+            // Обновляем общий счетчик (ХВС + ГВС)
+            const currentCount = parseInt(this.layerCounts.get("🚰 Линии водоснабжения") || '0');
+            this.updateLayerCount("🚰 Линии водоснабжения", currentCount + lines.length);
+        } catch (error) {
+            console.warn('Ошибка при загрузке линий ГВС:', error);
+            // При ошибке не меняем счетчик, оставляем текущее значение
+        }
+    }
+
+    /**
+     * Загрузка линий электропередач
+     * Цвет: желто-оранжевый (#FFA500)
+     */
+    async loadPowerLines() {
+        try {
+            const layer = this.overlays["🔌 Линии электропередач"];
+            layer.clearLayers();
+            
+            // Загружаем линии из lines (линии электропередач)
+            const linesResponse = await fetch('/api/lines');
+            
+            if (!linesResponse.ok) {
+                if (linesResponse.status === 404 || linesResponse.status === 500) {
+                    console.warn('Линии электропередач не доступны');
+                    this.updateLayerCount("🔌 Линии электропередач", 0);
+                    return;
+                }
+                throw new Error(`HTTP ${linesResponse.status}`);
+            }
+            
+            const linesResult = await linesResponse.json();
+            const lines = linesResult.data || [];
+            
+            let drawnCount = 0;
+            
+            // Отрисовываем линии с main_path
+            lines.forEach(line => {
+                if (line.main_path && line.main_path.length >= 2) {
+                    const adaptedLine = {
+                        ...line,
+                        line_type: 'electricity',
+                        display_color: '#FFA500',
+                        line_width: 4,
+                        line_id: line.line_id,
+                        branches: line.branches || []
+                    };
+                    
+                    this.drawInfrastructureLine(adaptedLine, layer);
+                    drawnCount++;
+                }
+            });
+
+            this.updateLayerCount("🔌 Линии электропередач", drawnCount);
+        } catch (error) {
+            console.warn('Ошибка при загрузке линий электропередач:', error);
+            this.updateLayerCount("🔌 Линии электропередач", 0);
+        }
+    }
+
+    /**
+     * Отрисовка линии инфраструктуры на карте
+     * 
+     * @param {Object} lineData - Данные линии из API
+     * @param {Object} layer - Leaflet layer group для добавления
+     */
+    drawInfrastructureLine(lineData, layer) {
+        try {
+            // Парсим координаты основной линии из main_path
+            const mainPath = lineData.main_path.map(point => [
+                parseFloat(point.lat),
+                parseFloat(point.lng)
+            ]);
+
+            // Создаем основную линию
+            const mainLine = L.polyline(mainPath, {
+                color: lineData.display_color,
+                weight: lineData.line_width || 4,
+                opacity: lineData.status === 'active' ? 0.8 : 0.5,
+                smoothFactor: 1,
+                lineCap: 'round',
+                lineJoin: 'round'
+            });
+
+            // Добавляем popup с информацией о линии
+            const popupContent = this.createLinePopup(lineData);
+            mainLine.bindPopup(popupContent);
+
+            // Tooltip при наведении
+            mainLine.bindTooltip(lineData.name, {
+                permanent: false,
+                direction: 'top',
+                opacity: 0.9
+            });
+
+            // Добавляем линию на слой
+            mainLine.addTo(layer);
+
+            // Отрисовываем ответвления (branches), если есть
+            if (lineData.branches && lineData.branches.length > 0) {
+                lineData.branches.forEach(branch => {
+                    this.drawBranch(branch, lineData, layer);
+                });
+            }
+
+            // Загружаем и отображаем алерты на линии (если есть)
+            this.loadLineAlerts(lineData.line_id, lineData, layer);
+
+        } catch (error) {
+            console.error('Ошибка при отрисовке линии:', error);
+        }
+    }
+
+    /**
+     * Отрисовка ответвления от основной линии
+     * 
+     * @param {Object} branch - Данные ответвления
+     * @param {Object} lineData - Данные основной линии
+     * @param {Object} layer - Leaflet layer group
+     */
+    drawBranch(branch, lineData, layer) {
+        try {
+            // Парсим координаты ответвления
+            const branchPath = branch.points.map(point => [
+                parseFloat(point.lat),
+                parseFloat(point.lng)
+            ]);
+
+            // Создаем линию ответвления (пунктирная, тоньше)
+            const branchLine = L.polyline(branchPath, {
+                color: lineData.display_color,
+                weight: 2,
+                opacity: 0.6,
+                dashArray: '10, 10', // Пунктирная линия
+                smoothFactor: 1,
+                lineCap: 'round',
+                lineJoin: 'round'
+            });
+
+            // Popup для ответвления
+            branchLine.bindPopup(`
+                <div style="min-width: 200px;">
+                    <h4 style="margin: 0 0 10px 0;">Ответвление</h4>
+                    <p style="margin: 5px 0;"><strong>Название:</strong> ${branch.name}</p>
+                    <p style="margin: 5px 0;"><strong>Основная линия:</strong> ${lineData.name}</p>
+                    <p style="margin: 5px 0;"><strong>Точек:</strong> ${branch.points.length}</p>
+                </div>
+            `);
+
+            // Tooltip
+            branchLine.bindTooltip(`Ответвление: ${branch.name}`, {
+                permanent: false,
+                direction: 'top',
+                opacity: 0.8
+            });
+
+            // Добавляем на карту
+            branchLine.addTo(layer);
+
+        } catch (error) {
+            console.error('Ошибка при отрисовке ответвления:', error);
+        }
+    }
+
+    /**
+     * Создание содержимого popup для линии
+     * 
+     * @param {Object} lineData - Данные линии
+     * @returns {string} HTML содержимое popup
+     */
+    createLinePopup(lineData) {
+        // Определяем иконку и название типа
+        let typeIcon = '';
+        let typeName = '';
+        
+        switch (lineData.line_type) {
+            case 'cold_water':
+                typeIcon = '❄️';
+                typeName = 'Холодное водоснабжение';
+                break;
+            case 'hot_water':
+                typeIcon = '🔥';
+                typeName = 'Горячее водоснабжение';
+                break;
+            case 'electricity':
+                typeIcon = '⚡';
+                typeName = 'Электроснабжение';
+                break;
+        }
+
+        // Статус с цветовой индикацией
+        const statusColors = {
+            'active': 'green',
+            'maintenance': 'orange',
+            'emergency': 'red',
+            'inactive': 'gray'
+        };
+        const statusColor = statusColors[lineData.status] || 'gray';
+
+        // Технические параметры (в зависимости от типа)
+        let technicalParams = '';
+        if (lineData.line_type === 'electricity' && lineData.voltage_kv) {
+            technicalParams = `<p style="margin: 5px 0;"><strong>Напряжение:</strong> ${lineData.voltage_kv} кВ</p>`;
+        } else if ((lineData.line_type === 'cold_water' || lineData.line_type === 'hot_water') && lineData.diameter_mm) {
+            technicalParams = `<p style="margin: 5px 0;"><strong>Диаметр:</strong> ${lineData.diameter_mm} мм</p>`;
+        }
+
+        return `
+            <div style="min-width: 250px;">
+                <h4 style="margin: 0 0 10px 0;">${typeIcon} ${lineData.name}</h4>
+                <p style="margin: 5px 0;"><strong>Тип:</strong> ${typeName}</p>
+                ${lineData.description ? `<p style="margin: 5px 0;"><strong>Описание:</strong> ${lineData.description}</p>` : ''}
+                <p style="margin: 5px 0;"><strong>Статус:</strong> <span style="color: ${statusColor}; font-weight: bold;">${lineData.status}</span></p>
+                <p style="margin: 5px 0;"><strong>Длина:</strong> ${lineData.length_km} км</p>
+                ${technicalParams}
+                ${lineData.material ? `<p style="margin: 5px 0;"><strong>Материал:</strong> ${lineData.material}</p>` : ''}
+                ${lineData.branches && lineData.branches.length > 0 ? `<p style="margin: 5px 0;"><strong>Ответвлений:</strong> ${lineData.branches.length}</p>` : ''}
+            </div>
+        `;
+    }
+
+    /**
+     * Загрузка и отображение алертов на линии
+     * 
+     * @param {number} lineId - ID линии
+     * @param {Object} lineData - Данные линии
+     * @param {Object} layer - Leaflet layer group
+     */
+    async loadLineAlerts(lineId, lineData, layer) {
+        try {
+            const response = await fetch(`/api/infrastructure-lines/${lineId}/alerts?active_only=true`);
+            
+            if (!response.ok) {
+                return; // Алерты опциональны
+            }
+
+            const result = await response.json();
+            const alerts = result.data || [];
+
+            // Отображаем каждый алерт
+            alerts.forEach(alert => {
+                this.displayLineAlert(alert, lineData, layer);
+            });
+
+        } catch (error) {
+            console.warn(`Не удалось загрузить алерты для линии ${lineId}:`, error);
+        }
+    }
+
+    /**
+     * Отображение алерта на линии
+     * 
+     * @param {Object} alert - Данные алерта
+     * @param {Object} lineData - Данные линии
+     * @param {Object} layer - Leaflet layer group
+     */
+    displayLineAlert(alert, lineData, layer) {
+        try {
+            // Парсим координаты точки алерта
+            const alertPoint = alert.alert_point;
+            const lat = parseFloat(alertPoint.lat);
+            const lng = parseFloat(alertPoint.lng);
+
+            // Цвет маркера в зависимости от серьезности
+            const severityColors = {
+                'INFO': '#2196F3',
+                'WARNING': '#FF9800',
+                'CRITICAL': '#F44336'
+            };
+            const markerColor = severityColors[alert.severity] || '#757575';
+
+            // Создаем маркер аварии
+            const alertMarker = L.circleMarker([lat, lng], {
+                radius: 8,
+                fillColor: markerColor,
+                color: '#FFFFFF',
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.8
+            });
+
+            // Popup с информацией об алерте
+            alertMarker.bindPopup(`
+                <div style="min-width: 200px;">
+                    <h4 style="margin: 0 0 10px 0; color: ${markerColor};">⚠️ Авария на линии</h4>
+                    <p style="margin: 5px 0;"><strong>Линия:</strong> ${lineData.name}</p>
+                    <p style="margin: 5px 0;"><strong>Серьезность:</strong> <span style="color: ${markerColor}; font-weight: bold;">${alert.severity}</span></p>
+                    ${alert.description ? `<p style="margin: 5px 0;"><strong>Описание:</strong> ${alert.description}</p>` : ''}
+                    ${alert.alert_message ? `<p style="margin: 5px 0;"><strong>Сообщение:</strong> ${alert.alert_message}</p>` : ''}
+                    <p style="margin: 5px 0; font-size: 11px; color: #757575;"><strong>Создан:</strong> ${new Date(alert.created_at).toLocaleString('ru-RU')}</p>
+                </div>
+            `);
+
+            // Tooltip
+            alertMarker.bindTooltip(`⚠️ ${alert.severity}: ${alert.description || 'Авария'}`, {
+                permanent: false,
+                direction: 'top'
+            });
+
+            // Добавляем на карту
+            alertMarker.addTo(layer);
+
+            // Подсвечиваем проблемный сегмент линии (опционально)
+            if (alert.segment_start_index !== undefined && alert.segment_end_index !== undefined) {
+                this.highlightLineSegment(lineData, alert.segment_start_index, alert.segment_end_index, layer);
+            }
+
+        } catch (error) {
+            console.error('Ошибка при отображении алерта:', error);
+        }
+    }
+
+    /**
+     * Подсветка проблемного сегмента линии
+     * 
+     * @param {Object} lineData - Данные линии
+     * @param {number} startIndex - Индекс начальной точки
+     * @param {number} endIndex - Индекс конечной точки
+     * @param {Object} layer - Leaflet layer group
+     */
+    highlightLineSegment(lineData, startIndex, endIndex, layer) {
+        try {
+            // Извлекаем сегмент из main_path
+            const segment = lineData.main_path.slice(startIndex, endIndex + 1);
+            
+            if (segment.length < 2) {
+                return; // Нужно минимум 2 точки
+            }
+
+            const segmentPath = segment.map(point => [
+                parseFloat(point.lat),
+                parseFloat(point.lng)
+            ]);
+
+            // Создаем подсвеченную линию (более толстая, красная)
+            const highlightLine = L.polyline(segmentPath, {
+                color: '#F44336', // Красный
+                weight: 6,
+                opacity: 1.0,
+                className: 'pulsing-line', // CSS анимация (если добавить)
+                lineCap: 'round',
+                lineJoin: 'round'
+            });
+
+            // Добавляем на карту
+            highlightLine.addTo(layer);
+
+        } catch (error) {
+            console.error('Ошибка при подсветке сегмента:', error);
+        }
     }
 }
 
