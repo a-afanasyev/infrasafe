@@ -335,9 +335,13 @@ class CoordinateEditor {
      */
     getAPIEndpoint() {
         const endpoints = {
+            'transformer': '/api/transformers',
             'transformers': '/api/transformers',
+            'water-source': '/api/cold-water-sources',
             'water-sources': '/api/cold-water-sources',
+            'heat-source': '/api/heat-sources',
             'heat-sources': '/api/heat-sources',
+            'infrastructure-line': '/api/infrastructure-lines',
             'infrastructure-lines': '/api/infrastructure-lines'
         };
 
