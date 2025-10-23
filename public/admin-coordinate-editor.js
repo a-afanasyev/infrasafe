@@ -196,9 +196,13 @@ class CoordinateEditor {
      * Инициализация Leaflet мини-карты
      */
     initMiniMap() {
-        // Создаем карту
+        // Получаем текущие координаты из полей ввода или используем переданные
+        const currentLat = parseFloat(document.getElementById('edit-latitude').value) || this.currentLat || 55.751244;
+        const currentLng = parseFloat(document.getElementById('edit-longitude').value) || this.currentLng || 37.618423;
+        
+        // Создаем карту с правильными координатами
         this.map = L.map('coordinate-mini-map').setView(
-            [this.currentLat || 55.751244, this.currentLng || 37.618423],
+            [currentLat, currentLng],
             13
         );
 
@@ -207,10 +211,21 @@ class CoordinateEditor {
             attribution: '© OpenStreetMap contributors'
         }).addTo(this.map);
 
-        // Создаем draggable маркер
+        // Создаем кастомную иконку для маркера трансформатора
+        const transformerIcon = L.divIcon({
+            className: 'transformer-marker-icon',
+            html: '<div class="transformer-marker"></div>',
+            iconSize: [8, 8],
+            iconAnchor: [4, 4]
+        });
+
+        // Создаем draggable маркер с правильными координатами и кастомной иконкой
         this.marker = L.marker(
-            [this.currentLat || 55.751244, this.currentLng || 37.618423],
-            { draggable: true }
+            [currentLat, currentLng],
+            { 
+                draggable: true,
+                icon: transformerIcon
+            }
         ).addTo(this.map);
 
         // Обработчик перетаскивания маркера
@@ -371,8 +386,12 @@ function openCoordinateEditor(objectType, objectId, latitudeOrCallback, longitud
     if (typeof latitudeOrCallback === 'function') {
         // Вариант 1: openCoordinateEditor(objectType, objectId, callback)
         // Используется в формах добавления/редактирования в admin.html
-        actualLatitude = null;
-        actualLongitude = null;
+        // Пытаемся получить координаты из полей формы
+        const latField = document.getElementById(`${objectType}-latitude`);
+        const lngField = document.getElementById(`${objectType}-longitude`);
+        
+        actualLatitude = latField ? parseFloat(latField.value) || null : null;
+        actualLongitude = lngField ? parseFloat(lngField.value) || null : null;
         actualObjectName = null;
         actualOnSave = latitudeOrCallback; // Callback передан как 3й параметр
     } else {

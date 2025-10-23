@@ -22,11 +22,58 @@ class MapLayersControl {
         this.createLayerControl();
         this.setupEventHandlers();
         
-        // Автоматически загружаем слой зданий при старте
+        // Автоматически загружаем слой зданий при старте (и показываем на карте)
         this.overlays["🏢 Здания"].addTo(this.map);
         this.loadLayerData("🏢 Здания");
         
+        // Загружаем данные для остальных слоев (для обновления счетчиков), но не показываем на карте
+        this.loadLayerDataSilent("⚡ Трансформаторы");
+        this.loadLayerDataSilent("🔌 Линии электропередач");
+        this.loadLayerDataSilent("💧 Источники воды");
+        this.loadLayerDataSilent("🚰 Линии водоснабжения");
+        this.loadLayerDataSilent("🔥 Источники тепла");
+        this.loadLayerDataSilent("📊 Контроллеры");
+        this.loadLayerDataSilent("⚠️ Алерты");
+        
         console.log('✅ Map layers control initialized successfully');
+    }
+    
+    // Загружаем данные слоя без отображения на карте (только для обновления счетчика)
+    async loadLayerDataSilent(layerName) {
+        const token = localStorage.getItem('token');
+        const headers = {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        };
+        
+        try {
+            switch (layerName) {
+                case "⚡ Трансформаторы":
+                    await this.loadTransformers(headers);
+                    break;
+                case "🔌 Линии электропередач":
+                    await this.loadPowerLines(headers);
+                    break;
+                case "💧 Источники воды":
+                    await this.loadWaterSources(headers);
+                    break;
+                case "🚰 Линии водоснабжения":
+                    await this.loadColdWaterLines();
+                    await this.loadHotWaterLines();
+                    break;
+                case "🔥 Источники тепла":
+                    await this.loadHeatSources(headers);
+                    break;
+                case "📊 Контроллеры":
+                    await this.loadControllers(headers);
+                    break;
+                case "⚠️ Алерты":
+                    await this.loadAlerts(headers);
+                    break;
+            }
+        } catch (error) {
+            console.error(`Ошибка при загрузке данных для ${layerName}:`, error);
+        }
     }
 
     initializeLayers() {
@@ -401,27 +448,56 @@ class MapLayersControl {
 
     createTransformerMarker(transformer) {
         const powerKVA = parseFloat(transformer.power_kva) || 0;
-        // Цвет по мощности: зелёный для малых, жёлтый для средних, оранжевый для больших
-        let color = '#4CAF50'; // зелёный (< 500 кВА)
-        if (powerKVA >= 500 && powerKVA < 1000) {
-            color = '#FFC107'; // жёлтый
-        } else if (powerKVA >= 1000) {
-            color = '#FF9800'; // оранжевый
-        }
-        
-        const radius = 8 + Math.min(powerKVA / 200, 10);
         
         // Преобразуем координаты в числа (API возвращает строки)
         const lat = parseFloat(transformer.latitude);
         const lng = parseFloat(transformer.longitude);
         
-        const marker = L.circleMarker([lat, lng], {
-            radius: Math.min(radius, 18),
-            fillColor: color,
-            color: '#000',
-            weight: 2,
-            opacity: 1,
-            fillOpacity: 0.8
+        // Создаем кастомную иконку - коричневый квадрат
+        const transformerIcon = L.divIcon({
+            className: 'transformer-marker-icon',
+            html: '<div class="transformer-marker"></div>',
+            iconSize: [8, 8],
+            iconAnchor: [4, 4],
+            popupAnchor: [0, -4]
+        });
+        
+        const marker = L.marker([lat, lng], {
+            icon: transformerIcon
+        });
+
+        // Функция обновления размера маркера в зависимости от зума
+        const updateMarkerSize = () => {
+            const zoom = this.map.getZoom();
+            const markerElement = marker.getElement();
+            
+            if (markerElement) {
+                const markerDiv = markerElement.querySelector('.transformer-marker');
+                if (markerDiv) {
+                    // Удаляем все классы зума
+                    markerDiv.classList.remove('zoom-out', 'zoom-medium', 'zoom-in');
+                    
+                    // Добавляем класс в зависимости от уровня зума
+                    if (zoom <= 10) {
+                        // Далеко - точка 2x2
+                        markerDiv.classList.add('zoom-out');
+                    } else if (zoom >= 11 && zoom <= 14) {
+                        // Средний зум - квадрат 8x8
+                        markerDiv.classList.add('zoom-medium');
+                    } else {
+                        // Близко (zoom >= 15) - квадрат 8x8 с внутренним квадратом
+                        markerDiv.classList.add('zoom-in');
+                    }
+                }
+            }
+        };
+
+        // Обновляем размер после добавления маркера на карту
+        marker.on('add', () => {
+            setTimeout(updateMarkerSize, 50);
+            // Удаляем старый обработчик, если есть, и добавляем новый
+            this.map.off('zoomend', updateMarkerSize);
+            this.map.on('zoomend', updateMarkerSize);
         });
 
         // Создаём popup

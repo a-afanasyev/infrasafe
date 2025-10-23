@@ -615,4 +615,80 @@
 
 .layers-control-panel::-webkit-scrollbar-thumb:hover {
     background: #a8a8a8;
+}
+
+/* Кастомный маркер трансформатора - базовые стили */
+.transformer-marker {
+    width: 8px !important;
+    height: 8px !important;
+    background-color: #8B4513; /* Коричневый цвет */
+    border: 1px solid #5D2E0F; /* Темно-коричневая рамка */
+    border-radius: 1px; /* Небольшое скругление углов */
+    margin-left: -4px !important; /* Центрируем по горизонтали */
+    margin-top: -4px !important; /* Центрируем по вертикали */
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); /* Тень для объема */
+    position: relative;
+    transition: all 0.2s ease; /* Плавный переход при изменении размера */
+}
+
+/* Внутренний квадрат для дополнительного стиля - только на больших зумах */
+.transformer-marker::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 3px;
+    height: 3px;
+    background-color: #D2691E; /* Светло-коричневый центр */
+    border-radius: 0px;
+    opacity: 0; /* По умолчанию скрыт */
+    transition: opacity 0.2s ease;
+}
+
+/* Маркер при зумауте (маленький зум, далеко) - точка 2x2 */
+.transformer-marker.zoom-out {
+    width: 2px !important;
+    height: 2px !important;
+    margin-left: -1px !important;
+    margin-top: -1px !important;
+    border: none !important;
+    border-radius: 50% !important; /* Круглая точка */
+    box-shadow: none !important;
+}
+
+.transformer-marker.zoom-out::before {
+    display: none !important;
+}
+
+/* Маркер при среднем зуме */
+.transformer-marker.zoom-medium {
+    width: 8px !important;
+    height: 8px !important;
+    margin-left: -4px !important;
+    margin-top: -4px !important;
+    border-radius: 1px !important;
+}
+
+.transformer-marker.zoom-medium::before {
+    opacity: 0 !important; /* Скрываем внутренний квадрат */
+}
+
+/* Маркер при зумине (большой зум, близко) */
+.transformer-marker.zoom-in {
+    width: 8px !important;
+    height: 8px !important;
+    margin-left: -4px !important;
+    margin-top: -4px !important;
+}
+
+.transformer-marker.zoom-in::before {
+    opacity: 1 !important; /* Показываем внутренний квадрат */
+}
+
+/* Убираем стандартные стили Leaflet для кастомного маркера */
+.transformer-marker-icon {
+    background: transparent !important;
+    border: none !important;
 } 

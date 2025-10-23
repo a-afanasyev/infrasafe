@@ -737,6 +737,40 @@
                 padding: 5px;
             }
         }
+
+        /* Кастомный маркер трансформатора */
+        .transformer-marker {
+            width: 8px !important;
+            height: 8px !important;
+            background-color: #8B4513; /* Коричневый цвет */
+            border: 1px solid #5D2E0F; /* Темно-коричневая рамка */
+            border-radius: 1px; /* Небольшое скругление углов */
+            margin-left: -4px !important; /* Центрируем по горизонтали */
+            margin-top: -4px !important; /* Центрируем по вертикали */
+            cursor: move;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); /* Тень для объема */
+            position: relative;
+            transition: all 0.2s ease;
+        }
+
+        /* Внутренний квадрат для дополнительного стиля */
+        .transformer-marker::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 3px;
+            height: 3px;
+            background-color: #D2691E; /* Светло-коричневый центр */
+            border-radius: 0px;
+        }
+
+        /* Убираем стандартные стили Leaflet для кастомного маркера */
+        .transformer-marker-icon {
+            background: transparent !important;
+            border: none !important;
+        }
     </style>
 </head>
 <body>
@@ -1120,10 +1154,13 @@
                 </div>
                 
                 <div class="form-group">
-                    <button type="button" class="btn-secondary" onclick="openCoordinateEditor('transformer', null, (lat, lng) => {
-                        document.getElementById('transformer-latitude').value = lat;
-                        document.getElementById('transformer-longitude').value = lng;
-                    })">
+                    <button type="button" class="btn-secondary" onclick="
+                        const currentLat = parseFloat(document.getElementById('transformer-latitude').value) || null;
+                        const currentLng = parseFloat(document.getElementById('transformer-longitude').value) || null;
+                        openCoordinateEditor('transformer', null, currentLat, currentLng, null, (lat, lng) => {
+                            document.getElementById('transformer-latitude').value = lat;
+                            document.getElementById('transformer-longitude').value = lng;
+                        })">
                         📍 Указать на карте
                     </button>
                 </div>
@@ -1860,10 +1897,13 @@
                 </div>
                 
                 <div class="form-group">
-                    <button type="button" class="btn-secondary" onclick="openCoordinateEditor('transformer', document.getElementById('edit-transformer-id').value, (lat, lng) => {
-                        document.getElementById('edit-transformer-latitude').value = lat;
-                        document.getElementById('edit-transformer-longitude').value = lng;
-                    })">
+                    <button type="button" class="btn-secondary" onclick="
+                        const currentLat = parseFloat(document.getElementById('edit-transformer-latitude').value) || null;
+                        const currentLng = parseFloat(document.getElementById('edit-transformer-longitude').value) || null;
+                        openCoordinateEditor('transformer', document.getElementById('edit-transformer-id').value, currentLat, currentLng, null, (lat, lng) => {
+                            document.getElementById('edit-transformer-latitude').value = lat;
+                            document.getElementById('edit-transformer-longitude').value = lng;
+                        })">
                         📍 Указать на карте
                     </button>
                 </div>
