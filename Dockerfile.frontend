@@ -1,0 +1,38 @@
+FROM nginx:alpine
+
+# Копируем конфигурацию Nginx
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# Создаем директорию для статических файлов
+WORKDIR /usr/share/nginx/html
+
+# Копируем HTML файлы
+COPY index.html .
+COPY *.html .
+
+# Копируем статические ресурсы
+COPY css/ ./css/
+COPY public/ ./public/
+COPY data/ ./data/
+
+# Создаем пользователя для безопасности
+RUN addgroup -g 1001 -S nginx-user && \
+    adduser -S nginx-user -u 1001
+
+# Устанавливаем права на файлы
+RUN chown -R nginx-user:nginx-user /usr/share/nginx/html && \
+    chown -R nginx-user:nginx-user /var/cache/nginx && \
+    chown -R nginx-user:nginx-user /var/log/nginx && \
+    chown -R nginx-user:nginx-user /etc/nginx/conf.d
+
+# Создаем директории для PID файлов
+RUN touch /var/run/nginx.pid && \
+    chown nginx-user:nginx-user /var/run/nginx.pid
+
+USER nginx-user
+
+# Открываем порт
+EXPOSE 8080
+
+# Запускаем Nginx
+CMD ["nginx", "-g", "daemon off;"]

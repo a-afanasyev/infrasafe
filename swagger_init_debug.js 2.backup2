@@ -1,0 +1,2107 @@
+
+window.onload = function() {
+  // Build a system
+  var url = window.location.search.match(/url=([^&]+)/);
+  if (url && url.length > 1) {
+    url = decodeURIComponent(url[1]);
+  } else {
+    url = window.location.origin;
+  }
+  var options = {
+  "swaggerDoc": {
+    "openapi": "3.0.0",
+    "info": {
+      "title": "Infrasafe Habitat IQ API",
+      "version": "1.0.0",
+      "description": "API документация для системы мониторинга зданий и инфраструктуры"
+    },
+    "servers": [
+      {
+        "url": "http://localhost:3000/api",
+        "description": "Development server"
+      }
+    ],
+    "components": {
+      "securitySchemes": {
+        "bearerAuth": {
+          "type": "http",
+          "scheme": "bearer",
+          "bearerFormat": "JWT"
+        }
+      },
+      "schemas": {
+        "Alert": {
+          "type": "object",
+          "properties": {
+            "alert_id": {
+              "type": "integer",
+              "description": "Уникальный идентификатор алерта"
+            },
+            "type": {
+              "type": "string",
+              "description": "Тип алерта",
+              "example": "TRANSFORMER_OVERLOAD"
+            },
+            "infrastructure_id": {
+              "type": "string",
+              "description": "ID инфраструктурного объекта"
+            },
+            "infrastructure_type": {
+              "type": "string",
+              "enum": ["transformer", "water_source", "heat_source"],
+              "description": "Тип инфраструктурного объекта"
+            },
+            "severity": {
+              "type": "string",
+              "enum": ["INFO", "WARNING", "CRITICAL"],
+              "description": "Уровень важности алерта"
+            },
+            "status": {
+              "type": "string",
+              "enum": ["active", "acknowledged", "resolved"],
+              "description": "Статус алерта"
+            },
+            "message": {
+              "type": "string",
+              "description": "Сообщение алерта"
+            },
+            "affected_buildings": {
+              "type": "integer",
+              "description": "Количество затронутых зданий"
+            },
+            "data": {
+              "type": "object",
+              "description": "Дополнительные данные алерта"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Время создания"
+            },
+            "acknowledged_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Время подтверждения"
+            },
+            "resolved_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Время закрытия"
+            }
+          }
+        },
+        "AlertCreate": {
+          "type": "object",
+          "required": ["type", "infrastructure_id", "infrastructure_type", "severity", "message"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "Тип алерта",
+              "example": "MANUAL_ALERT"
+            },
+            "infrastructure_id": {
+              "type": "string",
+              "description": "ID инфраструктурного объекта"
+            },
+            "infrastructure_type": {
+              "type": "string",
+              "enum": ["transformer", "water_source", "heat_source"],
+              "description": "Тип инфраструктурного объекта"
+            },
+            "severity": {
+              "type": "string",
+              "enum": ["INFO", "WARNING", "CRITICAL"],
+              "description": "Уровень важности алерта"
+            },
+            "message": {
+              "type": "string",
+              "description": "Сообщение алерта"
+            },
+            "affected_buildings": {
+              "type": "integer",
+              "description": "Количество затронутых зданий"
+            },
+            "data": {
+              "type": "object",
+              "description": "Дополнительные данные алерта"
+            }
+          }
+        }
+      }
+    },
+    "paths": {
+      "/api/auth/login": {
+        "post": {
+          "summary": "Авторизация пользователя",
+          "description": "Авторизует пользователя и возвращает JWT токен",
+          "tags": ["Authentication"],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["username", "password"],
+                  "properties": {
+                    "username": {
+                      "type": "string"
+                    },
+                    "password": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Успешная авторизация"
+            },
+            "401": {
+              "description": "Неверные учетные данные"
+            }
+          }
+        }
+      },
+      "/api/auth/register": {
+        "post": {
+          "summary": "Регистрация нового пользователя",
+          "description": "Создает нового пользователя в системе",
+          "tags": ["Authentication"],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["username", "password"],
+                  "properties": {
+                    "username": {
+                      "type": "string"
+                    },
+                    "password": {
+                      "type": "string",
+                      "minLength": 6
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": ["user", "admin"],
+                      "default": "user"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Пользователь успешно зарегистрирован"
+            },
+            "400": {
+              "description": "Ошибка валидации данных"
+            },
+            "409": {
+              "description": "Пользователь уже существует"
+            }
+          }
+        }
+      },
+      "/api/auth/profile": {
+        "get": {
+          "summary": "Получить профиль текущего пользователя",
+          "description": "Возвращает информацию о текущем авторизованном пользователе",
+          "tags": ["Authentication"],
+          "security": [{"bearerAuth": []}],
+          "responses": {
+            "200": {
+              "description": "Информация о пользователе"
+            },
+            "401": {
+              "description": "Отсутствует токен авторизации"
+            }
+          }
+        }
+      },
+      "/api/auth/logout": {
+        "post": {
+          "summary": "Выход из системы",
+          "description": "Выход из системы с добавлением токена в черный список",
+          "tags": ["Authentication"],
+          "security": [{"bearerAuth": []}],
+          "responses": {
+            "200": {
+              "description": "Успешный выход из системы"
+            },
+            "401": {
+              "description": "Отсутствует токен авторизации"
+            }
+          }
+        }
+      },
+      "/api/auth/refresh": {
+        "post": {
+          "summary": "Обновление токенов",
+          "description": "Обновляет access и refresh токены",
+          "tags": ["Authentication"],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["refreshToken"],
+                  "properties": {
+                    "refreshToken": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Токены обновлены"
+            },
+            "401": {
+              "description": "Недействительный refresh токен"
+            }
+          }
+        }
+      },
+      "/api/auth/change-password": {
+        "post": {
+          "summary": "Изменение пароля",
+          "description": "Изменяет пароль текущего пользователя",
+          "tags": ["Authentication"],
+          "security": [{"bearerAuth": []}],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["currentPassword", "newPassword"],
+                  "properties": {
+                    "currentPassword": {
+                      "type": "string"
+                    },
+                    "newPassword": {
+                      "type": "string",
+                      "minLength": 6
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Пароль успешно изменен"
+            },
+            "400": {
+              "description": "Неверный текущий пароль"
+            },
+            "401": {
+              "description": "Отсутствует токен авторизации"
+            }
+          }
+        }
+      },
+      "/api/buildings": {
+        "get": {
+          "summary": "Получить список всех зданий",
+          "description": "Возвращает список всех зданий с пагинацией",
+          "tags": ["Buildings"],
+          "parameters": [
+            {
+              "in": "query",
+              "name": "page",
+              "schema": {
+                "type": "integer",
+                "default": 1
+              },
+              "description": "Номер страницы"
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "schema": {
+                "type": "integer",
+                "default": 10
+              },
+              "description": "Количество элементов на странице"
+            },
+            {
+              "in": "query",
+              "name": "sort",
+              "schema": {
+                "type": "string",
+                "default": "building_id"
+              },
+              "description": "Поле для сортировки"
+            },
+            {
+              "in": "query",
+              "name": "order",
+              "schema": {
+                "type": "string",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "default": "asc"
+              },
+              "description": "Порядок сортировки"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Успешный ответ со списком зданий"
+            }
+          }
+        },
+        "post": {
+          "summary": "Создать новое здание",
+          "description": "Создает новое здание",
+          "tags": ["Buildings"],
+          "security": [{"bearerAuth": []}],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "address",
+                    "latitude",
+                    "longitude"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "address": {
+                      "type": "string"
+                    },
+                    "latitude": {
+                      "type": "number"
+                    },
+                    "longitude": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Здание успешно создано"
+            },
+            "400": {
+              "description": "Ошибка валидации данных"
+            }
+          }
+        }
+      },
+      "/api/buildings/search": {
+        "get": {
+          "summary": "Поиск зданий в радиусе",
+          "description": "Находит здания в заданном радиусе от указанных координат",
+          "tags": ["Buildings"],
+          "parameters": [
+            {
+              "in": "query",
+              "name": "latitude",
+              "required": true,
+              "schema": {
+                "type": "number",
+                "minimum": -90,
+                "maximum": 90
+              },
+              "description": "Широта центральной точки"
+            },
+            {
+              "in": "query",
+              "name": "longitude",
+              "required": true,
+              "schema": {
+                "type": "number",
+                "minimum": -180,
+                "maximum": 180
+              },
+              "description": "Долгота центральной точки"
+            },
+            {
+              "in": "query",
+              "name": "radius",
+              "required": true,
+              "schema": {
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 100
+              },
+              "description": "Радиус поиска в километрах"
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "schema": {
+                "type": "integer",
+                "default": 50,
+                "maximum": 100
+              },
+              "description": "Максимальное количество результатов"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Найденные здания с расстояниями"
+            },
+            "400": {  
+              "description": "Неверные параметры поиска"
+            }
+          }
+        }
+      },
+      "/api/buildings/statistics": {
+        "get": {
+          "summary": "Статистика зданий",
+          "description": "Возвращает аналитику по зданиям (по городам и управляющим компаниям)",
+          "tags": ["Buildings"],
+          "responses": {
+            "200": {
+              "description": "Статистика зданий"
+            },
+            "500": {
+              "description": "Ошибка сервера"
+            }
+          }
+        }
+      },
+      "/api/buildings/{id}": {
+        "get": {
+          "summary": "Получить здание по ID",
+          "description": "Возвращает одно здание по его ID",
+          "tags": ["Buildings"],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "integer"
+              },
+              "description": "ID здания"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Успешный ответ с информацией о здании"
+            },
+            "404": {
+              "description": "Здание не найдено"
+            }
+          }
+        },
+        "put": {
+          "summary": "Обновить здание",
+          "description": "Обновляет существующее здание по его ID",
+          "tags": ["Buildings"],
+          "security": [{"bearerAuth": []}],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "integer"
+              },
+              "description": "ID здания"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "address": {
+                      "type": "string"
+                    },
+                    "latitude": {
+                      "type": "number"
+                    },
+                    "longitude": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Здание успешно обновлено"
+            },
+            "400": {
+              "description": "Ошибка валидации данных"
+            },
+            "404": {
+              "description": "Здание не найдено"
+            }
+          }
+        },
+        "delete": {
+          "summary": "Удалить здание",
+          "description": "Удаляет здание по его ID",
+          "tags": ["Buildings"],
+          "security": [{"bearerAuth": []}],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "integer"
+              },
+              "description": "ID здания"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Здание успешно удалено"
+            },
+            "400": {
+              "description": "Невозможно удалить здание с привязанными контроллерами"
+            },
+            "404": {
+              "description": "Здание не найдено"
+            }
+          }
+        }
+      },
+      "/api/controllers": {
+        "get": {
+          "summary": "Получить список всех контроллеров",
+          "description": "Возвращает список всех контроллеров с пагинацией",
+          "tags": ["Controllers"],
+          "parameters": [
+            {
+              "in": "query",
+              "name": "page",
+              "schema": {
+                "type": "integer",
+                "default": 1
+              },
+              "description": "Номер страницы"
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "schema": {
+                "type": "integer",
+                "default": 10
+              },
+              "description": "Количество элементов на странице"
+            },
+            {
+              "in": "query",
+              "name": "sort",
+              "schema": {
+                "type": "string",
+                "default": "controller_id"
+              },
+              "description": "Поле для сортировки"
+            },
+            {
+              "in": "query",
+              "name": "order",
+              "schema": {
+                "type": "string",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "default": "asc"
+              },
+              "description": "Порядок сортировки"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Успешный ответ со списком контроллеров"
+            }
+          }
+        },
+        "post": {
+          "summary": "Создать новый контроллер",
+          "description": "Создает новый контроллер",
+          "tags": ["Controllers"],
+          "security": [{"bearerAuth": []}],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "building_id",
+                    "serial_number"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "building_id": {
+                      "type": "integer"
+                    },
+                    "serial_number": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "online",
+                        "offline",
+                        "maintenance"
+                      ],
+                      "default": "offline"
+                    },
+                    "firmware_version": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Контроллер успешно создан"
+            },
+            "400": {
+              "description": "Ошибка валидации данных"
+            }
+          }
+        }
+      },
+      "/api/controllers/update-status-by-activity": {
+        "post": {
+          "summary": "Обновить статусы контроллеров по активности",
+          "description": "Автоматически обновляет статусы всех контроллеров на основе их последней активности",
+          "tags": ["Controllers"],
+          "security": [{"bearerAuth": []}],
+          "responses": {
+            "200": {
+              "description": "Статусы контроллеров обновлены"
+            },
+            "401": {
+              "description": "Отсутствует токен авторизации"
+            }
+          }
+        }
+      },
+      "/api/controllers/statistics": {
+        "get": {
+          "summary": "Статистика контроллеров",
+          "description": "Возвращает аналитику по контроллерам",
+          "tags": ["Controllers"],
+          "responses": {
+            "200": {
+              "description": "Статистика контроллеров"
+            },
+            "500": {
+              "description": "Ошибка сервера"
+            }
+          }
+        }
+      },
+      "/api/controllers/{id}": {
+        "get": {
+          "summary": "Получить контроллер по ID",
+          "description": "Возвращает один контроллер по его ID",
+          "tags": ["Controllers"],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "integer"
+              },
+              "description": "ID контроллера"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Успешный ответ с информацией о контроллере"
+            },
+            "404": {
+              "description": "Контроллер не найден"
+            }
+          }
+        },
+        "put": {
+          "summary": "Обновить контроллер",
+          "description": "Обновляет существующий контроллер по его ID",
+          "tags": ["Controllers"],
+          "security": [{"bearerAuth": []}],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "integer"
+              },
+              "description": "ID контроллера"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "building_id": {
+                      "type": "integer"
+                    },
+                    "serial_number": {
+                      "type": "string"
+                    },
+                    "firmware_version": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Контроллер успешно обновлен"
+            },
+            "400": {
+              "description": "Ошибка валидации данных"
+            },
+            "404": {
+              "description": "Контроллер не найден"
+            }
+          }
+        },
+        "delete": {
+          "summary": "Удалить контроллер",
+          "description": "Удаляет контроллер по его ID",
+          "tags": ["Controllers"],
+          "security": [{"bearerAuth": []}],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "integer"
+              },
+              "description": "ID контроллера"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Контроллер успешно удален"
+            },
+            "400": {
+              "description": "Невозможно удалить контроллер с привязанными метриками"
+            },
+            "404": {
+              "description": "Контроллер не найден"
+            }
+          }
+        }
+      },
+      "/api/controllers/building/{buildingId}": {
+        "get": {
+          "summary": "Получить контроллеры по ID здания",
+          "description": "Возвращает список контроллеров, привязанных к зданию",
+          "tags": ["Controllers"],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "buildingId",
+              "required": true,
+              "schema": {
+                "type": "integer"
+              },
+              "description": "ID здания"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Успешный ответ со списком контроллеров"
+            }
+          }
+        }
+      },
+      "/api/controllers/{id}/metrics": {
+        "get": {
+          "summary": "Получить метрики контроллера",
+          "description": "Возвращает список метрик для контроллера с возможностью фильтрации по дате",
+          "tags": ["Controllers", "Metrics"],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "integer"
+              },
+              "description": "ID контроллера"
+            },
+            {
+              "in": "query",
+              "name": "startDate",
+              "schema": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "description": "Начальная дата (ISO формат)"
+            },
+            {
+              "in": "query",
+              "name": "endDate",
+              "schema": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "description": "Конечная дата (ISO формат)"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Успешный ответ со списком метрик"
+            },
+            "404": {
+              "description": "Контроллер не найден"
+            }
+          }
+        }
+      },
+      "/api/controllers/{id}/status": {
+        "patch": {
+          "summary": "Обновить статус контроллера",
+          "description": "Обновляет статус существующего контроллера",
+          "tags": ["Controllers"],
+          "security": [{"bearerAuth": []}],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "integer"
+              },
+              "description": "ID контроллера"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "online",
+                        "offline",
+                        "maintenance"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Статус контроллера успешно обновлен"
+            },
+            "400": {
+              "description": "Неверное значение статуса"
+            },
+            "404": {
+              "description": "Контроллер не найден"
+            }
+          }
+        }
+      },
+      "/api/metrics": {
+        "get": {
+          "summary": "Получить список всех метрик",
+          "description": "Возвращает список всех метрик с пагинацией",
+          "tags": ["Metrics"],
+          "parameters": [
+            {
+              "in": "query",
+              "name": "page",
+              "schema": {
+                "type": "integer",
+                "default": 1
+              },
+              "description": "Номер страницы"
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "schema": {
+                "type": "integer",
+                "default": 10
+              },
+              "description": "Количество элементов на странице"
+            },
+            {
+              "in": "query",
+              "name": "sort",
+              "schema": {
+                "type": "string",
+                "default": "timestamp"
+              },
+              "description": "Поле для сортировки"
+            },
+            {
+              "in": "query",
+              "name": "order",
+              "schema": {
+                "type": "string",
+                "enum": [
+                  "asc",
+                  "desc"
+                ],
+                "default": "desc"
+              },
+              "description": "Порядок сортировки"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Успешный ответ со списком метрик"
+            }
+          }
+        },
+        "post": {
+          "summary": "Создать новую метрику",
+          "description": "Создает новую запись метрики",
+          "tags": ["Metrics"],
+          "security": [{"bearerAuth": []}],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "controller_id"
+                  ],
+                  "properties": {
+                    "controller_id": {
+                      "type": "integer"
+                    },
+                    "temperature": {
+                      "type": "number"
+                    },
+                    "humidity": {
+                      "type": "number"
+                    },
+                    "pressure": {
+                      "type": "number"
+                    },
+                    "co2_level": {
+                      "type": "number"
+                    },
+                    "voltage": {
+                      "type": "number"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Метрика успешно создана"
+            },
+            "400": {
+              "description": "Ошибка валидации данных"
+            },
+            "404": {
+              "description": "Контроллер не найден"
+            }
+          }
+        }
+      },
+      "/api/metrics/latest": {
+        "get": {
+          "summary": "Получить последние метрики для всех контроллеров",
+          "description": "Возвращает последние записанные метрики для каждого контроллера",
+          "tags": ["Metrics"],
+          "responses": {
+            "200": {
+              "description": "Успешный ответ со списком последних метрик"
+            }
+          }
+        }
+      },
+      "/api/metrics/cleanup": {
+        "delete": {
+          "summary": "Очистка старых метрик",
+          "description": "Удаляет метрики старше указанного количества дней",
+          "tags": ["Metrics"],
+          "security": [{"bearerAuth": []}],
+          "parameters": [
+            {
+              "in": "query",
+              "name": "days",
+              "schema": {
+                "type": "integer",
+                "default": 30,
+                "minimum": 1,
+                "maximum": 365
+              },
+              "description": "Количество дней для хранения метрик"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Старые метрики успешно удалены"
+            },
+            "401": {
+              "description": "Отсутствует токен авторизации"
+            },
+            "400": {
+              "description": "Неверный параметр days"
+            }
+          }
+        }
+      },
+      "/api/metrics/controller/{controllerId}/aggregated": {
+        "get": {
+          "summary": "Получить агрегированные метрики",
+          "description": "Возвращает агрегированные данные для контроллера за период",
+          "tags": ["Metrics"],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "controllerId",
+              "required": true,
+              "schema": {
+                "type": "integer"
+              },
+              "description": "ID контроллера"
+            },
+            {
+              "in": "query",
+              "name": "timeFrame",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "enum": ["hour", "day", "week", "month"]
+              },
+              "description": "Временной интервал для агрегации"
+            },
+            {
+              "in": "query",
+              "name": "startDate",
+              "schema": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "description": "Начальная дата (ISO формат)"
+            },
+            {
+              "in": "query",
+              "name": "endDate",
+              "schema": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "description": "Конечная дата (ISO формат)"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Агрегированные метрики"
+            },
+            "404": {
+              "description": "Контроллер не найден"
+            },
+            "400": {
+              "description": "Неверные параметры запроса"
+            }
+          }
+        }
+      },
+
+      "/api/metrics/controller/{controllerId}": {
+        "get": {
+          "summary": "Получить метрики по ID контроллера",
+          "description": "Возвращает список метрик для конкретного контроллера с возможностью фильтрации по дате",
+          "tags": ["Metrics"],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "controllerId",
+              "required": true,
+              "schema": {
+                "type": "integer"
+              },
+              "description": "ID контроллера"
+            },
+            {
+              "in": "query",
+              "name": "startDate",
+              "schema": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "description": "Начальная дата (ISO формат)"
+            },
+            {
+              "in": "query",
+              "name": "endDate",
+              "schema": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "description": "Конечная дата (ISO формат)"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Успешный ответ со списком метрик"
+            },
+            "404": {
+              "description": "Контроллер не найден"
+            }
+          }
+        }
+      },
+      "/api/metrics/{id}": {
+        "get": {
+          "summary": "Получить метрику по ID",
+          "description": "Возвращает одну метрику по ее ID",
+          "tags": ["Metrics"],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "integer"
+              },
+              "description": "ID метрики"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Успешный ответ с информацией о метрике"
+            },
+            "404": {
+              "description": "Метрика не найдена"
+            }
+          }
+        },
+        "delete": {
+          "summary": "Удалить метрику",
+          "description": "Удаляет метрику по ее ID",
+          "tags": ["Metrics"],
+          "security": [{"bearerAuth": []}],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {
+                "type": "integer"
+              },
+              "description": "ID метрики"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Метрика успешно удалена"
+            },
+            "404": {
+              "description": "Метрика не найдена"
+            }
+          }
+        }
+      },
+      "/api/metrics/telemetry": {
+        "post": {
+          "summary": "Получить телеметрию от устройства",
+          "description": "Принимает данные телеметрии от контроллера и сохраняет их как метрику",
+          "tags": ["Metrics", "Telemetry"],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "controller_id"
+                  ],
+                  "properties": {
+                    "controller_id": {
+                      "type": "integer"
+                    },
+                    "temperature": {
+                      "type": "number"
+                    },
+                    "humidity": {
+                      "type": "number"
+                    },
+                    "pressure": {
+                      "type": "number"
+                    },
+                    "co2_level": {
+                      "type": "number"
+                    },
+                    "voltage": {
+                      "type": "number"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Телеметрия успешно получена и сохранена"
+            },
+            "400": {
+              "description": "Ошибка валидации данных"
+            },
+            "404": {
+              "description": "Контроллер не найден"
+            }
+          }
+        }
+      }
+      },
+      "/api/transformers": {
+        "get": {
+          "summary": "Получить список всех трансформаторов",
+          "description": "Возвращает список всех трансформаторов",
+          "tags": ["Transformers"],
+          "responses": {
+            "200": {
+              "description": "Успешный ответ со списком трансформаторов"
+            }
+          }
+        },
+        "post": {
+          "summary": "Создать новый трансформатор",
+          "description": "Создает новый трансформатор",
+          "tags": ["Transformers"],
+          "security": [{"bearerAuth": []}],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "name", "address", "latitude", "longitude", "capacity_kva"],
+                  "properties": {
+                    "id": {"type": "string"},
+                    "name": {"type": "string"},
+                    "address": {"type": "string"},
+                    "latitude": {"type": "number"},
+                    "longitude": {"type": "number"},
+                    "capacity_kva": {"type": "number"},
+                    "voltage_primary": {"type": "number"},
+                    "voltage_secondary": {"type": "number"},
+                    "manufacturer": {"type": "string"},
+                    "model": {"type": "string"}
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {"description": "Трансформатор успешно создан"},
+            "400": {"description": "Ошибка валидации данных"}
+          }
+        }
+      },
+      "/api/transformers/{id}": {
+        "get": {
+          "summary": "Получить трансформатор по ID",
+          "description": "Возвращает один трансформатор по его ID",
+          "tags": ["Transformers"],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {"type": "string"},
+              "description": "ID трансформатора"
+            }
+          ],
+          "responses": {
+            "200": {"description": "Успешный ответ с информацией о трансформаторе"},
+            "404": {"description": "Трансформатор не найден"}
+          }
+        },
+        "put": {
+          "summary": "Обновить трансформатор",
+          "description": "Обновляет существующий трансформатор",
+          "tags": ["Transformers"],
+          "security": [{"bearerAuth": []}],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {"type": "string"},
+              "description": "ID трансформатора"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {"type": "string"},
+                    "address": {"type": "string"},
+                    "capacity_kva": {"type": "number"}
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {"description": "Трансформатор успешно обновлен"},
+            "404": {"description": "Трансформатор не найден"}
+          }
+        },
+        "delete": {
+          "summary": "Удалить трансформатор",
+          "description": "Удаляет трансформатор по его ID",
+          "tags": ["Transformers"],
+          "security": [{"bearerAuth": []}],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {"type": "string"},
+              "description": "ID трансформатора"
+            }
+          ],
+          "responses": {
+            "200": {"description": "Трансформатор успешно удален"},
+            "404": {"description": "Трансформатор не найден"}
+          }
+        }
+      },
+      "/api/analytics/transformers": {
+        "get": {
+          "summary": "Получить все трансформаторы с аналитикой",
+          "description": "Возвращает список трансформаторов с данными аналитики",
+          "tags": ["Analytics"],
+          "parameters": [
+            {
+              "in": "query",
+              "name": "status",
+              "schema": {
+                "type": "string",
+                "enum": ["active", "maintenance", "inactive"]
+              },
+              "description": "Фильтр по статусу"
+            },
+            {
+              "in": "query",
+              "name": "overloaded_only",
+              "schema": {"type": "boolean"},
+              "description": "Только перегруженные (>80%)"
+            }
+          ],
+          "responses": {
+            "200": {"description": "Список трансформаторов с аналитикой"}
+          }
+        }
+      },
+      "/api/analytics/transformers/overloaded": {
+        "get": {
+          "summary": "Получить перегруженные трансформаторы",
+          "description": "Возвращает список перегруженных трансформаторов",
+          "tags": ["Analytics"],
+          "parameters": [
+            {
+              "in": "query",
+              "name": "threshold",
+              "schema": {
+                "type": "number",
+                "default": 80
+              },
+              "description": "Порог загрузки в %"
+            }
+          ],
+          "responses": {
+            "200": {"description": "Перегруженные трансформаторы"}
+          }
+        }
+      },
+      "/api/cold-water-sources": {
+        "get": {
+          "summary": "Получить список источников холодной воды",
+          "description": "Возвращает список всех источников холодной воды",
+          "tags": ["Water Sources"],
+          "responses": {
+            "200": {"description": "Успешный ответ со списком источников воды"}
+          }
+        },
+        "post": {
+          "summary": "Создать новый источник воды",
+          "description": "Создает новый источник холодной воды",
+          "tags": ["Water Sources"],
+          "security": [{"bearerAuth": []}],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["name", "location", "capacity"],
+                  "properties": {
+                    "name": {"type": "string"},
+                    "location": {"type": "string"},
+                    "capacity": {"type": "number"},
+                    "quality_rating": {"type": "number"}
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {"description": "Источник воды успешно создан"},
+            "400": {"description": "Ошибка валидации данных"}
+          }
+        }
+      },
+      "/api/cold-water-sources/{id}": {
+        "get": {
+          "summary": "Получить источник воды по ID",
+          "description": "Возвращает один источник воды по его ID",
+          "tags": ["Water Sources"],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {"type": "integer"},
+              "description": "ID источника воды"
+            }
+          ],
+          "responses": {
+            "200": {"description": "Успешный ответ с информацией об источнике воды"},
+            "404": {"description": "Источник воды не найден"}
+          }
+        },
+        "put": {
+          "summary": "Обновить источник воды",
+          "description": "Обновляет существующий источник воды",
+          "tags": ["Water Sources"],
+          "security": [{"bearerAuth": []}],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {"type": "integer"},
+              "description": "ID источника воды"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {"type": "string"},
+                    "location": {"type": "string"},
+                    "capacity": {"type": "number"}
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {"description": "Источник воды успешно обновлен"},
+            "404": {"description": "Источник воды не найден"}
+          }
+        },
+        "delete": {
+          "summary": "Удалить источник воды",
+          "description": "Удаляет источник воды по его ID",
+          "tags": ["Water Sources"],
+          "security": [{"bearerAuth": []}],
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "schema": {"type": "integer"},
+              "description": "ID источника воды"
+            }
+          ],
+          "responses": {
+            "200": {"description": "Источник воды успешно удален"},
+            "404": {"description": "Источник воды не найден"}
+          }
+        }
+      }
+    },
+    "/api/alerts": {
+      "get": {
+        "summary": "Получить активные алерты",
+        "tags": ["Alerts"],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "severity",
+            "schema": {
+              "type": "string",
+              "enum": ["INFO", "WARNING", "CRITICAL"]
+            },
+            "description": "Фильтр по уровню важности"
+          },
+          {
+            "in": "query", 
+            "name": "infrastructure_type",
+            "schema": {
+              "type": "string",
+              "enum": ["transformer", "water_source", "heat_source"]
+            },
+            "description": "Фильтр по типу инфраструктуры"
+          },
+          {
+            "in": "query",
+            "name": "limit", 
+            "schema": {
+              "type": "integer",
+              "default": 100
+            },
+            "description": "Максимальное количество результатов"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Список активных алертов",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Alert"
+                      }
+                    },
+                    "count": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Создать алерт вручную",
+        "tags": ["Alerts"],
+        "security": [{"bearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Алерт успешно создан",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Alert"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts/statistics": {
+      "get": {
+        "summary": "Получить статистику алертов",
+        "tags": ["Alerts"],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "schema": {
+              "type": "integer",
+              "default": 7,
+              "minimum": 1,
+              "maximum": 365
+            },
+            "description": "Период для статистики в днях"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Статистика алертов",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "period_days": {
+                          "type": "integer"
+                        },
+                        "statistics": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "active_alerts_count": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts/status": {
+      "get": {
+        "summary": "Получить статус системы алертов",
+        "tags": ["Alerts"],
+        "responses": {
+          "200": {
+            "description": "Статус системы алертов",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "active_alerts": {
+                          "type": "integer"
+                        },
+                        "last_checks": {
+                          "type": "integer"
+                        },
+                        "cooldown_minutes": {
+                          "type": "integer"
+                        },
+                        "thresholds": {
+                          "type": "object"
+                        },
+                        "circuit_breaker_state": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts/check/transformer/{transformerId}": {
+      "post": {
+        "summary": "Проверить конкретный трансформатор",
+        "tags": ["Alerts"],
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "transformerId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID трансформатора"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Результат проверки трансформатора",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "oneOf": [
+                        {"$ref": "#/components/schemas/Alert"},
+                        {"type": "null"}
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts/check/all-transformers": {
+      "post": {
+        "summary": "Проверить все трансформаторы",
+        "tags": ["Alerts"],
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {
+            "description": "Результат массовой проверки",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "checked": {
+                          "type": "integer"
+                        },
+                        "alerts_created": {
+                          "type": "integer"
+                        },
+                        "alerts": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Alert"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts/{alertId}/acknowledge": {
+      "patch": {
+        "summary": "Подтвердить алерт",
+        "tags": ["Alerts"],
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "alertId",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "ID алерта"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Алерт успешно подтвержден",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Alert"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts/{alertId}/resolve": {
+      "patch": {
+        "summary": "Закрыть алерт",
+        "tags": ["Alerts"],
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "alertId",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "ID алерта"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Алерт успешно закрыт",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Alert"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts/thresholds": {
+      "get": {
+        "summary": "Получить пороги алертов",
+        "tags": ["Alerts"],
+        "responses": {
+          "200": {
+            "description": "Текущие пороги алертов",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "transformer_overload": {
+                          "type": "number"
+                        },
+                        "transformer_critical": {
+                          "type": "number"
+                        },
+                        "water_pressure_low": {
+                          "type": "number"
+                        },
+                        "water_pressure_critical": {
+                          "type": "number"
+                        },
+                        "heating_temp_delta_low": {
+                          "type": "number"
+                        },
+                        "heating_temp_delta_critical": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Обновить пороги алертов",
+        "tags": ["Alerts"],
+        "security": [{"bearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "transformer_overload": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "transformer_critical": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "water_pressure_low": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "water_pressure_critical": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "heating_temp_delta_low": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "heating_temp_delta_critical": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Пороги успешно обновлены"
+          }
+        }
+      }
+    },
+    "tags": [
+      {"name": "Authentication", "description": "Операции авторизации и управления пользователями"},
+      {"name": "Buildings", "description": "Управление зданиями"},
+      {"name": "Controllers", "description": "Управление контроллерами"},
+      {"name": "Metrics", "description": "Управление метриками и телеметрией"},
+      {"name": "Transformers", "description": "Управление трансформаторами"},
+      {"name": "Analytics", "description": "Аналитические данные и отчеты"},
+      {"name": "Water Sources", "description": "Управление источниками воды"},
+      {"name": "Telemetry", "description": "Телеметрические данные"},
+      {"name": "Alerts", "description": "Система уведомлений и мониторинга алертов"}
+    ]
+  },
+  "customOptions": {}
+};
+  url = options.swaggerUrl || url
+  var urls = options.swaggerUrls
+  var customOptions = options.customOptions
+  var spec1 = options.swaggerDoc
+  var swaggerOptions = {
+    spec: spec1,
+    url: url,
+    urls: urls,
+    dom_id: '#swagger-ui',
+    deepLinking: true,
+    presets: [
+      SwaggerUIBundle.presets.apis,
+      SwaggerUIStandalonePreset
+    ],
+    plugins: [
+      SwaggerUIBundle.plugins.DownloadUrl
+    ],
+    layout: "StandaloneLayout"
+  }
+  for (var attrname in customOptions) {
+    swaggerOptions[attrname] = customOptions[attrname];
+  }
+  var ui = SwaggerUIBundle(swaggerOptions)
+
+  if (customOptions.oauth) {
+    ui.initOAuth(customOptions.oauth)
+  }
+
+  if (customOptions.preauthorizeApiKey) {
+    const key = customOptions.preauthorizeApiKey.authDefinitionKey;
+    const value = customOptions.preauthorizeApiKey.apiKeyValue;
+    if (!!key && !!value) {
+      const pid = setInterval(() => {
+        const authorized = ui.preauthorizeApiKey(key, value);
+        if(!!authorized) clearInterval(pid);
+      }, 500)
+
+    }
+  }
+
+  if (customOptions.authAction) {
+    ui.authActions.authorize(customOptions.authAction)
+  }
+  window.ui = ui;
+};
