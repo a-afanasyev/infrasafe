@@ -1,0 +1,78 @@
+{
+    "framework_info": {
+        "name": "InfraSafe Unified Test Framework",
+        "version": "1.0.0",
+        "timestamp": "2025-08-09T01:11:05+05:00",
+        "api_url": "http://localhost:3000",
+        "total_duration": 15
+    },
+    "execution_summary": {
+        "total_modules": 3,
+        "modules_passed": 3,
+        "modules_failed": 0,
+        "overall_status": "PASS"
+    },
+    "module_results": [
+        [0;36m📋 Выполнение Jest тестов...[0m
+
+> infrasafe@1.0.0 test
+> jest --json --outputFile=/tmp/infrasafe-tests/jest-output.json --silent
+
+[0;34m   Всего тестов: 41[0m
+[0;32m   Пройдено: 41[0m
+[0;31m   Провалено: 0[0m
+[0;34m   Успешность: 100.0%[0m
+[0;34m   Время: 5с[0m
+{
+    "module": "jest",
+    "total_tests": 41,
+    "passed_tests": 41,
+    "failed_tests": 0,
+    "success_rate": 100.0,
+    "duration": 5,
+    "exit_code": 0,
+    "status": "PASS"
+}
+,
+        [0;36m⚡ Выполнение Enhanced Load тестов...[0m
+[0;34m   Всего запросов: 320[0m
+[0;32m   Успешно: 320[0m
+[0;31m   Ошибки: 0[0m
+[0;34m   Успешность: 100.0%[0m
+[0;34m   Время: 9с[0m
+{
+    "module": "load",
+    "total_requests": 320,
+    "successful_requests": 320,
+    "failed_requests": 0,
+    "success_rate": 100.0,
+    "duration": 9,
+    "exit_code": 0,
+    "status": "PASS",
+    "report_file": "tests/reports/load-test-report-20250809-011055.json"
+}
+,
+        [0;36m🚬 Выполнение Smart Smoke тестов...[0m
+[0;34m   Всего тестов: 9[0m
+[0;32m   Пройдено: 9[0m
+[0;31m   Провалено: 0[0m
+[0;34m   Успешность: 100.0%[0m
+[0;34m   Время: 1с[0m
+{
+    "module": "smoke",
+    "total_tests": 9,
+    "passed_tests": 9,
+    "failed_tests": 0,
+    "success_rate": 100.0,
+    "duration": 1,
+    "exit_code": 0,
+    "status": "PASS",
+    "report_file": "tests/reports/smoke-test-20250809-011104.json"
+}
+    ],
+    "environment": {
+        "api_port": "3000",
+        "db_url": "postgresql://postgres@localhost:5432/infrasafe",
+        "test_user": "testuser"
+    }
+}

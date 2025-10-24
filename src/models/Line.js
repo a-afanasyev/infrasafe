@@ -9,6 +9,10 @@ class Line {
         this.voltage_kv = data.voltage_kv;
         this.length_km = data.length_km;
         this.transformer_id = data.transformer_id;
+        this.main_path = data.main_path;
+        this.branches = data.branches;
+        this.cable_type = data.cable_type;
+        this.commissioning_year = data.commissioning_year;
         this.created_at = data.created_at;
         this.updated_at = data.updated_at;
     }
@@ -99,16 +103,96 @@ class Line {
     // Создать новую линию
     static async create(lineData) {
         try {
-            const { name, voltage_kv, length_km, transformer_id } = lineData;
+            // Динамическое построение SQL запроса для поддержки всех полей
+            const fields = [];
+            const values = [];
+            let paramCount = 0;
+            
+            // Обязательные поля
+            if (lineData.name) {
+                fields.push('name');
+                values.push(lineData.name);
+                paramCount++;
+            }
+            
+            if (lineData.voltage_kv) {
+                fields.push('voltage_kv');
+                values.push(lineData.voltage_kv);
+                paramCount++;
+            }
+            
+            if (lineData.length_km) {
+                fields.push('length_km');
+                values.push(lineData.length_km);
+                paramCount++;
+            }
+            
+            // Опциональные поля
+            if (lineData.transformer_id) {
+                fields.push('transformer_id');
+                values.push(lineData.transformer_id);
+                paramCount++;
+            }
+            
+            if (lineData.main_path) {
+                fields.push('main_path');
+                values.push(JSON.stringify(lineData.main_path));
+                paramCount++;
+            }
+            
+            if (lineData.branches) {
+                fields.push('branches');
+                values.push(JSON.stringify(lineData.branches));
+                paramCount++;
+            }
+            
+            if (lineData.cable_type) {
+                fields.push('cable_type');
+                values.push(lineData.cable_type);
+                paramCount++;
+            }
+            
+            if (lineData.commissioning_year) {
+                fields.push('commissioning_year');
+                values.push(lineData.commissioning_year);
+                paramCount++;
+            }
+            
+            if (lineData.latitude_start) {
+                fields.push('latitude_start');
+                values.push(lineData.latitude_start);
+                paramCount++;
+            }
+            
+            if (lineData.longitude_start) {
+                fields.push('longitude_start');
+                values.push(lineData.longitude_start);
+                paramCount++;
+            }
+            
+            if (lineData.latitude_end) {
+                fields.push('latitude_end');
+                values.push(lineData.latitude_end);
+                paramCount++;
+            }
+            
+            if (lineData.longitude_end) {
+                fields.push('longitude_end');
+                values.push(lineData.longitude_end);
+                paramCount++;
+            }
+            
+            // Формируем запрос
+            const placeholders = fields.map((_, i) => `$${i + 1}`).join(', ');
+            const query = `
+                INSERT INTO lines (${fields.join(', ')})
+                VALUES (${placeholders})
+                RETURNING *
+            `;
+            
+            const { rows } = await db.query(query, values);
 
-            const { rows } = await db.query(
-                `INSERT INTO lines (name, voltage_kv, length_km, transformer_id)
-                VALUES ($1, $2, $3, $4)
-                RETURNING *`,
-                [name, voltage_kv, length_km, transformer_id]
-            );
-
-            logger.info(`Created line: ${name}`);
+            logger.info(`Created line: ${lineData.name}`);
             return new Line(rows[0]);
         } catch (error) {
             logger.error(`Error in Line.create: ${error.message}`);
@@ -119,15 +203,100 @@ class Line {
     // Обновить линию
     static async update(id, lineData) {
         try {
-            const { name, voltage_kv, length_km, transformer_id } = lineData;
+            // Динамическое построение SQL запроса для обновления только предоставленных полей
+            const updates = [];
+            const values = [];
+            let paramCount = 0;
+            
+            // Проверяем каждое поле и добавляем в запрос если оно предоставлено
+            if (lineData.name !== undefined) {
+                paramCount++;
+                updates.push(`name = $${paramCount}`);
+                values.push(lineData.name);
+            }
+            
+            if (lineData.voltage_kv !== undefined) {
+                paramCount++;
+                updates.push(`voltage_kv = $${paramCount}`);
+                values.push(lineData.voltage_kv);
+            }
+            
+            if (lineData.length_km !== undefined) {
+                paramCount++;
+                updates.push(`length_km = $${paramCount}`);
+                values.push(lineData.length_km);
+            }
+            
+            if (lineData.transformer_id !== undefined) {
+                paramCount++;
+                updates.push(`transformer_id = $${paramCount}`);
+                values.push(lineData.transformer_id);
+            }
+            
+            if (lineData.main_path !== undefined) {
+                paramCount++;
+                updates.push(`main_path = $${paramCount}`);
+                values.push(JSON.stringify(lineData.main_path));
+            }
+            
+            if (lineData.branches !== undefined) {
+                paramCount++;
+                updates.push(`branches = $${paramCount}`);
+                values.push(JSON.stringify(lineData.branches));
+            }
+            
+            if (lineData.cable_type !== undefined) {
+                paramCount++;
+                updates.push(`cable_type = $${paramCount}`);
+                values.push(lineData.cable_type);
+            }
+            
+            if (lineData.commissioning_year !== undefined) {
+                paramCount++;
+                updates.push(`commissioning_year = $${paramCount}`);
+                values.push(lineData.commissioning_year);
+            }
+            
+            if (lineData.latitude_start !== undefined) {
+                paramCount++;
+                updates.push(`latitude_start = $${paramCount}`);
+                values.push(lineData.latitude_start);
+            }
+            
+            if (lineData.longitude_start !== undefined) {
+                paramCount++;
+                updates.push(`longitude_start = $${paramCount}`);
+                values.push(lineData.longitude_start);
+            }
+            
+            if (lineData.latitude_end !== undefined) {
+                paramCount++;
+                updates.push(`latitude_end = $${paramCount}`);
+                values.push(lineData.latitude_end);
+            }
+            
+            if (lineData.longitude_end !== undefined) {
+                paramCount++;
+                updates.push(`longitude_end = $${paramCount}`);
+                values.push(lineData.longitude_end);
+            }
+            
+            // Всегда обновляем updated_at (без параметра, т.к. используем NOW())
+            updates.push(`updated_at = NOW()`);
+            
+            // ID линии для WHERE
+            paramCount++;
+            values.push(id);
+            
+            // Формируем и выполняем запрос
+            const query = `
+                UPDATE lines
+                SET ${updates.join(', ')}
+                WHERE line_id = $${paramCount}
+                RETURNING *
+            `;
 
-            const { rows } = await db.query(
-                `UPDATE lines
-                SET name = $1, voltage_kv = $2, length_km = $3, transformer_id = $4, updated_at = NOW()
-                WHERE line_id = $5
-                RETURNING *`,
-                [name, voltage_kv, length_km, transformer_id, id]
-            );
+            const { rows } = await db.query(query, values);
 
             if (!rows.length) {
                 return null;

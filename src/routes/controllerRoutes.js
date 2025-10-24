@@ -1,5 +1,7 @@
 const express = require('express');
 const controllerController = require('../controllers/controllerController');
+const { authenticateJWT } = require('../middleware/auth');
+const { validateControllerCreate, validateIdParam } = require('../middleware/validators');
 const router = express.Router();
 
 /**
@@ -76,7 +78,7 @@ router.get('/', controllerController.getAllControllers);
  *       403:
  *         description: Недействительный токен
  */
-router.post('/update-status-by-activity', controllerController.updateControllersStatusByActivity);
+router.post('/update-status-by-activity', authenticateJWT, controllerController.updateControllersStatusByActivity);
 
 /**
  * @swagger
@@ -241,7 +243,7 @@ router.get('/:id/metrics', controllerController.getControllerMetrics);
  *       403:
  *         description: Недействительный токен
  */
-router.post('/', controllerController.createController);
+router.post('/', authenticateJWT, validateControllerCreate, controllerController.createController);
 
 /**
  * @swagger
@@ -279,7 +281,7 @@ router.post('/', controllerController.createController);
  *       400:
  *         description: Ошибка валидации данных
  */
-router.put('/:id', controllerController.updateController);
+router.put('/:id', authenticateJWT, validateIdParam, validateControllerCreate, controllerController.updateController);
 
 /**
  * @swagger
@@ -314,7 +316,7 @@ router.put('/:id', controllerController.updateController);
  *       400:
  *         description: Неверное значение статуса
  */
-router.patch('/:id/status', controllerController.updateControllerStatus);
+router.patch('/:id/status', authenticateJWT, validateIdParam, controllerController.updateControllerStatus);
 
 /**
  * @swagger
@@ -337,6 +339,6 @@ router.patch('/:id/status', controllerController.updateControllerStatus);
  *       400:
  *         description: Невозможно удалить контроллер с привязанными метриками
  */
-router.delete('/:id', controllerController.deleteController);
+router.delete('/:id', authenticateJWT, validateIdParam, controllerController.deleteController);
 
 module.exports = router;

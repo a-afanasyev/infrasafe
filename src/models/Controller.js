@@ -17,14 +17,15 @@ class Controller {
             const validOrder = ['asc', 'desc'].includes(order.toLowerCase()) ? order : 'asc';
 
             // Проверка допустимости поля сортировки
-            const validColumns = ['controller_id', 'serial_number', 'vendor', 'model', 'building_id', 'status', 'installed_at', 'last_heartbeat'];
-            const sortColumn = validColumns.includes(sort) ? sort : 'controller_id';
+            // ИСПРАВЛЕНИЕ SQL INJECTION: Валидация параметров сортировки
+            const { validateSortOrder } = require('../utils/queryValidation');
+            const { validSort, validOrder: validOrderSecure } = validateSortOrder('controllers', sort, validOrder);
 
             const { rows: controllers } = await db.query(
                 `SELECT c.*, b.name as building_name
                  FROM controllers c
                  LEFT JOIN buildings b ON c.building_id = b.building_id
-                 ORDER BY c.${sortColumn} ${validOrder}
+                 ORDER BY c.${validSort} ${validOrderSecure}
                  LIMIT $1 OFFSET $2`,
                 [limit, offset]
             );

@@ -1,0 +1,105 @@
+[]
+{
+    "test_name": "Get Buildings List",
+    "endpoint": "GET /api/buildings",
+    "requests": 100,
+    "concurrency": 10,
+    "success_count": 0,
+    "error_count": 100,
+    "success_rate": 0,
+    "total_duration": 3.775861000,
+    "avg_response_time": .001,
+    "requests_per_second": 26.48,
+    "timestamp": "2025-07-29T09:06:39Z"
+}
+{
+    "test_name": "Get Controllers List",
+    "endpoint": "GET /api/controllers",
+    "requests": 100,
+    "concurrency": 10,
+    "success_count": 0,
+    "error_count": 100,
+    "success_rate": 0,
+    "total_duration": 3.451359000,
+    "avg_response_time": .001,
+    "requests_per_second": 28.97,
+    "timestamp": "2025-07-29T09:06:43Z"
+}
+{
+    "test_name": "Get Metrics",
+    "endpoint": "GET /api/metrics",
+    "requests": 100,
+    "concurrency": 10,
+    "success_count": 0,
+    "error_count": 100,
+    "success_rate": 0,
+    "total_duration": 3.417438000,
+    "avg_response_time": .001,
+    "requests_per_second": 29.26,
+    "timestamp": "2025-07-29T09:06:46Z"
+}
+{
+    "test_name": "Create Building",
+    "endpoint": "POST /api/buildings",
+    "requests": 50,
+    "concurrency": 5,
+    "success_count": 0,
+    "error_count": 50,
+    "success_rate": 0,
+    "total_duration": 1.788060000,
+    "avg_response_time": .001,
+    "requests_per_second": 27.96,
+    "timestamp": "2025-07-29T09:06:48Z"
+}
+{
+    "test_name": "Create Controller",
+    "endpoint": "POST /api/controllers",
+    "requests": 50,
+    "concurrency": 5,
+    "success_count": 0,
+    "error_count": 50,
+    "success_rate": 0,
+    "total_duration": 1.787190000,
+    "avg_response_time": .001,
+    "requests_per_second": 27.97,
+    "timestamp": "2025-07-29T09:06:50Z"
+}
+{
+    "test_name": "Send Telemetry",
+    "endpoint": "POST /api/metrics/telemetry",
+    "requests": 200,
+    "concurrency": 20,
+    "success_count": 0,
+    "error_count": 200,
+    "success_rate": 0,
+    "total_duration": 7.157600000,
+    "avg_response_time": .001,
+    "requests_per_second": 27.94,
+    "timestamp": "2025-07-29T09:06:57Z"
+}
+{
+    "test_name": "Get Analytics",
+    "endpoint": "GET /api/analytics/buildings",
+    "requests": 50,
+    "concurrency": 5,
+    "success_count": 0,
+    "error_count": 50,
+    "success_rate": 0,
+    "total_duration": 1.839335000,
+    "avg_response_time": .001,
+    "requests_per_second": 27.18,
+    "timestamp": "2025-07-29T09:06:59Z"
+}
+{
+    "test_name": "Get Alerts",
+    "endpoint": "GET /api/alerts",
+    "requests": 50,
+    "concurrency": 5,
+    "success_count": 0,
+    "error_count": 50,
+    "success_rate": 0,
+    "total_duration": 1.849349000,
+    "avg_response_time": .001,
+    "requests_per_second": 27.03,
+    "timestamp": "2025-07-29T09:07:01Z"
+}

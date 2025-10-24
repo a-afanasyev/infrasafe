@@ -6,7 +6,7 @@ class WaterSupplier {
     constructor(data) {
         this.supplier_id = data.supplier_id;
         this.name = data.name;
-        this.type = data.type; // 'cold_water' или 'hot_water'
+        this.type = data.supplier_type; // 'cold_water' или 'hot_water'
         this.company_name = data.company_name;
         this.contact_person = data.contact_person;
         this.phone = data.phone;
@@ -41,7 +41,7 @@ class WaterSupplier {
 
             if (filters.type) {
                 paramCount++;
-                conditions.push(`ws.type = $${paramCount}`);
+                conditions.push(`ws.supplier_type = $${paramCount}`);
                 values.push(filters.type);
             }
 
@@ -67,18 +67,18 @@ class WaterSupplier {
                     COALESCE(
                         array_agg(DISTINCT
                             CASE
-                                WHEN ws.type = 'cold_water' THEN bc.name
-                                WHEN ws.type = 'hot_water' THEN bh.name
+                                WHEN ws.supplier_type = 'cold_water' THEN bc.name
+                                WHEN ws.supplier_type = 'hot_water' THEN bh.name
                             END
                         ) FILTER (WHERE
-                            (ws.type = 'cold_water' AND bc.name IS NOT NULL) OR
-                            (ws.type = 'hot_water' AND bh.name IS NOT NULL)
+                            (ws.supplier_type = 'cold_water' AND bc.name IS NOT NULL) OR
+                            (ws.supplier_type = 'hot_water' AND bh.name IS NOT NULL)
                         ),
                         '{}'
                     ) as connected_buildings
                 FROM water_suppliers ws
-                LEFT JOIN buildings bc ON ws.supplier_id = bc.cold_water_supplier_id AND ws.type = 'cold_water'
-                LEFT JOIN buildings bh ON ws.supplier_id = bh.hot_water_supplier_id AND ws.type = 'hot_water'
+                LEFT JOIN buildings bc ON ws.supplier_id = bc.cold_water_supplier_id AND ws.supplier_type = 'cold_water'
+                LEFT JOIN buildings bh ON ws.supplier_id = bh.hot_water_supplier_id AND ws.supplier_type = 'hot_water'
                 ${whereClause}
                 GROUP BY ws.supplier_id
                 ORDER BY ws.supplier_id
@@ -112,18 +112,18 @@ class WaterSupplier {
                     COALESCE(
                         array_agg(DISTINCT
                             CASE
-                                WHEN ws.type = 'cold_water' THEN bc.name
-                                WHEN ws.type = 'hot_water' THEN bh.name
+                                WHEN ws.supplier_type = 'cold_water' THEN bc.name
+                                WHEN ws.supplier_type = 'hot_water' THEN bh.name
                             END
                         ) FILTER (WHERE
-                            (ws.type = 'cold_water' AND bc.name IS NOT NULL) OR
-                            (ws.type = 'hot_water' AND bh.name IS NOT NULL)
+                            (ws.supplier_type = 'cold_water' AND bc.name IS NOT NULL) OR
+                            (ws.supplier_type = 'hot_water' AND bh.name IS NOT NULL)
                         ),
                         '{}'
                     ) as connected_buildings
                 FROM water_suppliers ws
-                LEFT JOIN buildings bc ON ws.supplier_id = bc.cold_water_supplier_id AND ws.type = 'cold_water'
-                LEFT JOIN buildings bh ON ws.supplier_id = bh.hot_water_supplier_id AND ws.type = 'hot_water'
+                LEFT JOIN buildings bc ON ws.supplier_id = bc.cold_water_supplier_id AND ws.supplier_type = 'cold_water'
+                LEFT JOIN buildings bh ON ws.supplier_id = bh.hot_water_supplier_id AND ws.supplier_type = 'hot_water'
                 WHERE ws.supplier_id = $1
                 GROUP BY ws.supplier_id`,
                 [id]
@@ -144,21 +144,21 @@ class WaterSupplier {
     static async create(supplierData) {
         try {
             const {
-                name, type, company_name, contact_person, phone, email, address,
+                name, supplier_type, company_name, contact_person, phone, email, address,
                 contract_number, service_area, tariff_per_m3, status, notes
             } = supplierData;
 
             const { rows } = await db.query(
                 `INSERT INTO water_suppliers
-                (name, type, company_name, contact_person, phone, email, address,
+                (name, supplier_type, company_name, contact_person, phone, email, address,
                  contract_number, service_area, tariff_per_m3, status, notes)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                 RETURNING *`,
-                [name, type, company_name, contact_person, phone, email, address,
+                [name, supplier_type, company_name, contact_person, phone, email, address,
                  contract_number, service_area, tariff_per_m3, status, notes]
             );
 
-            logger.info(`Created water supplier: ${name} (${type})`);
+            logger.info(`Created water supplier: ${name} (${supplier_type})`);
             return new WaterSupplier(rows[0]);
         } catch (error) {
             logger.error(`Error in WaterSupplier.create: ${error.message}`);
@@ -170,19 +170,19 @@ class WaterSupplier {
     static async update(id, supplierData) {
         try {
             const {
-                name, type, company_name, contact_person, phone, email, address,
+                name, supplier_type, company_name, contact_person, phone, email, address,
                 contract_number, service_area, tariff_per_m3, status, notes
             } = supplierData;
 
             const { rows } = await db.query(
                 `UPDATE water_suppliers
-                SET name = $1, type = $2, company_name = $3, contact_person = $4,
+                SET name = $1, supplier_type = $2, company_name = $3, contact_person = $4,
                     phone = $5, email = $6, address = $7, contract_number = $8,
                     service_area = $9, tariff_per_m3 = $10, status = $11,
                     notes = $12, updated_at = NOW()
                 WHERE supplier_id = $13
                 RETURNING *`,
-                [name, type, company_name, contact_person, phone, email, address,
+                [name, supplier_type, company_name, contact_person, phone, email, address,
                  contract_number, service_area, tariff_per_m3, status, notes, id]
             );
 
@@ -224,8 +224,8 @@ class WaterSupplier {
             const { rows } = await db.query(
                 `SELECT DISTINCT ws.* FROM water_suppliers ws
                  LEFT JOIN buildings b ON (
-                     (ws.supplier_id = b.cold_water_supplier_id AND ws.type = 'cold_water') OR
-                     (ws.supplier_id = b.hot_water_supplier_id AND ws.type = 'hot_water')
+                     (ws.supplier_id = b.cold_water_supplier_id AND ws.supplier_type = 'cold_water') OR
+                     (ws.supplier_id = b.hot_water_supplier_id AND ws.supplier_type = 'hot_water')
                  )
                  WHERE b.building_id = $1`,
                 [buildingId]

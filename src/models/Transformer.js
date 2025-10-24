@@ -8,6 +8,12 @@ class Transformer {
         this.name = data.name;
         this.power_kva = data.power_kva;
         this.voltage_kv = data.voltage_kv;
+        this.latitude = data.latitude;
+        this.longitude = data.longitude;
+        this.location = data.location;
+        this.status = data.status;
+        this.manufacturer = data.manufacturer;
+        this.model = data.model;
         this.created_at = data.created_at;
         this.updated_at = data.updated_at;
         this.primary_buildings = data.primary_buildings || [];
@@ -133,14 +139,86 @@ class Transformer {
     // Обновить трансформатор
     static async update(id, transformerData) {
         try {
-            const { name, power_kva, voltage_kv } = transformerData;
+            const { 
+                name, 
+                power_kva, 
+                voltage_kv,
+                latitude,
+                longitude,
+                location,
+                status,
+                manufacturer,
+                model
+            } = transformerData;
+
+            // Строим динамический SQL запрос для обновления только переданных полей
+            const fields = [];
+            const values = [];
+            let paramCount = 0;
+
+            if (name !== undefined) {
+                paramCount++;
+                fields.push(`name = $${paramCount}`);
+                values.push(name);
+            }
+            if (power_kva !== undefined) {
+                paramCount++;
+                fields.push(`power_kva = $${paramCount}`);
+                values.push(power_kva);
+            }
+            if (voltage_kv !== undefined) {
+                paramCount++;
+                fields.push(`voltage_kv = $${paramCount}`);
+                values.push(voltage_kv);
+            }
+            if (latitude !== undefined) {
+                paramCount++;
+                fields.push(`latitude = $${paramCount}`);
+                values.push(latitude);
+            }
+            if (longitude !== undefined) {
+                paramCount++;
+                fields.push(`longitude = $${paramCount}`);
+                values.push(longitude);
+            }
+            if (location !== undefined) {
+                paramCount++;
+                fields.push(`location = $${paramCount}`);
+                values.push(location);
+            }
+            if (status !== undefined) {
+                paramCount++;
+                fields.push(`status = $${paramCount}`);
+                values.push(status);
+            }
+            if (manufacturer !== undefined) {
+                paramCount++;
+                fields.push(`manufacturer = $${paramCount}`);
+                values.push(manufacturer);
+            }
+            if (model !== undefined) {
+                paramCount++;
+                fields.push(`model = $${paramCount}`);
+                values.push(model);
+            }
+
+            if (fields.length === 0) {
+                throw new Error('No fields to update');
+            }
+
+            // Добавляем updated_at
+            fields.push('updated_at = NOW()');
+
+            // Добавляем ID в конец
+            paramCount++;
+            values.push(id);
 
             const { rows } = await db.query(
                 `UPDATE transformers
-                SET name = $1, power_kva = $2, voltage_kv = $3, updated_at = NOW()
-                WHERE transformer_id = $4
+                SET ${fields.join(', ')}
+                WHERE transformer_id = $${paramCount}
                 RETURNING *`,
-                [name, power_kva, voltage_kv, id]
+                values
             );
 
             if (!rows.length) {

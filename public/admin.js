@@ -66,7 +66,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     // Toast уведомления
-    function showToast(message, type = 'success') {
+    window.showToast = function(message, type = 'success') {
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
         toast.textContent = message;
@@ -82,6 +82,122 @@ document.addEventListener("DOMContentLoaded", function () {
     // Функция для безопасного получения значений
     function safeValue(value, defaultValue = "N/A") {
         return value !== null && value !== undefined && value !== '' ? value : defaultValue;
+    }
+
+    // БЕЗОПАСНАЯ функция для создания ячеек таблицы (ИСПРАВЛЕНИЕ XSS)
+    function createSecureTableCell(content, attributes = {}) {
+        const cell = document.createElement('td');
+        
+        // Добавляем атрибуты
+        Object.keys(attributes).forEach(key => {
+            if (key === 'rowspan' || key === 'colspan') {
+                cell.setAttribute(key, attributes[key]);
+            } else if (key === 'class') {
+                cell.className = attributes[key];
+            }
+        });
+        
+        // Безопасно устанавливаем содержимое
+        if (typeof content === 'string') {
+            cell.textContent = content;
+        } else if (content && content.nodeType) {
+            // Если передан DOM элемент
+            cell.appendChild(content);
+        } else {
+            cell.textContent = String(content || '');
+        }
+        
+        return cell;
+    }
+
+    // БЕЗОПАСНЫЕ функции для отображения статических сообщений (ИСПРАВЛЕНИЕ СРЕДНИХ XSS)
+    function showLoadingMessage(tableBodySelector, colSpan) {
+        const tableBody = document.querySelector(tableBodySelector);
+        if (tableBody) {
+            const loadingRow = document.createElement('tr');
+            loadingRow.className = 'loading-row';
+            const loadingCell = document.createElement('td');
+            loadingCell.setAttribute('colspan', colSpan);
+            loadingCell.textContent = 'Загрузка данных...';
+            loadingRow.appendChild(loadingCell);
+            tableBody.innerHTML = ''; // Очищаем перед добавлением
+            tableBody.appendChild(loadingRow);
+        }
+    }
+
+    function showErrorMessage(tableBodySelector, colSpan, message = 'Ошибка загрузки данных') {
+        const tableBody = document.querySelector(tableBodySelector);
+        if (tableBody) {
+            const errorRow = document.createElement('tr');
+            const errorCell = document.createElement('td');
+            errorCell.setAttribute('colspan', colSpan);
+            errorCell.style.textAlign = 'center';
+            errorCell.style.color = 'red';
+            errorCell.textContent = message;
+            errorRow.appendChild(errorCell);
+            tableBody.innerHTML = ''; // Очищаем перед добавлением
+            tableBody.appendChild(errorRow);
+        }
+    }
+
+    function showNoDataMessage(tableBody, colSpan, message = 'Нет данных') {
+        const noDataRow = document.createElement('tr');
+        const noDataCell = document.createElement('td');
+        noDataCell.setAttribute('colspan', colSpan);
+        noDataCell.style.textAlign = 'center';
+        noDataCell.textContent = message;
+        noDataRow.appendChild(noDataCell);
+        return noDataRow;
+    }
+
+    // БЕЗОПАСНАЯ функция для создания строки таблицы buildings (ИСПРАВЛЕНИЕ XSS)
+    function createSecureBuildingRow(building, rowType) {
+        const row = document.createElement('tr');
+        row.className = `building-row-${rowType}`;
+        
+        if (rowType === 1) {
+            // Строка 1: Основная информация
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'item-checkbox';
+            checkbox.setAttribute('data-id', building.building_id);
+            
+            const editBtn = document.createElement('button');
+            editBtn.className = 'btn-sm';
+            editBtn.textContent = 'Изменить';
+            editBtn.onclick = () => editBuilding(building.building_id);
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'btn-sm btn-danger';
+            deleteBtn.textContent = 'Удалить';
+            deleteBtn.onclick = () => deleteBuilding(building.building_id);
+            
+            const buttonCell = document.createElement('td');
+            buttonCell.setAttribute('rowspan', '3');
+            buttonCell.appendChild(editBtn);
+            buttonCell.appendChild(document.createElement('br'));
+            buttonCell.appendChild(deleteBtn);
+            
+            row.appendChild(createSecureTableCell(checkbox, {rowspan: 3}));
+            row.appendChild(createSecureTableCell(safeValue(building.building_id), {rowspan: 3}));
+            row.appendChild(createSecureTableCell(safeValue(building.name), {rowspan: 3}));
+            row.appendChild(createSecureTableCell(safeValue(building.address)));
+            row.appendChild(createSecureTableCell(safeValue(building.town)));
+            row.appendChild(createSecureTableCell(safeValue(building.region)));
+            row.appendChild(createSecureTableCell(formatNumber(building.latitude, 6)));
+            row.appendChild(createSecureTableCell(formatNumber(building.longitude, 6)));
+            row.appendChild(buttonCell);
+            
+        } else if (rowType === 2) {
+            // Строка 2: Инфраструктура
+            row.appendChild(createSecureTableCell(safeValue(building.management_company)));
+            row.appendChild(createSecureTableCell(building.hot_water ? "Да" : "Нет"));
+            row.appendChild(createSecureTableCell(safeValue(building.primary_transformer_name)));
+            row.appendChild(createSecureTableCell(safeValue(building.backup_transformer_name)));
+            row.appendChild(createSecureTableCell(safeValue(building.primary_line_name)));
+        }
+        
+        return row;
     }
 
     // Функция для форматирования чисел
@@ -182,8 +298,8 @@ document.addEventListener("DOMContentLoaded", function () {
         console.log('✅ loadControllers function called successfully');
         if (dataLoaded.controllers) return;
 
-        const tableBody = document.querySelector("#controllers-table tbody");
-        tableBody.innerHTML = `<tr class="loading-row"><td colspan="7">Загрузка данных...</td></tr>`;
+        // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
+        showLoadingMessage("#controllers-table tbody", "8");
 
         try {
             const data = await loadData('/api/admin/controllers', 'controllers');
@@ -192,7 +308,8 @@ document.addEventListener("DOMContentLoaded", function () {
             dataLoaded.controllers = true;
         } catch (error) {
             console.error("Error loading controllers:", error);
-            tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: red;">Ошибка загрузки данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение ошибки
+            showErrorMessage("#controllers-table tbody", "8");
         }
     }
 
@@ -206,23 +323,52 @@ document.addEventListener("DOMContentLoaded", function () {
                 const statusClass = controller.status === 'online' ? 'status-online' :
                                   controller.status === 'offline' ? 'status-offline' : 'status-maintenance';
 
-                row.innerHTML = `
-                    <td><input type="checkbox" class="item-checkbox" data-id="${controller.controller_id}"></td>
-                    <td>${safeValue(controller.controller_id)}</td>
-                    <td>${safeValue(controller.serial_number)}</td>
-                    <td>${safeValue(controller.vendor)}</td>
-                    <td>${safeValue(controller.model)}</td>
-                    <td>${safeValue(controller.building_id)}</td>
-                    <td><span class="status-badge ${statusClass}">${getStatusLabel(controller.status)}</span></td>
-                    <td>
-                        <button onclick="editController(${controller.controller_id})" class="btn-sm">Изменить</button>
-                        <button onclick="deleteController(${controller.controller_id})" class="btn-sm btn-danger">Удалить</button>
-                    </td>
-                `;
+                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'item-checkbox';
+                checkbox.setAttribute('data-id', controller.controller_id);
+                
+                const statusSpan = document.createElement('span');
+                statusSpan.className = `status-badge ${statusClass}`;
+                statusSpan.textContent = getStatusLabel(controller.status);
+                
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn-sm';
+                editBtn.textContent = 'Изменить';
+                editBtn.onclick = () => editController(controller.controller_id);
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn-sm btn-danger';
+                deleteBtn.textContent = 'Удалить';
+                deleteBtn.onclick = () => deleteController(controller.controller_id);
+                
+                const buttonCell = document.createElement('td');
+                buttonCell.appendChild(editBtn);
+                buttonCell.appendChild(deleteBtn);
+                
+                const statusCell = document.createElement('td');
+                statusCell.appendChild(statusSpan);
+                
+                row.appendChild(createSecureTableCell(checkbox));
+                row.appendChild(createSecureTableCell(safeValue(controller.controller_id)));
+                row.appendChild(createSecureTableCell(safeValue(controller.serial_number)));
+                row.appendChild(createSecureTableCell(safeValue(controller.vendor)));
+                row.appendChild(createSecureTableCell(safeValue(controller.model)));
+                row.appendChild(createSecureTableCell(safeValue(controller.building_id)));
+                row.appendChild(statusCell);
+                row.appendChild(buttonCell);
                 newTableBody.appendChild(row);
             });
         } else {
-            newTableBody.innerHTML = `<tr><td colspan="8" style="text-align: center;">Нет данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
+            const noDataRow = document.createElement('tr');
+            const noDataCell = document.createElement('td');
+            noDataCell.setAttribute('colspan', '8');
+            noDataCell.style.textAlign = 'center';
+            noDataCell.textContent = 'Нет данных';
+            noDataRow.appendChild(noDataCell);
+            newTableBody.appendChild(noDataRow);
         }
 
         const table = document.querySelector("#controllers-table");
@@ -239,8 +385,8 @@ document.addEventListener("DOMContentLoaded", function () {
         console.log('✅ loadMetrics function called successfully');
         if (dataLoaded.metrics) return;
 
-        const tableBody = document.querySelector("#metrics-table tbody");
-        tableBody.innerHTML = `<tr class="loading-row"><td colspan="13">Загрузка данных...</td></tr>`;
+        // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
+        showLoadingMessage("#metrics-table tbody", "13");
 
         try {
             const data = await loadData('/api/admin/metrics', 'metrics');
@@ -249,7 +395,8 @@ document.addEventListener("DOMContentLoaded", function () {
             dataLoaded.metrics = true;
         } catch (error) {
             console.error("Error loading metrics:", error);
-            tableBody.innerHTML = `<tr><td colspan="13" style="text-align: center; color: red;">Ошибка загрузки данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение ошибки
+            showErrorMessage("#metrics-table tbody", "13");
         }
     }
 
@@ -260,27 +407,51 @@ document.addEventListener("DOMContentLoaded", function () {
         if (data && data.length > 0) {
             data.forEach((metric) => {
                 const row = document.createElement("tr");
-                row.innerHTML = `
-                    <td><input type="checkbox" class="item-checkbox" data-id="${metric.metric_id}"></td>
-                    <td>${safeValue(metric.metric_id)}</td>
-                    <td>${safeValue(metric.controller_id)}</td>
-                    <td>${formatDate(metric.timestamp)}</td>
-                    <td>${formatNumber(metric.electricity_ph1, 1)}</td>
-                    <td>${formatNumber(metric.electricity_ph2, 1)}</td>
-                    <td>${formatNumber(metric.electricity_ph3, 1)}</td>
-                    <td>${formatNumber(metric.cold_water_pressure, 2)}</td>
-                    <td>${formatNumber(metric.hot_water_in_temp, 1)}</td>
-                    <td>${formatNumber(metric.air_temp, 1)}</td>
-                    <td>${formatNumber(metric.humidity, 1)}</td>
-                    <td>${metric.leak_sensor ? '<span class="alert-badge">Есть</span>' : '<span class="ok-badge">Нет</span>'}</td>
-                    <td>
-                        <button onclick="deleteMetric(${metric.metric_id})" class="btn-sm btn-danger">Удалить</button>
-                    </td>
-                `;
+                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'item-checkbox';
+                checkbox.setAttribute('data-id', metric.metric_id);
+                
+                const leakSensorSpan = document.createElement('span');
+                leakSensorSpan.className = metric.leak_sensor ? 'alert-badge' : 'ok-badge';
+                leakSensorSpan.textContent = metric.leak_sensor ? 'Есть' : 'Нет';
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn-sm btn-danger';
+                deleteBtn.textContent = 'Удалить';
+                deleteBtn.onclick = () => deleteMetric(metric.metric_id);
+                
+                const leakSensorCell = document.createElement('td');
+                leakSensorCell.appendChild(leakSensorSpan);
+                
+                const buttonCell = document.createElement('td');
+                buttonCell.appendChild(deleteBtn);
+                
+                row.appendChild(createSecureTableCell(checkbox));
+                row.appendChild(createSecureTableCell(safeValue(metric.metric_id)));
+                row.appendChild(createSecureTableCell(safeValue(metric.controller_id)));
+                row.appendChild(createSecureTableCell(formatDate(metric.timestamp)));
+                row.appendChild(createSecureTableCell(formatNumber(metric.electricity_ph1, 1)));
+                row.appendChild(createSecureTableCell(formatNumber(metric.electricity_ph2, 1)));
+                row.appendChild(createSecureTableCell(formatNumber(metric.electricity_ph3, 1)));
+                row.appendChild(createSecureTableCell(formatNumber(metric.cold_water_pressure, 2)));
+                row.appendChild(createSecureTableCell(formatNumber(metric.hot_water_in_temp, 1)));
+                row.appendChild(createSecureTableCell(formatNumber(metric.air_temp, 1)));
+                row.appendChild(createSecureTableCell(formatNumber(metric.humidity, 1)));
+                row.appendChild(leakSensorCell);
+                row.appendChild(buttonCell);
                 newTableBody.appendChild(row);
             });
         } else {
-            newTableBody.innerHTML = `<tr><td colspan="13" style="text-align: center;">Нет данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
+            const noDataRow = document.createElement('tr');
+            const noDataCell = document.createElement('td');
+            noDataCell.setAttribute('colspan', '13');
+            noDataCell.style.textAlign = 'center';
+            noDataCell.textContent = 'Нет данных';
+            noDataRow.appendChild(noDataCell);
+            newTableBody.appendChild(noDataRow);
         }
 
         const table = document.querySelector("#metrics-table");
@@ -297,8 +468,8 @@ document.addEventListener("DOMContentLoaded", function () {
         console.log('✅ loadWaterLines function called successfully');
         if (dataLoaded['water-lines']) return;
 
-        const tableBody = document.querySelector("#water-lines-table tbody");
-        tableBody.innerHTML = `<tr class="loading-row"><td colspan="11">Загрузка данных...</td></tr>`;
+        // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
+        showLoadingMessage("#water-lines-table tbody", "7");
 
         try {
             const data = await loadData('/api/admin/water-lines', 'water-lines');
@@ -307,7 +478,8 @@ document.addEventListener("DOMContentLoaded", function () {
             dataLoaded['water-lines'] = true;
         } catch (error) {
             console.error("Error loading water lines:", error);
-            tableBody.innerHTML = `<tr><td colspan="11" style="text-align: center; color: red;">Ошибка загрузки данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение ошибки
+            showErrorMessage("#water-lines-table tbody", "7");
         }
     }
 
@@ -344,7 +516,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 newTableBody.appendChild(row);
             });
         } else {
-            newTableBody.innerHTML = `<tr><td colspan="11" style="text-align: center;">Нет данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
+            newTableBody.appendChild(showNoDataMessage(newTableBody, "7"));
         }
 
         const table = document.querySelector("#water-lines-table");
@@ -477,8 +650,8 @@ document.addEventListener("DOMContentLoaded", function () {
     async function loadBuildings() {
         if (dataLoaded.buildings) return;
 
-        const tableBody = document.querySelector("#buildings-table tbody");
-        tableBody.innerHTML = `<tr class="loading-row"><td colspan="11">Загрузка данных...</td></tr>`;
+        // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
+        showLoadingMessage("#buildings-table tbody", "9");
 
         try {
             const data = await loadData('/api/buildings', 'buildings');
@@ -487,7 +660,8 @@ document.addEventListener("DOMContentLoaded", function () {
             dataLoaded.buildings = true;
         } catch (error) {
             console.error("Error loading buildings:", error);
-            tableBody.innerHTML = `<tr><td colspan="11" style="text-align: center; color: red;">Ошибка загрузки данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение ошибки
+            showErrorMessage("#buildings-table tbody", "9");
         }
     }
 
@@ -500,49 +674,71 @@ document.addEventListener("DOMContentLoaded", function () {
                 // Строка 1: Основная информация
                 const row1 = document.createElement("tr");
                 row1.className = "building-row-1";
-                row1.innerHTML = `
-                    <td rowspan="3"><input type="checkbox" class="item-checkbox" data-id="${building.building_id}"></td>
-                    <td rowspan="3">${safeValue(building.building_id)}</td>
-                    <td rowspan="3">${safeValue(building.name)}</td>
-                    <td>${safeValue(building.address)}</td>
-                    <td>${safeValue(building.town)}</td>
-                    <td>${safeValue(building.region)}</td>
-                    <td>${formatNumber(building.latitude, 6)}</td>
-                    <td>${formatNumber(building.longitude, 6)}</td>
-                    <td rowspan="3">
-                        <button onclick="editBuilding(${building.building_id})" class="btn-sm">Изменить</button><br>
-                        <button onclick="deleteBuilding(${building.building_id})" class="btn-sm btn-danger">Удалить</button>
-                    </td>
-                `;
+                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'item-checkbox';
+                checkbox.setAttribute('data-id', building.building_id);
+                
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn-sm';
+                editBtn.textContent = 'Изменить';
+                editBtn.onclick = () => editBuilding(building.building_id);
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn-sm btn-danger';
+                deleteBtn.textContent = 'Удалить';
+                deleteBtn.onclick = () => deleteBuilding(building.building_id);
+                
+                const buttonCell = document.createElement('td');
+                buttonCell.setAttribute('rowspan', '3');
+                buttonCell.appendChild(editBtn);
+                buttonCell.appendChild(document.createElement('br'));
+                buttonCell.appendChild(deleteBtn);
+                
+                row1.appendChild(createSecureTableCell(checkbox, {rowspan: 3}));
+                row1.appendChild(createSecureTableCell(safeValue(building.building_id), {rowspan: 3}));
+                row1.appendChild(createSecureTableCell(safeValue(building.name), {rowspan: 3}));
+                row1.appendChild(createSecureTableCell(safeValue(building.address)));
+                row1.appendChild(createSecureTableCell(safeValue(building.town)));
+                row1.appendChild(createSecureTableCell(safeValue(building.region)));
+                row1.appendChild(createSecureTableCell(formatNumber(building.latitude, 6)));
+                row1.appendChild(createSecureTableCell(formatNumber(building.longitude, 6)));
+                row1.appendChild(buttonCell);
 
                 // Строка 2: Инфраструктура
                 const row2 = document.createElement("tr");
                 row2.className = "building-row-2";
-                row2.innerHTML = `
-                    <td>${safeValue(building.management_company)}</td>
-                    <td>${building.hot_water ? "Да" : "Нет"}</td>
-                    <td>${safeValue(building.primary_transformer_name)}</td>
-                    <td>${safeValue(building.backup_transformer_name)}</td>
-                    <td>${safeValue(building.primary_line_name)}</td>
-                `;
+                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                row2.appendChild(createSecureTableCell(safeValue(building.management_company)));
+                row2.appendChild(createSecureTableCell(building.hot_water ? "Да" : "Нет"));
+                row2.appendChild(createSecureTableCell(safeValue(building.primary_transformer_name)));
+                row2.appendChild(createSecureTableCell(safeValue(building.backup_transformer_name)));
+                row2.appendChild(createSecureTableCell(safeValue(building.primary_line_name)));
 
                 // Строка 3: Водоснабжение
                 const row3 = document.createElement("tr");
                 row3.className = "building-row-3 building-group";
-                row3.innerHTML = `
-                    <td>${safeValue(building.backup_line_name)}</td>
-                    <td>${safeValue(building.cold_water_line_name)}</td>
-                    <td>${safeValue(building.hot_water_line_name)}</td>
-                    <td>${safeValue(building.cold_water_supplier_name)}</td>
-                    <td>${safeValue(building.hot_water_supplier_name)}</td>
-                `;
+                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                row3.appendChild(createSecureTableCell(safeValue(building.backup_line_name)));
+                row3.appendChild(createSecureTableCell(safeValue(building.cold_water_line_name)));
+                row3.appendChild(createSecureTableCell(safeValue(building.hot_water_line_name)));
+                row3.appendChild(createSecureTableCell(safeValue(building.cold_water_supplier_name)));
+                row3.appendChild(createSecureTableCell(safeValue(building.hot_water_supplier_name)));
 
                 newTableBody.appendChild(row1);
                 newTableBody.appendChild(row2);
                 newTableBody.appendChild(row3);
             });
         } else {
-            newTableBody.innerHTML = `<tr><td colspan="9" style="text-align: center;">Нет данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
+            const noDataRow = document.createElement('tr');
+            const noDataCell = document.createElement('td');
+            noDataCell.setAttribute('colspan', '9');
+            noDataCell.style.textAlign = 'center';
+            noDataCell.textContent = 'Нет данных';
+            noDataRow.appendChild(noDataCell);
+            newTableBody.appendChild(noDataRow);
         }
 
         const table = document.querySelector("#buildings-table");
@@ -559,8 +755,8 @@ document.addEventListener("DOMContentLoaded", function () {
     async function loadTransformers() {
         if (dataLoaded.transformers) return;
 
-        const tableBody = document.querySelector("#transformers-table tbody");
-        tableBody.innerHTML = `<tr class="loading-row"><td colspan="7">Загрузка данных...</td></tr>`;
+        // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
+        showLoadingMessage("#transformers-table tbody", "7");
 
         try {
             const data = await loadData('/api/transformers', 'transformers');
@@ -569,7 +765,8 @@ document.addEventListener("DOMContentLoaded", function () {
             dataLoaded.transformers = true;
         } catch (error) {
             console.error("Error loading transformers:", error);
-            tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: red;">Ошибка загрузки данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение ошибки
+            showErrorMessage("#transformers-table tbody", "7");
         }
     }
 
@@ -591,22 +788,38 @@ document.addEventListener("DOMContentLoaded", function () {
                 if (primaryBuildings) buildingsText.push(`Основные: ${primaryBuildings}`);
                 if (backupBuildings) buildingsText.push(`Резервные: ${backupBuildings}`);
 
-                row.innerHTML = `
-                    <td><input type="checkbox" class="item-checkbox" data-id="${transformer.transformer_id}"></td>
-                    <td>${safeValue(transformer.transformer_id)}</td>
-                    <td>${safeValue(transformer.name)}</td>
-                    <td>${formatNumber(transformer.power_kva, 1)}</td>
-                    <td>${formatNumber(transformer.voltage_kv, 1)}</td>
-                    <td>${buildingsText.join('<br>') || 'Нет подключенных зданий'}</td>
-                    <td>
-                        <button onclick="editTransformer(${transformer.transformer_id})" class="btn-sm">Изменить</button>
-                        <button onclick="deleteTransformer(${transformer.transformer_id})" class="btn-sm btn-danger">Удалить</button>
-                    </td>
-                `;
+                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'item-checkbox';
+                checkbox.setAttribute('data-id', transformer.transformer_id);
+                
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn-sm';
+                editBtn.textContent = 'Изменить';
+                editBtn.onclick = () => editTransformer(transformer.transformer_id);
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn-sm btn-danger';
+                deleteBtn.textContent = 'Удалить';
+                deleteBtn.onclick = () => deleteTransformer(transformer.transformer_id);
+                
+                const buttonCell = document.createElement('td');
+                buttonCell.appendChild(editBtn);
+                buttonCell.appendChild(deleteBtn);
+                
+                row.appendChild(createSecureTableCell(checkbox));
+                row.appendChild(createSecureTableCell(safeValue(transformer.transformer_id)));
+                row.appendChild(createSecureTableCell(safeValue(transformer.name)));
+                row.appendChild(createSecureTableCell(formatNumber(transformer.power_kva, 1)));
+                row.appendChild(createSecureTableCell(formatNumber(transformer.voltage_kv, 1)));
+                row.appendChild(createSecureTableCell(buildingsText.join(', ') || 'Нет подключенных зданий'));
+                row.appendChild(buttonCell);
                 newTableBody.appendChild(row);
             });
         } else {
-            newTableBody.innerHTML = `<tr><td colspan="7" style="text-align: center;">Нет данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
+            newTableBody.appendChild(showNoDataMessage(newTableBody, "7"));
         }
 
         const table = document.querySelector("#transformers-table");
@@ -622,8 +835,8 @@ document.addEventListener("DOMContentLoaded", function () {
     async function loadLines() {
         if (dataLoaded.lines) return;
 
-        const tableBody = document.querySelector("#lines-table tbody");
-        tableBody.innerHTML = `<tr class="loading-row"><td colspan="7">Загрузка данных...</td></tr>`;
+        // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
+        showLoadingMessage("#lines-table tbody", "7");
 
         try {
             const data = await loadData('/api/lines', 'lines');
@@ -632,7 +845,8 @@ document.addEventListener("DOMContentLoaded", function () {
             dataLoaded.lines = true;
         } catch (error) {
             console.error("Error loading lines:", error);
-            tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: red;">Ошибка загрузки данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение ошибки
+            showErrorMessage("#lines-table tbody", "7");
         }
     }
 
@@ -658,7 +872,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 newTableBody.appendChild(row);
             });
         } else {
-            newTableBody.innerHTML = `<tr><td colspan="7" style="text-align: center;">Нет данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
+            newTableBody.appendChild(showNoDataMessage(newTableBody, "7"));
         }
 
         const table = document.querySelector("#lines-table");
@@ -674,8 +889,8 @@ document.addEventListener("DOMContentLoaded", function () {
     async function loadWaterSources() {
         if (dataLoaded.waterSources) return;
 
-        const tableBody = document.querySelector("#water-sources-table tbody");
-        tableBody.innerHTML = `<tr class="loading-row"><td colspan="9">Загрузка данных...</td></tr>`;
+        // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
+        showLoadingMessage("#water-sources-table tbody", "9");
 
         try {
             const data = await loadData('/api/cold-water-sources', 'waterSources');
@@ -684,7 +899,8 @@ document.addEventListener("DOMContentLoaded", function () {
             dataLoaded.waterSources = true;
         } catch (error) {
             console.error("Error loading water sources:", error);
-            tableBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: red;">Ошибка загрузки данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение ошибки
+            showErrorMessage("#water-sources-table tbody", "9");
         }
     }
 
@@ -712,7 +928,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 newTableBody.appendChild(row);
             });
         } else {
-            newTableBody.innerHTML = `<tr><td colspan="9" style="text-align: center;">Нет данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
+            newTableBody.appendChild(showNoDataMessage(newTableBody, "9"));
         }
 
         const table = document.querySelector("#water-sources-table");
@@ -728,8 +945,8 @@ document.addEventListener("DOMContentLoaded", function () {
     async function loadHeatSources() {
         if (dataLoaded.heatSources) return;
 
-        const tableBody = document.querySelector("#heat-sources-table tbody");
-        tableBody.innerHTML = `<tr class="loading-row"><td colspan="9">Загрузка данных...</td></tr>`;
+        // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
+        showLoadingMessage("#heat-sources-table tbody", "9");
 
         try {
             const data = await loadData('/api/heat-sources', 'heatSources');
@@ -738,7 +955,8 @@ document.addEventListener("DOMContentLoaded", function () {
             dataLoaded.heatSources = true;
         } catch (error) {
             console.error("Error loading heat sources:", error);
-            tableBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: red;">Ошибка загрузки данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение ошибки
+            showErrorMessage("#heat-sources-table tbody", "9");
         }
     }
 
@@ -766,7 +984,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 newTableBody.appendChild(row);
             });
         } else {
-            newTableBody.innerHTML = `<tr><td colspan="9" style="text-align: center;">Нет данных</td></tr>`;
+            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
+            newTableBody.appendChild(showNoDataMessage(newTableBody, "9"));
         }
 
         const table = document.querySelector("#heat-sources-table");
@@ -812,7 +1031,36 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     function updateCheckboxHandlers(section) {
-        // Обработчик для "выбрать все"
+        // Обработчик для кнопки "Выбрать все" (button, не checkbox!)
+        const selectAllBtn = document.getElementById(`${section}-select-all`);
+        if (selectAllBtn && !selectAllBtn.dataset.handlerSet) {
+            selectAllBtn.addEventListener('click', function() {
+                const checkboxes = document.querySelectorAll(`#${section}-section .item-checkbox`);
+                const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+                
+                console.log(`🔘 Выбрать все в секции ${section}: текущее состояние all checked = ${allChecked}`);
+                
+                // Если все выбраны - снимаем выбор, иначе выбираем все
+                checkboxes.forEach(checkbox => {
+                    checkbox.checked = !allChecked;
+                    const id = checkbox.dataset.id;
+                    if (!allChecked) {
+                        selectedItems[section].add(id);
+                    } else {
+                        selectedItems[section].delete(id);
+                    }
+                });
+                
+                // Обновляем текст кнопки
+                this.textContent = allChecked ? 'Выбрать все' : 'Снять выбор';
+                updateBatchButtons(section);
+                
+                console.log(`✅ Выбрано элементов: ${selectedItems[section].size}`);
+            });
+            selectAllBtn.dataset.handlerSet = 'true';
+        }
+        
+        // Обработчик для чекбокса "выбрать все" (если есть в заголовке таблицы)
         const selectAllCheckbox = document.getElementById(`${section}-select-all-checkbox`);
         if (selectAllCheckbox) {
             selectAllCheckbox.addEventListener('change', function() {
@@ -842,7 +1090,14 @@ document.addEventListener("DOMContentLoaded", function () {
                 }
                 updateBatchButtons(section);
 
-                // Обновляем состояние "выбрать все"
+                // Обновляем текст кнопки "Выбрать все"
+                const selectAllBtn = document.getElementById(`${section}-select-all`);
+                if (selectAllBtn) {
+                    const allChecked = Array.from(itemCheckboxes).every(cb => cb.checked);
+                    selectAllBtn.textContent = allChecked ? 'Снять выбор' : 'Выбрать все';
+                }
+                
+                // Обновляем состояние чекбокса "выбрать все" (если есть)
                 if (selectAllCheckbox) {
                     selectAllCheckbox.checked = itemCheckboxes.length > 0 &&
                         Array.from(itemCheckboxes).every(cb => cb.checked);
@@ -860,16 +1115,212 @@ document.addEventListener("DOMContentLoaded", function () {
         if (bulkDeleteBtn) {
             bulkDeleteBtn.disabled = selectedCount === 0;
             bulkDeleteBtn.textContent = `Удалить выбранные (${selectedCount})`;
+            
+            // Устанавливаем обработчик только один раз
+            if (!bulkDeleteBtn.dataset.handlerSet) {
+                bulkDeleteBtn.addEventListener('click', () => handleBulkDelete(section));
+                bulkDeleteBtn.dataset.handlerSet = 'true';
+            }
         }
 
         if (bulkStatusBtn) {
             bulkStatusBtn.disabled = selectedCount === 0;
             bulkStatusBtn.textContent = `Изменить статус (${selectedCount})`;
+            
+            // Устанавливаем обработчик только один раз
+            if (!bulkStatusBtn.dataset.handlerSet) {
+                bulkStatusBtn.addEventListener('click', () => handleBulkStatusChange(section));
+                bulkStatusBtn.dataset.handlerSet = 'true';
+            }
         }
 
         if (bulkStatusSelect) {
             bulkStatusSelect.disabled = selectedCount === 0;
         }
+    }
+    
+    // Обработчик массового удаления
+    async function handleBulkDelete(section) {
+        const selectedCount = selectedItems[section].size;
+        const selectedIds = Array.from(selectedItems[section]);
+        
+        if (selectedCount === 0) {
+            showToast('Не выбрано элементов для удаления', 'warning');
+            return;
+        }
+        
+        const sectionNames = {
+            'buildings': 'зданий',
+            'controllers': 'контроллеров',
+            'transformers': 'трансформаторов',
+            'lines': 'линий электропередач',
+            'water-lines': 'линий водоснабжения',
+            'water-sources': 'источников воды',
+            'heat-sources': 'источников тепла',
+            'metrics': 'метрик'
+        };
+        
+        const sectionName = sectionNames[section] || 'элементов';
+        
+        if (!confirm(`⚠️ ВНИМАНИЕ!\n\nВы уверены, что хотите удалить ${selectedCount} ${sectionName}?\n\nЭта операция необратима!`)) {
+            return;
+        }
+        
+        console.log(`🔥 Массовое удаление ${selectedCount} элементов из секции ${section}`);
+        
+        let deleted = 0;
+        let errors = [];
+        
+        // Показываем прогресс
+        showToast(`Удаление ${selectedCount} ${sectionName}...`, 'info');
+        
+        // Определяем endpoint для каждой секции
+        const endpoints = {
+            'buildings': '/api/buildings',
+            'controllers': '/api/controllers',
+            'transformers': '/api/transformers',
+            'lines': '/api/lines',
+            'water-lines': '/api/water-lines',
+            'water-sources': '/api/water-sources',
+            'heat-sources': '/api/heat-sources',
+            'metrics': '/api/metrics'
+        };
+        
+        const endpoint = endpoints[section];
+        
+        if (!endpoint) {
+            showToast(`Ошибка: неизвестная секция ${section}`, 'error');
+            return;
+        }
+        
+        // Удаляем элементы по одному
+        for (const id of selectedIds) {
+            try {
+                const response = await fetch(`${endpoint}/${id}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                    }
+                });
+                
+                if (response.ok) {
+                    deleted++;
+                    console.log(`  ✅ Удалён ${section} #${id}`);
+                } else {
+                    const errorData = await response.json();
+                    const errorMsg = errorData.error || errorData.message || 'Ошибка удаления';
+                    errors.push(`${section} #${id}: ${errorMsg}`);
+                    console.error(`  ❌ Ошибка удаления ${section} #${id}:`, errorMsg);
+                }
+            } catch (error) {
+                errors.push(`${section} #${id}: ${error.message}`);
+                console.error(`  ❌ Ошибка удаления ${section} #${id}:`, error);
+            }
+        }
+        
+        // Показываем результат
+        console.log(`✅ Завершено: Удалено ${deleted}/${selectedCount}`);
+        
+        if (errors.length > 0) {
+            showToast(`Удалено: ${deleted}/${selectedCount}. Ошибок: ${errors.length}`, 'warning');
+            console.warn('Ошибки при массовом удалении:', errors);
+        } else {
+            showToast(`✅ Успешно удалено ${deleted} ${sectionName}`, 'success');
+        }
+        
+        // Очищаем выбранные элементы
+        selectedItems[section].clear();
+        
+        // Перезагружаем данные
+        dataLoaded[section] = false;
+        loadSectionData(section);
+    }
+    
+    // Обработчик массового изменения статуса
+    async function handleBulkStatusChange(section) {
+        const selectedCount = selectedItems[section].size;
+        const selectedIds = Array.from(selectedItems[section]);
+        const statusSelect = document.getElementById(`${section}-bulk-status-select`);
+        
+        if (selectedCount === 0) {
+            showToast('Не выбрано элементов для изменения статуса', 'warning');
+            return;
+        }
+        
+        if (!statusSelect || !statusSelect.value) {
+            showToast('Выберите новый статус', 'warning');
+            return;
+        }
+        
+        const newStatus = statusSelect.value;
+        
+        if (!confirm(`Изменить статус для ${selectedCount} элементов на "${newStatus}"?`)) {
+            return;
+        }
+        
+        console.log(`🔄 Массовое изменение статуса ${selectedCount} элементов из секции ${section}`);
+        
+        let updated = 0;
+        let errors = [];
+        
+        // Показываем прогресс
+        showToast(`Изменение статуса для ${selectedCount} элементов...`, 'info');
+        
+        // Определяем endpoint для каждой секции
+        const endpoints = {
+            'controllers': '/api/controllers'
+        };
+        
+        const endpoint = endpoints[section];
+        
+        if (!endpoint) {
+            showToast(`Массовое изменение статуса не поддерживается для ${section}`, 'error');
+            return;
+        }
+        
+        // Обновляем статус для каждого элемента
+        for (const id of selectedIds) {
+            try {
+                const response = await fetch(`${endpoint}/${id}/status`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                
+                if (response.ok) {
+                    updated++;
+                    console.log(`  ✅ Обновлён статус ${section} #${id} на ${newStatus}`);
+                } else {
+                    const errorData = await response.json();
+                    const errorMsg = errorData.error || errorData.message || 'Ошибка обновления';
+                    errors.push(`${section} #${id}: ${errorMsg}`);
+                    console.error(`  ❌ Ошибка обновления ${section} #${id}:`, errorMsg);
+                }
+            } catch (error) {
+                errors.push(`${section} #${id}: ${error.message}`);
+                console.error(`  ❌ Ошибка обновления ${section} #${id}:`, error);
+            }
+        }
+        
+        // Показываем результат
+        console.log(`✅ Завершено: Обновлено ${updated}/${selectedCount}`);
+        
+        if (errors.length > 0) {
+            showToast(`Обновлено: ${updated}/${selectedCount}. Ошибок: ${errors.length}`, 'warning');
+            console.warn('Ошибки при массовом изменении статуса:', errors);
+        } else {
+            showToast(`✅ Успешно обновлено ${updated} элементов`, 'success');
+        }
+        
+        // Очищаем выбранные элементы
+        selectedItems[section].clear();
+        
+        // Перезагружаем данные
+        dataLoaded[section] = false;
+        loadSectionData(section);
     }
 
     // ===============================================
@@ -937,7 +1388,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
             const building = await response.json();
 
-            // Заполняем существующую форму редактирования
+            // Заполняем базовые поля
             document.getElementById('edit-building-id').value = building.building_id;
             document.getElementById('edit-building-name').value = building.name || '';
             document.getElementById('edit-building-address').value = building.address || '';
@@ -947,6 +1398,27 @@ document.addEventListener("DOMContentLoaded", function () {
             document.getElementById('edit-building-longitude').value = building.longitude || '';
             document.getElementById('edit-building-management').value = building.management_company || '';
             document.getElementById('edit-building-hot-water').checked = building.has_hot_water || false;
+
+            // Заполняем dropdown'ы (они должны быть предварительно загружены через loadFormData)
+            // Электроснабжение
+            document.getElementById('edit-building-primary-transformer').value = building.primary_transformer_id || '';
+            document.getElementById('edit-building-backup-transformer').value = building.backup_transformer_id || '';
+            document.getElementById('edit-building-primary-line').value = building.primary_line_id || '';
+            document.getElementById('edit-building-backup-line').value = building.backup_line_id || '';
+            
+            // Водоснабжение
+            document.getElementById('edit-building-cold-water-line').value = building.cold_water_line_id || '';
+            document.getElementById('edit-building-hot-water-line').value = building.hot_water_line_id || '';
+            document.getElementById('edit-building-cold-water-supplier').value = building.cold_water_supplier_id || '';
+            document.getElementById('edit-building-hot-water-supplier').value = building.hot_water_supplier_id || '';
+            
+            // Включаем select'ы поставщиков если выбраны линии
+            if (building.cold_water_line_id) {
+                document.getElementById('edit-building-cold-water-supplier').disabled = false;
+            }
+            if (building.hot_water_line_id) {
+                document.getElementById('edit-building-hot-water-supplier').disabled = false;
+            }
 
             // Показываем модальное окно
             document.getElementById('edit-building-modal').style.display = 'flex';
@@ -959,9 +1431,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
     window.deleteBuilding = async function(id) {
         console.log('🗑️ deleteBuilding вызвана для ID:', id);
-        if (!confirm('Вы уверены, что хотите удалить это здание? Это может повлиять на связанные контроллеры и метрики.')) return;
-
+        
         try {
+            // Сначала пробуем удалить без каскада
             const response = await fetch(`/api/buildings/${id}`, {
                 method: 'DELETE',
                 headers: {
@@ -971,7 +1443,28 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.message || 'Ошибка удаления здания');
+                
+                // Специальная обработка ошибки BUILDING_HAS_CONTROLLERS
+                if (response.status === 400 && errorData.controllers) {
+                    const controllerList = errorData.controllers
+                        .map(c => `  • Контроллер #${c.controller_id} (${c.serial_number}) - ${c.status}`)
+                        .join('\n');
+                    
+                    const message = `⚠️ ВНИМАНИЕ: Невозможно удалить здание\n\n` +
+                                  `${errorData.error}\n\n` +
+                                  `Привязанные контроллеры:\n${controllerList}\n\n` +
+                                  `Выберите действие:\n` +
+                                  `• ОК - Удалить здание вместе с контроллерами и всеми метриками (НЕОБРАТИМО)\n` +
+                                  `• Отмена - Отменить удаление`;
+                    
+                    if (confirm(message)) {
+                        // Пользователь согласился на каскадное удаление
+                        await deleteBuildingCascade(id, errorData.controllers);
+                    }
+                    return;
+                }
+                
+                throw new Error(errorData.error || errorData.message || 'Ошибка удаления здания');
             }
 
             showToast('Здание успешно удалено', 'success');
@@ -982,6 +1475,113 @@ document.addEventListener("DOMContentLoaded", function () {
             showToast(error.message || 'Ошибка удаления здания', 'error');
         }
     };
+
+    // Каскадное удаление здания с контроллерами
+    async function deleteBuildingCascade(buildingId, controllers) {
+        console.log('🔥 Каскадное удаление здания', buildingId, 'с', controllers.length, 'контроллерами');
+        
+        try {
+            let deletedControllers = 0;
+            let deletedMetrics = 0;
+            let errors = [];
+
+            // Для каждого контроллера: удаляем метрики, затем контроллер
+            for (const controller of controllers) {
+                try {
+                    console.log(`🔄 Обработка контроллера #${controller.controller_id}...`);
+                    
+                    // Шаг 1: Получаем метрики контроллера
+                    const metricsResponse = await fetch(`/api/metrics?controller_id=${controller.controller_id}&limit=10000`, {
+                        headers: {
+                            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                        }
+                    });
+                    
+                    if (metricsResponse.ok) {
+                        const metricsData = await metricsResponse.json();
+                        const metrics = metricsData.data || [];
+                        
+                        console.log(`  📊 Найдено метрик: ${metrics.length}`);
+                        
+                        // Шаг 2: Удаляем все метрики контроллера
+                        if (metrics.length > 0) {
+                            for (const metric of metrics) {
+                                try {
+                                    const deleteMetricResponse = await fetch(`/api/metrics/${metric.metric_id}`, {
+                                        method: 'DELETE',
+                                        headers: {
+                                            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                                        }
+                                    });
+                                    
+                                    if (deleteMetricResponse.ok) {
+                                        deletedMetrics++;
+                                    }
+                                } catch (metricError) {
+                                    console.warn(`  ⚠️ Не удалось удалить метрику ${metric.metric_id}:`, metricError);
+                                }
+                            }
+                            console.log(`  ✅ Удалено метрик: ${deletedMetrics} из ${metrics.length}`);
+                        }
+                    }
+                    
+                    // Шаг 3: Теперь удаляем контроллер (уже без метрик)
+                    const controllerResponse = await fetch(`/api/controllers/${controller.controller_id}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                        }
+                    });
+
+                    if (controllerResponse.ok) {
+                        deletedControllers++;
+                        console.log(`  ✅ Контроллер ${controller.controller_id} удален`);
+                    } else {
+                        const errorData = await controllerResponse.json();
+                        const errorMsg = `Контроллер #${controller.controller_id}: ${errorData.error || 'Ошибка удаления'}`;
+                        errors.push(errorMsg);
+                        console.error(`  ❌ ${errorMsg}`);
+                    }
+                } catch (error) {
+                    const errorMsg = `Контроллер #${controller.controller_id}: ${error.message}`;
+                    errors.push(errorMsg);
+                    console.error(`  ❌ ${errorMsg}`);
+                }
+            }
+
+            // Шаг 4: Теперь удаляем здание
+            console.log('🏢 Удаление здания...');
+            const buildingResponse = await fetch(`/api/buildings/${buildingId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                }
+            });
+
+            if (!buildingResponse.ok) {
+                const errorData = await buildingResponse.json();
+                throw new Error(errorData.error || 'Ошибка удаления здания после удаления контроллеров');
+            }
+
+            // Показываем результат
+            console.log(`✅ Завершено: Контроллеров ${deletedControllers}/${controllers.length}, Метрик ${deletedMetrics}`);
+            
+            if (errors.length > 0) {
+                showToast(`Здание удалено. Контроллеров: ${deletedControllers}/${controllers.length}. Метрик: ${deletedMetrics}. Ошибки: ${errors.length}`, 'warning');
+                console.warn('Ошибки при удалении:', errors);
+            } else {
+                showToast(`✅ Здание, ${deletedControllers} контроллер(ов) и ${deletedMetrics} метрик успешно удалены`, 'success');
+            }
+
+            // Обновляем список зданий
+            dataLoaded.buildings = false;
+            loadBuildings();
+
+        } catch (error) {
+            console.error('❌ Error in cascade delete:', error);
+            showToast(error.message || 'Ошибка каскадного удаления', 'error');
+        }
+    }
     window.editController = function(id) { /* реализация */ };
     window.deleteController = function(id) { /* реализация */ };
     window.deleteMetric = function(id) { /* реализация */ };
@@ -1089,42 +1689,29 @@ document.addEventListener("DOMContentLoaded", function () {
             const waterLine = await response.json();
             const data = waterLine.data || waterLine;
 
-            // Открываем универсальное модальное окно
-            openUniversalModal('water-line', data, {
-                title: 'Редактировать линию водоснабжения',
-                fields: [
-                    { name: 'name', label: 'Название', type: 'text', required: true },
-                    { name: 'description', label: 'Описание', type: 'textarea' },
-                    { name: 'diameter_mm', label: 'Диаметр (мм)', type: 'number', required: true },
-                    { name: 'material', label: 'Материал', type: 'select', required: true, options: [
-                        { value: 'Сталь', text: 'Сталь' },
-                        { value: 'Полиэтилен', text: 'Полиэтилен' },
-                        { value: 'Чугун', text: 'Чугун' },
-                        { value: 'Медь', text: 'Медь' },
-                        { value: 'ПВХ', text: 'ПВХ' }
-                    ]},
-                    { name: 'pressure_bar', label: 'Давление (бар)', type: 'number', step: '0.1', required: true },
-                    { name: 'installation_date', label: 'Дата установки', type: 'date' },
-                    { name: 'status', label: 'Статус', type: 'select', options: [
-                        { value: 'active', text: 'Активная' },
-                        { value: 'maintenance', text: 'На обслуживании' },
-                        { value: 'inactive', text: 'Неактивная' }
-                    ]}
-                ],
-                onSave: async (formData) => {
-                    const updateResponse = await fetch(`/api/admin/water-lines/${id}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(formData)
-                    });
+            // Определяем тип линии (ХВС или ГВС)
+            // ВАЖНО: используем 'ХВС' или 'ГВС' напрямую для правильного отображения полей
+            const lineType = data.line_type || (data.line_type === 'ГВС' ? 'ГВС' : 'ХВС');
 
-                    if (!updateResponse.ok) throw new Error('Ошибка обновления линии водоснабжения');
-
-                    showToast('Линия водоснабжения успешно обновлена', 'success');
+            // Открываем универсальный редактор с картой
+            const editor = new InfrastructureLineEditor({
+                lineType: lineType,
+                lineId: id,
+                existingData: data,
+                apiEndpoint: '/api/water-lines',
+                additionalFields: {
+                    diameter_mm: data.diameter_mm,
+                    material: data.material,
+                    pressure_rating: data.pressure_rating,
+                    installation_date: data.installation_date
+                },
+                onSave: () => {
                     dataLoaded['water-lines'] = false;
                     loadWaterLines();
                 }
             });
+            
+            editor.show();
         } catch (error) {
             console.error('Error loading water line:', error);
             showToast('Ошибка загрузки данных линии водоснабжения', 'error');
@@ -1162,13 +1749,16 @@ document.addEventListener("DOMContentLoaded", function () {
             const response = await fetch(`/api/transformers/${id}`);
             if (!response.ok) throw new Error('Ошибка загрузки трансформатора');
 
-            const transformer = await response.json();
+            const transformerResponse = await response.json();
+            const transformer = transformerResponse.data || transformerResponse;
 
             // Заполняем форму редактирования
             document.getElementById('edit-transformer-id').value = transformer.transformer_id;
-                    document.getElementById('edit-transformer-name').value = transformer.name || '';
-        document.getElementById('edit-transformer-power').value = transformer.power_kva || '';
-        document.getElementById('edit-transformer-voltage').value = transformer.voltage_kv || '';
+            document.getElementById('edit-transformer-name').value = transformer.name || '';
+            document.getElementById('edit-transformer-power').value = transformer.power_kva || '';
+            document.getElementById('edit-transformer-voltage').value = transformer.voltage_kv || '';
+            document.getElementById('edit-transformer-latitude').value = transformer.latitude || '';
+            document.getElementById('edit-transformer-longitude').value = transformer.longitude || '';
 
             // Показываем модальное окно
             document.getElementById('edit-transformer-modal').style.display = 'flex';
@@ -1206,17 +1796,31 @@ document.addEventListener("DOMContentLoaded", function () {
             const response = await fetch(`/api/lines/${id}`);
             if (!response.ok) throw new Error('Ошибка загрузки линии');
 
-            const line = await response.json();
+            const lineResponse = await response.json();
+            const line = lineResponse.data || lineResponse;
 
-            // Заполняем форму редактирования
-            document.getElementById('edit-line-id').value = line.line_id;
-            document.getElementById('edit-line-name').value = line.name || '';
-            document.getElementById('edit-line-voltage').value = line.voltage_kv || '';
-            document.getElementById('edit-line-length').value = line.length_km || '';
-            document.getElementById('edit-line-transformer-id').value = line.transformer_id || '';
+            console.log('📋 Загружены данные линии для редактирования:', line);
+            console.log('📍 main_path:', line.main_path);
+            console.log('🌿 branches:', line.branches);
 
-            // Показываем модальное окно
-            document.getElementById('edit-line-modal').style.display = 'flex';
+            // Открываем универсальный редактор линий с картой
+            const editor = new InfrastructureLineEditor({
+                lineType: 'electricity', // Линии электропередач
+                lineId: id,
+                existingData: line,
+                apiEndpoint: '/api/lines', // Используем endpoint для обычных линий
+                additionalFields: {
+                    voltage_kv: line.voltage_kv,
+                    transformer_id: line.transformer_id,
+                    length_km: line.length_km
+                },
+                onSave: () => {
+                    dataLoaded.lines = false;
+                    loadLines();
+                }
+            });
+            
+            editor.show();
         } catch (error) {
             console.error('Error loading line:', error);
             showToast('Ошибка загрузки данных линии', 'error');
@@ -1356,7 +1960,9 @@ document.addEventListener("DOMContentLoaded", function () {
         const data = {
             name: document.getElementById('edit-transformer-name').value,
             power_kva: parseFloat(document.getElementById('edit-transformer-power').value),
-            voltage_kv: parseFloat(document.getElementById('edit-transformer-voltage').value)
+            voltage_kv: parseFloat(document.getElementById('edit-transformer-voltage').value),
+            latitude: parseFloat(document.getElementById('edit-transformer-latitude').value),
+            longitude: parseFloat(document.getElementById('edit-transformer-longitude').value)
         };
 
         try {
@@ -1533,13 +2139,21 @@ document.addEventListener("DOMContentLoaded", function () {
                 });
             }
 
-            // Заполняем dropdown трансформаторов
+            // Заполняем dropdown трансформаторов (форма создания)
             fillDropdown('building-primary-transformer', transformersData, 'transformer_id', 'name');
             fillDropdown('building-backup-transformer', transformersData, 'transformer_id', 'name');
+            
+            // Заполняем dropdown трансформаторов (форма редактирования)
+            fillDropdown('edit-building-primary-transformer', transformersData, 'transformer_id', 'name');
+            fillDropdown('edit-building-backup-transformer', transformersData, 'transformer_id', 'name');
 
-            // Заполняем dropdown линий
+            // Заполняем dropdown линий (форма создания)
             fillDropdown('building-primary-line', linesData, 'line_id', 'name');
             fillDropdown('building-backup-line', linesData, 'line_id', 'name');
+            
+            // Заполняем dropdown линий (форма редактирования)
+            fillDropdown('edit-building-primary-line', linesData, 'line_id', 'name');
+            fillDropdown('edit-building-backup-line', linesData, 'line_id', 'name');
 
             // Разделяем водные линии на ХВС и ГВС
             const coldWaterLines = Array.isArray(waterLinesData) ?
@@ -1547,9 +2161,13 @@ document.addEventListener("DOMContentLoaded", function () {
             const hotWaterLines = Array.isArray(waterLinesData) ?
                 waterLinesData.filter(line => line.name.includes('ГВС')) : [];
 
-            // Заполняем dropdown линий водоснабжения
+            // Заполняем dropdown линий водоснабжения (форма создания)
             fillDropdown('building-cold-water-line', coldWaterLines, 'line_id', 'name');
             fillDropdown('building-hot-water-line', hotWaterLines, 'line_id', 'name');
+            
+            // Заполняем dropdown линий водоснабжения (форма редактирования)
+            fillDropdown('edit-building-cold-water-line', coldWaterLines, 'line_id', 'name');
+            fillDropdown('edit-building-hot-water-line', hotWaterLines, 'line_id', 'name');
 
             // Разделяем поставщиков на ХВС и ГВС
             console.log('🔍 ОТЛАДКА: waterSuppliersData before filtering:', waterSuppliersData);
@@ -1577,8 +2195,13 @@ document.addEventListener("DOMContentLoaded", function () {
             console.log('🔍 ОТЛАДКА: Cold suppliers result:', coldSuppliers);
             console.log('🔍 ОТЛАДКА: Hot suppliers result:', hotSuppliers);
 
+            // Заполняем dropdown поставщиков (форма создания)
             fillDropdown('building-cold-water-supplier', coldSuppliers, 'supplier_id', 'name');
             fillDropdown('building-hot-water-supplier', hotSuppliers, 'supplier_id', 'name');
+            
+            // Заполняем dropdown поставщиков (форма редактирования)
+            fillDropdown('edit-building-cold-water-supplier', coldSuppliers, 'supplier_id', 'name');
+            fillDropdown('edit-building-hot-water-supplier', hotSuppliers, 'supplier_id', 'name');
 
             // Настраиваем связанные выпадающие списки после загрузки данных
             setupCascadingDropdowns();
@@ -1976,9 +2599,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // ===============================================
     // ОБРАБОТЧИК ФОРМЫ ДОБАВЛЕНИЯ ЛИНИЙ ВОДОСНАБЖЕНИЯ
+    // ОТКЛЮЧЕН - используется InfrastructureLineEditor
     // ===============================================
 
-    document.getElementById('add-water-line-form').addEventListener('submit', async function(e) {
+    /* document.getElementById('add-water-line-form')?.addEventListener('submit', async function(e) {
         e.preventDefault();
 
         const data = {
@@ -2009,7 +2633,7 @@ document.addEventListener("DOMContentLoaded", function () {
             showToast('Линия водоснабжения успешно добавлена', 'success');
 
             // Очищаем форму
-            document.getElementById('add-water-line-form').reset();
+            document.getElementById('add-water-line-form')?.reset();
 
             // Перезагружаем данные линий водоснабжения
             dataLoaded['water-lines'] = false;
@@ -2019,7 +2643,7 @@ document.addEventListener("DOMContentLoaded", function () {
             console.error('Error creating water line:', error);
             showToast('Ошибка создания линии водоснабжения: ' + error.message, 'error');
         }
-    });
+    }); */
 
     // ===============================================
     // ОБРАБОТЧИК ФОРМЫ ДОБАВЛЕНИЯ ТРАНСФОРМАТОРА
@@ -2031,7 +2655,9 @@ document.addEventListener("DOMContentLoaded", function () {
         const data = {
             name: document.getElementById('transformer-name').value,
             power_kva: parseFloat(document.getElementById('transformer-power').value),
-            voltage_kv: parseFloat(document.getElementById('transformer-voltage').value)
+            voltage_kv: parseFloat(document.getElementById('transformer-voltage').value),
+            latitude: parseFloat(document.getElementById('transformer-latitude').value),
+            longitude: parseFloat(document.getElementById('transformer-longitude').value)
         };
 
         try {
@@ -2265,6 +2891,28 @@ document.addEventListener("DOMContentLoaded", function () {
             has_hot_water: document.getElementById('edit-building-hot-water').checked
         };
 
+        // Добавляем поля электроснабжения (если выбраны)
+        const primaryTransformer = document.getElementById('edit-building-primary-transformer').value;
+        const backupTransformer = document.getElementById('edit-building-backup-transformer').value;
+        const primaryLine = document.getElementById('edit-building-primary-line').value;
+        const backupLine = document.getElementById('edit-building-backup-line').value;
+        
+        if (primaryTransformer) data.primary_transformer_id = parseInt(primaryTransformer);
+        if (backupTransformer) data.backup_transformer_id = parseInt(backupTransformer);
+        if (primaryLine) data.primary_line_id = parseInt(primaryLine);
+        if (backupLine) data.backup_line_id = parseInt(backupLine);
+        
+        // Добавляем поля водоснабжения (если выбраны)
+        const coldWaterLine = document.getElementById('edit-building-cold-water-line').value;
+        const hotWaterLine = document.getElementById('edit-building-hot-water-line').value;
+        const coldWaterSupplier = document.getElementById('edit-building-cold-water-supplier').value;
+        const hotWaterSupplier = document.getElementById('edit-building-hot-water-supplier').value;
+        
+        if (coldWaterLine) data.cold_water_line_id = parseInt(coldWaterLine);
+        if (hotWaterLine) data.hot_water_line_id = parseInt(hotWaterLine);
+        if (coldWaterSupplier) data.cold_water_supplier_id = parseInt(coldWaterSupplier);
+        if (hotWaterSupplier) data.hot_water_supplier_id = parseInt(hotWaterSupplier);
+
         try {
             const response = await fetch(`/api/buildings/${id}`, {
                 method: 'PUT',
@@ -2291,6 +2939,78 @@ document.addEventListener("DOMContentLoaded", function () {
     // Обработчик кнопки отмены редактирования здания
     document.getElementById('cancel-edit-building').addEventListener('click', () => {
         document.getElementById('edit-building-modal').style.display = 'none';
+    });
+
+    // Обработчики для включения поставщиков при выборе линий (форма редактирования)
+    document.getElementById('edit-building-cold-water-line').addEventListener('change', function() {
+        const supplierSelect = document.getElementById('edit-building-cold-water-supplier');
+        supplierSelect.disabled = !this.value;
+        if (!this.value) {
+            supplierSelect.value = '';
+        }
+    });
+
+    document.getElementById('edit-building-hot-water-line').addEventListener('change', function() {
+        const supplierSelect = document.getElementById('edit-building-hot-water-supplier');
+        supplierSelect.disabled = !this.value;
+        if (!this.value) {
+            supplierSelect.value = '';
+        }
+    });
+
+    // ===============================================
+    // ОБРАБОТЧИКИ КНОПОК СОЗДАНИЯ ЛИНИЙ С КАРТОЙ
+    // ===============================================
+    
+    // Кнопка создания линии ХВС
+    document.getElementById('create-new-cold-water-line')?.addEventListener('click', () => {
+        const editor = new InfrastructureLineEditor({
+            lineType: 'ХВС',
+            lineId: null,
+            existingData: null,
+            apiEndpoint: '/api/water-lines',
+            additionalFields: {
+                line_type: 'ХВС'
+            },
+            onSave: () => {
+                dataLoaded['water-lines'] = false;
+                loadWaterLines();
+            }
+        });
+        editor.show();
+    });
+    
+    // Кнопка создания линии ГВС
+    document.getElementById('create-new-hot-water-line')?.addEventListener('click', () => {
+        const editor = new InfrastructureLineEditor({
+            lineType: 'ГВС',
+            lineId: null,
+            existingData: null,
+            apiEndpoint: '/api/water-lines',
+            additionalFields: {
+                line_type: 'ГВС'
+            },
+            onSave: () => {
+                dataLoaded['water-lines'] = false;
+                loadWaterLines();
+            }
+        });
+        editor.show();
+    });
+    
+    // Кнопка создания линии электропередач
+    document.getElementById('create-new-electricity-line')?.addEventListener('click', () => {
+        const editor = new InfrastructureLineEditor({
+            lineType: 'electricity',
+            lineId: null,
+            existingData: null,
+            apiEndpoint: '/api/lines',
+            onSave: () => {
+                dataLoaded.lines = false;
+                loadLines();
+            }
+        });
+        editor.show();
     });
 
     // Загружаем данные для форм после инициализации всех функций

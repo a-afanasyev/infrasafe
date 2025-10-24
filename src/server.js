@@ -41,6 +41,11 @@ app.use(cors()); // CORS
 app.use(express.json()); // Парсинг JSON
 app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } })); // Логирование HTTP запросов
 
+// Health check endpoint для Docker
+app.get('/health', (req, res) => {
+    res.status(200).send('healthy');
+});
+
 // Статические файлы
 app.use(express.static(path.join(__dirname, '../public')));
 
@@ -98,11 +103,10 @@ db.init()
     .then(() => {
         app.listen(PORT, () => {
             logger.info(`Сервер запущен на порту ${PORT}`);
-            logger.info(`Документация API доступна по адресу http://localhost:${PORT}/api-docs`);
         });
     })
-    .catch(err => {
-        logger.error('Ошибка инициализации базы данных:', err);
+    .catch((error) => {
+        logger.error(`Ошибка инициализации базы данных: ${error.message}`);
         process.exit(1);
     });
 

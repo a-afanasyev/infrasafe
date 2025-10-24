@@ -71,7 +71,7 @@ const router = express.Router();
  */
 // Специальные маршруты, для которых не требуется аутентификация
 // Маршрут телеметрии должен быть доступен без аутентификации
-router.post('/metrics/telemetry', metricController.receiveTelementry);
+router.post('/metrics/telemetry', metricController.receiveTelemetry);
 
 // Определяем middleware для защищенных маршрутов - PUT, POST, DELETE
 router.use((req, res, next) => {
@@ -135,6 +135,7 @@ router.get('/', (req, res) => {
             '/api/heat-sources - Управление источниками тепла',
             '/api/water-lines - Управление водными линиями',
             '/api/water-suppliers - Управление поставщиками воды',
+            '/api/infrastructure-lines - Управление линиями инфраструктуры (ХВС, ГВС, электричество)',
             '/api/metrics - Получение метрик',
             '/api/analytics - Аналитика и инфраструктурные объекты',
             '/api/alerts - Система алертов и уведомлений',
