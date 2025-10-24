@@ -162,6 +162,8 @@
             border-radius: 5px;
             width: 80%;
             max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
             /* Добавляем плавное появление */
             transform: translateY(0);
             transition: transform 0.3s ease-in-out;
@@ -735,6 +737,40 @@
                 padding: 5px;
             }
         }
+
+        /* Кастомный маркер трансформатора */
+        .transformer-marker {
+            width: 8px !important;
+            height: 8px !important;
+            background-color: #8B4513; /* Коричневый цвет */
+            border: 1px solid #5D2E0F; /* Темно-коричневая рамка */
+            border-radius: 1px; /* Небольшое скругление углов */
+            margin-left: -4px !important; /* Центрируем по горизонтали */
+            margin-top: -4px !important; /* Центрируем по вертикали */
+            cursor: move;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); /* Тень для объема */
+            position: relative;
+            transition: all 0.2s ease;
+        }
+
+        /* Внутренний квадрат для дополнительного стиля */
+        .transformer-marker::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 3px;
+            height: 3px;
+            background-color: #D2691E; /* Светло-коричневый центр */
+            border-radius: 0px;
+        }
+
+        /* Убираем стандартные стили Leaflet для кастомного маркера */
+        .transformer-marker-icon {
+            background: transparent !important;
+            border: none !important;
+        }
     </style>
 </head>
 <body>
@@ -1083,11 +1119,57 @@
 
     <!-- Form to Add New Transformer -->
     <h2>Добавить трансформатор</h2>
-    <form id="add-transformer-form">
-        <input type="text" id="transformer-name" placeholder="Название трансформатора" required>
-        <input type="number" step="0.1" id="transformer-power" placeholder="Мощность (кВА)" required>
-        <input type="number" step="0.1" id="transformer-voltage" placeholder="Напряжение (кВ)" required>
-        <button type="submit">Добавить трансформатор</button>
+    <form id="add-transformer-form" class="horizontal-form">
+        <div class="form-grid">
+            <div class="form-column">
+                <div class="form-group">
+                    <label for="transformer-name">Название *</label>
+                    <input type="text" id="transformer-name" placeholder="Название трансформатора" required>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="transformer-power">Мощность (кВА) *</label>
+                        <input type="number" step="0.1" id="transformer-power" placeholder="Мощность" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="transformer-voltage">Напряжение (кВ) *</label>
+                        <input type="number" step="0.1" id="transformer-voltage" placeholder="Напряжение" required>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-column">
+                <div class="form-section-header">📍 Географическое расположение</div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="transformer-latitude">Широта *</label>
+                        <input type="number" step="0.000001" id="transformer-latitude" placeholder="Широта" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="transformer-longitude">Долгота *</label>
+                        <input type="number" step="0.000001" id="transformer-longitude" placeholder="Долгота" required>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <button type="button" class="btn-secondary" onclick="
+                        const currentLat = parseFloat(document.getElementById('transformer-latitude').value) || null;
+                        const currentLng = parseFloat(document.getElementById('transformer-longitude').value) || null;
+                        openCoordinateEditor('transformer', null, currentLat, currentLng, null, (lat, lng) => {
+                            document.getElementById('transformer-latitude').value = lat;
+                            document.getElementById('transformer-longitude').value = lng;
+                        })">
+                        📍 Указать на карте
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-submit">
+            <button type="submit">✅ Добавить трансформатор</button>
+        </div>
     </form>
     </section>
 
@@ -1111,6 +1193,9 @@
 
     <!-- Batch операции для линий -->
     <div class="batch-operations">
+        <button id="create-new-electricity-line" style="background: #FFA500; color: white;">
+            ➕ Создать линию электропередач
+        </button>
         <button id="lines-select-all">Выбрать все</button>
         <button id="lines-bulk-delete" disabled>Удалить выбранные</button>
         <button id="lines-export">Экспорт в CSV</button>
@@ -1143,15 +1228,15 @@
         </div>
     </div>
 
-    <!-- Form to Add New Line -->
-    <h2>Добавить линию</h2>
+    <!-- Form to Add New Line - ОТКЛЮЧЕНА, используется новый редактор с картой -->
+    <!-- <h2>Добавить линию</h2>
     <form id="add-line-form">
         <input type="text" id="line-name" placeholder="Название линии" required>
         <input type="number" step="0.1" id="line-voltage" placeholder="Напряжение (кВ)" required>
         <input type="number" step="0.01" id="line-length" placeholder="Длина (км)" required>
         <input type="number" id="line-transformer-id" placeholder="ID трансформатора" required>
         <button type="submit">Добавить линию</button>
-    </form>
+    </form> -->
     </section>
 
     <!-- Water Lines Section -->
@@ -1187,6 +1272,12 @@
 
     <!-- Batch операции для линий водоснабжения -->
     <div class="batch-operations">
+        <button id="create-new-cold-water-line" style="background: #0066FF; color: white;">
+            ➕ Создать линию ХВС
+        </button>
+        <button id="create-new-hot-water-line" style="background: #FF0000; color: white;">
+            ➕ Создать линию ГВС
+        </button>
         <button id="water-lines-select-all">Выбрать все</button>
         <button id="water-lines-bulk-delete" disabled>Удалить выбранные</button>
         <button id="water-lines-bulk-maintenance" disabled>Перевести в обслуживание</button>
@@ -1224,8 +1315,8 @@
         </div>
     </div>
 
-    <!-- Form to Add New Water Line -->
-    <h2>Добавить линию водоснабжения</h2>
+    <!-- Form to Add New Water Line - ОТКЛЮЧЕНА, используется новый редактор с картой -->
+    <!-- <h2>Добавить линию водоснабжения</h2>
     <form id="add-water-line-form" class="horizontal-form">
         <div class="form-grid">
             <div class="form-column">
@@ -1282,7 +1373,7 @@
         <div class="form-actions">
             <button type="submit">Добавить линию водоснабжения</button>
         </div>
-    </form>
+    </form> -->
     </section>
 
     <!-- Water Sources Section -->
@@ -1624,23 +1715,125 @@
     <!-- Модальные окна редактирования (скрыты по умолчанию) -->
     <!-- Модальное окно редактирования здания -->
     <div id="edit-building-modal" class="edit-form-overlay" style="display: none;">
-        <div class="edit-form">
+        <div class="edit-form" style="max-width: 900px;">
             <h3>Редактировать здание</h3>
-            <form id="edit-building-form">
+            <form id="edit-building-form" class="horizontal-form">
                 <input type="hidden" id="edit-building-id">
-                <input type="text" id="edit-building-name" placeholder="Название" required>
-                <input type="text" id="edit-building-address" placeholder="Адрес" required>
-                <input type="text" id="edit-building-town" placeholder="Город" required>
-                <input type="text" id="edit-building-region" placeholder="Регион">
-                <input type="number" step="0.000001" id="edit-building-latitude" placeholder="Широта" required>
-                <input type="number" step="0.000001" id="edit-building-longitude" placeholder="Долгота" required>
-                <input type="text" id="edit-building-management" placeholder="Управляющая компания">
-                <label>
-                    <input type="checkbox" id="edit-building-hot-water"> Горячая вода
-                </label>
+                
+                <div class="form-grid">
+                    <!-- Левая колонка -->
+                    <div class="form-column">
+                        <div class="form-group">
+                            <label for="edit-building-name">Название *</label>
+                            <input type="text" id="edit-building-name" placeholder="Название" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="edit-building-address">Адрес *</label>
+                            <input type="text" id="edit-building-address" placeholder="Адрес" required>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-building-town">Город *</label>
+                                <input type="text" id="edit-building-town" placeholder="Город" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-building-region">Регион</label>
+                                <input type="text" id="edit-building-region" placeholder="Регион">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-building-latitude">Широта *</label>
+                                <input type="number" step="0.000001" id="edit-building-latitude" placeholder="Широта" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-building-longitude">Долгота *</label>
+                                <input type="number" step="0.000001" id="edit-building-longitude" placeholder="Долгота" required>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="edit-building-management">Управляющая компания</label>
+                            <input type="text" id="edit-building-management" placeholder="Управляющая компания">
+                        </div>
+
+                        <div class="form-group checkbox-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="edit-building-hot-water"> Горячая вода доступна
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Правая колонка -->
+                    <div class="form-column">
+                        <div class="form-section-header">⚡ Электроснабжение</div>
+
+                        <div class="form-group">
+                            <label for="edit-building-primary-transformer">Основной трансформатор</label>
+                            <select id="edit-building-primary-transformer">
+                                <option value="">Выберите основной трансформатор</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="edit-building-backup-transformer">Резервный трансформатор</label>
+                            <select id="edit-building-backup-transformer">
+                                <option value="">Выберите резервный трансформатор (опционально)</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="edit-building-primary-line">Основная линия</label>
+                            <select id="edit-building-primary-line">
+                                <option value="">Выберите основную линию</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="edit-building-backup-line">Резервная линия</label>
+                            <select id="edit-building-backup-line">
+                                <option value="">Выберите резервную линию (опционально)</option>
+                            </select>
+                        </div>
+
+                        <div class="form-section-header">💧 Водоснабжение</div>
+
+                        <div class="form-group">
+                            <label for="edit-building-cold-water-line">Линия ХВС (холодная вода)</label>
+                            <select id="edit-building-cold-water-line">
+                                <option value="">Выберите линию холодного водоснабжения</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="edit-building-hot-water-line">Линия ГВС (горячая вода)</label>
+                            <select id="edit-building-hot-water-line">
+                                <option value="">Выберите линию горячего водоснабжения</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="edit-building-cold-water-supplier">Поставщик ХВС</label>
+                            <select id="edit-building-cold-water-supplier" disabled>
+                                <option value="">Сначала выберите линию ХВС</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="edit-building-hot-water-supplier">Поставщик ГВС</label>
+                            <select id="edit-building-hot-water-supplier" disabled>
+                                <option value="">Сначала выберите линию ГВС</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="form-buttons">
-                    <button type="submit">Сохранить</button>
-                    <button type="button" id="cancel-edit-building">Отмена</button>
+                    <button type="submit">💾 Сохранить</button>
+                    <button type="button" id="cancel-edit-building">✕ Отмена</button>
                 </div>
             </form>
         </div>
@@ -1675,12 +1868,49 @@
             <h3>Редактировать трансформатор</h3>
             <form id="edit-transformer-form">
                 <input type="hidden" id="edit-transformer-id">
-                <input type="text" id="edit-transformer-name" placeholder="Название" required>
-                <input type="number" step="0.1" id="edit-transformer-power" placeholder="Мощность (кВА)" required>
-                <input type="number" step="0.1" id="edit-transformer-voltage" placeholder="Напряжение (кВ)" required>
+                
+                <div class="form-group">
+                    <label for="edit-transformer-name">Название *</label>
+                    <input type="text" id="edit-transformer-name" placeholder="Название" required>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="edit-transformer-power">Мощность (кВА) *</label>
+                        <input type="number" step="0.1" id="edit-transformer-power" placeholder="Мощность" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-transformer-voltage">Напряжение (кВ) *</label>
+                        <input type="number" step="0.1" id="edit-transformer-voltage" placeholder="Напряжение" required>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="edit-transformer-latitude">Широта *</label>
+                        <input type="number" step="0.000001" id="edit-transformer-latitude" placeholder="Широта" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-transformer-longitude">Долгота *</label>
+                        <input type="number" step="0.000001" id="edit-transformer-longitude" placeholder="Долгота" required>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <button type="button" class="btn-secondary" onclick="
+                        const currentLat = parseFloat(document.getElementById('edit-transformer-latitude').value) || null;
+                        const currentLng = parseFloat(document.getElementById('edit-transformer-longitude').value) || null;
+                        openCoordinateEditor('transformer', document.getElementById('edit-transformer-id').value, currentLat, currentLng, null, (lat, lng) => {
+                            document.getElementById('edit-transformer-latitude').value = lat;
+                            document.getElementById('edit-transformer-longitude').value = lng;
+                        })">
+                        📍 Указать на карте
+                    </button>
+                </div>
+                
                 <div class="form-buttons">
-                    <button type="submit">Сохранить</button>
-                    <button type="button" id="cancel-edit-transformer">Отмена</button>
+                    <button type="submit">💾 Сохранить</button>
+                    <button type="button" id="cancel-edit-transformer">✕ Отмена</button>
                 </div>
             </form>
         </div>
@@ -1768,8 +1998,26 @@
         </div>
     </div>
 
+    <!-- Подключение DOMPurify для защиты от XSS -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.7/dist/purify.min.js"></script>
+    
+    <!-- Leaflet для мини-карт -->
+    <link rel="stylesheet" href="public/libs/leaflet/leaflet.css" />
+    <script src="public/libs/leaflet/leaflet.js"></script>
+    
+    <!-- Подключение утилит безопасности -->
+    <script src="public/utils/domSecurity.js"></script>
+    
     <!-- Подключаем систему авторизации перед основным скриптом -->
     <script src="public/admin-auth.js"></script>
+    
+    <!-- Компонент редактирования координат -->
+    <script src="public/admin-coordinate-editor.js"></script>
+    
+    <!-- Компонент редактирования линий инфраструктуры -->
+    <script src="public/infrastructure-line-editor.js"></script>
+    
+    <!-- Основной скрипт админки -->
     <script src="public/admin.js"></script>
 
 </body>

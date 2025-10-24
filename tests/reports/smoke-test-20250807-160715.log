@@ -1,0 +1,20 @@
+=== Smart Smoke Test Report - Thu Aug  7 16:07:15 +05 2025 ===
+API URL: http://localhost:3000
+
+[2025-08-07 16:07:15] PASS: API Health Check - GET /api - 200 (0.017s)
+[2025-08-07 16:07:15] PASS: Authentication - POST /api/auth/login - 200 (0.209s)
+[2025-08-07 16:07:16] PASS: Get Buildings - GET /api/buildings - 200 (0.017s)
+[2025-08-07 16:07:16] PASS: Get Controllers - GET /api/controllers - 200 (0.015s)
+[2025-08-07 16:07:16] PASS: Get Metrics - GET /api/metrics - 200 (0.014s)
+[2025-08-07 16:07:16] FAIL: API Documentation - GET /api-docs - Expected: 200, Got: 301 (0.015s)
+[2025-08-07 16:07:16] FAIL: Create Building (Auth) - POST /api/buildings - Expected: 201, Got: 400 (0.014s)
+[2025-08-07 16:07:16] FAIL: User Profile - GET /api/auth/profile - Expected: 200, Got: 400 (0.013s)
+[2025-08-07 16:07:16] PASS: Unauthorized Access - POST /api/buildings - 401 (0.015s)
+
+=== SUMMARY ===
+Total Tests: 9
+Passed: 6
+Failed: 3
+Success Rate: 66.6%
+Duration: 1с
+RESULT: FAILED

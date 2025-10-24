@@ -1,0 +1,22 @@
+=== Smoke Test Report - Tue Jul 29 14:07:11 +05 2025 ===
+API URL: http://localhost:8080
+
+[2025-07-29 14:07:11] FAIL: API Health Check - GET /api - Expected: 200, Got: 000
+[2025-07-29 14:07:11] FAIL: Authentication - POST /api/auth/login - Expected: 200, Got: 000
+[2025-07-29 14:07:12] FAIL: Get Buildings - GET /api/buildings - Expected: 200, Got: 000
+[2025-07-29 14:07:12] FAIL: Get Controllers - GET /api/controllers - Expected: 200, Got: 000
+[2025-07-29 14:07:13] FAIL: Get Metrics - GET /api/metrics - Expected: 200, Got: 000
+[2025-07-29 14:07:13] FAIL: Send Telemetry - POST /api/metrics/telemetry - Expected: 200, Got: 000
+[2025-07-29 14:07:14] FAIL: Get Analytics - GET /api/analytics/buildings - Expected: 200, Got: 000
+[2025-07-29 14:07:14] FAIL: Get Alerts - GET /api/alerts - Expected: 200, Got: 000
+[2025-07-29 14:07:15] FAIL: Create Building - POST /api/buildings - Expected: 201, Got: 000
+[2025-07-29 14:07:15] FAIL: Protected Endpoint Without Auth - POST /api/buildings - Expected: 401, Got: 000
+[2025-07-29 14:07:16] FAIL: Non-existent Endpoint - GET /api/nonexistent - Expected: 404, Got: 000
+[2025-07-29 14:07:16] FAIL: Data Validation - POST /api/buildings - Expected: 400, Got: 000
+
+=== SUMMARY ===
+Total Tests: 12
+Passed: 0
+Failed: 12
+Success Rate: 0%
+RESULT: FAILED

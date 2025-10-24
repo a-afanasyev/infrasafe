@@ -1,0 +1,5 @@
+=== Smoke Test Report - Thu Aug  7 15:57:54 +05 2025 ===
+API URL: http://localhost:3000
+
+[2025-08-07 15:57:54] FAIL: API Health Check - GET /api - Expected: 200, Got: 000
+[2025-08-07 15:57:55] FAIL: Authentication - POST /api/auth/login - Expected: 200, Got: 000
