@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
 const { createError } = require('../utils/helpers');
+const logger = require('../utils/logger');
 
 /**
  * @swagger
@@ -116,7 +117,11 @@ router.get('/', async (req, res, next) => {
             }
         });
     } catch (error) {
-        console.error('Error fetching water sources:', error);
+        logger.error(`Error fetching water sources: ${error.message}`, {
+            stack: error.stack,
+            endpoint: '/api/cold-water-sources',
+            method: 'GET'
+        });
         next(createError('Failed to fetch water sources: ' + error.message, 500));
     }
 });
@@ -150,7 +155,12 @@ router.get('/:id', async (req, res, next) => {
 
         res.json(result.rows[0]);
     } catch (error) {
-        console.error('Error fetching water source:', error);
+        logger.error(`Error fetching water source: ${error.message}`, {
+            stack: error.stack,
+            endpoint: `/api/cold-water-sources/${req.params.id}`,
+            method: 'GET',
+            id: req.params.id
+        });
         next(createError('Failed to fetch water source: ' + error.message, 500));
     }
 });
@@ -193,7 +203,12 @@ router.post('/', async (req, res, next) => {
 
         res.status(201).json(result.rows[0]);
     } catch (error) {
-        console.error('Error creating water source:', error);
+        logger.error(`Error creating water source: ${error.message}`, {
+            stack: error.stack,
+            endpoint: '/api/cold-water-sources',
+            method: 'POST',
+            body: req.body
+        });
         next(createError('Failed to create water source: ' + error.message, 500));
     }
 });
@@ -249,7 +264,13 @@ router.put('/:id', async (req, res, next) => {
 
         res.json(result.rows[0]);
     } catch (error) {
-        console.error('Error updating water source:', error);
+        logger.error(`Error updating water source: ${error.message}`, {
+            stack: error.stack,
+            endpoint: `/api/cold-water-sources/${req.params.id}`,
+            method: 'PUT',
+            id: req.params.id,
+            body: req.body
+        });
         next(createError('Failed to update water source: ' + error.message, 500));
     }
 });
@@ -283,7 +304,12 @@ router.delete('/:id', async (req, res, next) => {
 
         res.json({ message: 'Water source deleted successfully', deleted: result.rows[0] });
     } catch (error) {
-        console.error('Error deleting water source:', error);
+        logger.error(`Error deleting water source: ${error.message}`, {
+            stack: error.stack,
+            endpoint: `/api/cold-water-sources/${req.params.id}`,
+            method: 'DELETE',
+            id: req.params.id
+        });
         next(createError('Failed to delete water source: ' + error.message, 500));
     }
 });

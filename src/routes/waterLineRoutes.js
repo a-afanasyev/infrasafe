@@ -1,6 +1,7 @@
 const express = require('express');
 const WaterLine = require('../models/WaterLine');
 const { createError } = require('../utils/helpers');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -10,7 +11,11 @@ router.get('/', async (req, res, next) => {
         const waterLines = await WaterLine.findAll();
         res.json(waterLines);
     } catch (error) {
-        console.error('Error fetching water lines:', error);
+        logger.error(`Error fetching water lines: ${error.message}`, {
+            stack: error.stack,
+            endpoint: '/api/water-lines',
+            method: 'GET'
+        });
         next(createError('Ошибка получения водных линий', 500));
     }
 });
@@ -24,7 +29,12 @@ router.get('/:id', async (req, res, next) => {
         }
         res.json(waterLine);
     } catch (error) {
-        console.error('Error fetching water line:', error);
+        logger.error(`Error fetching water line: ${error.message}`, {
+            stack: error.stack,
+            endpoint: `/api/water-lines/${req.params.id}`,
+            method: 'GET',
+            id: req.params.id
+        });
         next(createError('Ошибка получения водной линии', 500));
     }
 });
@@ -53,7 +63,12 @@ router.get('/:id/supplier', async (req, res, next) => {
             }
         });
     } catch (error) {
-        console.error('Error fetching water line supplier:', error);
+        logger.error(`Error fetching water line supplier: ${error.message}`, {
+            stack: error.stack,
+            endpoint: `/api/water-lines/${req.params.id}/supplier`,
+            method: 'GET',
+            id: req.params.id
+        });
         next(createError('Ошибка получения поставщика линии', 500));
     }
 });
@@ -64,7 +79,12 @@ router.post('/', async (req, res, next) => {
         const waterLine = await WaterLine.create(req.body);
         res.status(201).json(waterLine);
     } catch (error) {
-        console.error('Error creating water line:', error);
+        logger.error(`Error creating water line: ${error.message}`, {
+            stack: error.stack,
+            endpoint: '/api/water-lines',
+            method: 'POST',
+            body: req.body
+        });
         next(createError('Ошибка создания водной линии', 500));
     }
 });
@@ -78,7 +98,13 @@ router.put('/:id', async (req, res, next) => {
         }
         res.json(waterLine);
     } catch (error) {
-        console.error('Error updating water line:', error);
+        logger.error(`Error updating water line: ${error.message}`, {
+            stack: error.stack,
+            endpoint: `/api/water-lines/${req.params.id}`,
+            method: 'PUT',
+            id: req.params.id,
+            body: req.body
+        });
         next(createError('Ошибка обновления водной линии', 500));
     }
 });
@@ -92,7 +118,12 @@ router.delete('/:id', async (req, res, next) => {
         }
         res.json({ message: 'Водная линия успешно удалена' });
     } catch (error) {
-        console.error('Error deleting water line:', error);
+        logger.error(`Error deleting water line: ${error.message}`, {
+            stack: error.stack,
+            endpoint: `/api/water-lines/${req.params.id}`,
+            method: 'DELETE',
+            id: req.params.id
+        });
         next(createError('Ошибка удаления водной линии', 500));
     }
 });

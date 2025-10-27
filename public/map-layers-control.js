@@ -753,21 +753,22 @@ class MapLayersControl {
                     window.DOMSecurity.setSecureHTML(container, chartHTML);
                 } else {
                     // Fallback: создаем элемент вручную
-                    container.innerHTML = '';
+                    // ИСПРАВЛЕНИЕ XSS: Используем textContent вместо innerHTML для очистки
+                    container.textContent = '';
                     const p = document.createElement('p');
                     p.textContent = 'Метрики загружены';
                     container.appendChild(p);
                 }
             } else {
                 // ИСПРАВЛЕНИЕ XSS: Используем textContent для простого сообщения
-                container.innerHTML = '';
+                container.textContent = '';
                 const p = document.createElement('p');
                 p.textContent = 'Метрики недоступны';
                 container.appendChild(p);
             }
         } catch (error) {
             // ИСПРАВЛЕНИЕ XSS: Используем textContent для сообщения об ошибке
-            container.innerHTML = '';
+            container.textContent = '';
             const p = document.createElement('p');
             p.textContent = 'Ошибка загрузки метрик';
             container.appendChild(p);

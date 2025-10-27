@@ -1,6 +1,7 @@
 const express = require('express');
 const WaterSupplier = require('../models/WaterSupplier');
 const { createError } = require('../utils/helpers');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -17,7 +18,12 @@ router.get('/', async (req, res, next) => {
         const waterSuppliers = await WaterSupplier.findAll(page, limit, filters);
         res.json(waterSuppliers);
     } catch (error) {
-        console.error('Error fetching water suppliers:', error);
+        logger.error(`Error fetching water suppliers: ${error.message}`, {
+            stack: error.stack,
+            endpoint: '/api/water-suppliers',
+            method: 'GET',
+            query: req.query
+        });
         next(createError('Ошибка получения поставщиков воды', 500));
     }
 });
@@ -31,7 +37,12 @@ router.get('/:id', async (req, res, next) => {
         }
         res.json(waterSupplier);
     } catch (error) {
-        console.error('Error fetching water supplier:', error);
+        logger.error(`Error fetching water supplier: ${error.message}`, {
+            stack: error.stack,
+            endpoint: `/api/water-suppliers/${req.params.id}`,
+            method: 'GET',
+            id: req.params.id
+        });
         next(createError('Ошибка получения поставщика воды', 500));
     }
 });
@@ -42,7 +53,12 @@ router.post('/', async (req, res, next) => {
         const waterSupplier = await WaterSupplier.create(req.body);
         res.status(201).json(waterSupplier);
     } catch (error) {
-        console.error('Error creating water supplier:', error);
+        logger.error(`Error creating water supplier: ${error.message}`, {
+            stack: error.stack,
+            endpoint: '/api/water-suppliers',
+            method: 'POST',
+            body: req.body
+        });
         next(createError('Ошибка создания поставщика воды', 500));
     }
 });
@@ -56,7 +72,13 @@ router.put('/:id', async (req, res, next) => {
         }
         res.json(waterSupplier);
     } catch (error) {
-        console.error('Error updating water supplier:', error);
+        logger.error(`Error updating water supplier: ${error.message}`, {
+            stack: error.stack,
+            endpoint: `/api/water-suppliers/${req.params.id}`,
+            method: 'PUT',
+            id: req.params.id,
+            body: req.body
+        });
         next(createError('Ошибка обновления поставщика воды', 500));
     }
 });
@@ -70,7 +92,12 @@ router.delete('/:id', async (req, res, next) => {
         }
         res.json({ message: 'Поставщик воды успешно удален' });
     } catch (error) {
-        console.error('Error deleting water supplier:', error);
+        logger.error(`Error deleting water supplier: ${error.message}`, {
+            stack: error.stack,
+            endpoint: `/api/water-suppliers/${req.params.id}`,
+            method: 'DELETE',
+            id: req.params.id
+        });
         next(createError('Ошибка удаления поставщика воды', 500));
     }
 });

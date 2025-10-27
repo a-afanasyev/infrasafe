@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
 const { createError } = require('../utils/helpers');
+const logger = require('../utils/logger');
 
 /**
  * @swagger
@@ -116,7 +117,12 @@ router.get('/', async (req, res, next) => {
             }
         });
     } catch (error) {
-        console.error('Error fetching heat sources:', error);
+        logger.error(`Error fetching heat sources: ${error.message}`, {
+            stack: error.stack,
+            endpoint: '/api/heat-sources',
+            method: 'GET',
+            query: req.query
+        });
         next(createError('Failed to fetch heat sources: ' + error.message, 500));
     }
 });
@@ -150,7 +156,12 @@ router.get('/:id', async (req, res, next) => {
 
         res.json(result.rows[0]);
     } catch (error) {
-        console.error('Error fetching heat source:', error);
+        logger.error(`Error fetching heat source: ${error.message}`, {
+            stack: error.stack,
+            endpoint: `/api/heat-sources/${req.params.id}`,
+            method: 'GET',
+            id: req.params.id
+        });
         next(createError('Failed to fetch heat source: ' + error.message, 500));
     }
 });
@@ -193,7 +204,12 @@ router.post('/', async (req, res, next) => {
 
         res.status(201).json(result.rows[0]);
     } catch (error) {
-        console.error('Error creating heat source:', error);
+        logger.error(`Error creating heat source: ${error.message}`, {
+            stack: error.stack,
+            endpoint: '/api/heat-sources',
+            method: 'POST',
+            body: req.body
+        });
         next(createError('Failed to create heat source: ' + error.message, 500));
     }
 });
@@ -249,7 +265,13 @@ router.put('/:id', async (req, res, next) => {
 
         res.json(result.rows[0]);
     } catch (error) {
-        console.error('Error updating heat source:', error);
+        logger.error(`Error updating heat source: ${error.message}`, {
+            stack: error.stack,
+            endpoint: `/api/heat-sources/${req.params.id}`,
+            method: 'PUT',
+            id: req.params.id,
+            body: req.body
+        });
         next(createError('Failed to update heat source: ' + error.message, 500));
     }
 });
@@ -283,7 +305,12 @@ router.delete('/:id', async (req, res, next) => {
 
         res.json({ message: 'Heat source deleted successfully', deleted: result.rows[0] });
     } catch (error) {
-        console.error('Error deleting heat source:', error);
+        logger.error(`Error deleting heat source: ${error.message}`, {
+            stack: error.stack,
+            endpoint: `/api/heat-sources/${req.params.id}`,
+            method: 'DELETE',
+            id: req.params.id
+        });
         next(createError('Failed to delete heat source: ' + error.message, 500));
     }
 });

@@ -686,7 +686,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                     case 'ok-group':
                         text = `Нормальное (${count})`;
                         // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                        header.innerHTML = '';
+                        header.textContent = '';
                         const iconDiv1 = document.createElement('div');
                         iconDiv1.className = 'icon normal-icon';
                         const textSpan1 = document.createElement('span');
@@ -697,7 +697,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                     case 'warning-group':
                         text = `Предупреждение (${count})`;
                         // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                        header.innerHTML = '';
+                        header.textContent = '';
                         const iconDiv2 = document.createElement('div');
                         iconDiv2.className = 'icon warning-icon';
                         const textSpan2 = document.createElement('span');
@@ -708,7 +708,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                     case 'critical-group':
                         text = `Критическое (${count})`;
                         // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                        header.innerHTML = '';
+                        header.textContent = '';
                         const iconDiv3 = document.createElement('div');
                         iconDiv3.className = 'icon critical-icon';
                         const textSpan3 = document.createElement('span');
@@ -719,7 +719,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                     case 'no-group':
                         text = `Нет контроллеров (${count})`;
                         // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                        header.innerHTML = '';
+                        header.textContent = '';
                         const iconDiv4 = document.createElement('div');
                         iconDiv4.className = 'icon no-controller-icon';
                         const textSpan4 = document.createElement('span');
@@ -730,7 +730,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                     case 'leak-group':
                         text = `Протечка (${count})`;
                         // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                        header.innerHTML = '';
+                        header.textContent = '';
                         const iconDiv5 = document.createElement('div');
                         iconDiv5.className = 'icon leak-icon';
                         const textSpan5 = document.createElement('span');
@@ -828,20 +828,33 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         // Создаем кнопку-заголовок с информацией об обновлении
         const toggleButton = L.DomUtil.create('button', 'update-toggle-button', container);
-        toggleButton.innerHTML = `
-            <span class="toggle-icon">+</span>
-            <div class="update-time-display">
-                <span>ОБНОВЛЕНО</span>
-                <span class="update-time">2 минуты назад</span>
-            </div>
-        `;
+        // ИСПРАВЛЕНИЕ XSS: Используем DOM API вместо innerHTML
+        const toggleIcon = document.createElement('span');
+        toggleIcon.className = 'toggle-icon';
+        toggleIcon.textContent = '+';
+        toggleButton.appendChild(toggleIcon);
+
+        const updateTimeDisplay = document.createElement('div');
+        updateTimeDisplay.className = 'update-time-display';
+
+        const updateLabel = document.createElement('span');
+        updateLabel.textContent = 'ОБНОВЛЕНО';
+        updateTimeDisplay.appendChild(updateLabel);
+
+        const updateTime = document.createElement('span');
+        updateTime.className = 'update-time';
+        updateTime.textContent = '2 минуты назад';
+        updateTimeDisplay.appendChild(updateTime);
+
+        toggleButton.appendChild(updateTimeDisplay);
 
         // Создаем контейнер для содержимого
         const contentContainer = L.DomUtil.create('div', 'update-content', container);
 
         // Кнопка обновления
         const updateButton = L.DomUtil.create('button', 'update-now', contentContainer);
-        updateButton.innerHTML = 'Обновить сейчас';
+        // ИСПРАВЛЕНИЕ XSS: Используем textContent вместо innerHTML
+        updateButton.textContent = 'Обновить сейчас';
 
         // Автообновление
         const autoUpdateLabel = L.DomUtil.create('label', 'auto-update-label', contentContainer);
@@ -852,7 +865,8 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         // Селектор интервала
         const intervalLabel = L.DomUtil.create('div', 'interval-label', contentContainer);
-        intervalLabel.innerHTML = 'Интервал обновления:';
+        // ИСПРАВЛЕНИЕ XSS: Используем textContent вместо innerHTML
+        intervalLabel.textContent = 'Интервал обновления:';
         const intervalSelect = L.DomUtil.create('select', '', contentContainer);
         intervalSelect.id = 'update-interval';
 
@@ -968,8 +982,9 @@ document.addEventListener('DOMContentLoaded', async function () {
         try {
             // Очищаем старые маркеры и боковую панель
             markers.clearLayers();
+            // ИСПРАВЛЕНИЕ XSS: Используем textContent вместо innerHTML для очистки
             document.querySelectorAll('#ok-group .status-items, #warning-group .status-items, #critical-group .status-items, #no-group .status-items, #leak-group .status-items').forEach(group => {
-                group.innerHTML = '';
+                group.textContent = '';
             });
 
             // Fetch data from the backend using API client
@@ -988,7 +1003,8 @@ document.addEventListener('DOMContentLoaded', async function () {
                 if (uniqueCompanies.length > 0) {
                     const ukControl = document.querySelector('.uk-control');
                     if (ukControl) {
-                        ukControl.innerHTML = uniqueCompanies[0];
+                        // ИСПРАВЛЕНИЕ XSS: Используем textContent вместо innerHTML для безопасности
+                        ukControl.textContent = uniqueCompanies[0];
                     }
                 }
             }

@@ -37,13 +37,59 @@ class CoordinateEditor {
      * Показать modal окно редактирования
      */
     show() {
-        // Создаем modal HTML
-        const modalHTML = this.createModalHTML();
-        
-        // Добавляем в DOM
+        // ИСПРАВЛЕНИЕ XSS: Создаем modal через DOM API вместо innerHTML
         const modalContainer = document.createElement('div');
         modalContainer.id = 'coordinate-editor-modal';
-        modalContainer.innerHTML = modalHTML;
+
+        // Создаем структуру через DOM API
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.id = 'coord-modal-overlay';
+
+        const modalContent = document.createElement('div');
+        modalContent.className = 'modal-content coord-modal';
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'modal-header';
+        const title = document.createElement('h3');
+        title.textContent = '📍 Редактирование координат';
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'close-btn';
+        closeBtn.id = 'close-coord-modal';
+        closeBtn.textContent = '✕';
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+
+        // Body
+        const body = document.createElement('div');
+        body.className = 'modal-body';
+
+        // Info section с безопасным отображением objectName
+        const infoSection = document.createElement('div');
+        infoSection.className = 'info-section';
+        const strong = document.createElement('strong');
+        strong.textContent = 'Объект: ';
+        infoSection.appendChild(strong);
+        const objectNameSpan = document.createElement('span');
+        objectNameSpan.textContent = this.objectName || 'N/A';
+        infoSection.appendChild(objectNameSpan);
+        body.appendChild(infoSection);
+
+        // Вставляем остальной HTML (формы - статичные элементы)
+        // БЕЗОПАСНО: modalHTML содержит только статичные элементы без пользовательских данных
+        const modalHTML = this.createModalFormHTML();
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = modalHTML; // Безопасно - только статичный HTML
+        while (tempDiv.firstChild) {
+            body.appendChild(tempDiv.firstChild);
+        }
+
+        modalContent.appendChild(header);
+        modalContent.appendChild(body);
+        overlay.appendChild(modalContent);
+        modalContainer.appendChild(overlay);
+
         document.body.appendChild(modalContainer);
 
         // Устанавливаем текущие значения
@@ -55,73 +101,59 @@ class CoordinateEditor {
     }
 
     /**
-     * Создание HTML для modal окна
+     * ИСПРАВЛЕНИЕ XSS: Создание только формы (без header и info section)
+     * Header и info section создаются безопасно через DOM API в методе show()
      */
-    createModalHTML() {
+    createModalFormHTML() {
+        // Возвращаем только статичные элементы формы без пользовательских данных
         return `
-            <div class="modal-overlay" id="coord-modal-overlay">
-                <div class="modal-content coord-modal">
-                    <div class="modal-header">
-                        <h3>📍 Редактирование координат</h3>
-                        <button class="close-btn" id="close-coord-modal">✕</button>
-                    </div>
-                    
-                    <div class="modal-body">
-                        <!-- Информация об объекте -->
-                        <div class="info-section">
-                            <strong>Объект:</strong> ${this.objectName || 'N/A'}
-                        </div>
-                        
-                        <!-- Форма ввода координат -->
-                        <form id="coordinate-edit-form">
-                            <div class="form-group">
-                                <label for="edit-latitude">Широта (Latitude):</label>
-                                <input type="number" 
-                                       id="edit-latitude" 
-                                       step="0.000001" 
-                                       min="-90" 
-                                       max="90" 
-                                       placeholder="Например: 55.751244"
-                                       required>
-                                <small>Диапазон: от -90 до 90</small>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="edit-longitude">Долгота (Longitude):</label>
-                                <input type="number" 
-                                       id="edit-longitude" 
-                                       step="0.000001" 
-                                       min="-180" 
-                                       max="180" 
-                                       placeholder="Например: 37.618423"
-                                       required>
-                                <small>Диапазон: от -180 до 180</small>
-                            </div>
-                            
-                            <!-- Кнопка показа карты -->
-                            <div class="map-toggle">
-                                <button type="button" id="toggle-map-picker" class="btn-secondary">
-                                    📍 Выбрать на карте
-                                </button>
-                            </div>
-                            
-                            <!-- Мини-карта (скрыта по умолчанию) -->
-                            <div id="mini-map-container" style="display: none;">
-                                <div id="coordinate-mini-map" style="height: 300px; margin: 15px 0; border-radius: 4px;"></div>
-                                <small style="color: #666;">
-                                    💡 Кликните на карте или перетащите маркер для выбора координат
-                                </small>
-                            </div>
-                            
-                            <!-- Кнопки действий -->
-                            <div class="form-actions">
-                                <button type="submit" class="btn-save">💾 Сохранить</button>
-                                <button type="button" class="btn-cancel" id="cancel-coord-edit">✕ Отмена</button>
-                            </div>
-                        </form>
-                    </div>
+            <!-- Форма ввода координат -->
+            <form id="coordinate-edit-form">
+                <div class="form-group">
+                    <label for="edit-latitude">Широта (Latitude):</label>
+                    <input type="number"
+                           id="edit-latitude"
+                           step="0.000001"
+                           min="-90"
+                           max="90"
+                           placeholder="Например: 55.751244"
+                           required>
+                    <small>Диапазон: от -90 до 90</small>
                 </div>
-            </div>
+
+                <div class="form-group">
+                    <label for="edit-longitude">Долгота (Longitude):</label>
+                    <input type="number"
+                           id="edit-longitude"
+                           step="0.000001"
+                           min="-180"
+                           max="180"
+                           placeholder="Например: 37.618423"
+                           required>
+                    <small>Диапазон: от -180 до 180</small>
+                </div>
+
+                <!-- Кнопка показа карты -->
+                <div class="map-toggle">
+                    <button type="button" id="toggle-map-picker" class="btn-secondary">
+                        📍 Выбрать на карте
+                    </button>
+                </div>
+
+                <!-- Мини-карта (скрыта по умолчанию) -->
+                <div id="mini-map-container" style="display: none;">
+                    <div id="coordinate-mini-map" style="height: 300px; margin: 15px 0; border-radius: 4px;"></div>
+                    <small style="color: #666;">
+                        💡 Кликните на карте или перетащите маркер для выбора координат
+                    </small>
+                </div>
+
+                <!-- Кнопки действий -->
+                <div class="form-actions">
+                    <button type="submit" class="btn-save">💾 Сохранить</button>
+                    <button type="button" class="btn-cancel" id="cancel-coord-edit">✕ Отмена</button>
+                </div>
+            </form>
         `;
     }
 

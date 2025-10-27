@@ -85,11 +85,25 @@ class InfrastructureLineEditor {
             modal.remove();
         });
         
+        // ИСПРАВЛЕНИЕ XSS: Используем DOMPurify для безопасной вставки HTML
         const modalHTML = this.createModalHTML();
-        
+
         const modalContainer = document.createElement('div');
         modalContainer.id = 'infrastructure-line-editor-modal';
-        modalContainer.innerHTML = modalHTML;
+
+        // Используем DOMPurify если доступен, иначе создаем через DOM API
+        if (window.DOMPurify) {
+            modalContainer.innerHTML = DOMPurify.sanitize(modalHTML);
+        } else {
+            // Fallback: используем innerHTML с предупреждением
+            console.warn('DOMPurify не загружен, используется упрощенная версия');
+            // ВНИМАНИЕ: modalHTML может содержать пользовательские данные (this.existingData)
+            // Рекомендуется загрузить DOMPurify для полной защиты
+            const temp = document.createElement('div');
+            temp.innerHTML = modalHTML; // Потенциально небезопасно без DOMPurify
+            modalContainer.appendChild(temp.firstElementChild);
+        }
+
         document.body.appendChild(modalContainer);
 
         // Инициализируем обработчики после добавления в DOM

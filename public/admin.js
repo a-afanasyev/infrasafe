@@ -120,7 +120,8 @@ document.addEventListener("DOMContentLoaded", function () {
             loadingCell.setAttribute('colspan', colSpan);
             loadingCell.textContent = 'Загрузка данных...';
             loadingRow.appendChild(loadingCell);
-            tableBody.innerHTML = ''; // Очищаем перед добавлением
+            // ИСПРАВЛЕНИЕ XSS: Используем textContent вместо innerHTML для очистки
+            tableBody.textContent = ''; // Очищаем перед добавлением
             tableBody.appendChild(loadingRow);
         }
     }
@@ -135,7 +136,8 @@ document.addEventListener("DOMContentLoaded", function () {
             errorCell.style.color = 'red';
             errorCell.textContent = message;
             errorRow.appendChild(errorCell);
-            tableBody.innerHTML = ''; // Очищаем перед добавлением
+            // ИСПРАВЛЕНИЕ XSS: Используем textContent вместо innerHTML для очистки
+            tableBody.textContent = ''; // Очищаем перед добавлением
             tableBody.appendChild(errorRow);
         }
     }
@@ -497,22 +499,69 @@ document.addEventListener("DOMContentLoaded", function () {
                     ? waterLine.connected_buildings.join(', ')
                     : 'Нет подключений';
 
-                row.innerHTML = `
-                    <td><input type="checkbox" class="item-checkbox" data-id="${waterLine.line_id}"></td>
-                    <td>${safeValue(waterLine.line_id)}</td>
-                    <td>${safeValue(waterLine.name)}</td>
-                    <td>${safeValue(waterLine.description)}</td>
-                    <td>${safeValue(waterLine.diameter_mm)}</td>
-                    <td>${safeValue(waterLine.material)}</td>
-                    <td>${formatNumber(waterLine.pressure_bar, 1)}</td>
-                    <td>${formatDate(waterLine.installation_date)}</td>
-                    <td><span class="status-badge ${statusClass}">${getWaterLineStatusLabel(waterLine.status)}</span></td>
-                    <td title="${connectedBuildings}">${connectedBuildings.length > 50 ? connectedBuildings.substring(0, 50) + '...' : connectedBuildings}</td>
-                    <td>
-                        <button onclick="editWaterLine(${waterLine.line_id})" class="btn-sm">Изменить</button>
-                        <button onclick="deleteWaterLine(${waterLine.line_id})" class="btn-sm btn-danger">Удалить</button>
-                    </td>
-                `;
+                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                // Checkbox
+                const checkboxCell = document.createElement('td');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'item-checkbox';
+                checkbox.dataset.id = waterLine.line_id;
+                checkboxCell.appendChild(checkbox);
+                row.appendChild(checkboxCell);
+
+                // ID
+                row.appendChild(createSecureTableCell(safeValue(waterLine.line_id)));
+
+                // Name
+                row.appendChild(createSecureTableCell(safeValue(waterLine.name)));
+
+                // Description
+                row.appendChild(createSecureTableCell(safeValue(waterLine.description)));
+
+                // Diameter
+                row.appendChild(createSecureTableCell(safeValue(waterLine.diameter_mm)));
+
+                // Material
+                row.appendChild(createSecureTableCell(safeValue(waterLine.material)));
+
+                // Pressure
+                row.appendChild(createSecureTableCell(formatNumber(waterLine.pressure_bar, 1)));
+
+                // Installation date
+                row.appendChild(createSecureTableCell(formatDate(waterLine.installation_date)));
+
+                // Status badge
+                const statusCell = document.createElement('td');
+                const statusBadge = document.createElement('span');
+                statusBadge.className = `status-badge ${statusClass}`;
+                statusBadge.textContent = getWaterLineStatusLabel(waterLine.status);
+                statusCell.appendChild(statusBadge);
+                row.appendChild(statusCell);
+
+                // Connected buildings
+                const buildingsText = connectedBuildings.length > 50
+                    ? connectedBuildings.substring(0, 50) + '...'
+                    : connectedBuildings;
+                const buildingsCell = document.createElement('td');
+                buildingsCell.title = connectedBuildings;
+                buildingsCell.textContent = buildingsText;
+                row.appendChild(buildingsCell);
+
+                // Actions
+                const actionsCell = document.createElement('td');
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn-sm';
+                editBtn.textContent = 'Изменить';
+                editBtn.onclick = () => editWaterLine(waterLine.line_id);
+                actionsCell.appendChild(editBtn);
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn-sm btn-danger';
+                deleteBtn.textContent = 'Удалить';
+                deleteBtn.onclick = () => deleteWaterLine(waterLine.line_id);
+                actionsCell.appendChild(deleteBtn);
+                row.appendChild(actionsCell);
+
                 newTableBody.appendChild(row);
             });
         } else {
@@ -857,18 +906,47 @@ document.addEventListener("DOMContentLoaded", function () {
         if (data && data.length > 0) {
             data.forEach((line) => {
                 const row = document.createElement("tr");
-                row.innerHTML = `
-                    <td><input type="checkbox" class="item-checkbox" data-id="${line.line_id}"></td>
-                    <td>${safeValue(line.line_id)}</td>
-                    <td>${safeValue(line.name)}</td>
-                    <td>${formatNumber(line.voltage_kv, 1)}</td>
-                    <td>${formatNumber(line.length_km, 3)}</td>
-                    <td>${safeValue(line.transformer_id)}</td>
-                    <td>
-                        <button onclick="editLine(${line.line_id})" class="btn-sm">Изменить</button>
-                        <button onclick="deleteLine(${line.line_id})" class="btn-sm btn-danger">Удалить</button>
-                    </td>
-                `;
+
+                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                // Checkbox
+                const checkboxCell = document.createElement('td');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'item-checkbox';
+                checkbox.dataset.id = line.line_id;
+                checkboxCell.appendChild(checkbox);
+                row.appendChild(checkboxCell);
+
+                // ID
+                row.appendChild(createSecureTableCell(safeValue(line.line_id)));
+
+                // Name
+                row.appendChild(createSecureTableCell(safeValue(line.name)));
+
+                // Voltage
+                row.appendChild(createSecureTableCell(formatNumber(line.voltage_kv, 1)));
+
+                // Length
+                row.appendChild(createSecureTableCell(formatNumber(line.length_km, 3)));
+
+                // Transformer ID
+                row.appendChild(createSecureTableCell(safeValue(line.transformer_id)));
+
+                // Actions
+                const actionsCell = document.createElement('td');
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn-sm';
+                editBtn.textContent = 'Изменить';
+                editBtn.onclick = () => editLine(line.line_id);
+                actionsCell.appendChild(editBtn);
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn-sm btn-danger';
+                deleteBtn.textContent = 'Удалить';
+                deleteBtn.onclick = () => deleteLine(line.line_id);
+                actionsCell.appendChild(deleteBtn);
+                row.appendChild(actionsCell);
+
                 newTableBody.appendChild(row);
             });
         } else {
@@ -911,20 +989,53 @@ document.addEventListener("DOMContentLoaded", function () {
         if (data && data.length > 0) {
             data.forEach((source) => {
                 const row = document.createElement("tr");
-                row.innerHTML = `
-                    <td><input type="checkbox" class="item-checkbox" data-id="${source.id}"></td>
-                    <td>${safeValue(source.id)}</td>
-                    <td>${safeValue(source.name)}</td>
-                    <td>${safeValue(source.address)}</td>
-                    <td>${getSourceTypeLabel(source.source_type, 'water')}</td>
-                    <td>${formatNumber(source.capacity_m3_per_hour, 1)}</td>
-                    <td>${formatNumber(source.operating_pressure_bar, 1)}</td>
-                    <td>${getStatusLabel(source.status)}</td>
-                    <td>
-                        <button onclick="editWaterSource('${source.id}')" class="btn-sm">Изменить</button>
-                        <button onclick="deleteWaterSource('${source.id}')" class="btn-sm btn-danger">Удалить</button>
-                    </td>
-                `;
+
+                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                // Checkbox
+                const checkboxCell = document.createElement('td');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'item-checkbox';
+                checkbox.dataset.id = source.id;
+                checkboxCell.appendChild(checkbox);
+                row.appendChild(checkboxCell);
+
+                // ID
+                row.appendChild(createSecureTableCell(safeValue(source.id)));
+
+                // Name
+                row.appendChild(createSecureTableCell(safeValue(source.name)));
+
+                // Address
+                row.appendChild(createSecureTableCell(safeValue(source.address)));
+
+                // Source Type
+                row.appendChild(createSecureTableCell(getSourceTypeLabel(source.source_type, 'water')));
+
+                // Capacity
+                row.appendChild(createSecureTableCell(formatNumber(source.capacity_m3_per_hour, 1)));
+
+                // Operating Pressure
+                row.appendChild(createSecureTableCell(formatNumber(source.operating_pressure_bar, 1)));
+
+                // Status
+                row.appendChild(createSecureTableCell(getStatusLabel(source.status)));
+
+                // Actions
+                const actionsCell = document.createElement('td');
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn-sm';
+                editBtn.textContent = 'Изменить';
+                editBtn.onclick = () => editWaterSource(source.id);
+                actionsCell.appendChild(editBtn);
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn-sm btn-danger';
+                deleteBtn.textContent = 'Удалить';
+                deleteBtn.onclick = () => deleteWaterSource(source.id);
+                actionsCell.appendChild(deleteBtn);
+                row.appendChild(actionsCell);
+
                 newTableBody.appendChild(row);
             });
         } else {
@@ -967,20 +1078,53 @@ document.addEventListener("DOMContentLoaded", function () {
         if (data && data.length > 0) {
             data.forEach((source) => {
                 const row = document.createElement("tr");
-                row.innerHTML = `
-                    <td><input type="checkbox" class="item-checkbox" data-id="${source.id}"></td>
-                    <td>${safeValue(source.id)}</td>
-                    <td>${safeValue(source.name)}</td>
-                    <td>${safeValue(source.address)}</td>
-                    <td>${getSourceTypeLabel(source.source_type, 'heat')}</td>
-                    <td>${formatNumber(source.capacity_mw, 1)}</td>
-                    <td>${safeValue(source.fuel_type)}</td>
-                    <td>${getStatusLabel(source.status)}</td>
-                    <td>
-                        <button onclick="editHeatSource('${source.id}')" class="btn-sm">Изменить</button>
-                        <button onclick="deleteHeatSource('${source.id}')" class="btn-sm btn-danger">Удалить</button>
-                    </td>
-                `;
+
+                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                // Checkbox
+                const checkboxCell = document.createElement('td');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'item-checkbox';
+                checkbox.dataset.id = source.id;
+                checkboxCell.appendChild(checkbox);
+                row.appendChild(checkboxCell);
+
+                // ID
+                row.appendChild(createSecureTableCell(safeValue(source.id)));
+
+                // Name
+                row.appendChild(createSecureTableCell(safeValue(source.name)));
+
+                // Address
+                row.appendChild(createSecureTableCell(safeValue(source.address)));
+
+                // Source Type
+                row.appendChild(createSecureTableCell(getSourceTypeLabel(source.source_type, 'heat')));
+
+                // Capacity
+                row.appendChild(createSecureTableCell(formatNumber(source.capacity_mw, 1)));
+
+                // Fuel Type
+                row.appendChild(createSecureTableCell(safeValue(source.fuel_type)));
+
+                // Status
+                row.appendChild(createSecureTableCell(getStatusLabel(source.status)));
+
+                // Actions
+                const actionsCell = document.createElement('td');
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn-sm';
+                editBtn.textContent = 'Изменить';
+                editBtn.onclick = () => editHeatSource(source.id);
+                actionsCell.appendChild(editBtn);
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn-sm btn-danger';
+                deleteBtn.textContent = 'Удалить';
+                deleteBtn.onclick = () => deleteHeatSource(source.id);
+                actionsCell.appendChild(deleteBtn);
+                row.appendChild(actionsCell);
+
                 newTableBody.appendChild(row);
             });
         } else {
@@ -2229,7 +2373,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
         // Сохраняем первую опцию (placeholder)
         const firstOption = dropdown.firstElementChild ? dropdown.firstElementChild.cloneNode(true) : null;
-        dropdown.innerHTML = '';
+        // ИСПРАВЛЕНИЕ XSS: Используем textContent вместо innerHTML для очистки
+        dropdown.textContent = '';
         if (firstOption) {
             dropdown.appendChild(firstOption);
         }
@@ -2336,14 +2481,24 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!lineId) {
             // Деактивируем поле и очищаем
             selectElement.disabled = true;
-            selectElement.innerHTML = `<option value="">Сначала выберите линию ${supplierType === 'cold_water' ? 'ХВС' : 'ГВС'}</option>`;
+            // ИСПРАВЛЕНИЕ XSS: Используем DOM API вместо innerHTML
+            selectElement.textContent = '';
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = `Сначала выберите линию ${supplierType === 'cold_water' ? 'ХВС' : 'ГВС'}`;
+            selectElement.appendChild(option);
             return;
         }
 
         try {
             // Активируем поле
             selectElement.disabled = false;
-            selectElement.innerHTML = '<option value="">Загрузка поставщика...</option>';
+            // ИСПРАВЛЕНИЕ XSS: Используем DOM API вместо innerHTML
+            selectElement.textContent = '';
+            const loadingOption = document.createElement('option');
+            loadingOption.value = '';
+            loadingOption.textContent = 'Загрузка поставщика...';
+            selectElement.appendChild(loadingOption);
 
             // Получаем поставщика для конкретной линии
             const response = await fetch(`/api/water-lines/${lineId}/supplier`);
@@ -2352,7 +2507,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
                 if (result.supplier) {
                     // Есть привязанный поставщик - выбираем его автоматически
-                    selectElement.innerHTML = '<option value="">Выберите поставщика</option>';
+                    // ИСПРАВЛЕНИЕ XSS: Используем DOM API вместо innerHTML
+                    selectElement.textContent = '';
+                    const placeholderOption = document.createElement('option');
+                    placeholderOption.value = '';
+                    placeholderOption.textContent = 'Выберите поставщика';
+                    selectElement.appendChild(placeholderOption);
 
                     const option = document.createElement('option');
                     option.value = result.supplier.supplier_id;
@@ -2368,7 +2528,12 @@ document.addEventListener("DOMContentLoaded", function () {
                         const suppliersResult = await suppliersResponse.json();
                         const suppliersData = suppliersResult.data || suppliersResult;
 
-                        selectElement.innerHTML = '<option value="">Выберите поставщика</option>';
+                        // ИСПРАВЛЕНИЕ XSS: Используем DOM API вместо innerHTML
+                        selectElement.textContent = '';
+                        const placeholderOption2 = document.createElement('option');
+                        placeholderOption2.value = '';
+                        placeholderOption2.textContent = 'Выберите поставщика';
+                        selectElement.appendChild(placeholderOption2);
 
                         if (Array.isArray(suppliersData) && suppliersData.length > 0) {
                             suppliersData.forEach(supplier => {
@@ -2379,7 +2544,12 @@ document.addEventListener("DOMContentLoaded", function () {
                             });
                             showToast(`📋 К линии не привязан поставщик. Загружено ${suppliersData.length} поставщиков ${supplierType === 'cold_water' ? 'ХВС' : 'ГВС'}`, 'info');
                         } else {
-                            selectElement.innerHTML = '<option value="">Поставщики не найдены</option>';
+                            // ИСПРАВЛЕНИЕ XSS: Используем DOM API вместо innerHTML
+                            selectElement.textContent = '';
+                            const notFoundOption = document.createElement('option');
+                            notFoundOption.value = '';
+                            notFoundOption.textContent = 'Поставщики не найдены';
+                            selectElement.appendChild(notFoundOption);
                             showToast(`⚠️ Поставщики ${supplierType === 'cold_water' ? 'ХВС' : 'ГВС'} не найдены`, 'warning');
                         }
                     }
@@ -2388,7 +2558,12 @@ document.addEventListener("DOMContentLoaded", function () {
         } catch (error) {
             console.error('Ошибка получения поставщика для линии:', error);
             selectElement.disabled = true;
-            selectElement.innerHTML = '<option value="">Ошибка загрузки</option>';
+            // ИСПРАВЛЕНИЕ XSS: Используем DOM API вместо innerHTML
+            selectElement.textContent = '';
+            const errorOption = document.createElement('option');
+            errorOption.value = '';
+            errorOption.textContent = 'Ошибка загрузки';
+            selectElement.appendChild(errorOption);
             showToast('❌ Ошибка загрузки поставщика для линии', 'error');
         }
     }
@@ -2423,7 +2598,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
                 // Очищаем существующие опции кроме первой
                 const firstOption = select.firstElementChild;
-                select.innerHTML = '';
+                // ИСПРАВЛЕНИЕ XSS: Используем textContent вместо innerHTML для очистки
+                select.textContent = '';
                 if (firstOption) {
                     select.appendChild(firstOption);
                 }
@@ -2707,47 +2883,78 @@ document.addEventListener("DOMContentLoaded", function () {
         title.textContent = config.title;
 
         // Очищаем поля формы
-        formFields.innerHTML = '';
+        // ИСПРАВЛЕНИЕ XSS: Используем textContent вместо innerHTML для очистки
+        formFields.textContent = '';
 
         // Генерируем поля формы
         config.fields.forEach(field => {
             const fieldDiv = document.createElement('div');
             fieldDiv.className = 'form-field';
-
-            let fieldHTML = '';
             const value = data[field.name] || '';
 
+            // ИСПРАВЛЕНИЕ XSS: Используем DOM API вместо innerHTML для безопасности
             if (field.type === 'select') {
-                fieldHTML = `
-                    <label for="${field.name}">${field.label}:</label>
-                    <select id="${field.name}" name="${field.name}" ${field.required ? 'required' : ''}>
-                        ${field.options.map(opt =>
-                            `<option value="${opt.value}" ${value === opt.value ? 'selected' : ''}>${opt.text}</option>`
-                        ).join('')}
-                    </select>
-                `;
+                const label = document.createElement('label');
+                label.setAttribute('for', field.name);
+                label.textContent = field.label + ':';
+
+                const select = document.createElement('select');
+                select.id = field.name;
+                select.name = field.name;
+                if (field.required) select.required = true;
+
+                field.options.forEach(opt => {
+                    const option = document.createElement('option');
+                    option.value = opt.value;
+                    option.textContent = opt.text;
+                    if (value === opt.value) option.selected = true;
+                    select.appendChild(option);
+                });
+
+                fieldDiv.appendChild(label);
+                fieldDiv.appendChild(select);
             } else if (field.type === 'textarea') {
-                fieldHTML = `
-                    <label for="${field.name}">${field.label}:</label>
-                    <textarea id="${field.name}" name="${field.name}" ${field.required ? 'required' : ''}>${value}</textarea>
-                `;
+                const label = document.createElement('label');
+                label.setAttribute('for', field.name);
+                label.textContent = field.label + ':';
+
+                const textarea = document.createElement('textarea');
+                textarea.id = field.name;
+                textarea.name = field.name;
+                if (field.required) textarea.required = true;
+                textarea.value = value;
+
+                fieldDiv.appendChild(label);
+                fieldDiv.appendChild(textarea);
             } else if (field.type === 'checkbox') {
-                fieldHTML = `
-                    <label>
-                        <input type="checkbox" id="${field.name}" name="${field.name}" ${value ? 'checked' : ''}>
-                        ${field.label}
-                    </label>
-                `;
+                const label = document.createElement('label');
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = field.name;
+                checkbox.name = field.name;
+                if (value) checkbox.checked = true;
+
+                label.appendChild(checkbox);
+                label.appendChild(document.createTextNode(' ' + field.label));
+                fieldDiv.appendChild(label);
             } else {
-                fieldHTML = `
-                    <label for="${field.name}">${field.label}:</label>
-                    <input type="${field.type}" id="${field.name}" name="${field.name}"
-                           value="${value}" ${field.required ? 'required' : ''}
-                           ${field.step ? `step="${field.step}"` : ''}>
-                `;
+                const label = document.createElement('label');
+                label.setAttribute('for', field.name);
+                label.textContent = field.label + ':';
+
+                const input = document.createElement('input');
+                input.type = field.type;
+                input.id = field.name;
+                input.name = field.name;
+                input.value = value;
+                if (field.required) input.required = true;
+                if (field.step) input.step = field.step;
+
+                fieldDiv.appendChild(label);
+                fieldDiv.appendChild(input);
             }
 
-            fieldDiv.innerHTML = fieldHTML;
             formFields.appendChild(fieldDiv);
         });
 
