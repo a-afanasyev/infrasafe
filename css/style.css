@@ -6,6 +6,8 @@ body, html {
     width: 100%;
     font-family: 'Roboto', Arial, sans-serif;
     overflow: hidden;
+    /* Темный фон чтобы не было белого при смещении карты */
+    background-color: #1a1a1a;
 }
 
 /* Map Full Height */
@@ -390,6 +392,14 @@ body {
     align-items: left;
     justify-content: left;
     z-index: 1;
+}
+
+/* Счетчики в промышленной панели должны быть в строке с заголовком, а не внизу */
+.status-group-header .group-counter {
+    position: static;
+    bottom: auto;
+    right: auto;
+    margin-left: auto;
 }
 
 /* Удаляем специальные цвета для разных групп */
@@ -931,6 +941,10 @@ body {
     right: 0;
     bottom: 60px;
     overflow: hidden;
+    /* Плавная анимация смещения синхронизирована с панелью */
+    transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
+    /* Оптимизация производительности анимации */
+    will-change: transform;
 }
 
 /* Скрываем старый Leaflet layers control - используем новую промышленную панель */
