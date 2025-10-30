@@ -306,6 +306,15 @@ body {
     transform: rotate(180deg);
 }
 
+/* Скрываем старый sidebar - используется только для данных */
+#sidebar {
+    visibility: hidden;
+    position: absolute;
+    left: -9999px;
+    opacity: 0;
+    pointer-events: none;
+}
+
 .sidebar-content {
     transition: all 0.3s ease;
 }
@@ -924,6 +933,12 @@ body {
     overflow: hidden;
 }
 
+/* Скрываем старый Leaflet layers control - используем новую промышленную панель */
+.leaflet-control-layers,
+.layers-control-panel {
+    display: none !important;
+}
+
 /* Улучшаем стили для контролов карты */
 .leaflet-control-zoom {
     border-radius: 4px;
@@ -1231,4 +1246,336 @@ body.content-page .header {
 #form-status.error {
     color: red;
     font-weight: bold;
+}
+
+/* ============================================================
+   ПРОМЫШЛЕННАЯ ВЫДВИЖНАЯ ПАНЕЛЬ УПРАВЛЕНИЯ (T021)
+   ============================================================ */
+
+/* Кнопка управления панелью (Toggle) */
+.push-panel-toggle {
+    position: fixed;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, #34a236 0%, #2a802c 100%);
+    border: none;
+    border-radius: 0 8px 8px 0;
+    cursor: pointer;
+    z-index: 2001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 8px rgba(52, 162, 54, 0.3);
+}
+
+.push-panel-toggle:hover {
+    background: linear-gradient(135deg, #3fa341 0%, #34a236 100%);
+    box-shadow: 0 4px 12px rgba(52, 162, 54, 0.5);
+}
+
+.push-panel-toggle:active {
+    transform: translateY(-50%) scale(0.95);
+}
+
+.toggle-icon {
+    width: 24px;
+    height: 24px;
+    stroke: #1a2332;
+    transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.push-panel.expanded ~ .push-panel-toggle .toggle-icon,
+.push-panel.expanded + .push-panel-toggle .toggle-icon {
+    transform: rotate(180deg);
+}
+
+/* Основной контейнер панели */
+.push-panel {
+    position: fixed;
+    top: 80px; /* Ниже header */
+    left: 0;
+    width: 320px;
+    height: calc(100vh - 80px - 60px); /* Минус header и footer */
+    background: linear-gradient(180deg, #2d3a4e 0%, #1f2a3a 100%);
+    transform: translateX(-320px);
+    transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+    border-right: 2px solid #3a4a5e;
+}
+
+.push-panel.expanded {
+    transform: translateX(0);
+}
+
+/* Заголовок панели */
+.push-panel-header {
+    padding: 16px;
+    background: linear-gradient(135deg, #1a2332 0%, #253041 100%);
+    border-bottom: 2px solid #3a4a5e;
+    position: relative;
+}
+
+.push-panel-header::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #34a236, transparent);
+}
+
+.push-panel-header h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #34a236;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    text-shadow: 0 0 8px rgba(52, 162, 54, 0.3);
+}
+
+/* Вкладки */
+.push-panel-tabs {
+    display: flex;
+    background: #253041;
+    border-bottom: 2px solid #3a4a5e;
+    position: relative;
+}
+
+.push-panel-tabs::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #34a236, transparent);
+}
+
+.tab-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 12px 8px;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: #9e9e9e;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+}
+
+.tab-btn:hover {
+    background: rgba(52, 162, 54, 0.1);
+    color: #e0e0e0;
+}
+
+.tab-btn.active {
+    background: rgba(52, 162, 54, 0.15);
+    border-bottom-color: #34a236;
+    color: #34a236;
+    font-weight: 600;
+}
+
+.tab-btn.active::before {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80%;
+    height: 3px;
+    background: #34a236;
+    box-shadow: 0 0 10px rgba(52, 162, 54, 0.6);
+}
+
+/* Скрываем вкладку фильтров */
+button[data-tab="filters"] {
+    display: none !important;
+}
+
+.tab-icon {
+    font-size: 24px;
+}
+
+.tab-label {
+    display: none;
+}
+
+.push-panel.expanded .tab-label {
+    display: inline;
+}
+
+/* Контент панели */
+.push-panel-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 16px;
+    background: #1a2332;
+}
+
+/* Скроллбар в промышленном стиле */
+.push-panel-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.push-panel-content::-webkit-scrollbar-track {
+    background: #0f1419;
+    border-radius: 4px;
+}
+
+.push-panel-content::-webkit-scrollbar-thumb {
+    background: #3a4a5e;
+    border-radius: 4px;
+    border: 1px solid #1a2332;
+}
+
+.push-panel-content::-webkit-scrollbar-thumb:hover {
+    background: #34a236;
+}
+
+/* Содержимое вкладок */
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+    animation: fadeIn 200ms ease-in;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Секции внутри вкладок */
+.tab-section {
+    margin-bottom: 20px;
+}
+
+.tab-section h3 {
+    margin: 0 0 12px 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #34a236;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #3a4a5e;
+}
+
+.tab-section h3::before {
+    content: '▸ ';
+    color: #34a236;
+}
+
+/* Элементы в секциях */
+.tab-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    background: #253041;
+    border: 1px solid #3a4a5e;
+    border-left: 3px solid #3a4a5e;
+    border-radius: 0 4px 4px 0;
+    transition: all 200ms;
+    cursor: pointer;
+}
+
+.tab-item:hover {
+    background: #2a3a4d;
+    border-left-color: #34a236;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.tab-item.active {
+    border-left-color: #34a236;
+    background: rgba(52, 162, 54, 0.1);
+}
+
+.tab-item input[type="radio"],
+.tab-item input[type="checkbox"] {
+    margin-right: 10px;
+    cursor: pointer;
+}
+
+.tab-item-label {
+    flex: 1;
+    font-size: 13px;
+    color: #e0e0e0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tab-item-count {
+    font-size: 11px;
+    background: #3a4a5e;
+    color: #e0e0e0;
+    padding: 2px 8px;
+    border-radius: 10px;
+    min-width: 30px;
+    text-align: center;
+}
+
+/* Сдвиг карты когда панель развернута */
+.push-panel.expanded ~ .content {
+    transform: translateX(320px);
+}
+
+/* Адаптивность для мобильных устройств */
+@media screen and (max-width: 768px) {
+    .push-panel {
+        width: 100%;
+        height: calc(100vh - 80px);
+        top: 80px;
+    }
+    
+    .push-panel.expanded ~ .content {
+        transform: translateX(0);
+        opacity: 0.3;
+        pointer-events: none;
+    }
+    
+    .push-panel-toggle {
+        width: 40px;
+        height: 40px;
+    }
+    
+    .toggle-icon {
+        width: 20px;
+        height: 20px;
+    }
+    
+    .tab-btn {
+        padding: 10px 6px;
+        font-size: 12px;
+    }
+    
+    .push-panel-header h2 {
+        font-size: 14px;
+    }
 }

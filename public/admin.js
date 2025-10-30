@@ -167,12 +167,14 @@ document.addEventListener("DOMContentLoaded", function () {
             const editBtn = document.createElement('button');
             editBtn.className = 'btn-sm';
             editBtn.textContent = 'Изменить';
-            editBtn.onclick = () => editBuilding(building.building_id);
-            
+            // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+            editBtn.addEventListener('click', () => editBuilding(building.building_id));
+
             const deleteBtn = document.createElement('button');
             deleteBtn.className = 'btn-sm btn-danger';
             deleteBtn.textContent = 'Удалить';
-            deleteBtn.onclick = () => deleteBuilding(building.building_id);
+            // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+            deleteBtn.addEventListener('click', () => deleteBuilding(building.building_id));
             
             const buttonCell = document.createElement('td');
             buttonCell.setAttribute('rowspan', '3');
@@ -338,12 +340,14 @@ document.addEventListener("DOMContentLoaded", function () {
                 const editBtn = document.createElement('button');
                 editBtn.className = 'btn-sm';
                 editBtn.textContent = 'Изменить';
-                editBtn.onclick = () => editController(controller.controller_id);
-                
+                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+                editBtn.addEventListener('click', () => editController(controller.controller_id));
+
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'btn-sm btn-danger';
                 deleteBtn.textContent = 'Удалить';
-                deleteBtn.onclick = () => deleteController(controller.controller_id);
+                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+                deleteBtn.addEventListener('click', () => deleteController(controller.controller_id));
                 
                 const buttonCell = document.createElement('td');
                 buttonCell.appendChild(editBtn);
@@ -422,7 +426,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'btn-sm btn-danger';
                 deleteBtn.textContent = 'Удалить';
-                deleteBtn.onclick = () => deleteMetric(metric.metric_id);
+                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+                deleteBtn.addEventListener('click', () => deleteMetric(metric.metric_id));
                 
                 const leakSensorCell = document.createElement('td');
                 leakSensorCell.appendChild(leakSensorSpan);
@@ -552,13 +557,15 @@ document.addEventListener("DOMContentLoaded", function () {
                 const editBtn = document.createElement('button');
                 editBtn.className = 'btn-sm';
                 editBtn.textContent = 'Изменить';
-                editBtn.onclick = () => editWaterLine(waterLine.line_id);
+                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+                editBtn.addEventListener('click', () => editWaterLine(waterLine.line_id));
                 actionsCell.appendChild(editBtn);
 
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'btn-sm btn-danger';
                 deleteBtn.textContent = 'Удалить';
-                deleteBtn.onclick = () => deleteWaterLine(waterLine.line_id);
+                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+                deleteBtn.addEventListener('click', () => deleteWaterLine(waterLine.line_id));
                 actionsCell.appendChild(deleteBtn);
                 row.appendChild(actionsCell);
 
@@ -732,12 +739,14 @@ document.addEventListener("DOMContentLoaded", function () {
                 const editBtn = document.createElement('button');
                 editBtn.className = 'btn-sm';
                 editBtn.textContent = 'Изменить';
-                editBtn.onclick = () => editBuilding(building.building_id);
-                
+                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+                editBtn.addEventListener('click', () => editBuilding(building.building_id));
+
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'btn-sm btn-danger';
                 deleteBtn.textContent = 'Удалить';
-                deleteBtn.onclick = () => deleteBuilding(building.building_id);
+                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+                deleteBtn.addEventListener('click', () => deleteBuilding(building.building_id));
                 
                 const buttonCell = document.createElement('td');
                 buttonCell.setAttribute('rowspan', '3');
@@ -846,12 +855,14 @@ document.addEventListener("DOMContentLoaded", function () {
                 const editBtn = document.createElement('button');
                 editBtn.className = 'btn-sm';
                 editBtn.textContent = 'Изменить';
-                editBtn.onclick = () => editTransformer(transformer.transformer_id);
-                
+                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+                editBtn.addEventListener('click', () => editTransformer(transformer.transformer_id));
+
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'btn-sm btn-danger';
                 deleteBtn.textContent = 'Удалить';
-                deleteBtn.onclick = () => deleteTransformer(transformer.transformer_id);
+                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+                deleteBtn.addEventListener('click', () => deleteTransformer(transformer.transformer_id));
                 
                 const buttonCell = document.createElement('td');
                 buttonCell.appendChild(editBtn);
@@ -937,13 +948,15 @@ document.addEventListener("DOMContentLoaded", function () {
                 const editBtn = document.createElement('button');
                 editBtn.className = 'btn-sm';
                 editBtn.textContent = 'Изменить';
-                editBtn.onclick = () => editLine(line.line_id);
+                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+                editBtn.addEventListener('click', () => editLine(line.line_id));
                 actionsCell.appendChild(editBtn);
 
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'btn-sm btn-danger';
                 deleteBtn.textContent = 'Удалить';
-                deleteBtn.onclick = () => deleteLine(line.line_id);
+                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+                deleteBtn.addEventListener('click', () => deleteLine(line.line_id));
                 actionsCell.appendChild(deleteBtn);
                 row.appendChild(actionsCell);
 
@@ -1026,13 +1039,15 @@ document.addEventListener("DOMContentLoaded", function () {
                 const editBtn = document.createElement('button');
                 editBtn.className = 'btn-sm';
                 editBtn.textContent = 'Изменить';
-                editBtn.onclick = () => editWaterSource(source.id);
+                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+                editBtn.addEventListener('click', () => editWaterSource(source.id));
                 actionsCell.appendChild(editBtn);
 
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'btn-sm btn-danger';
                 deleteBtn.textContent = 'Удалить';
-                deleteBtn.onclick = () => deleteWaterSource(source.id);
+                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+                deleteBtn.addEventListener('click', () => deleteWaterSource(source.id));
                 actionsCell.appendChild(deleteBtn);
                 row.appendChild(actionsCell);
 
@@ -1115,13 +1130,15 @@ document.addEventListener("DOMContentLoaded", function () {
                 const editBtn = document.createElement('button');
                 editBtn.className = 'btn-sm';
                 editBtn.textContent = 'Изменить';
-                editBtn.onclick = () => editHeatSource(source.id);
+                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+                editBtn.addEventListener('click', () => editHeatSource(source.id));
                 actionsCell.appendChild(editBtn);
 
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'btn-sm btn-danger';
                 deleteBtn.textContent = 'Удалить';
-                deleteBtn.onclick = () => deleteHeatSource(source.id);
+                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+                deleteBtn.addEventListener('click', () => deleteHeatSource(source.id));
                 actionsCell.appendChild(deleteBtn);
                 row.appendChild(actionsCell);
 
@@ -1484,26 +1501,28 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (prevBtn) {
             prevBtn.disabled = pagination[section].page <= 1;
-            prevBtn.onclick = () => {
+            // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+            prevBtn.addEventListener('click', () => {
                 if (pagination[section].page > 1) {
                     pagination[section].page--;
                     dataLoaded[section] = false;
                     loadSectionData(section);
                 }
-            };
+            });
         }
 
         if (nextBtn) {
             const totalPages = Math.ceil(pagination[section].total / pagination[section].limit);
             nextBtn.disabled = pagination[section].page >= totalPages;
-            nextBtn.onclick = () => {
+            // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+            nextBtn.addEventListener('click', () => {
                 const totalPages = Math.ceil(pagination[section].total / pagination[section].limit);
                 if (pagination[section].page < totalPages) {
                     pagination[section].page++;
                     dataLoaded[section] = false;
                     loadSectionData(section);
                 }
-            };
+            });
         }
     }
 
@@ -2991,7 +3010,8 @@ document.addEventListener("DOMContentLoaded", function () {
         });
 
         // Добавляем обработчик отмены
-        document.getElementById('universal-cancel').onclick = closeUniversalModal;
+        // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
+        document.getElementById('universal-cancel').addEventListener('click', closeUniversalModal);
 
         // Показываем модальное окно
         modal.style.display = 'flex';

@@ -69,11 +69,597 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
     }
 
+    // ============================================================
+    // КЛАСС ПРОМЫШЛЕННОЙ ВЫДВИЖНОЙ ПАНЕЛИ УПРАВЛЕНИЯ (T021)
+    // ============================================================
+    
+    /**
+     * IndustrialPushPanel - Управление промышленной выдвижной панелью
+     * 
+     * Этот класс создает единую панель управления с вкладками для:
+     * - Слои карты (базовые и overlay)
+     * - Статусы зданий (ok, warning, leak, critical, no-controller)
+     * - Фильтры (статус, загрузка, тип воды)
+     * 
+     * Панель выдвигается слева направо с плавной анимацией
+     */
+    class IndustrialPushPanel {
+        constructor() {
+            // Получаем элементы DOM
+            this.panel = document.getElementById('push-panel');
+            this.toggleBtn = document.getElementById('push-panel-toggle');
+            this.tabs = document.querySelectorAll('.tab-btn');
+            this.contents = document.querySelectorAll('.tab-content');
+            
+            // Состояние панели
+            this.isExpanded = false;
+            this.currentTab = 'layers';
+            
+            // Инициализация
+            if (this.panel && this.toggleBtn) {
+                this.init();
+            } else {
+                console.warn('⚠️ IndustrialPushPanel: элементы панели не найдены в DOM');
+            }
+        }
+        
+        /**
+         * Инициализация панели
+         * Настраивает обработчики событий для toggle кнопки и вкладок
+         */
+        init() {
+            console.log('🔧 Initializing IndustrialPushPanel...');
+            
+            // Обработчик для кнопки toggle
+            this.toggleBtn.addEventListener('click', () => this.toggle());
+            
+            // Обработчики для вкладок
+            this.tabs.forEach(tab => {
+                tab.addEventListener('click', (e) => {
+                    const tabName = e.currentTarget.dataset.tab;
+                    this.switchTab(tabName);
+                });
+            });
+            
+            // Начальная загрузка контента первой вкладки
+            this.loadTabContent(this.currentTab);
+            
+            console.log('✅ IndustrialPushPanel initialized successfully');
+        }
+        
+        /**
+         * Переключение состояния панели (свернута/развернута)
+         * Изменяет классы для анимации и сдвигает карту
+         */
+        toggle() {
+            this.isExpanded = !this.isExpanded;
+            
+            if (this.isExpanded) {
+                this.panel.classList.remove('collapsed');
+                this.panel.classList.add('expanded');
+                console.log('📂 Panel expanded');
+            } else {
+                this.panel.classList.remove('expanded');
+                this.panel.classList.add('collapsed');
+                console.log('📁 Panel collapsed');
+            }
+        }
+        
+        /**
+         * Переключение между вкладками
+         * @param {string} tabName - Имя вкладки (layers, status, filters)
+         */
+        switchTab(tabName) {
+            console.log(`🔀 Switching to tab: ${tabName}`);
+            
+            // Обновляем активные вкладки
+            this.tabs.forEach(tab => {
+                const isActive = tab.dataset.tab === tabName;
+                tab.classList.toggle('active', isActive);
+                tab.setAttribute('aria-selected', isActive);
+            });
+            
+            // Обновляем активное содержимое
+            this.contents.forEach(content => {
+                const isActive = content.dataset.content === tabName;
+                content.classList.toggle('active', isActive);
+            });
+            
+            // Сохраняем текущую вкладку и загружаем контент
+            this.currentTab = tabName;
+            this.loadTabContent(tabName);
+        }
+        
+        /**
+         * Загрузка контента для активной вкладки
+         * @param {string} tabName - Имя вкладки
+         */
+        loadTabContent(tabName) {
+            console.log(`📦 Loading content for tab: ${tabName}`);
+            
+            switch(tabName) {
+                case 'layers':
+                    this.loadLayersContent();
+                    break;
+                case 'status':
+                    this.loadStatusContent();
+                    break;
+                case 'filters':
+                    this.loadFiltersContent();
+                    break;
+                default:
+                    console.warn(`⚠️ Unknown tab: ${tabName}`);
+            }
+        }
+        
+        /**
+         * Загрузка контента вкладки СЛОИ
+         * Интеграция с существующим MapLayersControl
+         */
+        loadLayersContent() {
+            const layersContent = document.querySelector('.tab-content[data-content="layers"]');
+            if (!layersContent) return;
+            
+            // Очищаем содержимое если оно уже было загружено
+            if (layersContent.dataset.loaded) {
+                return;
+            }
+            layersContent.dataset.loaded = 'true';
+            
+            // Создаем структуру для базовых слоев
+            const baseSection = document.createElement('div');
+            baseSection.className = 'tab-section';
+            const baseTitle = document.createElement('h3');
+            baseTitle.textContent = 'Базовые слои';
+            baseSection.appendChild(baseTitle);
+            
+            const baseLayersList = document.createElement('div');
+            baseLayersList.className = 'base-layers-list';
+            baseSection.appendChild(baseLayersList);
+            
+            // Создаем структуру для overlay слоев
+            const overlaySection = document.createElement('div');
+            overlaySection.className = 'tab-section';
+            const overlayTitle = document.createElement('h3');
+            overlayTitle.textContent = 'Объекты инфраструктуры';
+            overlaySection.appendChild(overlayTitle);
+            
+            const overlayLayersList = document.createElement('div');
+            overlayLayersList.className = 'overlay-layers-list';
+            overlaySection.appendChild(overlayLayersList);
+            
+            // Добавляем секции в контент
+            layersContent.appendChild(baseSection);
+            layersContent.appendChild(overlaySection);
+            
+            console.log('✅ Layers content structure created');
+            
+            // Попытка интегрироваться с MapLayersControl если он уже инициализирован
+            // Если нет - элементы будут заполнены вручную
+            const mapLayersControl = this.getMapLayersControl();
+            if (mapLayersControl && typeof mapLayersControl.populateLayerControls === 'function') {
+                // Переопределяем populateLayerControls чтобы использовать новые элементы
+                const originalMethod = mapLayersControl.populateLayerControls.bind(mapLayersControl);
+                mapLayersControl.populateLayerControls = function() {
+                    // Используем наши элементы вместо старых
+                    const baseList = document.querySelector('.base-layers-list');
+                    const overlayList = document.querySelector('.overlay-layers-list');
+                    
+                    if (baseList && overlayList) {
+                        console.log('🔄 Populating layers with Industrial panel elements');
+                        
+                        // Базовые слои
+                        Object.keys(mapLayersControl.baseLayers).forEach(name => {
+                            const item = document.createElement('div');
+                            item.className = 'tab-item';
+                            
+                            const label = document.createElement('label');
+                            label.className = 'tab-item-label';
+                            
+                            const input = document.createElement('input');
+                            input.type = 'radio';
+                            input.name = 'base-layer';
+                            input.value = name;
+                            input.checked = name === "🗺️ Карта";
+                            
+                            label.appendChild(input);
+                            label.appendChild(document.createTextNode(name));
+                            item.appendChild(label);
+                            
+                            input.addEventListener('change', () => {
+                                if (input.checked) {
+                                    mapLayersControl.switchBaseLayer(name);
+                                }
+                            });
+                            
+                            baseList.appendChild(item);
+                        });
+                        
+                        // Overlay слои
+                        Object.keys(mapLayersControl.overlays).forEach(name => {
+                            const item = document.createElement('div');
+                            item.className = 'tab-item';
+                            
+                            const label = document.createElement('label');
+                            label.className = 'tab-item-label';
+                            
+                            const input = document.createElement('input');
+                            input.type = 'checkbox';
+                            input.value = name;
+                            input.checked = name === "🏢 Здания";
+                            
+                            label.appendChild(input);
+                            label.appendChild(document.createTextNode(name)); // Полное название с эмодзи
+                            
+                            const count = document.createElement('span');
+                            count.className = 'layer-count'; // Для совместимости с updateLayerCount
+                            count.textContent = '(0)';
+                            
+                            label.appendChild(count); // Добавляем счетчик внутрь label
+                            item.appendChild(label);
+                            
+                            input.addEventListener('change', () => {
+                                mapLayersControl.toggleOverlay(name, input.checked);
+                            });
+                            
+                            overlayList.appendChild(item);
+                        });
+                        
+                        console.log('✅ Layers populated successfully');
+                    }
+                };
+                
+                // Вызываем обновленный метод
+                mapLayersControl.populateLayerControls();
+                
+                // Переопределяем updateLayerCount для нашей структуры
+                mapLayersControl.updateLayerCount = function(layerName, count) {
+                    // Ищем input с нужным value и получаем его родительский элемент
+                    const input = document.querySelector(`input[value="${layerName}"]`);
+                    if (input) {
+                        // Получаем родительский label
+                        const label = input.parentElement;
+                        if (label) {
+                            // Ищем счетчик внутри label
+                            const countSpan = label.querySelector('.layer-count');
+                            if (countSpan) {
+                                countSpan.textContent = `(${count})`;
+                            }
+                        }
+                    }
+                };
+            }
+        }
+        
+        /**
+         * Загрузка контента вкладки СТАТУСЫ
+         * Миграция из существующего sidebar
+         */
+        loadStatusContent() {
+            const statusContent = document.querySelector('.tab-content[data-content="status"]');
+            if (!statusContent) return;
+            
+            // Очищаем содержимое если оно уже было загружено
+            if (statusContent.dataset.loaded) {
+                return;
+            }
+            statusContent.dataset.loaded = 'true';
+            
+            // Создаем секцию для групп статусов
+            const statusSection = document.createElement('div');
+            statusSection.className = 'tab-section';
+            statusSection.id = 'industrial-status-groups';
+            
+            // Создаем группы статусов
+            const statusGroups = [
+                { id: 'industrial-ok-group', title: '✓ Нет проблем', icon: '✓', color: '#4caf50' },
+                { id: 'industrial-warning-group', title: '⚠ Предупреждение', icon: '⚠', color: '#ff9800' },
+                { id: 'industrial-leak-group', title: '💧 Вода в подвале', icon: '💧', color: '#2196f3' },
+                { id: 'industrial-critical-group', title: '🔴 Авария', icon: '🔴', color: '#f44336' },
+                { id: 'industrial-no-group', title: '⚪ Нет контроллера', icon: '⚪', color: '#9e9e9e' }
+            ];
+            
+            statusGroups.forEach(group => {
+                const groupContainer = document.createElement('div');
+                groupContainer.id = group.id;
+                groupContainer.style.marginBottom = '12px';
+                
+                const groupHeader = document.createElement('div');
+                groupHeader.className = 'status-group-header';
+                groupHeader.style.cssText = `
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 10px 12px;
+                    background: #253041;
+                    border-left: 3px solid ${group.color};
+                    border-radius: 0 4px 4px 0;
+                    cursor: pointer;
+                    transition: all 200ms;
+                `;
+                
+                groupHeader.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 8px; color: #e0e0e0; font-size: 13px; font-weight: 500;">
+                        <span style="font-size: 24px;">${group.icon}</span>
+                        <span>${group.title}</span>
+                    </div>
+                    <span class="group-counter" style="background: ${group.color}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; min-width: 30px; text-align: center;">0</span>
+                `;
+                
+                const groupItems = document.createElement('div');
+                groupItems.className = 'status-group-items';
+                groupItems.style.cssText = `
+                    margin-top: 6px;
+                    max-height: 300px;
+                    overflow-y: auto;
+                    display: none;
+                `;
+                
+                groupContainer.appendChild(groupHeader);
+                groupContainer.appendChild(groupItems);
+                statusSection.appendChild(groupContainer);
+                
+                // Обработчик клика для сворачивания/разворачивания
+                groupHeader.addEventListener('click', () => {
+                    const isExpanded = groupItems.style.display !== 'none';
+                    groupItems.style.display = isExpanded ? 'none' : 'block';
+                });
+            });
+            
+            statusContent.appendChild(statusSection);
+            console.log('✅ Status content structure created');
+            
+            // Обновляем статусы после создания структуры
+            this.updateStatusGroups();
+        }
+        
+        /**
+         * Обновить группы статусов в промышленной панели
+         * Вызывается из loadData() для синхронизации со старым sidebar
+         */
+        updateStatusGroups() {
+            const statusGroups = ['ok', 'warning', 'leak', 'critical', 'no'];
+            
+            statusGroups.forEach(groupId => {
+                // Получаем старые элементы из старого sidebar
+                const oldGroup = document.querySelector(`#${groupId}-group .status-items`);
+                if (!oldGroup) return;
+                
+                // Получаем новые элементы промышленной панели
+                const industrialGroup = document.querySelector(`#industrial-${groupId}-group .status-group-items`);
+                const industrialCounter = document.querySelector(`#industrial-${groupId}-group .group-counter`);
+                
+                if (industrialGroup && industrialCounter) {
+                    // Очищаем старые элементы
+                    industrialGroup.innerHTML = '';
+                    
+                    // Клонируем элементы из старого sidebar
+                    Array.from(oldGroup.children).forEach(item => {
+                        const clone = item.cloneNode(true);
+                        clone.style.cssText = `
+                            display: flex;
+                            align-items: center;
+                            padding: 8px 12px;
+                            margin-bottom: 4px;
+                            background: #3a4a5e;
+                            border-left: 3px solid #3a4a5e;
+                            border-radius: 0 4px 4px 0;
+                            cursor: pointer;
+                            transition: all 200ms;
+                        `;
+                        
+                        clone.addEventListener('mouseenter', () => {
+                            clone.style.background = '#4a5a6e';
+                            clone.style.borderLeftColor = '#34a236';
+                        });
+                        
+                        clone.addEventListener('mouseleave', () => {
+                            clone.style.background = '#3a4a5e';
+                            clone.style.borderLeftColor = '#3a4a5e';
+                        });
+                        
+                        industrialGroup.appendChild(clone);
+                    });
+                    
+                    // Обновляем счетчик
+                    industrialCounter.textContent = oldGroup.children.length;
+                    
+                    // Показываем группу если есть элементы
+                    if (oldGroup.children.length > 0) {
+                        industrialGroup.style.display = 'block';
+                    } else {
+                        industrialGroup.style.display = 'none';
+                    }
+                }
+            });
+        }
+        
+        /**
+         * Загрузка контента вкладки ФИЛЬТРЫ
+         * Интеграция с существующими фильтрами
+         */
+        loadFiltersContent() {
+            const filtersContent = document.querySelector('.tab-content[data-content="filters"]');
+            if (!filtersContent) return;
+            
+            // Очищаем содержимое если оно уже было загружено
+            if (filtersContent.dataset.loaded) {
+                return;
+            }
+            filtersContent.dataset.loaded = 'true';
+            
+            // Создаем секцию для фильтров
+            const filtersSection = document.createElement('div');
+            filtersSection.className = 'tab-section';
+            
+            // Создаем заголовок
+            const filtersTitle = document.createElement('h3');
+            filtersTitle.textContent = 'Фильтры по объектам';
+            filtersSection.appendChild(filtersTitle);
+            
+            // Фильтр по статусу
+            const statusFilterGroup = document.createElement('div');
+            statusFilterGroup.style.cssText = 'margin-bottom: 16px;';
+            
+            const statusLabel = document.createElement('label');
+            statusLabel.textContent = 'Статус:';
+            statusLabel.style.cssText = 'display: block; margin-bottom: 8px; color: #e0e0e0; font-size: 13px; font-weight: 500;';
+            
+            const statusSelect = document.createElement('select');
+            statusSelect.id = 'industrial-status-filter';
+            statusSelect.multiple = true;
+            statusSelect.style.cssText = 'width: 100%; padding: 8px; background: #253041; border: 1px solid #3a4a5e; color: #e0e0e0; border-radius: 4px; font-size: 13px;';
+            
+            ['active', 'maintenance', 'inactive', 'critical'].forEach(value => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = {
+                    'active': 'Активный',
+                    'maintenance': 'Обслуживание',
+                    'inactive': 'Неактивный',
+                    'critical': 'Критический'
+                }[value];
+                statusSelect.appendChild(option);
+            });
+            
+            statusFilterGroup.appendChild(statusLabel);
+            statusFilterGroup.appendChild(statusSelect);
+            filtersSection.appendChild(statusFilterGroup);
+            
+            // Фильтр по загрузке трансформаторов
+            const loadFilterGroup = document.createElement('div');
+            loadFilterGroup.style.cssText = 'margin-bottom: 16px;';
+            
+            const loadLabel = document.createElement('label');
+            loadLabel.textContent = 'Загрузка трансформаторов:';
+            loadLabel.style.cssText = 'display: block; margin-bottom: 8px; color: #e0e0e0; font-size: 13px; font-weight: 500;';
+            
+            const loadInputContainer = document.createElement('div');
+            loadInputContainer.style.cssText = 'display: flex; align-items: center; gap: 12px;';
+            
+            const loadInput = document.createElement('input');
+            loadInput.type = 'range';
+            loadInput.id = 'industrial-load-filter';
+            loadInput.min = '0';
+            loadInput.max = '100';
+            loadInput.value = '100';
+            loadInput.style.cssText = 'flex: 1; height: 6px; background: #3a4a5e; border-radius: 3px; appearance: none;';
+            
+            // Стили для range input
+            loadInput.style.webkitAppearance = 'none';
+            loadInput.style.appearance = 'none';
+            
+            const loadValue = document.createElement('span');
+            loadValue.id = 'industrial-load-value';
+            loadValue.textContent = '100%';
+            loadValue.style.cssText = 'color: #34a236; font-size: 13px; font-weight: 600; min-width: 45px;';
+            
+            loadInput.addEventListener('input', (e) => {
+                loadValue.textContent = e.target.value + '%';
+            });
+            
+            loadInputContainer.appendChild(loadInput);
+            loadInputContainer.appendChild(loadValue);
+            
+            loadFilterGroup.appendChild(loadLabel);
+            loadFilterGroup.appendChild(loadInputContainer);
+            filtersSection.appendChild(loadFilterGroup);
+            
+            // Фильтр по типу воды
+            const waterFilterGroup = document.createElement('div');
+            waterFilterGroup.style.cssText = 'margin-bottom: 20px;';
+            
+            const waterLabel = document.createElement('label');
+            waterLabel.textContent = 'Тип водоснабжения:';
+            waterLabel.style.cssText = 'display: block; margin-bottom: 8px; color: #e0e0e0; font-size: 13px; font-weight: 500;';
+            
+            const waterSelect = document.createElement('select');
+            waterSelect.id = 'industrial-water-type-filter';
+            waterSelect.style.cssText = 'width: 100%; padding: 8px; background: #253041; border: 1px solid #3a4a5e; color: #e0e0e0; border-radius: 4px; font-size: 13px;';
+            
+            [['', 'Все'], ['cold_water', 'Холодная вода'], ['hot_water', 'Горячая вода']].forEach(([value, text]) => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = text;
+                waterSelect.appendChild(option);
+            });
+            
+            waterFilterGroup.appendChild(waterLabel);
+            waterFilterGroup.appendChild(waterSelect);
+            filtersSection.appendChild(waterFilterGroup);
+            
+            // Кнопки управления
+            const buttonsContainer = document.createElement('div');
+            buttonsContainer.style.cssText = 'display: flex; gap: 12px; margin-top: 20px;';
+            
+            const applyBtn = document.createElement('button');
+            applyBtn.textContent = 'Применить';
+            applyBtn.style.cssText = 'flex: 1; padding: 12px; background: #34a236; border: none; border-radius: 4px; color: #1a2332; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 200ms;';
+            applyBtn.addEventListener('mouseenter', () => applyBtn.style.background = '#3fa341');
+            applyBtn.addEventListener('mouseleave', () => applyBtn.style.background = '#34a236');
+            applyBtn.addEventListener('click', () => {
+                if (window.mapLayersControl && typeof window.mapLayersControl.applyFilters === 'function') {
+                    window.mapLayersControl.applyFilters();
+                }
+                console.log('🔍 Filters applied');
+            });
+            
+            const resetBtn = document.createElement('button');
+            resetBtn.textContent = 'Сбросить';
+            resetBtn.style.cssText = 'flex: 1; padding: 12px; background: #3a4a5e; border: none; border-radius: 4px; color: #e0e0e0; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 200ms;';
+            resetBtn.addEventListener('mouseenter', () => resetBtn.style.background = '#4a5a6e');
+            resetBtn.addEventListener('mouseleave', () => resetBtn.style.background = '#3a4a5e');
+            resetBtn.addEventListener('click', () => {
+                if (window.mapLayersControl && typeof window.mapLayersControl.resetFilters === 'function') {
+                    window.mapLayersControl.resetFilters();
+                }
+                statusSelect.selectedIndex = -1;
+                loadInput.value = '100';
+                loadValue.textContent = '100%';
+                waterSelect.value = '';
+                console.log('🔁 Filters reset');
+            });
+            
+            buttonsContainer.appendChild(applyBtn);
+            buttonsContainer.appendChild(resetBtn);
+            filtersSection.appendChild(buttonsContainer);
+            
+            filtersContent.appendChild(filtersSection);
+            console.log('✅ Filters content loaded');
+        }
+        
+        /**
+         * Получить ссылку на контроллер слоев карты
+         * Используется для интеграции с MapLayersControl
+         */
+        getMapLayersControl() {
+            if (window.mapLayersControl) {
+                return window.mapLayersControl;
+            }
+            console.warn('⚠️ MapLayersControl not found');
+            return null;
+        }
+        
+        /**
+         * Получить ссылку на карту Leaflet
+         */
+        getMap() {
+            if (window.map) {
+                return window.map;
+            }
+            console.warn('⚠️ Leaflet map not found');
+            return null;
+        }
+    }
+
     // Define backend API URL (can be modified externally)
     const backendURL = window.BACKEND_URL || "/api";
     
     // Создаем экземпляр API клиента
     const apiClient = new APIClient(backendURL);
+    
+    // Создаем экземпляр промышленной панели управления
+    let industrialPanel;
 
     // Добавляем необходимые CSS-стили для сворачиваемости сайдбара
     const sidebarStyles = document.createElement('style');
@@ -597,9 +1183,12 @@ document.addEventListener('DOMContentLoaded', async function () {
     if (typeof MapLayersControl !== 'undefined') {
         window.mapLayersControl = new MapLayersControl(map);
         console.log('✅ MapLayersControl initialized');
-    } else {
-        console.warn('⚠️ MapLayersControl not found');
     }
+
+    // Инициализация промышленной панели управления
+    industrialPanel = new IndustrialPushPanel();
+    window.industrialPanel = industrialPanel;
+    console.log('✅ IndustrialPushPanel initialized');
 
     // Создаем элемент для отображения УК
     const ukControl = L.control({ position: 'topright' });
@@ -1287,6 +1876,11 @@ document.addEventListener('DOMContentLoaded', async function () {
 
             // Обновляем счетчики элементов в заголовках и заголовок группы протечек
             updateGroupHeaders();
+
+            // Синхронизируем статусы с промышленной панелью
+            if (window.industrialPanel && typeof window.industrialPanel.updateStatusGroups === 'function') {
+                window.industrialPanel.updateStatusGroups();
+            }
 
             // Скрываем skeleton loader карты
             hideMapSkeleton();
