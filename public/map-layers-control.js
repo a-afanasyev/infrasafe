@@ -5,42 +5,78 @@ class MapLayersControl {
         this.overlays = {};
         this.activeFilters = {};
         this.metricsInterval = null;
+        // Базовый URL API
+        this.apiBaseUrl = window.BACKEND_URL || '/api';
+        // Хранилище счетчиков слоев для обновления после создания DOM
+        this.layerCounts = new Map();
         
-        // Ждем полной загрузки DOM
+        // Проверяем что карта действительно передана
+        if (!this.map) {
+            console.error('❌ MapLayersControl: map parameter is required!');
+            return;
+        }
+        
+        // Ждем полной загрузки DOM только если DOM еще не готов
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => {
                 this.init();
             });
         } else {
-            this.init();
+            // DOM уже готов, инициализируем сразу
+            // Используем setTimeout для гарантии что карта полностью инициализирована
+            setTimeout(() => {
+                this.init();
+            }, 0);
         }
     }
 
-    init() {
+    async init() {
         console.log('🗺️ Initializing map layers control...');
-        this.initializeLayers();
-        this.createLayerControl();
-        this.setupEventHandlers();
         
-        // Автоматически загружаем слой зданий при старте (и показываем на карте)
-        this.overlays["🏢 Здания"].addTo(this.map);
-        this.loadLayerData("🏢 Здания");
+        // Проверяем что карта существует
+        if (!this.map) {
+            console.error('❌ Map is not defined! Cannot initialize MapLayersControl');
+            return;
+        }
         
-        // Загружаем данные для остальных слоев (для обновления счетчиков), но не показываем на карте
-        this.loadLayerDataSilent("⚡ Трансформаторы");
-        this.loadLayerDataSilent("🔌 Линии электропередач");
-        this.loadLayerDataSilent("💧 Источники воды");
-        this.loadLayerDataSilent("🚰 Линии водоснабжения");
-        this.loadLayerDataSilent("🔥 Источники тепла");
-        this.loadLayerDataSilent("📊 Контроллеры");
-        this.loadLayerDataSilent("⚠️ Алерты");
-        
-        console.log('✅ Map layers control initialized successfully');
+        try {
+            this.initializeLayers();
+            // Не создаем визуальную панель если используется IndustrialPushPanel
+            if (!window.USE_INDUSTRIAL_PANEL) {
+                this.createLayerControl();
+            }
+            this.setupEventHandlers();
+            
+            // Автоматически загружаем слой зданий при старте (и показываем на карте)
+            // Проверяем что слой существует перед добавлением
+            if (this.overlays && this.overlays["🏢 Здания"]) {
+                this.overlays["🏢 Здания"].addTo(this.map);
+                // Загружаем данные для зданий (это синхронно обновит счетчик)
+                await this.loadLayerData("🏢 Здания");
+            }
+            
+            // Загружаем данные для остальных слоев (для обновления счетчиков), но не показываем на карте
+            // Используем Promise.all для параллельной загрузки и ждем завершения
+            await Promise.all([
+                this.loadLayerDataSilent("⚡ Трансформаторы"),
+                this.loadLayerDataSilent("🔌 Линии электропередач"),
+                this.loadLayerDataSilent("💧 Источники воды"),
+                this.loadLayerDataSilent("🚰 Линии водоснабжения"),
+                this.loadLayerDataSilent("🔥 Источники тепла"),
+                this.loadLayerDataSilent("📊 Контроллеры"),
+                this.loadLayerDataSilent("⚠️ Алерты")
+            ]);
+            
+            console.log('✅ Map layers control initialized successfully');
+            console.log('✅ All layer data loaded, layerCounts:', Array.from(this.layerCounts.entries()));
+        } catch (error) {
+            console.error('❌ Error initializing MapLayersControl:', error);
+        }
     }
     
     // Загружаем данные слоя без отображения на карте (только для обновления счетчика)
     async loadLayerDataSilent(layerName) {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('admin_token');
         const headers = {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -80,13 +116,16 @@ class MapLayersControl {
         // Базовые слои
         this.baseLayers = {
             "🗺️ Карта": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap contributors'
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: this.map.getMaxZoom() || 19
             }),
             "🛰️ Спутник": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                attribution: '© Esri'
+                attribution: '© Esri',
+                maxZoom: this.map.getMaxZoom() || 19
             }),
             "🏔️ Рельеф": L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenTopoMap'
+                attribution: '© OpenTopoMap',
+                maxZoom: this.map.getMaxZoom() || 19
             })
         };
 
@@ -102,11 +141,15 @@ class MapLayersControl {
             "⚠️ Алерты": L.layerGroup()
         };
 
-        // Добавляем базовый слой
-        this.baseLayers["🗺️ Карта"].addTo(this.map);
-        
-        // Добавляем слой зданий по умолчанию
-        this.overlays["🏢 Здания"].addTo(this.map);
+        // Добавляем базовый слой карты
+        if (this.map && this.baseLayers["🗺️ Карта"]) {
+            try {
+                this.baseLayers["🗺️ Карта"].addTo(this.map);
+                console.log('✅ Base map layer added');
+            } catch (error) {
+                console.error('❌ Error adding base map layer:', error);
+            }
+        }
     }
 
     createLayerControl() {
@@ -333,7 +376,7 @@ class MapLayersControl {
     }
 
     async loadLayerData(layerName) {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('admin_token');
         const headers = {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -374,23 +417,32 @@ class MapLayersControl {
     }
 
     async loadBuildings(headers) {
-        const response = await fetch('/api/buildings-metrics', { headers });
+        const response = await fetch(`${this.apiBaseUrl}/buildings-metrics`, { headers });
         const data = await response.json();
         
         const layer = this.overlays["🏢 Здания"];
         layer.clearLayers();
 
-        data.data.forEach(building => {
+        // API возвращает данные в формате { data: [...], pagination: {...} }
+        const buildings = Array.isArray(data) ? data : (data.data || []);
+        
+        if (!Array.isArray(buildings)) {
+            console.error('❌ Invalid buildings data format:', data);
+            this.updateLayerCount("🏢 Здания", 0);
+            return;
+        }
+
+        buildings.forEach(building => {
             const marker = this.createBuildingMarker(building);
             layer.addLayer(marker);
         });
 
-        this.updateLayerCount("🏢 Здания", data.data.length);
+        this.updateLayerCount("🏢 Здания", buildings.length);
     }
 
     async loadTransformers(headers) {
         // Используем основной endpoint transformers который возвращает координаты
-        const response = await fetch('/api/transformers?page=1&limit=100', { headers });
+        const response = await fetch(`${this.apiBaseUrl}/transformers?page=1&limit=100`, { headers });
         const data = await response.json();
         
         const layer = this.overlays["⚡ Трансформаторы"];
@@ -649,7 +701,7 @@ class MapLayersControl {
     }
 
     async loadWaterLines(headers) {
-        const response = await fetch('/api/water-lines', { headers });
+        const response = await fetch(`${this.apiBaseUrl}/water-lines`, { headers });
         const data = await response.json();
         
         const layer = this.overlays["🚰 Линии водоснабжения"];
@@ -728,11 +780,43 @@ class MapLayersControl {
     }
 
     updateLayerCount(layerName, count) {
-        const label = document.querySelector(`input[value="${layerName}"]`).parentElement;
-        const countSpan = label.querySelector('.layer-count');
-        if (countSpan) {
-            countSpan.textContent = `(${count})`;
+        // Сохраняем счетчик для последующего обновления DOM
+        this.layerCounts.set(layerName, count);
+        
+        // Пытаемся обновить счетчик в DOM если элементы уже созданы
+        const input = document.querySelector(`input[value="${layerName}"]`);
+        if (input) {
+            const label = input.parentElement;
+            if (label) {
+                const countSpan = label.querySelector('.layer-count');
+                if (countSpan) {
+                    countSpan.textContent = `(${count})`;
+                    return;
+                }
+            }
         }
+        
+        // Если элементы DOM еще не созданы, счетчик сохранен в layerCounts
+        // и будет обновлен позже в populateLayerControls
+    }
+    
+    /**
+     * Обновляет все счетчики слоев из сохраненных значений
+     * Вызывается после создания DOM элементов
+     */
+    refreshLayerCounts() {
+        this.layerCounts.forEach((count, layerName) => {
+            const input = document.querySelector(`input[value="${layerName}"]`);
+            if (input) {
+                const label = input.parentElement;
+                if (label) {
+                    const countSpan = label.querySelector('.layer-count');
+                    if (countSpan) {
+                        countSpan.textContent = `(${count})`;
+                    }
+                }
+            }
+        });
     }
 
     async showTransformerMetrics(transformerId) {
@@ -740,8 +824,8 @@ class MapLayersControl {
         container.style.display = 'block';
         
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`/api/analytics/transformers/${transformerId}/load`, {
+            const token = localStorage.getItem('admin_token');
+            const response = await fetch(`${this.apiBaseUrl}/analytics/transformers/${transformerId}/load`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             
@@ -816,7 +900,7 @@ class MapLayersControl {
         // Обновляем метрики для видимых слоев
         if (this.map.hasLayer(this.overlays["⚡ Трансформаторы"])) {
             await this.loadTransformers({
-                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
                 'Content-Type': 'application/json'
             });
         }
@@ -853,15 +937,21 @@ class MapLayersControl {
     }
 
     setupEventHandlers() {
-        // Обновление значения слайдера загрузки
-        document.getElementById('load-filter').addEventListener('input', function() {
-            document.getElementById('load-value').textContent = this.value + '%';
-        });
+        // Обновление значения слайдера загрузки (только если элемент существует)
+        const loadFilter = document.getElementById('load-filter');
+        if (loadFilter) {
+            loadFilter.addEventListener('input', function() {
+                const loadValue = document.getElementById('load-value');
+                if (loadValue) {
+                    loadValue.textContent = this.value + '%';
+                }
+            });
+        }
     }
 
     // Загрузка линий электропередач на карту
     async loadPowerLines(headers) {
-        const response = await fetch('/api/lines', { headers });
+        const response = await fetch(`${this.apiBaseUrl}/lines`, { headers });
         const data = await response.json();
         
         const layer = this.overlays["🔌 Линии электропередач"];
@@ -881,7 +971,7 @@ class MapLayersControl {
     // Загрузка источников воды на карту
     async loadWaterSources(headers) {
         try {
-            const response = await fetch('/api/water-sources', { headers });
+            const response = await fetch(`${this.apiBaseUrl}/water-sources`, { headers });
             
             // Endpoint может не существовать (404)
             if (response.status === 404) {
@@ -939,7 +1029,7 @@ class MapLayersControl {
     // Загрузка источников тепла на карту
     async loadHeatSources(headers) {
         try {
-            const response = await fetch('/api/heat-sources', { headers });
+            const response = await fetch(`${this.apiBaseUrl}/heat-sources`, { headers });
             
             // Endpoint может вернуть ошибку
             if (!response.ok) {
@@ -996,7 +1086,7 @@ class MapLayersControl {
 
     // Загрузка контроллеров на карту
     async loadControllers(headers) {
-        const response = await fetch('/api/buildings-metrics', { headers });
+        const response = await fetch(`${this.apiBaseUrl}/buildings-metrics`, { headers });
         const data = await response.json();
         
         const layer = this.overlays["📊 Контроллеры"];
@@ -1044,7 +1134,7 @@ class MapLayersControl {
 
     // Загрузка алертов на карту
     async loadAlerts(headers) {
-        const response = await fetch('/api/alerts?status=active', { headers });
+        const response = await fetch(`${this.apiBaseUrl}/alerts?status=active`, { headers });
         const data = await response.json();
         
         const layer = this.overlays["⚠️ Алерты"];
@@ -1053,7 +1143,7 @@ class MapLayersControl {
         const alerts = data.data || [];
 
         // Получаем данные о зданиях для координат
-        const buildingsResponse = await fetch('/api/buildings-metrics', { headers });
+        const buildingsResponse = await fetch(`${this.apiBaseUrl}/buildings-metrics`, { headers });
         const buildingsData = await buildingsResponse.json();
         const buildingsMap = {};
         (buildingsData.data || []).forEach(b => {
@@ -1125,7 +1215,7 @@ class MapLayersControl {
      */
     async loadColdWaterLines() {
         try {
-            const response = await fetch('/api/water-lines');
+            const response = await fetch(`${this.apiBaseUrl}/water-lines`);
             
             if (!response.ok) {
                 if (response.status === 404 || response.status === 500) {
@@ -1172,7 +1262,7 @@ class MapLayersControl {
      */
     async loadHotWaterLines() {
         try {
-            const response = await fetch('/api/water-lines');
+            const response = await fetch(`${this.apiBaseUrl}/water-lines`);
             
             if (!response.ok) {
                 if (response.status === 404 || response.status === 500) {
@@ -1223,7 +1313,7 @@ class MapLayersControl {
             layer.clearLayers();
             
             // Загружаем линии из lines (линии электропередач)
-            const linesResponse = await fetch('/api/lines');
+            const linesResponse = await fetch(`${this.apiBaseUrl}/lines`);
             
             if (!linesResponse.ok) {
                 if (linesResponse.status === 404 || linesResponse.status === 500) {
@@ -1433,7 +1523,7 @@ class MapLayersControl {
      */
     async loadLineAlerts(lineId, lineData, layer) {
         try {
-            const response = await fetch(`/api/infrastructure-lines/${lineId}/alerts?active_only=true`);
+            const response = await fetch(`${this.apiBaseUrl}/infrastructure-lines/${lineId}/alerts?active_only=true`);
             
             if (!response.ok) {
                 return; // Алерты опциональны

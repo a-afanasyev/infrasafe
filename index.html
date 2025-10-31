@@ -6,7 +6,7 @@
     <meta name="description" content="InfraSafe - Система мониторинга инфраструктуры и безопасности">
     <meta name="keywords" content="InfraSafe, monitoring, infrastructure, safety, map, visualization, HabitatITIQ">
     <meta name="author" content="InfraSafe Team">
-    <meta name="theme-color" content="#0F1E25">
+    <meta name="theme-color" content="#F4F7FA">
 
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="public/images/favicon.svg">
@@ -18,14 +18,29 @@
     <link rel="stylesheet" href="public/libs/leaflet/leaflet-fixes.css" />
     <link rel="stylesheet" href="public/libs/leaflet-markercluster/MarkerCluster.css" />
     <link rel="stylesheet" href="public/libs/leaflet-markercluster/MarkerCluster.Default.css" />
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <title>InfraSafe - Система мониторинга</title>
+    
+    <!-- Настройка базового URL для API (если нужно) -->
+    <script>
+        // Настройка базового URL для API - backend работает на порту 3000
+        window.BACKEND_URL = "http://localhost:3000/api";
+        
+        // Логирование для отладки
+        window.addEventListener('error', function(e) {
+            console.error('Global error:', e.error, e.message, e.filename, e.lineno);
+        });
+        
+        window.addEventListener('unhandledrejection', function(e) {
+            console.error('Unhandled promise rejection:', e.reason);
+        });
+    </script>
 </head>
 <body>
-    <div class="header">
+    <div class="header neomorph">
         <div class="logo-container">
-            <a href="index.html" style="display: flex; align-items: center; text-decoration: none;">
+            <a href="index.html" style="display: flex; align-items: center; text-decoration: none; color: inherit;">
                 <img src="public/images/infrasafe-logo.svg" alt="InfraSafe Logo" id="logo">
                 <span>INFRASAFE - МОНИТОРИНГ ИНФРАСТРУКТУРЫ</span>
             </a>
@@ -38,6 +53,23 @@
                     <li><a href="https://www.aisolutions.uz/aboutus" target="_blank">Контакты</a></li>
                 </ul>
             </nav>
+            <!-- Переключатель темы -->
+            <button class="theme-toggle" id="theme-toggle" aria-label="Переключить тему">
+                <svg id="theme-icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                </svg>
+                <svg id="theme-icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                </svg>
+            </button>
         </div>
     </div>
     <div class="main-heading">
@@ -45,16 +77,18 @@
     </div>
 
     <!-- Промышленная выдвижная панель управления -->
-    <button id="push-panel-toggle" class="push-panel-toggle" aria-label="Открыть панель управления">
-        <svg class="toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 5l7 7-7 7"/>
-        </svg>
-    </button>
+    <!-- Кнопка toggle создается динамически через Leaflet control внутри карты -->
 
     <aside id="push-panel" class="push-panel collapsed">
         <!-- Заголовок панели -->
         <header class="push-panel-header">
             <h2>INFRASTRUCTURE CONTROL</h2>
+            <button class="panel-close-btn" aria-label="Закрыть панель" type="button">
+                <svg class="close-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
         </header>
         
         <!-- Вкладки -->
@@ -66,10 +100,6 @@
             <button class="tab-btn" data-tab="status" aria-selected="false">
                 <span class="tab-icon">📊</span>
                 <span class="tab-label">СТАТУСЫ</span>
-            </button>
-            <button class="tab-btn" data-tab="filters" aria-selected="false">
-                <span class="tab-icon">🔍</span>
-                <span class="tab-label">ФИЛЬТРЫ</span>
             </button>
         </nav>
         
@@ -83,11 +113,6 @@
             <!-- Вкладка СТАТУСЫ -->
             <section class="tab-content" data-content="status">
                 <!-- Содержимое статусов будет добавлено динамически -->
-            </section>
-            
-            <!-- Вкладка ФИЛЬТРЫ -->
-            <section class="tab-content" data-content="filters">
-                <!-- Содержимое фильтров будет добавлено динамически -->
             </section>
         </div>
     </aside>
@@ -141,14 +166,11 @@
         </button>
     </div>
     <div class="content">
-        <div id="map"></div>
-    </div>
-    <div class="status-info">
-        <div class="last-update">
-            <span>ОБНОВЛЕНО</span>
-            <span class="update-time">2 минуты назад</span>
+        <div class="map-wrapper neomorph">
+            <div id="map"></div>
         </div>
     </div>
+    <!-- Панель статуса обновления объединена с панелью управления обновлением справа сверху -->
 
     <div class="footer">
         <div class="footer-content">
@@ -158,8 +180,8 @@
                 </div>
                 <div class="footer-info">
                     <p>© 2025 InfraSafe</p>
-                    <p>Версия: 1.0.3</p>
-                    <p><a href="https://infrasafe.aisolutions.uz" target="_blank">infrasafe.aisolutions.uz</a></p>
+                    <p>Версия: 1.0.4</p>
+                    <p><a href="https://www.infrasafe.uz" target="_blank">www.infrasafe.uz</a></p>
                 </div>
             </div>
             <div class="footer-section center">
