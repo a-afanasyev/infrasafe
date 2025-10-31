@@ -10,6 +10,24 @@ class MapLayersControl {
         // Хранилище счетчиков слоев для обновления после создания DOM
         this.layerCounts = new Map();
         
+        // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Вспомогательные функции для безопасной работы с данными
+        this.escapeHTML = (text) => {
+            if (text === null || text === undefined) return '';
+            if (window.DOMSecurity && window.DOMSecurity.escapeHTML) {
+                return window.DOMSecurity.escapeHTML(text);
+            }
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        };
+        
+        this.sanitizePopup = (html) => {
+            if (window.DOMSecurity && window.DOMSecurity.sanitizePopupContent) {
+                return window.DOMSecurity.sanitizePopupContent(html);
+            }
+            return html; // Fallback если DOMSecurity не загружен
+        };
+        
         // Проверяем что карта действительно передана
         if (!this.map) {
             console.error('❌ MapLayersControl: map parameter is required!');
@@ -76,11 +94,23 @@ class MapLayersControl {
     
     // Загружаем данные слоя без отображения на карте (только для обновления счетчика)
     async loadLayerDataSilent(layerName) {
-        const token = localStorage.getItem('admin_token');
+        // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Используем валидацию токена
+        let token = null;
+        if (window.DOMSecurity && window.DOMSecurity.getValidToken) {
+            token = window.DOMSecurity.getValidToken();
+        } else {
+            token = localStorage.getItem('admin_token');
+        }
+        
         const headers = {
-            'Authorization': `Bearer ${token}`,
+            'Authorization': token ? `Bearer ${token}` : undefined,
             'Content-Type': 'application/json'
         };
+        
+        // Удаляем Authorization если токена нет
+        if (!token) {
+            delete headers['Authorization'];
+        }
         
         try {
             switch (layerName) {
@@ -114,17 +144,19 @@ class MapLayersControl {
 
     initializeLayers() {
         // Базовые слои
+        // ИСПРАВЛЕНИЕ: Убираем атрибуцию из tile layers, чтобы избежать дублирования
+        // Атрибуция будет добавлена через единый контрол в script.js
         this.baseLayers = {
             "🗺️ Карта": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap contributors',
+                attribution: '', // Пустая атрибуция, чтобы избежать дублирования
                 maxZoom: this.map.getMaxZoom() || 19
             }),
             "🛰️ Спутник": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                attribution: '© Esri',
+                attribution: '', // Пустая атрибуция для спутникового слоя
                 maxZoom: this.map.getMaxZoom() || 19
             }),
             "🏔️ Рельеф": L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenTopoMap',
+                attribution: '', // Пустая атрибуция для рельефного слоя
                 maxZoom: this.map.getMaxZoom() || 19
             })
         };
@@ -376,11 +408,23 @@ class MapLayersControl {
     }
 
     async loadLayerData(layerName) {
-        const token = localStorage.getItem('admin_token');
+        // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Используем валидацию токена
+        let token = null;
+        if (window.DOMSecurity && window.DOMSecurity.getValidToken) {
+            token = window.DOMSecurity.getValidToken();
+        } else {
+            token = localStorage.getItem('admin_token');
+        }
+        
         const headers = {
-            'Authorization': `Bearer ${token}`,
+            'Authorization': token ? `Bearer ${token}` : undefined,
             'Content-Type': 'application/json'
         };
+        
+        // Удаляем Authorization если токена нет
+        if (!token) {
+            delete headers['Authorization'];
+        }
 
         try {
             switch (layerName) {
@@ -488,9 +532,10 @@ class MapLayersControl {
 
         marker.bindPopup(() => this.createBuildingPopup(building));
         
-        // Добавляем tooltip
-        const statusText = building.controller_status ? building.controller_status : 'Нет данных';
-        marker.bindTooltip(`🏢 ${building.building_name}<br/>Статус: ${statusText}`, {
+        // ИСПРАВЛЕНИЕ XSS: Санитизируем tooltip для здания
+        const buildingTooltipName = this.escapeHTML(building.building_name || '');
+        const buildingTooltipStatus = building.controller_status ? this.escapeHTML(building.controller_status) : 'Нет данных';
+        marker.bindTooltip(`🏢 ${buildingTooltipName}<br/>Статус: ${buildingTooltipStatus}`, {
             permanent: false,
             direction: 'top'
         });
@@ -552,24 +597,37 @@ class MapLayersControl {
             this.map.on('zoomend', updateMarkerSize);
         });
 
-        // Создаём popup
-        const popupContent = `
+        // ИСПРАВЛЕНИЕ XSS: Создаём popup с санитизацией всех пользовательских данных
+        const transformerName = this.escapeHTML(transformer.name || '');
+        const transformerLocation = transformer.location ? this.escapeHTML(transformer.location) : '';
+        const transformerStatus = transformer.status ? this.escapeHTML(transformer.status) : '';
+        const transformerVoltage = transformer.voltage_kv ? this.escapeHTML(String(transformer.voltage_kv)) : 'N/A';
+        const primaryBuildings = transformer.primary_buildings && transformer.primary_buildings.length > 0 
+            ? transformer.primary_buildings.map(b => this.escapeHTML(b)).join(', ') : '';
+        const backupBuildings = transformer.backup_buildings && transformer.backup_buildings.length > 0 
+            ? transformer.backup_buildings.map(b => this.escapeHTML(b)).join(', ') : '';
+        const statusColor = transformer.status === 'active' ? 'green' : 'red';
+        
+        let popupContent = `
             <div style="min-width: 260px;">
                 <h4 style="margin: 0 0 10px 0;">⚡ Трансформатор</h4>
-                <p style="margin: 5px 0;"><strong>Название:</strong> ${transformer.name}</p>
-                <p style="margin: 5px 0;"><strong>Мощность:</strong> ${powerKVA} кВА</p>
-                <p style="margin: 5px 0;"><strong>Напряжение:</strong> ${transformer.voltage_kv || 'N/A'} кВ</p>
-                ${transformer.location ? `<p style="margin: 5px 0;"><strong>Адрес:</strong> ${transformer.location}</p>` : ''}
-                ${transformer.status ? `<p style="margin: 5px 0;"><strong>Статус:</strong> <span style="color: ${transformer.status === 'active' ? 'green' : 'red'};">${transformer.status}</span></p>` : ''}
-                ${transformer.primary_buildings && transformer.primary_buildings.length > 0 ? `<p style="margin: 5px 0;"><strong>Основные здания:</strong> ${transformer.primary_buildings.join(', ')}</p>` : ''}
-                ${transformer.backup_buildings && transformer.backup_buildings.length > 0 ? `<p style="margin: 5px 0;"><strong>Резервные здания:</strong> ${transformer.backup_buildings.join(', ')}</p>` : ''}
+                <p style="margin: 5px 0;"><strong>Название:</strong> ${transformerName}</p>
+                <p style="margin: 5px 0;"><strong>Мощность:</strong> ${this.escapeHTML(String(powerKVA))} кВА</p>
+                <p style="margin: 5px 0;"><strong>Напряжение:</strong> ${transformerVoltage} кВ</p>
+                ${transformerLocation ? `<p style="margin: 5px 0;"><strong>Адрес:</strong> ${transformerLocation}</p>` : ''}
+                ${transformerStatus ? `<p style="margin: 5px 0;"><strong>Статус:</strong> <span style="color: ${statusColor};">${transformerStatus}</span></p>` : ''}
+                ${primaryBuildings ? `<p style="margin: 5px 0;"><strong>Основные здания:</strong> ${primaryBuildings}</p>` : ''}
+                ${backupBuildings ? `<p style="margin: 5px 0;"><strong>Резервные здания:</strong> ${backupBuildings}</p>` : ''}
             </div>
         `;
-
+        
+        // Санитизируем popup контент перед использованием
+        popupContent = this.sanitizePopup(popupContent);
         marker.bindPopup(popupContent);
         
-        // Добавляем tooltip
-        marker.bindTooltip(`⚡ ${transformer.name}<br/>Мощность: ${powerKVA} кВА`, {
+        // ИСПРАВЛЕНИЕ XSS: Санитизируем tooltip для трансформатора
+        const transformerTooltipName = this.escapeHTML(transformer.name || '');
+        marker.bindTooltip(`⚡ ${transformerTooltipName}<br/>Мощность: ${this.escapeHTML(String(powerKVA))} кВА`, {
             permanent: false,
             direction: 'top'
         });
@@ -578,90 +636,78 @@ class MapLayersControl {
     }
 
     createBuildingPopup(building) {
+        // ИСПРАВЛЕНИЕ XSS: Санитизируем все пользовательские данные
         const hasController = building.controller_id !== null;
         const hasMetrics = building.timestamp !== null;
         
-        return `
-            <div class="building-popup">
-                <h4>🏢 ${building.building_name}</h4>
-                <div class="building-info">
-                    <p><strong>Адрес:</strong> ${building.address}</p>
-                    <p><strong>Город:</strong> ${building.town}</p>
-                    <p><strong>Управляющая компания:</strong> ${building.management_company || 'Не указана'}</p>
-                    <p><strong>Горячая вода:</strong> ${building.hot_water ? '✅ Есть' : '❌ Нет'}</p>
-                    ${hasController ? `
-                        <p><strong>Контроллер:</strong> ${building.controller_serial}</p>
-                        <p><strong>Статус контроллера:</strong> 
-                            <span class="status-badge status-${building.controller_status}">${building.controller_status}</span>
-                        </p>
-                    ` : '<p><strong>Контроллер:</strong> ❌ Не подключен</p>'}
-                </div>
-                
-                ${hasMetrics ? `
+        const buildingName = this.escapeHTML(building.building_name || '');
+        const address = this.escapeHTML(building.address || '');
+        const town = this.escapeHTML(building.town || '');
+        const managementCompany = this.escapeHTML(building.management_company || 'Не указана');
+        const controllerSerial = building.controller_serial ? this.escapeHTML(building.controller_serial) : '';
+        const controllerStatus = building.controller_status ? this.escapeHTML(building.controller_status) : '';
+        const buildingId = this.escapeHTML(String(building.building_id || ''));
+        
+        // Форматируем метрики безопасно
+        const formatMetric = (value, suffix = '') => {
+            if (value === null || value === undefined) return '';
+            return this.escapeHTML(String(value) + suffix);
+        };
+        
+        let metricsHTML = '';
+        if (hasMetrics) {
+            const ph1 = building.electricity_ph1 ? formatMetric(building.electricity_ph1, ' В') : '';
+            const ph2 = building.electricity_ph2 ? formatMetric(building.electricity_ph2, ' В') : '';
+            const ph3 = building.electricity_ph3 ? formatMetric(building.electricity_ph3, ' В') : '';
+            const coldPressure = building.cold_water_pressure ? formatMetric(building.cold_water_pressure, ' бар') : '';
+            const coldTemp = building.cold_water_temp ? formatMetric(building.cold_water_temp, '°C') : '';
+            const hotTemp = building.hot_water_in_temp ? formatMetric(building.hot_water_in_temp, '°C') : '';
+            const leakStatus = building.leak_sensor !== null ? (building.leak_sensor ? '⚠️ Обнаружена протечка' : '✅ Норма') : '';
+            const leakClass = building.leak_sensor ? 'alert' : 'normal';
+            const timestamp = building.timestamp ? new Date(building.timestamp).toLocaleString('ru-RU') : '';
+            
+            metricsHTML = `
                     <div class="building-metrics">
                         <h5>📊 Последние метрики</h5>
                         <div class="metrics-grid">
-                            ${building.electricity_ph1 ? `
-                                <div class="metric-item">
-                                    <span class="metric-label">⚡ Напряжение Ф1:</span>
-                                    <span class="metric-value">${building.electricity_ph1} В</span>
-                                </div>
-                            ` : ''}
-                            ${building.electricity_ph2 ? `
-                                <div class="metric-item">
-                                    <span class="metric-label">⚡ Напряжение Ф2:</span>
-                                    <span class="metric-value">${building.electricity_ph2} В</span>
-                                </div>
-                            ` : ''}
-                            ${building.electricity_ph3 ? `
-                                <div class="metric-item">
-                                    <span class="metric-label">⚡ Напряжение Ф3:</span>
-                                    <span class="metric-value">${building.electricity_ph3} В</span>
-                                </div>
-                            ` : ''}
-                            ${building.cold_water_pressure ? `
-                                <div class="metric-item">
-                                    <span class="metric-label">💧 Давление ХВ:</span>
-                                    <span class="metric-value">${building.cold_water_pressure} бар</span>
-                                </div>
-                            ` : ''}
-                            ${building.cold_water_temp ? `
-                                <div class="metric-item">
-                                    <span class="metric-label">🌡️ Температура ХВ:</span>
-                                    <span class="metric-value">${building.cold_water_temp}°C</span>
-                                </div>
-                            ` : ''}
-                            ${building.hot_water_in_temp ? `
-                                <div class="metric-item">
-                                    <span class="metric-label">🔥 Температура ГВ (подача):</span>
-                                    <span class="metric-value">${building.hot_water_in_temp}°C</span>
-                                </div>
-                            ` : ''}
-                            ${building.leak_sensor !== null ? `
-                                <div class="metric-item">
-                                    <span class="metric-label">🚨 Датчик протечки:</span>
-                                    <span class="metric-value ${building.leak_sensor ? 'alert' : 'normal'}">
-                                        ${building.leak_sensor ? '⚠️ Обнаружена протечка' : '✅ Норма'}
-                                    </span>
-                                </div>
-                            ` : ''}
+                            ${ph1 ? `<div class="metric-item"><span class="metric-label">⚡ Напряжение Ф1:</span><span class="metric-value">${ph1}</span></div>` : ''}
+                            ${ph2 ? `<div class="metric-item"><span class="metric-label">⚡ Напряжение Ф2:</span><span class="metric-value">${ph2}</span></div>` : ''}
+                            ${ph3 ? `<div class="metric-item"><span class="metric-label">⚡ Напряжение Ф3:</span><span class="metric-value">${ph3}</span></div>` : ''}
+                            ${coldPressure ? `<div class="metric-item"><span class="metric-label">💧 Давление ХВ:</span><span class="metric-value">${coldPressure}</span></div>` : ''}
+                            ${coldTemp ? `<div class="metric-item"><span class="metric-label">🌡️ Температура ХВ:</span><span class="metric-value">${coldTemp}</span></div>` : ''}
+                            ${hotTemp ? `<div class="metric-item"><span class="metric-label">🔥 Температура ГВ (подача):</span><span class="metric-value">${hotTemp}</span></div>` : ''}
+                            ${building.leak_sensor !== null ? `<div class="metric-item"><span class="metric-label">🚨 Датчик протечки:</span><span class="metric-value ${leakClass}">${leakStatus}</span></div>` : ''}
                         </div>
-                        <p class="timestamp">🕒 Обновлено: ${new Date(building.timestamp).toLocaleString('ru-RU')}</p>
+                        <p class="timestamp">🕒 Обновлено: ${timestamp}</p>
                     </div>
-                ` : ''}
-                
-                <div class="building-actions">
+                `;
+        }
+        
+        let popupHTML = `
+            <div class="building-popup">
+                <h4>🏢 ${buildingName}</h4>
+                <div class="building-info">
+                    <p><strong>Адрес:</strong> ${address}</p>
+                    <p><strong>Город:</strong> ${town}</p>
+                    <p><strong>Управляющая компания:</strong> ${managementCompany}</p>
+                    <p><strong>Горячая вода:</strong> ${building.hot_water ? '✅ Есть' : '❌ Нет'}</p>
                     ${hasController ? `
-                        <button onclick="mapLayersControl.showBuildingMetrics('${building.building_id}')" class="btn-metrics">
-                            📊 Показать метрики
-                        </button>
-                    ` : ''}
-                    <button onclick="mapLayersControl.showBuildingDetails('${building.building_id}')" class="btn-details">
-                        ℹ️ Подробности
-                    </button>
+                        <p><strong>Контроллер:</strong> ${controllerSerial}</p>
+                        <p><strong>Статус контроллера:</strong> 
+                            <span class="status-badge status-${controllerStatus}">${controllerStatus}</span>
+                        </p>
+                    ` : '<p><strong>Контроллер:</strong> ❌ Не подключен</p>'}
+                </div>
+                ${metricsHTML}
+                <div class="building-actions">
+                    ${hasController ? `<button onclick="mapLayersControl.showBuildingMetrics('${buildingId}')" class="btn-metrics">📊 Показать метрики</button>` : ''}
+                    <button onclick="mapLayersControl.showBuildingDetails('${buildingId}')" class="btn-details">ℹ️ Подробности</button>
                 </div>
             </div>
         `;
+        
+        // Санитизируем весь popup контент перед возвратом
+        return this.sanitizePopup(popupHTML);
     }
 
     createTransformerPopup(transformer) {
@@ -728,20 +774,32 @@ class MapLayersControl {
             dashArray: line.line_type === 'hot_water' ? '5, 5' : null
         });
 
-        polyline.bindPopup(`
+        // ИСПРАВЛЕНИЕ XSS: Санитизируем данные линии водоснабжения
+        const lineName = this.escapeHTML(line.name || '');
+        const lineDiameter = line.diameter_mm ? this.escapeHTML(String(line.diameter_mm) + ' мм') : '';
+        const linePressure = line.pressure_rating ? this.escapeHTML(String(line.pressure_rating) + ' бар') : '';
+        const lineMaterial = this.escapeHTML(line.material || '');
+        const lineLength = line.length_km ? this.escapeHTML(String(line.length_km) + ' км') : '';
+        const lineType = this.escapeHTML(line.line_type || 'Не указан');
+        const lineStatus = this.escapeHTML(line.status || '');
+        const lineBuildingsCount = line.connected_buildings_count ? this.escapeHTML(String(line.connected_buildings_count)) : '0';
+        
+        const popupHTML = `
             <div class="water-line-popup">
-                <h4>🚰 ${line.name}</h4>
-                <p><strong>Диаметр:</strong> ${line.diameter_mm} мм</p>
-                <p><strong>Давление:</strong> ${line.pressure_rating} бар</p>
-                <p><strong>Материал:</strong> ${line.material}</p>
-                <p><strong>Длина:</strong> ${line.length_km} км</p>
-                <p><strong>Тип:</strong> ${line.line_type || 'Не указан'}</p>
-                <p><strong>Статус:</strong> 
-                    <span class="status-badge status-${line.status}">${line.status}</span>
-                </p>
-                <p><strong>Подключенных зданий:</strong> ${line.connected_buildings_count}</p>
+                <h4>🚰 ${lineName}</h4>
+                ${lineDiameter ? `<p><strong>Диаметр:</strong> ${lineDiameter}</p>` : ''}
+                ${linePressure ? `<p><strong>Давление:</strong> ${linePressure}</p>` : ''}
+                ${lineMaterial ? `<p><strong>Материал:</strong> ${lineMaterial}</p>` : ''}
+                ${lineLength ? `<p><strong>Длина:</strong> ${lineLength}</p>` : ''}
+                <p><strong>Тип:</strong> ${lineType}</p>
+                ${lineStatus ? `<p><strong>Статус:</strong> <span class="status-badge status-${lineStatus}">${lineStatus}</span></p>` : ''}
+                <p><strong>Подключенных зданий:</strong> ${lineBuildingsCount}</p>
             </div>
-        `);
+        `;
+        
+        // Санитизируем popup перед использованием
+        const sanitizedPopup = this.sanitizePopup(popupHTML);
+        polyline.bindPopup(sanitizedPopup);
 
         return polyline;
     }
@@ -824,9 +882,21 @@ class MapLayersControl {
         container.style.display = 'block';
         
         try {
-            const token = localStorage.getItem('admin_token');
+            // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Используем валидацию токена
+            let token = null;
+            if (window.DOMSecurity && window.DOMSecurity.getValidToken) {
+                token = window.DOMSecurity.getValidToken();
+            } else {
+                token = localStorage.getItem('admin_token');
+            }
+            
+            const headers = {};
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+            
             const response = await fetch(`${this.apiBaseUrl}/analytics/transformers/${transformerId}/load`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: headers
             });
             
             if (response.ok) {
@@ -898,9 +968,17 @@ class MapLayersControl {
 
     async updateRealTimeMetrics() {
         // Обновляем метрики для видимых слоев
+        // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Используем валидацию токена
+        let token = null;
+        if (window.DOMSecurity && window.DOMSecurity.getValidToken) {
+            token = window.DOMSecurity.getValidToken();
+        } else {
+            token = localStorage.getItem('admin_token');
+        }
+        
         if (this.map.hasLayer(this.overlays["⚡ Трансформаторы"])) {
             await this.loadTransformers({
-                'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
+                'Authorization': token ? `Bearer ${token}` : undefined,
                 'Content-Type': 'application/json'
             });
         }
@@ -999,18 +1077,26 @@ class MapLayersControl {
                         })
                     });
 
+                    // ИСПРАВЛЕНИЕ XSS: Санитизируем данные источника воды
+                    const sourceName = this.escapeHTML(source.name || 'N/A');
+                    const sourceType = this.escapeHTML(source.type || 'N/A');
+                    const sourceCapacity = source.capacity ? this.escapeHTML(String(source.capacity) + ' м³/час') : '';
+                    const sourceStatus = source.status ? this.escapeHTML(source.status) : '';
+                    
                     const popupContent = `
                         <div style="min-width: 250px;">
                             <h4 style="margin: 0 0 10px 0;">💧 Источник воды</h4>
-                            <p style="margin: 5px 0;"><strong>Название:</strong> ${source.name || 'N/A'}</p>
-                            <p style="margin: 5px 0;"><strong>Тип:</strong> ${source.type || 'N/A'}</p>
-                            ${source.capacity ? `<p style="margin: 5px 0;"><strong>Мощность:</strong> ${source.capacity} м³/час</p>` : ''}
-                            ${source.status ? `<p style="margin: 5px 0;"><strong>Статус:</strong> ${source.status}</p>` : ''}
+                            <p style="margin: 5px 0;"><strong>Название:</strong> ${sourceName}</p>
+                            <p style="margin: 5px 0;"><strong>Тип:</strong> ${sourceType}</p>
+                            ${sourceCapacity ? `<p style="margin: 5px 0;"><strong>Мощность:</strong> ${sourceCapacity}</p>` : ''}
+                            ${sourceStatus ? `<p style="margin: 5px 0;"><strong>Статус:</strong> ${sourceStatus}</p>` : ''}
                         </div>
                     `;
-
-                    marker.bindPopup(popupContent);
-                    marker.bindTooltip(`💧 ${source.name || 'Источник воды'}`, {
+                    
+                    // Санитизируем popup перед использованием
+                    const sanitizedPopup = this.sanitizePopup(popupContent);
+                    marker.bindPopup(sanitizedPopup);
+                    marker.bindTooltip(`💧 ${sourceName}`, {
                         permanent: false,
                         direction: 'top'
                     });
@@ -1057,18 +1143,26 @@ class MapLayersControl {
                         })
                     });
 
+                    // ИСПРАВЛЕНИЕ XSS: Санитизируем данные источника тепла
+                    const heatSourceName = this.escapeHTML(source.name || 'N/A');
+                    const heatSourceType = this.escapeHTML(source.type || 'N/A');
+                    const heatSourceCapacity = source.capacity ? this.escapeHTML(String(source.capacity) + ' Гкал/час') : '';
+                    const heatSourceStatus = source.status ? this.escapeHTML(source.status) : '';
+                    
                     const popupContent = `
                         <div style="min-width: 250px;">
                             <h4 style="margin: 0 0 10px 0;">🔥 Источник тепла</h4>
-                            <p style="margin: 5px 0;"><strong>Название:</strong> ${source.name || 'N/A'}</p>
-                            <p style="margin: 5px 0;"><strong>Тип:</strong> ${source.type || 'N/A'}</p>
-                            ${source.capacity ? `<p style="margin: 5px 0;"><strong>Мощность:</strong> ${source.capacity} Гкал/час</p>` : ''}
-                            ${source.status ? `<p style="margin: 5px 0;"><strong>Статус:</strong> ${source.status}</p>` : ''}
+                            <p style="margin: 5px 0;"><strong>Название:</strong> ${heatSourceName}</p>
+                            <p style="margin: 5px 0;"><strong>Тип:</strong> ${heatSourceType}</p>
+                            ${heatSourceCapacity ? `<p style="margin: 5px 0;"><strong>Мощность:</strong> ${heatSourceCapacity}</p>` : ''}
+                            ${heatSourceStatus ? `<p style="margin: 5px 0;"><strong>Статус:</strong> ${heatSourceStatus}</p>` : ''}
                         </div>
                     `;
-
-                    marker.bindPopup(popupContent);
-                    marker.bindTooltip(`🔥 ${source.name || 'Источник тепла'}`, {
+                    
+                    // Санитизируем popup перед использованием
+                    const sanitizedPopup = this.sanitizePopup(popupContent);
+                    marker.bindPopup(sanitizedPopup);
+                    marker.bindTooltip(`🔥 ${heatSourceName}`, {
                         permanent: false,
                         direction: 'top'
                     });
@@ -1108,20 +1202,29 @@ class MapLayersControl {
                 })
             });
 
-            // Создаём popup с информацией о контроллере
+            // ИСПРАВЛЕНИЕ XSS: Создаём popup с санитизацией данных контроллера
+            const controllerId = this.escapeHTML(String(building.controller_id || ''));
+            const controllerBuildingName = this.escapeHTML(building.building_name || 'N/A');
+            const controllerAddress = this.escapeHTML(building.address || 'N/A');
+            const controllerStatus = building.controller_status ? this.escapeHTML(building.controller_status) : 'unknown';
+            const controllerStatusColor = building.controller_status === 'online' ? 'green' : 'red';
+            const latestMetricTime = building.latest_metric_time ? new Date(building.latest_metric_time).toLocaleString('ru-RU') : '';
+            
             const popupContent = `
                 <div style="min-width: 250px;">
                     <h4 style="margin: 0 0 10px 0;">📊 Контроллер</h4>
-                    <p style="margin: 5px 0;"><strong>ID:</strong> ${building.controller_id}</p>
-                    <p style="margin: 5px 0;"><strong>Здание:</strong> ${building.building_name || 'N/A'}</p>
-                    <p style="margin: 5px 0;"><strong>Адрес:</strong> ${building.address || 'N/A'}</p>
-                    <p style="margin: 5px 0;"><strong>Статус:</strong> <span style="color: ${building.controller_status === 'online' ? 'green' : 'red'};">${building.controller_status || 'unknown'}</span></p>
-                    ${building.latest_metric_time ? `<p style="margin: 5px 0;"><strong>Последние данные:</strong> ${new Date(building.latest_metric_time).toLocaleString('ru-RU')}</p>` : ''}
+                    <p style="margin: 5px 0;"><strong>ID:</strong> ${controllerId}</p>
+                    <p style="margin: 5px 0;"><strong>Здание:</strong> ${controllerBuildingName}</p>
+                    <p style="margin: 5px 0;"><strong>Адрес:</strong> ${controllerAddress}</p>
+                    <p style="margin: 5px 0;"><strong>Статус:</strong> <span style="color: ${controllerStatusColor};">${controllerStatus}</span></p>
+                    ${latestMetricTime ? `<p style="margin: 5px 0;"><strong>Последние данные:</strong> ${latestMetricTime}</p>` : ''}
                 </div>
             `;
-
-            marker.bindPopup(popupContent);
-            marker.bindTooltip(`📊 Контроллер #${building.controller_id}`, {
+            
+            // Санитизируем popup перед использованием
+            const sanitizedPopup = this.sanitizePopup(popupContent);
+            marker.bindPopup(sanitizedPopup);
+            marker.bindTooltip(`📊 Контроллер #${controllerId}`, {
                 permanent: false,
                 direction: 'top'
             });
@@ -1172,19 +1275,30 @@ class MapLayersControl {
                         })
                     });
 
+                    // ИСПРАВЛЕНИЕ XSS: Санитизируем данные алерта
+                    const alertType = this.escapeHTML(alert.type || 'Алерт');
+                    const alertSeverity = this.escapeHTML(alert.severity || '');
+                    const alertMessage = this.escapeHTML(alert.message || 'N/A');
+                    const alertBuildingName = this.escapeHTML(building.building_name || 'N/A');
+                    const alertCreatedAt = alert.created_at ? new Date(alert.created_at).toLocaleString('ru-RU') : '';
+                    const alertResolvedAt = alert.resolved_at ? new Date(alert.resolved_at).toLocaleString('ru-RU') : '';
+                    const alertColor = this.getAlertColor(alert.severity);
+                    
                     const popupContent = `
                         <div style="min-width: 280px;">
-                            <h4 style="margin: 0 0 10px 0; color: ${this.getAlertColor(alert.severity)};">⚠️ ${alert.type || 'Алерт'}</h4>
-                            <p style="margin: 5px 0;"><strong>Важность:</strong> <span style="color: ${this.getAlertColor(alert.severity)};">${alert.severity}</span></p>
-                            <p style="margin: 5px 0;"><strong>Сообщение:</strong> ${alert.message || 'N/A'}</p>
-                            <p style="margin: 5px 0;"><strong>Здание:</strong> ${building.building_name || 'N/A'}</p>
-                            <p style="margin: 5px 0;"><strong>Создан:</strong> ${new Date(alert.created_at).toLocaleString('ru-RU')}</p>
-                            ${alert.resolved_at ? `<p style="margin: 5px 0;"><strong>Решён:</strong> ${new Date(alert.resolved_at).toLocaleString('ru-RU')}</p>` : '<p style="margin: 5px 0; color: red;"><strong>Статус:</strong> Активный</p>'}
+                            <h4 style="margin: 0 0 10px 0; color: ${alertColor};">⚠️ ${alertType}</h4>
+                            <p style="margin: 5px 0;"><strong>Важность:</strong> <span style="color: ${alertColor};">${alertSeverity}</span></p>
+                            <p style="margin: 5px 0;"><strong>Сообщение:</strong> ${alertMessage}</p>
+                            <p style="margin: 5px 0;"><strong>Здание:</strong> ${alertBuildingName}</p>
+                            <p style="margin: 5px 0;"><strong>Создан:</strong> ${alertCreatedAt}</p>
+                            ${alertResolvedAt ? `<p style="margin: 5px 0;"><strong>Решён:</strong> ${alertResolvedAt}</p>` : '<p style="margin: 5px 0; color: red;"><strong>Статус:</strong> Активный</p>'}
                         </div>
                     `;
-
-                    marker.bindPopup(popupContent);
-                    marker.bindTooltip(`⚠️ ${alert.type || 'Алерт'} (${alert.severity})`, {
+                    
+                    // Санитизируем popup перед использованием
+                    const sanitizedPopup = this.sanitizePopup(popupContent);
+                    marker.bindPopup(sanitizedPopup);
+                    marker.bindTooltip(`⚠️ ${alertType} (${alertSeverity})`, {
                         permanent: false,
                         direction: 'top'
                     });
@@ -1381,8 +1495,9 @@ class MapLayersControl {
             const popupContent = this.createLinePopup(lineData);
             mainLine.bindPopup(popupContent);
 
-            // Tooltip при наведении
-            mainLine.bindTooltip(lineData.name, {
+            // ИСПРАВЛЕНИЕ XSS: Санитизируем tooltip для линии
+            const lineTooltipName = this.escapeHTML(lineData.name || '');
+            mainLine.bindTooltip(lineTooltipName, {
                 permanent: false,
                 direction: 'top',
                 opacity: 0.9
@@ -1432,18 +1547,27 @@ class MapLayersControl {
                 lineJoin: 'round'
             });
 
-            // Popup для ответвления
-            branchLine.bindPopup(`
+            // ИСПРАВЛЕНИЕ XSS: Санитизируем данные ответвления
+            const branchName = this.escapeHTML(branch.name || '');
+            const branchLineName = this.escapeHTML(lineData.name || '');
+            const branchPointsCount = branch.points ? branch.points.length : 0;
+            
+            const branchPopupHTML = `
                 <div style="min-width: 200px;">
                     <h4 style="margin: 0 0 10px 0;">Ответвление</h4>
-                    <p style="margin: 5px 0;"><strong>Название:</strong> ${branch.name}</p>
-                    <p style="margin: 5px 0;"><strong>Основная линия:</strong> ${lineData.name}</p>
-                    <p style="margin: 5px 0;"><strong>Точек:</strong> ${branch.points.length}</p>
+                    <p style="margin: 5px 0;"><strong>Название:</strong> ${branchName}</p>
+                    <p style="margin: 5px 0;"><strong>Основная линия:</strong> ${branchLineName}</p>
+                    <p style="margin: 5px 0;"><strong>Точек:</strong> ${branchPointsCount}</p>
                 </div>
-            `);
-
-            // Tooltip
-            branchLine.bindTooltip(`Ответвление: ${branch.name}`, {
+            `;
+            
+            // Санитизируем popup перед использованием
+            const sanitizedBranchPopup = this.sanitizePopup(branchPopupHTML);
+            branchLine.bindPopup(sanitizedBranchPopup);
+            
+            // ИСПРАВЛЕНИЕ XSS: Санитизируем tooltip для ответвления
+            const branchTooltipName = this.escapeHTML(branch.name || '');
+            branchLine.bindTooltip(`Ответвление: ${branchTooltipName}`, {
                 permanent: false,
                 direction: 'top',
                 opacity: 0.8
@@ -1492,26 +1616,37 @@ class MapLayersControl {
         };
         const statusColor = statusColors[lineData.status] || 'gray';
 
-        // Технические параметры (в зависимости от типа)
+        // ИСПРАВЛЕНИЕ XSS: Санитизируем данные линии перед созданием popup
+        const lineName = this.escapeHTML(lineData.name || '');
+        const lineDescription = lineData.description ? this.escapeHTML(lineData.description) : '';
+        const lineStatus = this.escapeHTML(lineData.status || '');
+        const lineLength = lineData.length_km ? this.escapeHTML(String(lineData.length_km) + ' км') : '';
+        const lineMaterial = lineData.material ? this.escapeHTML(lineData.material) : '';
+        const lineBranchesCount = lineData.branches && lineData.branches.length > 0 ? lineData.branches.length : 0;
+        
+        // Определяем технические параметры безопасно
         let technicalParams = '';
         if (lineData.line_type === 'electricity' && lineData.voltage_kv) {
-            technicalParams = `<p style="margin: 5px 0;"><strong>Напряжение:</strong> ${lineData.voltage_kv} кВ</p>`;
+            technicalParams = `<p style="margin: 5px 0;"><strong>Напряжение:</strong> ${this.escapeHTML(String(lineData.voltage_kv) + ' кВ')}</p>`;
         } else if ((lineData.line_type === 'cold_water' || lineData.line_type === 'hot_water') && lineData.diameter_mm) {
-            technicalParams = `<p style="margin: 5px 0;"><strong>Диаметр:</strong> ${lineData.diameter_mm} мм</p>`;
+            technicalParams = `<p style="margin: 5px 0;"><strong>Диаметр:</strong> ${this.escapeHTML(String(lineData.diameter_mm) + ' мм')}</p>`;
         }
-
-        return `
+        
+        const popupHTML = `
             <div style="min-width: 250px;">
-                <h4 style="margin: 0 0 10px 0;">${typeIcon} ${lineData.name}</h4>
+                <h4 style="margin: 0 0 10px 0;">${typeIcon} ${lineName}</h4>
                 <p style="margin: 5px 0;"><strong>Тип:</strong> ${typeName}</p>
-                ${lineData.description ? `<p style="margin: 5px 0;"><strong>Описание:</strong> ${lineData.description}</p>` : ''}
-                <p style="margin: 5px 0;"><strong>Статус:</strong> <span style="color: ${statusColor}; font-weight: bold;">${lineData.status}</span></p>
-                <p style="margin: 5px 0;"><strong>Длина:</strong> ${lineData.length_km} км</p>
+                ${lineDescription ? `<p style="margin: 5px 0;"><strong>Описание:</strong> ${lineDescription}</p>` : ''}
+                <p style="margin: 5px 0;"><strong>Статус:</strong> <span style="color: ${statusColor}; font-weight: bold;">${lineStatus}</span></p>
+                ${lineLength ? `<p style="margin: 5px 0;"><strong>Длина:</strong> ${lineLength}</p>` : ''}
                 ${technicalParams}
-                ${lineData.material ? `<p style="margin: 5px 0;"><strong>Материал:</strong> ${lineData.material}</p>` : ''}
-                ${lineData.branches && lineData.branches.length > 0 ? `<p style="margin: 5px 0;"><strong>Ответвлений:</strong> ${lineData.branches.length}</p>` : ''}
+                ${lineMaterial ? `<p style="margin: 5px 0;"><strong>Материал:</strong> ${lineMaterial}</p>` : ''}
+                ${lineBranchesCount > 0 ? `<p style="margin: 5px 0;"><strong>Ответвлений:</strong> ${lineBranchesCount}</p>` : ''}
             </div>
         `;
+        
+        // Санитизируем popup перед использованием
+        return this.sanitizePopup(popupHTML);
     }
 
     /**
@@ -1574,20 +1709,32 @@ class MapLayersControl {
                 fillOpacity: 0.8
             });
 
-            // Popup с информацией об алерте
-            alertMarker.bindPopup(`
+            // ИСПРАВЛЕНИЕ XSS: Санитизируем данные алерта на линии
+            const alertLineName = this.escapeHTML(lineData.name || '');
+            const alertSeverity = this.escapeHTML(alert.severity || '');
+            const alertDescription = alert.description ? this.escapeHTML(alert.description) : '';
+            const alertMessage = alert.alert_message ? this.escapeHTML(alert.alert_message) : '';
+            const alertCreatedAt = alert.created_at ? new Date(alert.created_at).toLocaleString('ru-RU') : '';
+            
+            const alertPopupHTML = `
                 <div style="min-width: 200px;">
                     <h4 style="margin: 0 0 10px 0; color: ${markerColor};">⚠️ Авария на линии</h4>
-                    <p style="margin: 5px 0;"><strong>Линия:</strong> ${lineData.name}</p>
-                    <p style="margin: 5px 0;"><strong>Серьезность:</strong> <span style="color: ${markerColor}; font-weight: bold;">${alert.severity}</span></p>
-                    ${alert.description ? `<p style="margin: 5px 0;"><strong>Описание:</strong> ${alert.description}</p>` : ''}
-                    ${alert.alert_message ? `<p style="margin: 5px 0;"><strong>Сообщение:</strong> ${alert.alert_message}</p>` : ''}
-                    <p style="margin: 5px 0; font-size: 11px; color: #757575;"><strong>Создан:</strong> ${new Date(alert.created_at).toLocaleString('ru-RU')}</p>
+                    <p style="margin: 5px 0;"><strong>Линия:</strong> ${alertLineName}</p>
+                    <p style="margin: 5px 0;"><strong>Серьезность:</strong> <span style="color: ${markerColor}; font-weight: bold;">${alertSeverity}</span></p>
+                    ${alertDescription ? `<p style="margin: 5px 0;"><strong>Описание:</strong> ${alertDescription}</p>` : ''}
+                    ${alertMessage ? `<p style="margin: 5px 0;"><strong>Сообщение:</strong> ${alertMessage}</p>` : ''}
+                    <p style="margin: 5px 0; font-size: 11px; color: #757575;"><strong>Создан:</strong> ${alertCreatedAt}</p>
                 </div>
-            `);
-
-            // Tooltip
-            alertMarker.bindTooltip(`⚠️ ${alert.severity}: ${alert.description || 'Авария'}`, {
+            `;
+            
+            // Санитизируем popup перед использованием
+            const sanitizedAlertPopup = this.sanitizePopup(alertPopupHTML);
+            alertMarker.bindPopup(sanitizedAlertPopup);
+            
+            // Tooltip с безопасным текстом
+            const alertTooltipSeverity = this.escapeHTML(alert.severity || '');
+            const alertTooltipDescription = alert.description ? this.escapeHTML(alert.description) : 'Авария';
+            alertMarker.bindTooltip(`⚠️ ${alertTooltipSeverity}: ${alertTooltipDescription}`, {
                 permanent: false,
                 direction: 'top'
             });

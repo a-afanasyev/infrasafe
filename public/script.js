@@ -87,6 +87,16 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         // Выполнить fetch запрос с автоматическим добавлением авторизации
         async fetch(url, options = {}) {
+            // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Проверяем rate limiter перед запросом
+            if (window.apiRateLimiter && !window.apiRateLimiter.canMakeRequest()) {
+                const timeUntilNext = window.apiRateLimiter.getTimeUntilNextRequest();
+                const remaining = window.apiRateLimiter.getRemainingRequests();
+                throw new Error(
+                    `Превышен лимит запросов. Попробуйте через ${timeUntilNext} секунд. ` +
+                    `Осталось запросов: ${remaining}`
+                );
+            }
+
             // Подготавливаем заголовки
             const headers = {
                 'Content-Type': 'application/json',
@@ -110,6 +120,13 @@ document.addEventListener('DOMContentLoaded', async function () {
                 }
             }
 
+            // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Добавляем CSRF защиту для изменяющих запросов
+            const method = (options.method || 'GET').toUpperCase();
+            if (window.csrfProtection && window.csrfProtection.isModifyingMethod(method)) {
+                const updatedOptions = window.csrfProtection.addToHeaders(options);
+                options.headers = updatedOptions.headers;
+            }
+
             // Формируем полный URL
             const fullURL = url.startsWith('http') ? url : `${this.baseURL}${url}`;
 
@@ -130,15 +147,22 @@ document.addEventListener('DOMContentLoaded', async function () {
 
                 // Обрабатываем другие HTTP ошибки
                 if (!response.ok && response.status !== 401) {
+                    // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Используем безопасный парсер JSON
                     const errorText = await response.text();
                     let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-                    try {
-                        const errorJson = JSON.parse(errorText);
-                        errorMessage = errorJson.message || errorJson.error || errorMessage;
-                    } catch (e) {
-                        // Если не JSON, используем текст ошибки
-                        if (errorText) {
-                            errorMessage = errorText.substring(0, 200);
+                    
+                    // Пытаемся безопасно распарсить JSON
+                    if (errorText && errorText.length < 10000) { // Ограничиваем размер
+                        try {
+                            const errorJson = window.safeJsonParser 
+                                ? window.safeJsonParser.parseString(errorText)
+                                : JSON.parse(errorText);
+                            errorMessage = errorJson.message || errorJson.error || errorMessage;
+                        } catch (e) {
+                            // Если не JSON, используем текст ошибки (ограниченный)
+                            if (errorText) {
+                                errorMessage = errorText.substring(0, 200);
+                            }
                         }
                     }
                     throw new Error(errorMessage);
@@ -169,6 +193,22 @@ document.addEventListener('DOMContentLoaded', async function () {
                 setTimeout(() => {
                     window.location.href = '/login.html';
                 }, 2000);
+            }
+        }
+        
+        // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Безопасный парсинг JSON ответа
+        async json(response) {
+            if (!window.safeJsonParser) {
+                // Fallback если safeJsonParser не загружен
+                console.warn('SafeJsonParser не загружен, используется стандартный парсинг');
+                return response.json();
+            }
+            
+            try {
+                return await window.safeJsonParser.parseResponse(response);
+            } catch (error) {
+                console.error('Ошибка безопасного парсинга JSON:', error);
+                throw error;
             }
         }
     }
@@ -1373,10 +1413,24 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
 
     // Добавляем собственный контрол атрибуции только с OpenStreetMap
+    // ИСПРАВЛЕНИЕ: Удаляем все существующие контролы атрибуции перед созданием нового,
+    // чтобы избежать дублирования. Используем setTimeout для гарантии, что все слои загружены.
     if (map) {
-        L.control.attribution({
-            prefix: false  // Это убирает "Leaflet"
-        }).addAttribution('&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors').addTo(map);
+        // Используем setTimeout, чтобы убедиться, что все контролы атрибуции уже созданы
+        setTimeout(function() {
+            // Удаляем все существующие контролы атрибуции
+            const attributionControls = document.querySelectorAll('.leaflet-control-attribution');
+            attributionControls.forEach(function(control) {
+                control.remove();
+            });
+            
+            // Создаем единый контрол атрибуции с OpenStreetMap
+            const attributionControl = L.control.attribution({
+                prefix: false  // Это убирает "Leaflet"
+            });
+            attributionControl.addAttribution('&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors');
+            attributionControl.addTo(map);
+        }, 100);
     }
 
     // Инициализация промышленной панели управления

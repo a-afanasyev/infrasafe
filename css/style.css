@@ -105,55 +105,74 @@ body {
 }
 
 /* ============================================================
-   ТИПОГРАФИКА
+   ТИПОГРАФИКА - УЛУЧШЕННОЕ ФОРМАТИРОВАНИЕ
    ============================================================ */
 
 h1 {
-  font-size: 1.5rem;
-  font-weight: var(--font-weight-medium);
-  line-height: 1.5;
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.75rem;
+  color: var(--foreground);
 }
 
 h2 {
-  font-size: 1.25rem;
-  font-weight: var(--font-weight-medium);
-  line-height: 1.5;
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.625rem;
+  color: var(--foreground);
 }
 
 h3 {
-  font-size: 1.125rem;
-  font-weight: var(--font-weight-medium);
+  font-size: 1.25rem;
+  font-weight: 600;
   line-height: 1.5;
+  letter-spacing: -0.005em;
+  margin-bottom: 0.5rem;
+  color: var(--foreground);
 }
 
 h4 {
-  font-size: 1rem;
-  font-weight: var(--font-weight-medium);
+  font-size: 1.125rem;
+  font-weight: 500;
   line-height: 1.5;
+  letter-spacing: 0;
+  margin-bottom: 0.5rem;
+  color: var(--foreground);
 }
 
 p {
   font-size: 1rem;
-  font-weight: var(--font-weight-normal);
-  line-height: 1.5;
+  font-weight: 400;
+  line-height: 1.7;
+  letter-spacing: 0.01em;
+  margin-bottom: 0.75rem;
+  color: var(--foreground);
 }
 
 label {
-  font-size: 1rem;
-  font-weight: var(--font-weight-medium);
+  font-size: 0.9375rem;
+  font-weight: 500;
   line-height: 1.5;
+  letter-spacing: 0.01em;
+  color: var(--foreground);
 }
 
 button {
-  font-size: 1rem;
-  font-weight: var(--font-weight-medium);
+  font-size: 0.9375rem;
+  font-weight: 500;
   line-height: 1.5;
+  letter-spacing: 0.01em;
 }
 
 input {
-  font-size: 1rem;
-  font-weight: var(--font-weight-normal);
-  line-height: 1.5;
+  font-size: 0.9375rem;
+  font-weight: 400;
+  line-height: 1.6;
+  letter-spacing: 0.01em;
 }
 
 /* ============================================================
@@ -424,9 +443,10 @@ button.btn-secondary:hover {
 
 .logo-container span {
   font-size: 1rem;
-  font-weight: var(--font-weight-medium);
+  font-weight: 600;
   color: var(--foreground);
-  letter-spacing: 0.5px;
+  letter-spacing: 0.05em;
+  line-height: 1.4;
 }
 
 .header-controls {
@@ -446,10 +466,14 @@ button.btn-secondary:hover {
 .main-nav a {
   color: var(--foreground);
   text-decoration: none;
-  font-size: 0.875rem;
-  padding: 0.5rem 0.75rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.5;
+  padding: 0.5rem 0.875rem;
   border-radius: calc(var(--radius) - 4px);
   transition: all 0.2s ease;
+  border: 1px solid var(--border); /* Тонкая граница вокруг кнопок навигации */
 }
 
 .main-nav a:hover {
@@ -467,7 +491,7 @@ button.btn-secondary:hover {
   height: 2.25rem;
   border-radius: 50%;
   background-color: transparent;
-  border: none;
+  border: 1px solid var(--border); /* Тонкая граница вокруг кнопки переключения темы */
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -532,12 +556,13 @@ button.btn-secondary:hover {
 
 .push-panel-header h2 {
   font-size: 0.875rem;
-  font-weight: var(--font-weight-medium);
-  letter-spacing: 0.1em;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--foreground);
   margin: 0;
   flex: 1;
+  line-height: 1.4;
 }
 
 /* Кнопка закрытия панели */
@@ -622,9 +647,10 @@ button.btn-secondary:hover {
 }
 
 .tab-label {
-  font-size: 0.95rem;
-  font-weight: var(--font-weight-medium);
-  letter-spacing: 0.05em;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.4;
 }
 
 .push-panel-content {
@@ -647,13 +673,14 @@ button.btn-secondary:hover {
 }
 
 .tab-section h3 {
-  margin: 0 0 0.75rem 0;
+  margin: 0 0 0.875rem 0;
   font-size: 0.8125rem;
-  font-weight: var(--font-weight-medium);
+  font-weight: 600;
   color: var(--accent);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding-bottom: 0.5rem;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  padding-bottom: 0.625rem;
   border-bottom: 1px solid var(--border);
 }
 
@@ -700,8 +727,10 @@ button.btn-secondary:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: 0.875rem;
   font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.5;
   color: inherit;
 }
 
@@ -820,8 +849,10 @@ button.btn-secondary:hover {
 
 .tab-item-label {
   flex: 1;
-  font-size: 13px;
+  font-size: 0.875rem;
   font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.5;
   color: inherit;
   display: flex;
   align-items: center;
@@ -830,14 +861,17 @@ button.btn-secondary:hover {
 }
 
 .tab-item .layer-count {
-  font-size: 11px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   background-color: var(--muted);
   color: var(--muted-foreground);
-  padding: 2px 8px;
+  padding: 3px 9px;
   border-radius: 10px;
   min-width: 30px;
   text-align: center;
   margin-left: auto;
+  line-height: 1.4;
 }
 
 .tab-item:hover .layer-count {
@@ -922,8 +956,11 @@ body > .push-panel-toggle {
 }
 
 .main-heading .subtitle {
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
+  font-weight: 400;
   color: var(--muted-foreground);
+  line-height: 1.6;
+  letter-spacing: 0.01em;
   margin: 0;
 }
 
@@ -1030,8 +1067,11 @@ body > .push-panel-toggle {
 .footer-info {
   display: flex;
   flex-direction: column;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 11px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.6;
+  letter-spacing: 0.01em;
 }
 
 .footer-info.text-right {
@@ -1040,8 +1080,11 @@ body > .push-panel-toggle {
 
 .footer-info p {
   margin: 0;
-  line-height: 1.1;
+  line-height: 1.5;
   padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
 }
 
 .footer-info a {
@@ -1064,7 +1107,10 @@ body > .push-panel-toggle {
   cursor: pointer;
   display: flex;
   align-items: center;
-  font-size: 12px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.5;
   transition: all 0.3s ease;
   white-space: nowrap;
 }
@@ -1103,9 +1149,10 @@ body > .push-panel-toggle {
 
 .serendipity-text {
   margin-left: 10px;
-  font-size: 14px;
-  font-weight: 500;
-  letter-spacing: 0.5px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  line-height: 1.4;
   transition: opacity 0.3s ease;
 }
 
@@ -1116,7 +1163,17 @@ body > .push-panel-toggle {
 /* Адаптивность для мобильных устройств */
 @media screen and (max-width: 768px) {
   .serendipity-text {
-    font-size: 12px;
+    font-size: 0.75rem;
+  }
+  
+  .main-heading .subtitle {
+    font-size: 0.8125rem;
+    line-height: 1.5;
+  }
+  
+  .main-nav a {
+    font-size: 0.8125rem;
+    padding: 0.4375rem 0.75rem;
   }
 }
 
@@ -1384,8 +1441,10 @@ select.glass {
 
 .group-title {
   flex: 1;
-  font-weight: var(--font-weight-medium);
+  font-weight: 500;
   font-size: 0.875rem;
+  letter-spacing: 0.01em;
+  line-height: 1.5;
 }
 
 .group-counter {
@@ -1492,21 +1551,193 @@ select.glass {
   }
 }
 
-@media (max-width: 480px) {
-  .push-panel {
-    width: 100%;
-  }
+/* ============================================================
+   ДОПОЛНИТЕЛЬНАЯ ТИПОГРАФИКА ДЛЯ КОНТЕНТНЫХ СТРАНИЦ
+   ============================================================ */
 
-  .content {
-    top: calc(4rem + 2rem);
-  }
+/* Стили для списков - улучшенное форматирование */
+ul, ol {
+  margin: 0 0 1rem 0;
+  padding-left: 1.75rem;
+  line-height: 1.8;
+  color: var(--foreground);
+}
 
-  .main-heading {
-    padding: 0.5rem 1rem;
-  }
+ul {
+  list-style-type: disc;
+}
 
-  .main-heading .subtitle {
-    font-size: 0.75rem;
+ol {
+  list-style-type: decimal;
+}
+
+ul ul, ol ol, ul ol, ol ul {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding-left: 1.5rem;
+}
+
+ul ul {
+  list-style-type: circle;
+}
+
+ul ul ul {
+  list-style-type: square;
+}
+
+li {
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.7;
+  letter-spacing: 0.01em;
+  color: var(--foreground);
+}
+
+li:last-child {
+  margin-bottom: 0;
+}
+
+/* Стили для выделенного текста */
+strong, b {
+  font-weight: 600;
+  color: var(--foreground);
+  letter-spacing: 0.01em;
+}
+
+em, i {
+  font-style: italic;
+  color: var(--foreground);
+}
+
+/* Стили для ссылок */
+a {
+  color: var(--accent);
+  text-decoration: none;
+  transition: color 0.2s ease, text-decoration 0.2s ease;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+a:focus {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Стили для контентных страниц */
+body.content-page {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+body.content-page .content {
+  position: relative;
+  top: 4rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  background-color: var(--background);
+  min-height: calc(100vh - 4rem - 60px);
+}
+
+body.content-page .content p {
+  margin-bottom: 1rem;
+  text-align: justify;
+  hyphens: auto;
+}
+
+body.content-page .content p:last-child {
+  margin-bottom: 0;
+}
+
+/* Контейнер для функций */
+.features-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+  margin: 2rem 0;
+}
+
+.feature-column {
+  background-color: var(--card);
+  padding: 1.5rem;
+  border-radius: calc(var(--radius) + 4px);
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.dark .feature-column {
+  background-color: rgba(26, 29, 43, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.feature-column h3 {
+  margin-bottom: 1rem;
+  color: var(--accent);
+  font-size: 1.125rem;
+}
+
+.feature-column ul {
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+.feature-column li {
+  margin-bottom: 0.75rem;
+}
+
+.feature-column strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--foreground);
+  font-size: 1rem;
+}
+
+.feature-column ul ul {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding-left: 1.25rem;
+}
+
+.feature-column ul ul li {
+  margin-bottom: 0.5rem;
+  font-size: 0.9375rem;
+  color: var(--muted-foreground);
+}
+
+/* Улучшенные стили для текста в контентных страницах */
+body.content-page .content > p:first-of-type {
+  font-size: 1.0625rem;
+  line-height: 1.8;
+  margin-bottom: 1.5rem;
+  color: var(--foreground);
+}
+
+body.content-page .content > ul:last-child,
+body.content-page .content > ol:last-child {
+  margin-bottom: 0;
+}
+
+/* Адаптивность для контентных страниц */
+@media screen and (max-width: 768px) {
+  body.content-page .content {
+    padding: 1.5rem 1rem;
+  }
+  
+  .features-container {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+  
+  .feature-column {
+    padding: 1.25rem;
   }
 }
 

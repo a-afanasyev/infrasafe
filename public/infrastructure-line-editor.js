@@ -77,6 +77,20 @@ class InfrastructureLineEditor {
      * Показать modal окно редактора
      */
     show() {
+        // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Проверяем наличие DOMPurify перед использованием
+        if (typeof DOMPurify === 'undefined') {
+            console.error('❌ DOMPurify не загружен! Безопасность не гарантирована.');
+            
+            // Показываем ошибку пользователю
+            if (typeof showToast === 'function') {
+                showToast('Ошибка загрузки системы безопасности. Перезагрузите страницу.', 'error');
+            } else {
+                alert('Ошибка загрузки системы безопасности. Перезагрузите страницу.');
+            }
+            
+            return; // НЕ продолжаем выполнение без DOMPurify
+        }
+        
         // ИСПРАВЛЕНИЕ: Удаляем все существующие модальные окна перед созданием нового
         // чтобы избежать дублирования элементов с одинаковыми ID
         const existingModals = document.querySelectorAll('#infrastructure-line-editor-modal');
@@ -85,24 +99,18 @@ class InfrastructureLineEditor {
             modal.remove();
         });
         
-        // ИСПРАВЛЕНИЕ XSS: Используем DOMPurify для безопасной вставки HTML
+        // ИСПРАВЛЕНИЕ XSS: Используем ТОЛЬКО DOMPurify для безопасной вставки HTML
         const modalHTML = this.createModalHTML();
 
         const modalContainer = document.createElement('div');
         modalContainer.id = 'infrastructure-line-editor-modal';
 
-        // Используем DOMPurify если доступен, иначе создаем через DOM API
-        if (window.DOMPurify) {
-            modalContainer.innerHTML = DOMPurify.sanitize(modalHTML);
-        } else {
-            // Fallback: используем innerHTML с предупреждением
-            console.warn('DOMPurify не загружен, используется упрощенная версия');
-            // ВНИМАНИЕ: modalHTML может содержать пользовательские данные (this.existingData)
-            // Рекомендуется загрузить DOMPurify для полной защиты
-            const temp = document.createElement('div');
-            temp.innerHTML = modalHTML; // Потенциально небезопасно без DOMPurify
-            modalContainer.appendChild(temp.firstElementChild);
-        }
+        // Используем ТОЛЬКО DOMPurify, без небезопасного fallback
+        modalContainer.innerHTML = DOMPurify.sanitize(modalHTML, {
+            ALLOWED_TAGS: ['div', 'span', 'h3', 'button', 'form', 'input', 'textarea', 'select', 'option', 'label', 'strong', 'p', 'br'],
+            ALLOWED_ATTR: ['class', 'id', 'type', 'value', 'placeholder', 'required', 'rows', 'min', 'max', 'step', 'style', 'selected'],
+            ALLOW_DATA_ATTR: false
+        });
 
         document.body.appendChild(modalContainer);
 

@@ -3,6 +3,7 @@ class AdminAuth {
     constructor() {
         this.token = localStorage.getItem('admin_token');
         this.isAuthenticated = false;
+        this.fetchIntercepted = false; // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Инициализируем флаг перехвата
         this.init();
     }
 
@@ -76,32 +77,63 @@ class AdminAuth {
     }
 
     setupAuthHeaders() {
-        // Перехватываем все fetch запросы и добавляем авторизацию
-        const originalFetch = window.fetch;
+        // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Проверяем что fetch еще не перехвачен
+        if (this.fetchIntercepted) {
+            console.warn('Fetch уже перехвачен, пропускаем повторную установку');
+            return;
+        }
+        
+        // Сохраняем оригинальный fetch если еще не сохранен
+        if (!window._originalFetch) {
+            window._originalFetch = window.fetch;
+        }
+        
+        const originalFetch = window._originalFetch;
         const self = this;
-        window.fetch = (url, options = {}) => {
-            // Добавляем авторизацию для всех API запросов
-            if (self.token && (url.startsWith('/api/') || url.startsWith('http://localhost:3000/api/') || url.startsWith('http://localhost:8080/api/'))) {
-                options.headers = {
-                    ...options.headers,
-                    'Authorization': `Bearer ${self.token}`
-                };
+        
+        // Перехватываем fetch
+        window.fetch = function(url, options = {}) {
+            // Инициализируем headers если их нет
+            if (!options.headers) {
+                options.headers = {};
             }
-
+            
+            // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Добавляем авторизацию только для API запросов
+            const isApiRequest = url.startsWith('/api/') || 
+                               url.includes('/api/') ||
+                               url.startsWith('http://localhost:3000/api/') ||
+                               url.startsWith('http://localhost:8080/api/');
+            
+            if (self.token && isApiRequest) {
+                options.headers['Authorization'] = `Bearer ${self.token}`;
+            }
+            
+            // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Добавляем CSRF защиту для изменяющих запросов
+            const method = (options.method || 'GET').toUpperCase();
+            if (window.csrfProtection && window.csrfProtection.isModifyingMethod(method)) {
+                const updatedOptions = window.csrfProtection.addToHeaders(options);
+                options.headers = { ...options.headers, ...updatedOptions.headers };
+            }
+            
             // Перенаправляем запросы с 8080 на 3000 для API
             if (url.startsWith('http://localhost:8080/api/')) {
                 url = url.replace('http://localhost:8080/api/', 'http://localhost:3000/api/');
             } else if (url.startsWith('/api/')) {
                 url = 'http://localhost:3000' + url;
             }
-
-            return originalFetch(url, options).then(response => {
+            
+            // Выполняем запрос используя оригинальный fetch
+            return originalFetch.call(this, url, options).then(response => {
+                // Обрабатываем 401 ошибки
                 if (response.status === 401) {
                     self.logout();
                 }
                 return response;
             });
         };
+        
+        this.fetchIntercepted = true;
+        console.log('✅ Fetch перехвачен для авторизации');
     }
 
     showLoginForm() {
