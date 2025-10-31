@@ -61,11 +61,22 @@ document.addEventListener('DOMContentLoaded', async function () {
     class APIClient {
         constructor(baseURL) {
             this.baseURL = baseURL;
-            this.token = localStorage.getItem('admin_token');
+            // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Используем валидацию токена при инициализации
+            this.token = window.DOMSecurity && window.DOMSecurity.getValidToken ? window.DOMSecurity.getValidToken() : localStorage.getItem('admin_token');
         }
 
         // Обновить токен
         setToken(token) {
+            // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Валидируем токен перед сохранением
+            if (token && window.DOMSecurity && window.DOMSecurity.validateToken) {
+                const validation = window.DOMSecurity.validateToken(token);
+                if (!validation.valid) {
+                    console.error('Попытка установить невалидный токен:', validation.error);
+                    this.token = null;
+                    localStorage.removeItem('admin_token');
+                    return;
+                }
+            }
             this.token = token;
             if (token) {
                 localStorage.setItem('admin_token', token);
@@ -82,9 +93,21 @@ document.addEventListener('DOMContentLoaded', async function () {
                 ...options.headers
             };
 
-            // Добавляем авторизацию если есть токен
+            // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Проверяем и валидируем токен перед использованием
             if (this.token) {
-                headers['Authorization'] = `Bearer ${this.token}`;
+                // Проверяем токен перед каждым запросом
+                if (window.DOMSecurity && window.DOMSecurity.validateToken) {
+                    const validation = window.DOMSecurity.validateToken(this.token);
+                    if (!validation.valid) {
+                        console.warn('Токен невалиден, удаляем:', validation.error);
+                        this.setToken(null);
+                    } else {
+                        headers['Authorization'] = `Bearer ${this.token}`;
+                    }
+                } else {
+                    // Fallback если DOMSecurity еще не загружен
+                    headers['Authorization'] = `Bearer ${this.token}`;
+                }
             }
 
             // Формируем полный URL
@@ -190,6 +213,12 @@ document.addEventListener('DOMContentLoaded', async function () {
         init() {
             console.log('🔧 Initializing IndustrialPushPanel...');
             
+            // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Проверяем наличие панели перед инициализацией
+            if (!this.panel) {
+                console.error('❌ IndustrialPushPanel: панель не найдена в DOM, инициализация невозможна');
+                return;
+            }
+            
             // Если кнопка еще не найдена, пытаемся найти её
             if (!this.toggleBtn) {
                 this.toggleBtn = document.getElementById('push-panel-toggle');
@@ -205,6 +234,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             // Не добавляем addEventListener здесь, так как обработчик уже есть в Leaflet control
             
             // Обработчик для кнопки закрытия панели
+            // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Проверяем this.panel перед использованием
             const closeBtn = this.panel.querySelector('.panel-close-btn');
             if (closeBtn) {
                 closeBtn.addEventListener('click', (e) => {
@@ -235,8 +265,15 @@ document.addEventListener('DOMContentLoaded', async function () {
         /**
          * Переключение состояния панели (свернута/развернута)
          * Изменяет классы для анимации и сдвигает карту
+         * ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Добавлена проверка на null перед использованием this.panel
          */
         toggle() {
+            // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Проверяем наличие панели перед использованием
+            if (!this.panel) {
+                console.error('❌ IndustrialPushPanel.toggle(): панель не найдена в DOM');
+                return;
+            }
+            
             this.isExpanded = !this.isExpanded;
             
             if (this.isExpanded) {
@@ -1990,11 +2027,22 @@ document.addEventListener('DOMContentLoaded', async function () {
                 }
 
                 let popupContent;
+                // ИСПРАВЛЕНИЕ XSS: Используем безопасные функции для экранирования данных
+                const escapeHTML = window.DOMSecurity && window.DOMSecurity.escapeHTML ? window.DOMSecurity.escapeHTML : (text) => {
+                    const div = document.createElement('div');
+                    div.textContent = text || '';
+                    return div.innerHTML;
+                };
+                const formatValue = window.DOMSecurity && window.DOMSecurity.formatPopupValue ? window.DOMSecurity.formatPopupValue : (value, suffix, defaultValue) => {
+                    if (value === null || value === undefined) return escapeHTML(defaultValue);
+                    return escapeHTML(String(value) + suffix);
+                };
+                
                 // Create a popup with building details
                 if(status === 'no'){
                     popupContent = `
                     <div>
-                        <strong>${item.building_name}</strong><br></br>
+                        <strong>${escapeHTML(item.building_name || '')}</strong><br></br>
                         no controller data
                     </div>`;
                 }
@@ -2002,24 +2050,36 @@ document.addEventListener('DOMContentLoaded', async function () {
                 {
 
                     // Create popup content for building with electricity and cold water data
+                    // ИСПРАВЛЕНИЕ XSS: Все пользовательские данные экранируются
+                    const buildingName = escapeHTML(item.building_name || '');
+                    const ph1Class = !item.electricity_ph1 ? "class='blinking-text-red'" : (!isPhase1Ok ? "class='blinking-cell-orange'" : '');
+                    const ph2Class = !item.electricity_ph2 ? "class='blinking-text-red'" : (!isPhase2Ok ? "class='blinking-cell-orange'" : '');
+                    const ph3Class = !item.electricity_ph3 ? "class='blinking-text-red'" : (!isPhase3Ok ? "class='blinking-cell-orange'" : '');
+                    const ph1Value = formatValue(item.electricity_ph1, 'V', 'Нет данных');
+                    const ph2Value = formatValue(item.electricity_ph2, 'V', 'Нет данных');
+                    const ph3Value = formatValue(item.electricity_ph3, 'V', 'Нет данных');
+                    const coldWaterClass = !item.cold_water_pressure ? "class='blinking-text-red'" : (!isColdWaterOK ? "class='blinking-cell-orange'" : '');
+                    const coldWaterPressure = formatValue(item.cold_water_pressure, ' Bar', 'Нет данных');
+                    const coldWaterTemp = formatValue(item.cold_water_temp, '°C', 'Нет данных');
+                    
                     popupContent = `
             <div>
-                <strong>${item.building_name}</strong><br>
+                <strong>${buildingName}</strong><br>
                 <table>
                     <!-- Electricity Data -->
                     <tr>
                         <td><img src="${electricityImage}" alt="Electricity_Status" style="width: 20px;" /></td>
-                        <td ${!item.electricity_ph1 ? "class='blinking-text-red'" : (!isPhase1Ok ? "class='blinking-cell-orange'" : '')}>${item.electricity_ph1 !== null ? item.electricity_ph1 + "V" : "Нет данных"}</td>
-                        <td ${!item.electricity_ph2 ? "class='blinking-text-red'" : (!isPhase2Ok ? "class='blinking-cell-orange'" : '')}>${item.electricity_ph2 !== null ? item.electricity_ph2 + "V" : "Нет данных"}</td>
-                        <td ${!item.electricity_ph3 ? "class='blinking-text-red'" : (!isPhase3Ok ? "class='blinking-cell-orange'" : '')}>${item.electricity_ph3 !== null ? item.electricity_ph3 + "V" : "Нет данных"}</td>
+                        <td ${ph1Class}>${ph1Value}</td>
+                        <td ${ph2Class}>${ph2Value}</td>
+                        <td ${ph3Class}>${ph3Value}</td>
                     </tr>
 
                     <!-- Cold Water Data -->
                     <tr>
                         <td><img src="${coldWaterImage}" alt="Cold_Water" style="width: 20px;" /></td>
-                        <td colspan="3" ${!item.cold_water_pressure ? "class='blinking-text-red'" : (!isColdWaterOK ? "class='blinking-cell-orange'" : '')}>
-                            <strong>ХВС:</strong> ${item.cold_water_pressure !== null ? item.cold_water_pressure + " Bar" : "Нет данных"},
-                            ${item.cold_water_temp !== null ? item.cold_water_temp + "°C" : "Нет данных"}
+                        <td colspan="3" ${coldWaterClass}>
+                            <strong>ХВС:</strong> ${coldWaterPressure},
+                            ${coldWaterTemp}
                         </td>
                     </tr>
 
@@ -2028,12 +2088,12 @@ document.addEventListener('DOMContentLoaded', async function () {
                     <tr>
                         <td><img src="data/images/Water_Red.png" alt="Hot_Water" style="width: 20px;" /></td>
                         <td colspan="3" ${!isHotWaterOK ? "class='blinking-cell-orange'" : ''}>
-                            <strong>ГВС Подача:</strong> ${item.hot_water_in_temp}°C, ${item.hot_water_in_pressure} Bar
+                            <strong>ГВС Подача:</strong> ${formatValue(item.hot_water_in_temp, '°C', '')}, ${formatValue(item.hot_water_in_pressure, ' Bar', '')}
                         </td>
                     </tr>
                     <tr>
                         <td></td>
-                        <td colspan="3"><strong>ГВС Обратка:</strong> ${item.hot_water_out_temp}°C, ${item.hot_water_out_pressure} Bar</td>
+                        <td colspan="3"><strong>ГВС Обратка:</strong> ${formatValue(item.hot_water_out_temp, '°C', '')}, ${formatValue(item.hot_water_out_pressure, ' Bar', '')}</td>
                     </tr>` : `
                     <tr>
                         <td><img src="data/images/Water_Red.png" alt="Hot_Water" style="width: 20px;" /></td>
@@ -2054,10 +2114,15 @@ document.addEventListener('DOMContentLoaded', async function () {
         `;
                 };
 
+                // ИСПРАВЛЕНИЕ XSS: Санитизируем popup контент перед использованием
+                if (window.DOMSecurity && window.DOMSecurity.sanitizePopupContent) {
+                    popupContent = window.DOMSecurity.sanitizePopupContent(popupContent);
+                }
+                
                 marker.bindPopup(popupContent).addTo(markers);
                 markers.addLayer(marker);
 
-                // Сохраняем содержимое попапа глобально для этого маркера
+                // Сохраняем содержимое попапа глобально для этого маркера (уже санитизированное)
                 marker._popupContent = popupContent;
 
                 // Update the sidebar with building information
