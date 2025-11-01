@@ -65,17 +65,10 @@ class MapLayersControl {
             }
             this.setupEventHandlers();
             
-            // Автоматически загружаем слой зданий при старте (и показываем на карте)
-            // Проверяем что слой существует перед добавлением
-            if (this.overlays && this.overlays["🏢 Здания"]) {
-                this.overlays["🏢 Здания"].addTo(this.map);
-                // Загружаем данные для зданий (это синхронно обновит счетчик)
-                await this.loadLayerData("🏢 Здания");
-            }
-            
-            // Загружаем данные для остальных слоев (для обновления счетчиков), но не показываем на карте
+            // Загружаем данные для всех слоев (для обновления счетчиков), но не показываем на карте
             // Используем Promise.all для параллельной загрузки и ждем завершения
             await Promise.all([
+                this.loadLayerDataSilent("🏢 Здания"),
                 this.loadLayerDataSilent("⚡ Трансформаторы"),
                 this.loadLayerDataSilent("🔌 Линии электропередач"),
                 this.loadLayerDataSilent("💧 Источники воды"),
@@ -374,7 +367,8 @@ class MapLayersControl {
             const input = L.DomUtil.create('input', '', label);
             input.type = 'checkbox';
             input.value = name;
-            input.checked = name === "🏢 Здания";
+            // Все слои по умолчанию не выбраны при загрузке
+            input.checked = false;
             
             const span = L.DomUtil.create('span', '', label);
             span.textContent = name;

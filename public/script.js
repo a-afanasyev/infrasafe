@@ -474,7 +474,8 @@ document.addEventListener('DOMContentLoaded', async function () {
                                 const input = document.createElement('input');
                                 input.type = 'checkbox';
                                 input.value = name;
-                                input.checked = name === "🏢 Здания";
+                                // Все слои по умолчанию не выбраны при загрузке
+                                input.checked = false;
                                 
                                 label.appendChild(input);
                                 label.appendChild(document.createTextNode(name)); // Полное название с эмодзи

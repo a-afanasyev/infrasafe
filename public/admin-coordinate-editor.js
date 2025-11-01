@@ -116,7 +116,7 @@ class CoordinateEditor {
                            step="0.000001"
                            min="-90"
                            max="90"
-                           placeholder="Например: 55.751244"
+                           placeholder="Например: 69.253093"
                            required>
                     <small>Диапазон: от -90 до 90</small>
                 </div>
@@ -128,7 +128,7 @@ class CoordinateEditor {
                            step="0.000001"
                            min="-180"
                            max="180"
-                           placeholder="Например: 37.618423"
+                           placeholder="Например: 41.336837"
                            required>
                     <small>Диапазон: от -180 до 180</small>
                 </div>
@@ -229,8 +229,8 @@ class CoordinateEditor {
      */
     initMiniMap() {
         // Получаем текущие координаты из полей ввода или используем переданные
-        const currentLat = parseFloat(document.getElementById('edit-latitude').value) || this.currentLat || 55.751244;
-        const currentLng = parseFloat(document.getElementById('edit-longitude').value) || this.currentLng || 37.618423;
+        const currentLat = parseFloat(document.getElementById('edit-latitude').value) || this.currentLat || 41.336837;
+        const currentLng = parseFloat(document.getElementById('edit-longitude').value) || this.currentLng || 69.253093;
         
         // Создаем карту с правильными координатами
         this.map = L.map('coordinate-mini-map').setView(

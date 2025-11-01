@@ -26,6 +26,14 @@
         <button id="loadConfig" style="margin-top:0;">📥 Загрузить конфигурацию</button>
         <button id="clearForm" style="margin-top:0; background:#f44336; color:white;">🗑️ Очистить форму</button>
       </div>
+      <div class="row" style="margin-top: 12px;">
+        <label>Скопировать данные из здания: 
+          <select id="copyFromBuilding" style="padding:6px 8px; min-width:150px;">
+            <option value="">-- Выберите здание --</option>
+          </select>
+        </label>
+        <button id="copyConfig" style="margin-top:0; background:#4CAF50; color:white;">📋 Копировать</button>
+      </div>
       <div id="existingConfigs" style="margin-top: 12px;"></div>
     </div>
 
@@ -133,11 +141,33 @@
       }
 
       /**
+       * Обновить выпадающий список зданий для копирования
+       */
+      function updateCopyFromBuildingSelect() {
+        const select = document.getElementById('copyFromBuilding');
+        const buildingIds = Object.keys(allRanges);
+        
+        // Очищаем список
+        select.innerHTML = '<option value="">-- Выберите здание --</option>';
+        
+        // Добавляем опции для каждого здания
+        buildingIds.forEach(id => {
+          const option = document.createElement('option');
+          option.value = id;
+          option.textContent = `Здание #${id}`;
+          select.appendChild(option);
+        });
+      }
+
+      /**
        * Отобразить список существующих конфигураций
        */
       function displayExistingConfigs() {
         const container = document.getElementById('existingConfigs');
         const buildingIds = Object.keys(allRanges);
+        
+        // Обновляем выпадающий список для копирования
+        updateCopyFromBuildingSelect();
         
         if (buildingIds.length === 0) {
           container.innerHTML = '<p style="color:#999;">Нет сохранённых конфигураций</p>';
@@ -366,6 +396,93 @@
       document.getElementById('clearForm').addEventListener('click', () => {
         if (confirm('Очистить форму? Несохранённые изменения будут потеряны.')) {
           clearForm();
+        }
+      });
+
+      // Обработчик кнопки "Копировать"
+      document.getElementById('copyConfig').addEventListener('click', () => {
+        const sourceBuildingId = document.getElementById('copyFromBuilding').value;
+        const targetBuildingId = document.getElementById('buildingId').value.trim();
+        
+        if (!sourceBuildingId) {
+          alert('⚠️ Выберите здание, из которого нужно скопировать данные');
+          return;
+        }
+        
+        if (!targetBuildingId) {
+          alert('⚠️ Укажите Building ID для нового здания');
+          return;
+        }
+        
+        if (sourceBuildingId === targetBuildingId) {
+          alert('⚠️ Нельзя копировать данные в то же самое здание');
+          return;
+        }
+        
+        const sourceConfig = allRanges[sourceBuildingId];
+        if (!sourceConfig) {
+          alert(`❌ Конфигурация для здания #${sourceBuildingId} не найдена`);
+          return;
+        }
+        
+        // Копируем конфигурацию в форму
+        if (confirm(`📋 Скопировать конфигурацию из здания #${sourceBuildingId} в здание #${targetBuildingId}?\n\nТекущие данные в форме будут заменены.`)) {
+          // Устанавливаем Building ID и показываем форму
+          document.getElementById('currentBuildingId').textContent = targetBuildingId;
+          document.getElementById('formCard').style.display = 'block';
+          
+          // Заполняем форму данными из исходного здания
+          if (sourceConfig.electricity) {
+            document.getElementById('e1min').value = sourceConfig.electricity.ph1[0];
+            document.getElementById('e1max').value = sourceConfig.electricity.ph1[1];
+            document.getElementById('e2min').value = sourceConfig.electricity.ph2[0];
+            document.getElementById('e2max').value = sourceConfig.electricity.ph2[1];
+            document.getElementById('e3min').value = sourceConfig.electricity.ph3[0];
+            document.getElementById('e3max').value = sourceConfig.electricity.ph3[1];
+          }
+
+          if (sourceConfig.amperage) {
+            document.getElementById('a1min').value = sourceConfig.amperage.ph1[0];
+            document.getElementById('a1max').value = sourceConfig.amperage.ph1[1];
+            document.getElementById('a2min').value = sourceConfig.amperage.ph2[0];
+            document.getElementById('a2max').value = sourceConfig.amperage.ph2[1];
+            document.getElementById('a3min').value = sourceConfig.amperage.ph3[0];
+            document.getElementById('a3max').value = sourceConfig.amperage.ph3[1];
+          }
+
+          if (sourceConfig.waterPressure) {
+            document.getElementById('cmin').value = sourceConfig.waterPressure.cold[0];
+            document.getElementById('cmax').value = sourceConfig.waterPressure.cold[1];
+            document.getElementById('hinmin').value = sourceConfig.waterPressure.hotIn[0];
+            document.getElementById('hinmax').value = sourceConfig.waterPressure.hotIn[1];
+            document.getElementById('houtmin').value = sourceConfig.waterPressure.hotOut[0];
+            document.getElementById('houtmax').value = sourceConfig.waterPressure.hotOut[1];
+          }
+
+          if (sourceConfig.waterTemp) {
+            document.getElementById('tcmin').value = sourceConfig.waterTemp.cold[0];
+            document.getElementById('tcmax').value = sourceConfig.waterTemp.cold[1];
+            document.getElementById('thinmin').value = sourceConfig.waterTemp.hotIn[0];
+            document.getElementById('thinmax').value = sourceConfig.waterTemp.hotIn[1];
+            document.getElementById('thoutmin').value = sourceConfig.waterTemp.hotOut[0];
+            document.getElementById('thoutmax').value = sourceConfig.waterTemp.hotOut[1];
+          }
+
+          if (sourceConfig.environment) {
+            document.getElementById('airmin').value = sourceConfig.environment.airTemp[0];
+            document.getElementById('airmax').value = sourceConfig.environment.airTemp[1];
+            document.getElementById('hummin').value = sourceConfig.environment.humidity[0];
+            document.getElementById('hummax').value = sourceConfig.environment.humidity[1];
+          }
+
+          if (sourceConfig.leakProbability !== undefined) {
+            document.getElementById('leakp').value = sourceConfig.leakProbability;
+          }
+          
+          // Прокручиваем к форме
+          document.getElementById('formCard').scrollIntoView({ behavior: 'smooth' });
+          
+          alert(`✅ Данные из здания #${sourceBuildingId} скопированы.\n\nТеперь вы можете отредактировать их и сохранить для здания #${targetBuildingId}.`);
         }
       });
 
