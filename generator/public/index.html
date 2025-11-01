@@ -100,6 +100,27 @@
       // Глобальная переменная для хранения всех конфигураций
       let allRanges = {};
 
+      // Массив идентификаторов полей формы для удобного сброса/заполнения
+      const RANGE_FIELD_IDS = [
+        'e1min', 'e1max', 'e2min', 'e2max', 'e3min', 'e3max',
+        'a1min', 'a1max', 'a2min', 'a2max', 'a3min', 'a3max',
+        'cmin', 'cmax', 'hinmin', 'hinmax', 'houtmin', 'houtmax',
+        'tcmin', 'tcmax', 'thinmin', 'thinmax', 'thoutmin', 'thoutmax',
+        'airmin', 'airmax', 'hummin', 'hummax', 'leakp'
+      ];
+
+      /**
+       * Сбросить все поля формы к пустым значениям
+       */
+      function resetFormFields() {
+        RANGE_FIELD_IDS.forEach(id => {
+          const input = document.getElementById(id);
+          if (input) {
+            input.value = '';
+          }
+        });
+      }
+
       /**
        * Загрузить все сохранённые диапазоны с сервера
        */
@@ -192,9 +213,11 @@
       /**
        * Загрузить конфигурацию для конкретного здания в форму
        */
-      function loadConfigForBuilding(buildingId) {
+      function loadConfigForBuilding(buildingId, options = {}) {
         const config = allRanges[buildingId];
-        if (!config) {
+        const allowCreate = Boolean(options.allowCreate);
+
+        if (!config && !allowCreate) {
           alert(`Конфигурация для здания #${buildingId} не найдена`);
           return;
         }
@@ -203,52 +226,60 @@
         document.getElementById('buildingId').value = buildingId;
         document.getElementById('currentBuildingId').textContent = buildingId;
 
-        // Заполняем форму значениями из конфигурации
-        if (config.electricity) {
-          document.getElementById('e1min').value = config.electricity.ph1[0];
-          document.getElementById('e1max').value = config.electricity.ph1[1];
-          document.getElementById('e2min').value = config.electricity.ph2[0];
-          document.getElementById('e2max').value = config.electricity.ph2[1];
-          document.getElementById('e3min').value = config.electricity.ph3[0];
-          document.getElementById('e3max').value = config.electricity.ph3[1];
-        }
+        // Перед заполнением очищаем форму, чтобы не остались значения от другого здания
+        resetFormFields();
 
-        if (config.amperage) {
-          document.getElementById('a1min').value = config.amperage.ph1[0];
-          document.getElementById('a1max').value = config.amperage.ph1[1];
-          document.getElementById('a2min').value = config.amperage.ph2[0];
-          document.getElementById('a2max').value = config.amperage.ph2[1];
-          document.getElementById('a3min').value = config.amperage.ph3[0];
-          document.getElementById('a3max').value = config.amperage.ph3[1];
-        }
+        if (config) {
+          if (config.electricity) {
+            document.getElementById('e1min').value = config.electricity.ph1[0];
+            document.getElementById('e1max').value = config.electricity.ph1[1];
+            document.getElementById('e2min').value = config.electricity.ph2[0];
+            document.getElementById('e2max').value = config.electricity.ph2[1];
+            document.getElementById('e3min').value = config.electricity.ph3[0];
+            document.getElementById('e3max').value = config.electricity.ph3[1];
+          }
 
-        if (config.waterPressure) {
-          document.getElementById('cmin').value = config.waterPressure.cold[0];
-          document.getElementById('cmax').value = config.waterPressure.cold[1];
-          document.getElementById('hinmin').value = config.waterPressure.hotIn[0];
-          document.getElementById('hinmax').value = config.waterPressure.hotIn[1];
-          document.getElementById('houtmin').value = config.waterPressure.hotOut[0];
-          document.getElementById('houtmax').value = config.waterPressure.hotOut[1];
-        }
+          if (config.amperage) {
+            document.getElementById('a1min').value = config.amperage.ph1[0];
+            document.getElementById('a1max').value = config.amperage.ph1[1];
+            document.getElementById('a2min').value = config.amperage.ph2[0];
+            document.getElementById('a2max').value = config.amperage.ph2[1];
+            document.getElementById('a3min').value = config.amperage.ph3[0];
+            document.getElementById('a3max').value = config.amperage.ph3[1];
+          }
 
-        if (config.waterTemp) {
-          document.getElementById('tcmin').value = config.waterTemp.cold[0];
-          document.getElementById('tcmax').value = config.waterTemp.cold[1];
-          document.getElementById('thinmin').value = config.waterTemp.hotIn[0];
-          document.getElementById('thinmax').value = config.waterTemp.hotIn[1];
-          document.getElementById('thoutmin').value = config.waterTemp.hotOut[0];
-          document.getElementById('thoutmax').value = config.waterTemp.hotOut[1];
-        }
+          if (config.waterPressure) {
+            document.getElementById('cmin').value = config.waterPressure.cold[0];
+            document.getElementById('cmax').value = config.waterPressure.cold[1];
+            document.getElementById('hinmin').value = config.waterPressure.hotIn[0];
+            document.getElementById('hinmax').value = config.waterPressure.hotIn[1];
+            document.getElementById('houtmin').value = config.waterPressure.hotOut[0];
+            document.getElementById('houtmax').value = config.waterPressure.hotOut[1];
+          }
 
-        if (config.environment) {
-          document.getElementById('airmin').value = config.environment.airTemp[0];
-          document.getElementById('airmax').value = config.environment.airTemp[1];
-          document.getElementById('hummin').value = config.environment.humidity[0];
-          document.getElementById('hummax').value = config.environment.humidity[1];
-        }
+          if (config.waterTemp) {
+            document.getElementById('tcmin').value = config.waterTemp.cold[0];
+            document.getElementById('tcmax').value = config.waterTemp.cold[1];
+            document.getElementById('thinmin').value = config.waterTemp.hotIn[0];
+            document.getElementById('thinmax').value = config.waterTemp.hotIn[1];
+            document.getElementById('thoutmin').value = config.waterTemp.hotOut[0];
+            document.getElementById('thoutmax').value = config.waterTemp.hotOut[1];
+          }
 
-        if (config.leakProbability !== undefined) {
-          document.getElementById('leakp').value = config.leakProbability;
+          if (config.environment) {
+            document.getElementById('airmin').value = config.environment.airTemp[0];
+            document.getElementById('airmax').value = config.environment.airTemp[1];
+            document.getElementById('hummin').value = config.environment.humidity[0];
+            document.getElementById('hummax').value = config.environment.humidity[1];
+          }
+
+          if (config.leakProbability !== undefined) {
+            document.getElementById('leakp').value = config.leakProbability;
+          }
+        } else if (allowCreate) {
+          alert(`Создаётся новая конфигурация для здания #${buildingId}. Заполните диапазоны и нажмите "Сохранить".`);
+          // Чтобы форма вела себя предсказуемо, задаём вероятность протечки по умолчанию
+          document.getElementById('leakp').value = 0;
         }
 
         // Показываем форму редактирования
@@ -264,15 +295,8 @@
       function clearForm() {
         document.getElementById('buildingId').value = '';
         document.getElementById('currentBuildingId').textContent = '';
-        
-        // Очищаем все поля
-        ['e1min', 'e1max', 'e2min', 'e2max', 'e3min', 'e3max',
-         'a1min', 'a1max', 'a2min', 'a2max', 'a3min', 'a3max',
-         'cmin', 'cmax', 'hinmin', 'hinmax', 'houtmin', 'houtmax',
-         'tcmin', 'tcmax', 'thinmin', 'thinmax', 'thoutmin', 'thoutmax',
-         'airmin', 'airmax', 'hummin', 'hummax', 'leakp'].forEach(id => {
-          document.getElementById(id).value = '';
-        });
+
+        resetFormFields();
 
         // Скрываем форму
         document.getElementById('formCard').style.display = 'none';
@@ -335,7 +359,7 @@
           alert('Сначала укажите Building ID');
           return;
         }
-        loadConfigForBuilding(buildingId);
+        loadConfigForBuilding(buildingId, { allowCreate: true });
       });
 
       // Обработчик кнопки "Очистить форму"

@@ -662,23 +662,39 @@ class MapLayersControl {
             const coldPressure = building.cold_water_pressure ? formatMetric(building.cold_water_pressure, ' бар') : '';
             const coldTemp = building.cold_water_temp ? formatMetric(building.cold_water_temp, '°C') : '';
             const hotTemp = building.hot_water_in_temp ? formatMetric(building.hot_water_in_temp, '°C') : '';
-            const leakStatus = building.leak_sensor !== null ? (building.leak_sensor ? '⚠️ Обнаружена протечка' : '✅ Норма') : '';
-            const leakClass = building.leak_sensor ? 'alert' : 'normal';
-            const timestamp = building.timestamp ? new Date(building.timestamp).toLocaleString('ru-RU') : '';
-            
+            const timestampRaw = building.timestamp ? new Date(building.timestamp).toLocaleString('ru-RU') : '';
+            const timestamp = timestampRaw ? this.escapeHTML(timestampRaw) : '';
+
+            // Формируем компактный список значений, который затем отображаем сеткой
+            const metricParts = [];
+
+            if (ph1) metricParts.push(`⚡ Напряжение Ф1: ${ph1}`);
+            if (ph2) metricParts.push(`⚡ Напряжение Ф2: ${ph2}`);
+            if (ph3) metricParts.push(`⚡ Напряжение Ф3: ${ph3}`);
+
+            if (coldPressure || coldTemp) {
+                const coldSegments = [];
+                if (coldPressure) coldSegments.push(`Давление: ${coldPressure}`);
+                if (coldTemp) coldSegments.push(`Температура: ${coldTemp}`);
+                metricParts.push(`💧 ХВС — ${coldSegments.join(', ')}`);
+            }
+
+            if (hotTemp) {
+                metricParts.push(`🔥 ГВС: ${hotTemp}`);
+            }
+
+            if (building.leak_sensor !== null) {
+                const leakLabel = building.leak_sensor ? '⚠️ Протечка' : '✅ Норма';
+                metricParts.push(`🚨 Датчик протечки: ${leakLabel}`);
+            }
+
             metricsHTML = `
-                    <div class="building-metrics">
-                        <h5>📊 Последние метрики</h5>
-                        <div class="metrics-grid">
-                            ${ph1 ? `<div class="metric-item"><span class="metric-label">⚡ Напряжение Ф1:</span><span class="metric-value">${ph1}</span></div>` : ''}
-                            ${ph2 ? `<div class="metric-item"><span class="metric-label">⚡ Напряжение Ф2:</span><span class="metric-value">${ph2}</span></div>` : ''}
-                            ${ph3 ? `<div class="metric-item"><span class="metric-label">⚡ Напряжение Ф3:</span><span class="metric-value">${ph3}</span></div>` : ''}
-                            ${coldPressure ? `<div class="metric-item"><span class="metric-label">💧 Давление ХВ:</span><span class="metric-value">${coldPressure}</span></div>` : ''}
-                            ${coldTemp ? `<div class="metric-item"><span class="metric-label">🌡️ Температура ХВ:</span><span class="metric-value">${coldTemp}</span></div>` : ''}
-                            ${hotTemp ? `<div class="metric-item"><span class="metric-label">🔥 Температура ГВ (подача):</span><span class="metric-value">${hotTemp}</span></div>` : ''}
-                            ${building.leak_sensor !== null ? `<div class="metric-item"><span class="metric-label">🚨 Датчик протечки:</span><span class="metric-value ${leakClass}">${leakStatus}</span></div>` : ''}
+                    <div class="building-metrics building-metrics-compact">
+                        <div class="metrics-title">📊 Последние метрики</div>
+                        <div class="metrics-grid" title="Последние метрики">
+                            ${metricParts.map(part => `<span>${this.escapeHTML(part)}</span>`).join('')}
                         </div>
-                        <p class="timestamp">🕒 Обновлено: ${timestamp}</p>
+                        ${timestamp ? `<div class="metrics-timestamp">🕒 ${timestamp}</div>` : ''}
                     </div>
                 `;
         }
@@ -687,16 +703,39 @@ class MapLayersControl {
             <div class="building-popup">
                 <h4>🏢 ${buildingName}</h4>
                 <div class="building-info">
-                    <p><strong>Адрес:</strong> ${address}</p>
-                    <p><strong>Город:</strong> ${town}</p>
-                    <p><strong>Управляющая компания:</strong> ${managementCompany}</p>
-                    <p><strong>Горячая вода:</strong> ${building.hot_water ? '✅ Есть' : '❌ Нет'}</p>
+                    <div class="info-row">
+                        <span class="info-label">Адрес</span>
+                        <span class="info-value">${address || 'Не указан'}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Город</span>
+                        <span class="info-value">${town || 'Не указан'}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Управляющая компания</span>
+                        <span class="info-value">${managementCompany}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Горячая вода</span>
+                        <span class="info-value">${building.hot_water ? '✅ Есть' : '❌ Нет'}</span>
+                    </div>
                     ${hasController ? `
-                        <p><strong>Контроллер:</strong> ${controllerSerial}</p>
-                        <p><strong>Статус контроллера:</strong> 
-                            <span class="status-badge status-${controllerStatus}">${controllerStatus}</span>
-                        </p>
-                    ` : '<p><strong>Контроллер:</strong> ❌ Не подключен</p>'}
+                        <div class="info-row">
+                            <span class="info-label">Контроллер</span>
+                            <span class="info-value">${controllerSerial}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Статус контроллера</span>
+                            <span class="info-value">
+                                <span class="status-badge status-${controllerStatus}">${controllerStatus}</span>
+                            </span>
+                        </div>
+                    ` : `
+                        <div class="info-row">
+                            <span class="info-label">Контроллер</span>
+                            <span class="info-value">❌ Не подключен</span>
+                        </div>
+                    `}
                 </div>
                 ${metricsHTML}
                 <div class="building-actions">

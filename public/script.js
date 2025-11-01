@@ -2001,10 +2001,10 @@ document.addEventListener('DOMContentLoaded', async function () {
                     : 'data/images/Water_No_Blue.png';
 
                 // Determine hot water status
-                // Если здание не подключено к ГВС (hot_water === false), то это не ошибка
+                // Если здание не подключено к ГВС (hot_water === false или NULL), то это не ошибка
                 // Если подключено к ГВС (hot_water === true), то проверяем наличие и корректность данных
-                const isHotWaterOK = item.hot_water === false || 
-                                   (item.hot_water === true && 
+                const isHotWaterOK = item.hot_water !== true ||
+                                   (item.hot_water === true &&
                                     item.hot_water_in_pressure && item.hot_water_out_pressure &&
                                     item.hot_water_in_pressure >= 1 && item.hot_water_out_pressure >= 1);
                 const hotWaterImage = (item.hot_water === false) 
@@ -2034,7 +2034,9 @@ document.addEventListener('DOMContentLoaded', async function () {
                      (!item.electricity_ph2 || item.electricity_ph2 <= 0) &&
                      (!item.electricity_ph3 || item.electricity_ph3 <= 0)) || // Нет электричества
                     (!item.cold_water_pressure || item.cold_water_pressure <= 0) || // Нет холодной воды
-                    ((!item.hot_water_in_pressure || item.hot_water_in_pressure <= 0) &&
+                    // Проверяем ГВС только если здание должно иметь ГВС
+                    (item.hot_water &&
+                     (!item.hot_water_in_pressure || item.hot_water_in_pressure <= 0) &&
                      (!item.hot_water_out_pressure || item.hot_water_out_pressure <= 0)) // Нет горячей воды
                 )) {
                     status = 'critical';
@@ -2042,8 +2044,10 @@ document.addEventListener('DOMContentLoaded', async function () {
                     // Проверяем частичное нарушение работы систем
                     (item.electricity_ph1 > 0 || item.electricity_ph2 > 0 || item.electricity_ph3 > 0) && // Есть хотя бы одна фаза
                     (item.cold_water_pressure && item.cold_water_pressure > 0) && // Есть холодная вода
-                    ((item.hot_water_in_pressure && item.hot_water_in_pressure > 0) ||
-                     (item.hot_water_out_pressure && item.hot_water_out_pressure > 0)) // Есть горячая вода
+                    // ГВС: либо здание не требует ГВС, либо ГВС есть
+                    (!item.hot_water ||
+                     (item.hot_water_in_pressure && item.hot_water_in_pressure > 0) ||
+                     (item.hot_water_out_pressure && item.hot_water_out_pressure > 0))
                 )) {
                     status = 'warning';
                 } else {
@@ -2151,8 +2155,8 @@ document.addEventListener('DOMContentLoaded', async function () {
                     </tr>` : `
                     <tr>
                         <td><img src="data/images/Water_Red.png" alt="Hot_Water" style="width: 20px;" /></td>
-                        <td colspan="3" ${item.hot_water === false ? '' : 'class="blinking-text-red"'}>
-                            <strong>ГВС:</strong> ${item.hot_water === false ? 'Не подключен к ГВС' : 'Нет данных'}
+                        <td colspan="3" ${item.hot_water !== true ? '' : 'class="blinking-text-red"'}>
+                            <strong>ГВС:</strong> ${item.hot_water !== true ? 'Не подключено' : 'Нет данных'}
                         </td>
                     </tr>`}
 

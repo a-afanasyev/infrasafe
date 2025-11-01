@@ -47,6 +47,16 @@
   
   /* Spacing */
   --spacing: 0.25rem;
+
+  /* Настройки футера: используем переменные, чтобы цвета менялись вместе с темой */
+  --footer-background: linear-gradient(to right, #e6eef5, #ced9e4);
+  --footer-foreground: #0F1E25;
+  --footer-link-color: #0F1E25;
+  --footer-link-hover: #00BFA5;
+  --footer-button-background: rgba(0, 0, 0, 0.05);
+  --footer-button-foreground: #0F1E25;
+  --footer-logo-filter: none;
+  --footer-logo-filter-hover: brightness(0.85);
 }
 
 /* Темная тема */
@@ -78,6 +88,16 @@
   --sidebar-accent-foreground: #E5E7EB;
   --sidebar-border: rgba(255, 255, 255, 0.05);
   --sidebar-ring: #00BFA5;
+
+  /* Параметры футера для тёмной темы: сохраняем контраст и привычный градиент */
+  --footer-background: linear-gradient(to right, #0F1E25, #1a2a3a);
+  --footer-foreground: #FFFFFF;
+  --footer-link-color: rgba(255, 255, 255, 0.9);
+  --footer-link-hover: #3CE43C;
+  --footer-button-background: rgba(255, 255, 255, 0.1);
+  --footer-button-foreground: #FFFFFF;
+  --footer-logo-filter: brightness(0) invert(1);
+  --footer-logo-filter-hover: brightness(0) invert(0.8);
 }
 
 /* ============================================================
@@ -1010,8 +1030,9 @@ body > .push-panel-toggle {
   left: 0;
   right: 0;
   height: 60px;
-  background: linear-gradient(to right, #0F1E25, #1a2a3a);
-  color: white;
+  /* Градиент и цвет текста теперь зависят от активной темы */
+  background: var(--footer-background, linear-gradient(to right, #0F1E25, #1a2a3a));
+  color: var(--footer-foreground, #FFFFFF);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -1032,6 +1053,8 @@ body > .push-panel-toggle {
   display: flex;
   align-items: center;
   width: 33.33%;
+  /* Фиксируем цвет текста на случай, если блоки будут использоваться без вложенных элементов */
+  color: var(--footer-foreground, #FFFFFF);
 }
 
 .footer-section.left {
@@ -1067,7 +1090,8 @@ body > .push-panel-toggle {
 .footer-info {
   display: flex;
   flex-direction: column;
-  color: rgba(255, 255, 255, 0.85);
+  /* Текст внутри информационных блоков берёт цвет из переменной темы */
+  color: var(--footer-foreground, #FFFFFF);
   font-size: 0.8125rem;
   font-weight: 400;
   line-height: 1.6;
@@ -1088,19 +1112,21 @@ body > .push-panel-toggle {
 }
 
 .footer-info a {
-  color: rgba(255, 255, 255, 0.9);
+  /* Ссылки получают свой цвет из переменной, чтобы не теряться на светлой теме */
+  color: var(--footer-link-color, #FFFFFF);
   text-decoration: none;
   transition: color 0.3s, text-decoration 0.3s;
 }
 
 .footer-info a:hover {
-  color: #3CE43C;
+  color: var(--footer-link-hover, #3CE43C);
   text-decoration: underline;
 }
 
 .footer-feedback-btn {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: white;
+  /* Цвета кнопки также завязываем на переменные, чтобы при смене темы она не "растворялась" */
+  background-color: var(--footer-button-background, rgba(255, 255, 255, 0.1));
+  color: var(--footer-button-foreground, #FFFFFF);
   border: none;
   padding: 8px 20px;
   border-radius: 25px;
@@ -1116,7 +1142,7 @@ body > .push-panel-toggle {
 }
 
 .footer-feedback-btn:hover {
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: var(--footer-button-background, rgba(255, 255, 255, 0.2));
   transform: translateY(-2px);
 }
 
@@ -1131,20 +1157,26 @@ body > .push-panel-toggle {
   width: auto;
   object-fit: contain;
   transition: transform 0.3s ease;
-  filter: brightness(0) invert(1); /* Делаем логотип белым */
+  /* Фильтр вынесен в переменную, чтобы логотип выглядел корректно на обеих темах */
+  filter: var(--footer-logo-filter, brightness(0) invert(1));
 }
 
 #serendipity-logo:hover {
   transform: scale(1.05);
-  filter: brightness(0) invert(0.8); /* При наведении делаем чуть прозрачнее */
+  filter: var(--footer-logo-filter-hover, brightness(0) invert(0.8)); /* При наведении используем тему-ориентированный фильтр */
 }
 
 .serendipity-link {
   display: flex;
   align-items: center;
   text-decoration: none;
-  color: white;
+  color: var(--footer-link-color, #FFFFFF);
   transition: all 0.3s ease;
+}
+
+.serendipity-link:hover {
+  /* Подсвечиваем ссылку при наведении, используя единый цвет для всех элементов */
+  color: var(--footer-link-hover, #3CE43C);
 }
 
 .serendipity-text {
@@ -1157,6 +1189,7 @@ body > .push-panel-toggle {
 }
 
 .serendipity-link:hover .serendipity-text {
+  color: inherit;
   opacity: 0.8;
 }
 

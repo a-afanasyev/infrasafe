@@ -1,4 +1,4 @@
-import schedule from 'node-schedule';
+import cron from 'node-cron';
 import { getAllRanges } from './store.js';
 import { postMetric, getBuildingsWithControllers } from './apiClient.js';
 
@@ -60,8 +60,8 @@ export async function runOnce() {
 }
 
 export function startScheduler() {
-  const cron = process.env.GENERATOR_CRON || '*/2 * * * *';
-  schedule.scheduleJob(cron, async () => {
+  const cronExpression = process.env.GENERATOR_CRON || '*/2 * * * *';
+  cron.schedule(cronExpression, async () => {
     try {
       await runOnce();
     } catch {
