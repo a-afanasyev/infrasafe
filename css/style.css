@@ -1896,3 +1896,237 @@ body.content-page .content > ol:last-child {
   color: #585858 !important;
 }
 
+
+/* ============================================================
+   ИНДИКАТОРЫ МОЩНОСТИ И ЗАГРУЗКИ
+   ============================================================ */
+
+/**
+ * Строка с данными по одной фазе
+ * Содержит: label, визуальный индикатор-полоску, числовое значение
+ */
+.power-phase-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+  font-size: 13px;
+}
+
+.phase-label {
+  min-width: 60px;
+  font-weight: 500;
+  color: #666;
+}
+
+/**
+ * Контейнер для визуального индикатора мощности (полоска)
+ */
+.power-indicator-bar {
+  flex: 1;
+  height: 18px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 9px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/**
+ * Заполнение индикатора (показывает процент загрузки)
+ */
+.power-fill {
+  height: 100%;
+  border-radius: 8px;
+  transition: width 0.3s ease;
+  position: relative;
+}
+
+/**
+ * Числовое значение мощности
+ */
+.phase-value {
+  min-width: 65px;
+  text-align: right;
+  font-weight: 600;
+  color: #333;
+}
+
+/**
+ * Общая мощность (выделена)
+ */
+.total-power-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  font-weight: 600;
+}
+
+.total-power-row .phase-value {
+  font-size: 15px;
+  color: #1A1D2B;
+}
+
+/* ============================================================
+   МАРКЕРЫ ТРАНСФОРМАТОРОВ С ПРОГРЕСС-БАРОМ
+   ============================================================ */
+
+/**
+ * Контейнер для маркера трансформатора с прогресс-баром
+ */
+.transformer-marker-container {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/**
+ * SVG прогресс-бар вокруг маркера
+ */
+.transformer-progress-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.transformer-progress-ring circle {
+  fill: none;
+  stroke-width: 3;
+}
+
+.transformer-progress-ring .ring-background {
+  stroke: rgba(0, 0, 0, 0.1);
+}
+
+.transformer-progress-ring .ring-progress {
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.5s ease, stroke 0.3s ease;
+}
+
+/**
+ * Иконка трансформатора в центре
+ */
+.transformer-icon {
+  position: relative;
+  z-index: 2;
+  width: 24px;
+  height: 24px;
+  background: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/**
+ * Анимация мигания для перегруженных трансформаторов (>90%)
+ */
+@keyframes transformer-overload-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+    transform: scale(1.1);
+  }
+}
+
+.transformer-overload-marker {
+  animation: transformer-overload-pulse 1.5s ease-in-out infinite;
+}
+
+.transformer-overload-marker .transformer-icon {
+  background: #FEE;
+  border: 2px solid #EF4444;
+}
+
+/**
+ * Предупреждение о перегрузке в popup
+ */
+.overload-warning {
+  background: linear-gradient(135deg, #FEE 0%, #FDD 100%);
+  border-left: 4px solid #EF4444;
+  padding: 12px;
+  margin: 10px 0;
+  border-radius: 6px;
+  font-weight: 600;
+  color: #C00;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.overload-warning::before {
+  content: '⚠️';
+  font-size: 20px;
+}
+
+/**
+ * Секция мощности в popup
+ */
+.power-section {
+  margin: 12px 0;
+  padding: 10px;
+  background: rgba(0, 191, 165, 0.05);
+  border-radius: 6px;
+  border: 1px solid rgba(0, 191, 165, 0.2);
+}
+
+.power-section-title {
+  font-weight: 600;
+  color: #00BFA5;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+/**
+ * Компактная строка с общим потреблением
+ */
+.power-summary {
+  font-size: 13px;
+  color: #666;
+  margin-top: 4px;
+}
+
+.power-summary strong {
+  color: #1A1D2B;
+  font-size: 14px;
+}
+
+/* Темная тема */
+.dark .phase-label {
+  color: #9CA3AF;
+}
+
+.dark .phase-value,
+.dark .total-power-row .phase-value {
+  color: #E5E7EB;
+}
+
+.dark .power-indicator-bar {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark .power-section {
+  background: rgba(0, 191, 165, 0.1);
+  border-color: rgba(0, 191, 165, 0.3);
+}
+
+.dark .power-summary {
+  color: #9CA3AF;
+}
+
+.dark .power-summary strong {
+  color: #E5E7EB;
+}
+

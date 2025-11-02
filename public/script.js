@@ -2132,6 +2132,20 @@ document.addEventListener('DOMContentLoaded', async function () {
                         <td ${ph2Class}>${ph2Value}</td>
                         <td ${ph3Class}>${ph3Value}</td>
                     </tr>
+                    
+                    <!-- Power Data - будет загружено динамически -->
+                    <tr id="power-row-${item.building_id}" style="display: none;">
+                        <td style="font-size: 10px; color: #666;">💡</td>
+                        <td id="power-ph1-${item.building_id}" style="font-size: 11px; font-weight: 600; color: #2d3748;"></td>
+                        <td id="power-ph2-${item.building_id}" style="font-size: 11px; font-weight: 600; color: #2d3748;"></td>
+                        <td id="power-ph3-${item.building_id}" style="font-size: 11px; font-weight: 600; color: #2d3748;"></td>
+                    </tr>
+                    
+                    <!-- Total Power - будет загружено динамически -->
+                    <tr id="total-power-row-${item.building_id}" style="display: none;">
+                        <td style="font-size: 10px; color: #666;">Σ</td>
+                        <td colspan="3" id="total-power-${item.building_id}" style="font-size: 11px; font-weight: 700; color: #1a5490;"></td>
+                    </tr>
 
                     <!-- Cold Water Data -->
                     <tr>
@@ -2183,6 +2197,44 @@ document.addEventListener('DOMContentLoaded', async function () {
 
                 // Сохраняем содержимое попапа глобально для этого маркера (уже санитизированное)
                 marker._popupContent = popupContent;
+                
+                // При открытии popup загружаем данные мощности
+                marker.on('popupopen', async () => {
+                    try {
+                        const powerResponse = await fetch(`http://localhost:3000/api/power-analytics/buildings/${item.building_id}`);
+                        if (powerResponse.ok) {
+                            const powerData = await powerResponse.json();
+                            
+                            if (powerData.success && powerData.data) {
+                                const data = powerData.data;
+                                
+                                // Обновляем ячейки с мощностью по фазам
+                                const powerPh1 = document.getElementById(`power-ph1-${item.building_id}`);
+                                const powerPh2 = document.getElementById(`power-ph2-${item.building_id}`);
+                                const powerPh3 = document.getElementById(`power-ph3-${item.building_id}`);
+                                const powerRow = document.getElementById(`power-row-${item.building_id}`);
+                                
+                                if (powerPh1 && powerPh2 && powerPh3 && powerRow) {
+                                    powerPh1.textContent = `${data.power_ph1_kw} кВт`;
+                                    powerPh2.textContent = `${data.power_ph2_kw} кВт`;
+                                    powerPh3.textContent = `${data.power_ph3_kw} кВт`;
+                                    powerRow.style.display = '';
+                                }
+                                
+                                // Обновляем общую мощность
+                                const totalPower = document.getElementById(`total-power-${item.building_id}`);
+                                const totalPowerRow = document.getElementById(`total-power-row-${item.building_id}`);
+                                
+                                if (totalPower && totalPowerRow) {
+                                    totalPower.innerHTML = `<strong>Общая мощность:</strong> ${data.total_power_kw} кВт`;
+                                    totalPowerRow.style.display = '';
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        console.warn('Не удалось загрузить данные мощности для здания:', error);
+                    }
+                });
 
                 // Update the sidebar with building information
                 const sidebarGroup = document.querySelector(`#${status}-group .status-items`);

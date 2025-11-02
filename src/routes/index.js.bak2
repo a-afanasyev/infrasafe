@@ -162,7 +162,6 @@ router.use('/buildings-metrics', buildingMetricsRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/alerts', alertRoutes);
 router.use('/admin', adminRoutes);
-router.use('/power-analytics', powerAnalyticsRoutes);
 
 // Обработка 404 для API
 router.use((req, res, next) => {

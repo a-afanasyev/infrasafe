@@ -230,7 +230,6 @@
     <script src="public/utils/rateLimiter.js"></script>
     <script src="public/utils/safeJsonParser.js"></script>
     <script src="public/utils/csrf.js"></script>
-    <script src="public/utils/powerUtils.js"></script>
     
     <script src="public/libs/leaflet-markercluster/leaflet.markercluster.js"></script>
     <script src="public/map-layers-control.js"></script>

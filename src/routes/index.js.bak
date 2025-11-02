@@ -13,7 +13,6 @@ const waterSourceRoutes = require('./waterSourceRoutes');
 const heatSourceRoutes = require('./heatSourceRoutes');
 const waterLineRoutes = require('./waterLineRoutes');
 const waterSupplierRoutes = require('./waterSupplierRoutes');
-const powerAnalyticsRoutes = require('./powerAnalyticsRoutes');
 const metricController = require('../controllers/metricController');
 const { authenticateJWT } = require('../middleware/auth');
 const { createError } = require('../utils/helpers');
@@ -162,7 +161,6 @@ router.use('/buildings-metrics', buildingMetricsRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/alerts', alertRoutes);
 router.use('/admin', adminRoutes);
-router.use('/power-analytics', powerAnalyticsRoutes);
 
 // Обработка 404 для API
 router.use((req, res, next) => {
