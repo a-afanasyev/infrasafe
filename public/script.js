@@ -686,6 +686,54 @@ document.addEventListener('DOMContentLoaded', async function () {
                             img.style.objectFit = 'contain';
                         });
                         
+                        // Добавляем обработчик клика для центрирования карты и открытия popup
+                        clone.addEventListener('click', function() {
+                            const buildingId = parseInt(this.dataset.buildingId);
+                            const lat = parseFloat(this.dataset.latitude);
+                            const lng = parseFloat(this.dataset.longitude);
+                            
+                            if (lat && lng) {
+                                // Находим маркер здания в кластере
+                                let targetMarker = null;
+                                markers.eachLayer(marker => {
+                                    if (marker.building_id === buildingId) {
+                                        targetMarker = marker;
+                                    }
+                                });
+                                
+                                if (targetMarker) {
+                                    // Используем popup маркера напрямую
+                                    map.flyTo([lat, lng], 16, {
+                                        duration: 0.5
+                                    });
+                                    
+                                    // Открываем popup маркера
+                                    setTimeout(() => {
+                                        targetMarker.openPopup();
+                                        markers.unspiderfy();
+                                    }, 300);
+                                } else {
+                                    // Если маркер не найден, используем сохраненный popup контент
+                                    const savedPopupContent = buildingPopupStorage.get(buildingId);
+                                    
+                                    map.flyTo([lat, lng], 16, {
+                                        duration: 0.5
+                                    });
+                                    
+                                    // Создаем popup с полным контентом
+                                    if (savedPopupContent) {
+                                        L.popup()
+                                            .setLatLng([lat, lng])
+                                            .setContent(savedPopupContent)
+                                            .openOn(map);
+                                    }
+                                }
+                            }
+                        });
+                        
+                        // Добавляем стиль курсора для визуальной обратной связи
+                        clone.style.cursor = 'pointer';
+                        
                         industrialGroup.appendChild(clone);
                     });
                     
@@ -1892,11 +1940,16 @@ document.addEventListener('DOMContentLoaded', async function () {
     // Обновляем время каждую минуту
     setInterval(updateLastUpdateTime, 60000);
 
+    // Глобальное хранилище для popup контента зданий (для клика из списка статусов)
+    const buildingPopupStorage = new Map();
+
     // Функция загрузки данных с сервера
     async function loadData() {
         try {
             // Очищаем старые маркеры и боковую панель
             markers.clearLayers();
+            // Очищаем хранилище popup контента
+            buildingPopupStorage.clear();
             // ИСПРАВЛЕНИЕ XSS: Используем textContent вместо innerHTML для очистки
             document.querySelectorAll('#ok-group .status-items, #warning-group .status-items, #critical-group .status-items, #no-group .status-items, #leak-group .status-items').forEach(group => {
                 group.textContent = '';
@@ -2198,6 +2251,9 @@ document.addEventListener('DOMContentLoaded', async function () {
                 // Сохраняем содержимое попапа глобально для этого маркера (уже санитизированное)
                 marker._popupContent = popupContent;
                 
+                // Сохраняем popup контент в глобальное хранилище для использования при клике из списка
+                buildingPopupStorage.set(item.building_id, popupContent);
+                
                 // При открытии popup загружаем данные мощности
                 marker.on('popupopen', async () => {
                     try {
@@ -2241,6 +2297,13 @@ document.addEventListener('DOMContentLoaded', async function () {
                 if (sidebarGroup) {
                     const sidebarItem = document.createElement("div");
                     sidebarItem.classList.add("sidebar-item");
+                    
+                    // Сохраняем данные здания в data-атрибутах для обработчика клика
+                    sidebarItem.dataset.buildingId = item.building_id;
+                    sidebarItem.dataset.latitude = item.latitude;
+                    sidebarItem.dataset.longitude = item.longitude;
+                    sidebarItem.dataset.buildingName = item.building_name || '';
+                    
                     // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
                     if (item.controller_id) {
                         // Создаем элементы безопасным способом

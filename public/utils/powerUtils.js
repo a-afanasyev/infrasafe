@@ -105,7 +105,7 @@ function createPowerSection(powerData, options = {}) {
     } = options;
     
     if (!powerData) {
-        return '<p style="color: #999;">Нет данных о мощности</p>';
+        return '<p style="color: #718096;">Нет данных о мощности</p>';
     }
     
     const ph1 = parseFloat(powerData.power_ph1_kw) || 0;
@@ -117,7 +117,7 @@ function createPowerSection(powerData, options = {}) {
     const maxPowerPerPhase = capacityKva ? capacityKva / 3 : Math.max(ph1, ph2, ph3) * 1.5;
     
     let html = `<div class="power-section">`;
-    html += `<div class="power-section-title">💡 ${title}</div>`;
+    html += `<div class="power-section-title" style="color: #2d3748;">💡 ${title}</div>`;
     
     if (showPhaseDetails) {
         html += createPhaseIndicator('Фаза 1', ph1, (ph1 / maxPowerPerPhase) * 100);
@@ -131,7 +131,7 @@ function createPowerSection(powerData, options = {}) {
             : `${total.toFixed(2)} кВт`;
         
         html += `
-            <div class="power-summary">
+            <div class="power-summary" style="color: #2d3748;">
                 ${showPhaseDetails ? 'По фазам: ' + summaryText + ' | ' : ''}
                 <strong>Всего: ${total.toFixed(2)} кВт</strong>
             </div>
@@ -153,7 +153,7 @@ function createOverloadWarning(loadPercent, objectName) {
     if (loadPercent < 90) return '';
     
     return `
-        <div class="overload-warning">
+        <div class="overload-warning" style="color: #c53030; background-color: #fff5f5; padding: 8px; border-radius: 4px; border-left: 4px solid #fc8181;">
             <strong>ПЕРЕГРУЗКА!</strong> ${objectName} загружен на ${loadPercent.toFixed(1)}%
         </div>
     `;
@@ -178,7 +178,7 @@ function formatTransformerLoadInfo(transformer, powerData) {
     
     // Общая информация о загрузке
     html += `
-        <p style="margin: 8px 0;">
+        <p style="margin: 8px 0; color: #2d3748;">
             <strong>Загрузка:</strong> 
             ${totalPower.toFixed(2)} кВт / ${capacity.toFixed(0)} кВА 
             (<strong style="color: ${getLoadColor(loadPercent)};">${loadPercent.toFixed(1)}%</strong>)
@@ -195,7 +195,7 @@ function formatTransformerLoadInfo(transformer, powerData) {
     
     // Статистика
     html += `
-        <p style="margin: 8px 0; font-size: 12px; color: #666;">
+        <p style="margin: 8px 0; font-size: 12px; color: #4a5568;">
             Зданий: ${powerData.buildings_count || 0} | 
             Линий: ${powerData.lines_count || 0} | 
             Контроллеров: ${powerData.active_controllers_count || 0}/${powerData.controllers_count || 0}

@@ -1896,6 +1896,26 @@ body.content-page .content > ol:last-child {
   color: #585858 !important;
 }
 
+/* Фиксированные цвета для popup трансформаторов и линий */
+.leaflet-popup-content h4 {
+  color: #1a202c !important;
+}
+
+.leaflet-popup-content p {
+  color: #2d3748 !important;
+}
+
+.leaflet-popup-content .power-section-title,
+.leaflet-popup-content .phase-label,
+.leaflet-popup-content .phase-value,
+.leaflet-popup-content .power-summary {
+  color: #2d3748 !important;
+}
+
+.leaflet-popup-content .overload-warning {
+  color: #c53030 !important;
+}
+
 
 /* ============================================================
    ИНДИКАТОРЫ МОЩНОСТИ И ЗАГРУЗКИ
