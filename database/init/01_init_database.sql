@@ -1,7 +1,12 @@
 -- ===============================================
 -- Инициализация базы данных InfraSafe с PostGIS
--- Версия: 2.0 (обновлено 24 октября 2025)
--- Описание: Полная схема БД с учетом всех миграций
+-- Версия: 2.1 (обновлено 2 ноября 2025)
+-- Описание: Полная схема БД с учетом всех миграций (004, 005)
+-- Изменения:
+--   - Добавлены координаты для transformers (миграция 004)
+--   - Добавлены main_path и branches для lines (миграция 005)
+--   - Добавлены main_path и branches для water_lines (2025-11-02)
+--   - Добавлен триггер для transformers.geom (2025-11-02)
 -- ===============================================
 
 -- Включение расширения PostGIS для работы с географическими данными
@@ -499,6 +504,38 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Функция для обновления geom трансформаторов (специфичная)
+CREATE OR REPLACE FUNCTION update_transformers_geom()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.latitude IS NOT NULL AND NEW.longitude IS NOT NULL THEN
+        NEW.geom = ST_SetSRID(ST_MakePoint(NEW.longitude, NEW.latitude), 4326);
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Функция для обновления geom линий водоснабжения из координат начала/конца
+CREATE OR REPLACE FUNCTION update_water_lines_geom_from_coordinates()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.latitude_start IS NOT NULL AND NEW.longitude_start IS NOT NULL AND
+       NEW.latitude_end IS NOT NULL AND NEW.longitude_end IS NOT NULL THEN
+        
+        NEW.geom = ST_SetSRID(
+            ST_MakeLine(
+                ST_MakePoint(NEW.longitude_start, NEW.latitude_start),
+                ST_MakePoint(NEW.longitude_end, NEW.latitude_end)
+            ),
+            4326
+        );
+    END IF;
+    
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 -- ===============================================
 -- ТРИГГЕРЫ
 -- ===============================================
@@ -510,7 +547,9 @@ CREATE TRIGGER IF NOT EXISTS trig_buildings_geom
 
 CREATE TRIGGER IF NOT EXISTS trig_transformers_geom
     BEFORE INSERT OR UPDATE OF latitude, longitude ON transformers
-    FOR EACH ROW EXECUTE FUNCTION update_geom_on_coordinates_change();
+    FOR EACH ROW
+    WHEN (NEW.latitude IS NOT NULL AND NEW.longitude IS NOT NULL)
+    EXECUTE FUNCTION update_transformers_geom();
 
 CREATE TRIGGER IF NOT EXISTS trig_power_transformers_geom
     BEFORE INSERT OR UPDATE OF latitude, longitude ON power_transformers
@@ -556,6 +595,12 @@ CREATE TRIGGER IF NOT EXISTS trig_lines_update_geom
 BEFORE INSERT OR UPDATE ON lines
 FOR EACH ROW
 EXECUTE FUNCTION update_line_geom_from_path();
+
+-- Триггер для обновления geom линий водоснабжения из координат
+CREATE TRIGGER IF NOT EXISTS trig_water_lines_geom_from_coordinates
+BEFORE INSERT OR UPDATE OF latitude_start, longitude_start, latitude_end, longitude_end ON water_lines
+FOR EACH ROW
+EXECUTE FUNCTION update_water_lines_geom_from_coordinates();
 
 -- ===============================================
 -- ВНЕШНИЕ КЛЮЧИ
