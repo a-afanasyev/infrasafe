@@ -961,6 +961,120 @@ body > .push-panel-toggle {
 }
 
 /* ============================================================
+   БАННЕР ТЕСТОВЫХ ДАННЫХ
+   ============================================================ */
+
+.test-data-banner {
+  position: fixed;
+  top: 4rem;
+  left: 0;
+  right: 0;
+  z-index: 950;
+  background: linear-gradient(135deg, #F59E0B 0%, #EF4444 100%);
+  color: #ffffff;
+  padding: 0.5rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  animation: slideDown 0.3s ease-out;
+  transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+}
+
+.test-data-banner.hidden {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.test-data-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 1400px;
+  justify-content: center;
+  position: relative;
+}
+
+.test-data-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.test-data-text {
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.test-data-close {
+  position: absolute;
+  right: 0;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  color: #ffffff;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.test-data-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.test-data-close svg {
+  width: 14px;
+  height: 14px;
+}
+
+.test-data-close:focus {
+  outline: 2px solid rgba(255, 255, 255, 0.5);
+  outline-offset: 2px;
+}
+
+/* Анимация появления баннера */
+@keyframes slideDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Анимация пульсации иконки */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Адаптация для темной темы */
+.dark .test-data-banner {
+  background: linear-gradient(135deg, #F59E0B 0%, #EF4444 100%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Позиционирование элементов обновляется через JavaScript */
+
+/* ============================================================
    КОНТЕНТ И КАРТА
    ============================================================ */
 
@@ -973,6 +1087,7 @@ body > .push-panel-toggle {
   background-color: var(--background);
   z-index: 900;
   border-bottom: 1px solid var(--border);
+  transition: top 0.3s ease-out;
 }
 
 .main-heading .subtitle {

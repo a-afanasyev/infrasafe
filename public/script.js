@@ -51,9 +51,128 @@ function initThemeToggle() {
     }
 }
 
+// ============================================================
+// УПРАВЛЕНИЕ БАННЕРОМ ТЕСТОВЫХ ДАННЫХ
+// ============================================================
+
+/**
+ * Функция для инициализации баннера с тестовыми данными
+ * Позволяет пользователю скрыть баннер, состояние сохраняется в localStorage
+ */
+function initTestDataBanner() {
+    const banner = document.getElementById('test-data-banner');
+    const closeButton = document.getElementById('test-data-close');
+    
+    if (!banner || !closeButton) {
+        console.warn('⚠️ Баннер или кнопка закрытия не найдены');
+        return; // Баннер не найден, выходим
+    }
+    
+    // Проверяем, было ли баннер скрыт ранее
+    const isHidden = localStorage.getItem('testDataBannerHidden') === 'true';
+    
+    if (isHidden) {
+        // Если баннер был скрыт, скрываем его сразу
+        banner.classList.add('hidden');
+        // Обновляем позиционирование других элементов
+        updateLayoutForBanner(false);
+    } else {
+        // Если баннер виден, обновляем позиционирование
+        updateLayoutForBanner(true);
+    }
+    
+    // Удаляем старые обработчики если есть (чтобы избежать дублирования)
+    const newCloseButton = closeButton.cloneNode(true);
+    closeButton.parentNode.replaceChild(newCloseButton, closeButton);
+    
+    // Обработчик клика на кнопку закрытия
+    newCloseButton.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const bannerEl = document.getElementById('test-data-banner');
+        if (bannerEl) {
+            // Скрываем баннер с анимацией
+            bannerEl.classList.add('hidden');
+            // Сохраняем состояние в localStorage
+            localStorage.setItem('testDataBannerHidden', 'true');
+            // Обновляем позиционирование других элементов
+            updateLayoutForBanner(false);
+            console.log('🔔 Баннер "Тестовые данные" скрыт');
+        }
+    });
+    
+    console.log('✅ Баннер тестовых данных инициализирован');
+}
+
+/**
+ * Функция для обновления позиционирования элементов при показе/скрытии баннера
+ * @param {boolean} bannerVisible - Виден ли баннер
+ */
+function updateLayoutForBanner(bannerVisible) {
+    const mainHeading = document.querySelector('.main-heading');
+    const content = document.querySelector('.content');
+    const banner = document.getElementById('test-data-banner');
+    
+    // Вычисляем реальную высоту баннера в rem
+    let bannerHeight = 0;
+    if (bannerVisible && banner) {
+        // Получаем высоту баннера в пикселях
+        const bannerHeightPx = banner.offsetHeight;
+        // Конвертируем в rem (1rem = 14px по умолчанию)
+        const remSize = parseFloat(getComputedStyle(document.documentElement).fontSize);
+        bannerHeight = bannerHeightPx / remSize;
+    }
+    
+    // Используем requestAnimationFrame для плавного обновления
+    requestAnimationFrame(() => {
+        if (mainHeading) {
+            // Обновляем позицию main-heading: header (4rem) + баннер
+            mainHeading.style.top = `${4 + bannerHeight}rem`;
+        }
+        
+        if (content) {
+            // Обновляем позицию content: header (4rem) + баннер + main-heading (3rem)
+            // Высота main-heading примерно 3rem (0.75rem padding * 2 + высота текста)
+            content.style.top = `${4 + bannerHeight + 3}rem`;
+        }
+    });
+}
+
 // Инициализируем переключение темы при загрузке DOM
 document.addEventListener('DOMContentLoaded', function() {
     initThemeToggle();
+    // Инициализируем баннер с небольшой задержкой, чтобы убедиться, что все элементы загружены
+    setTimeout(function() {
+        initTestDataBanner();
+    }, 100);
+});
+
+// Также пытаемся инициализировать баннер при полной загрузке страницы
+window.addEventListener('load', function() {
+    // Проверяем, был ли баннер уже инициализирован
+    const closeButton = document.getElementById('test-data-close');
+    if (closeButton && !closeButton.hasAttribute('data-initialized')) {
+        closeButton.setAttribute('data-initialized', 'true');
+        initTestDataBanner();
+    }
+});
+
+// Используем делегирование событий как резервный вариант
+// Это гарантирует, что обработчик будет работать даже если функция не вызвалась
+document.addEventListener('click', function(e) {
+    // Проверяем, был ли клик по кнопке закрытия баннера
+    if (e.target && (e.target.id === 'test-data-close' || e.target.closest('#test-data-close'))) {
+        const banner = document.getElementById('test-data-banner');
+        if (banner && !banner.classList.contains('hidden')) {
+            e.preventDefault();
+            e.stopPropagation();
+            banner.classList.add('hidden');
+            localStorage.setItem('testDataBannerHidden', 'true');
+            updateLayoutForBanner(false);
+            console.log('🔔 Баннер "Тестовые данные" скрыт (через делегирование)');
+        }
+    }
 });
 
 document.addEventListener('DOMContentLoaded', async function () {

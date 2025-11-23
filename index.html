@@ -26,7 +26,7 @@
 
     <!-- Стили -->
     <!-- Добавляем версию в ссылке на CSS, чтобы браузер подтянул обновлённые стили без кеша -->
-    <link rel="stylesheet" href="css/style.css?v=20251101">
+    <link rel="stylesheet" href="css/style.css?v=20251124">
     <link rel="stylesheet" href="public/css/map-layers.css">
     <link rel="stylesheet" href="public/libs/leaflet/leaflet.css" />
     <link rel="stylesheet" href="public/libs/leaflet/leaflet-fixes.css" />
@@ -87,6 +87,22 @@
             </button>
         </div>
     </div>
+    <!-- Баннер с предупреждением о тестовых данных -->
+    <div id="test-data-banner" class="test-data-banner">
+        <div class="test-data-banner-content">
+            <svg class="test-data-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            </svg>
+            <span class="test-data-text">ТЕСТОВЫЕ ДАННЫЕ</span>
+            <button class="test-data-close" id="test-data-close" aria-label="Скрыть баннер" title="Скрыть баннер">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        </div>
+    </div>
+
     <div class="main-heading">
         <p class="subtitle">Мониторинг состояния объектов инфраструктуры в режиме реального времени</p>
     </div>
