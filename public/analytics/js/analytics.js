@@ -10,9 +10,8 @@ let charts = {};
 let metricsData = [];
 
 // API базовый URL (настройте под ваш backend)
-const API_BASE = window.location.origin.includes('localhost:8080') 
-    ? 'http://localhost:3000/api' 
-    : '/api';
+// В production используем относительные пути через Nginx прокси
+const API_BASE = window.BACKEND_URL || '/api';
 
 /**
  * Инициализация при загрузке страницы

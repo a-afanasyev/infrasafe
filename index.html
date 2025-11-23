@@ -15,7 +15,7 @@
         style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
         font-src 'self' https://fonts.gstatic.com;
         img-src 'self' data: https:;
-        connect-src 'self' http://localhost:3000 https://*;
+        connect-src 'self' https://*;
         frame-ancestors 'none';
         base-uri 'self';
         form-action 'self';
@@ -38,8 +38,9 @@
     
     <!-- Настройка базового URL для API (если нужно) -->
     <script>
-        // Настройка базового URL для API - backend работает на порту 3000
-        window.BACKEND_URL = "http://localhost:3000/api";
+        // Настройка базового URL для API - в production используем относительный путь через Nginx прокси
+        // Nginx проксирует /api/ к app:3000 через Docker сеть
+        window.BACKEND_URL = "/api";
         
         // Логирование для отладки
         window.addEventListener('error', function(e) {

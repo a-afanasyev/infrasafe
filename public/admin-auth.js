@@ -99,10 +99,9 @@ class AdminAuth {
             }
             
             // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Добавляем авторизацию только для API запросов
+            // В production используем относительные пути через Nginx прокси
             const isApiRequest = url.startsWith('/api/') || 
-                               url.includes('/api/') ||
-                               url.startsWith('http://localhost:3000/api/') ||
-                               url.startsWith('http://localhost:8080/api/');
+                               url.includes('/api/');
             
             if (self.token && isApiRequest) {
                 options.headers['Authorization'] = `Bearer ${self.token}`;
