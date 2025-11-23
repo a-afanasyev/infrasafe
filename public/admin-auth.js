@@ -115,12 +115,9 @@ class AdminAuth {
                 options.headers = { ...options.headers, ...updatedOptions.headers };
             }
             
-            // Перенаправляем запросы с 8080 на 3000 для API
-            if (url.startsWith('http://localhost:8080/api/')) {
-                url = url.replace('http://localhost:8080/api/', 'http://localhost:3000/api/');
-            } else if (url.startsWith('/api/')) {
-                url = 'http://localhost:3000' + url;
-            }
+            // В production используем относительные пути через Nginx прокси
+            // Не перенаправляем на localhost, используем относительные пути
+            // Nginx проксирует /api/ к app:3000 через Docker сеть
             
             // Выполняем запрос используя оригинальный fetch
             return originalFetch.call(this, url, options).then(response => {

@@ -2257,7 +2257,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 // При открытии popup загружаем данные мощности
                 marker.on('popupopen', async () => {
                     try {
-                        const powerResponse = await fetch(`http://localhost:3000/api/power-analytics/buildings/${item.building_id}`);
+                        const powerResponse = await fetch(`/api/power-analytics/buildings/${item.building_id}`);
                         if (powerResponse.ok) {
                             const powerData = await powerResponse.json();
                             
