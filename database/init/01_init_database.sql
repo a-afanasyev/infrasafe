@@ -1,12 +1,18 @@
 -- ===============================================
 -- Инициализация базы данных InfraSafe с PostGIS
--- Версия: 2.1 (обновлено 2 ноября 2025)
--- Описание: Полная схема БД с учетом всех миграций (004, 005)
--- Изменения:
---   - Добавлены координаты для transformers (миграция 004)
---   - Добавлены main_path и branches для lines (миграция 005)
---   - Добавлены main_path и branches для water_lines (2025-11-02)
---   - Добавлен триггер для transformers.geom (2025-11-02)
+-- Версия: 2.4 (обновлено 23 ноября 2025)
+-- Описание: Полная схема БД синхронизированная с реальной базой данных
+-- Изменения версии 2.3:
+--   - Исправлена структура water_lines (pressure_bar вместо pressure_rating, удалены line_type, maintenance_contact, notes)
+--   - Удалены функции расчёта мощности (calculate_phase_power, calculate_three_phase_power) - отсутствуют в реальной БД
+--   - Удалены материализованные представления mv_building_power_realtime и mv_line_power_realtime - отсутствуют в реальной БД
+--   - Обновлено mv_transformer_load_realtime согласно реальной структуре БД
+--   - Добавлена таблица alerts (legacy система алертов)
+--   - Добавлена таблица analytics_history (партиционированная таблица для истории аналитики)
+--   - Исправлена функция refresh_transformer_analytics (убрана зависимость от несуществующих MV)
+--   - Удалён индекс idx_water_lines_type (поле line_type отсутствует в БД)
+-- Изменения версии 2.4:
+--   - Добавлена функция archive_daily_analytics() для архивирования ежедневной аналитики
 -- ===============================================
 
 -- Включение расширения PostGIS для работы с географическими данными
@@ -49,6 +55,16 @@ CREATE TABLE IF NOT EXISTS token_blacklist (
     expires_at timestamptz NOT NULL,
     blacklisted_at timestamptz DEFAULT NOW()
 );
+
+-- ===============================================
+-- ПРИМЕЧАНИЕ: Таблица infrastructure_lines
+-- ===============================================
+-- Таблица infrastructure_lines была удалена миграцией 006 (2025-10-22)
+-- и заменена на:
+--   - lines (линии электропередач)
+--   - water_lines (линии водоснабжения)
+-- Функционал разделён между этими двумя таблицами
+-- ===============================================
 
 -- ===============================================
 -- ОСНОВНЫЕ ТАБЛИЦЫ ИНФРАСТРУКТУРЫ
@@ -138,14 +154,11 @@ CREATE TABLE IF NOT EXISTS water_lines (
     line_id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     description TEXT,
-    line_type VARCHAR(20) DEFAULT 'ХВС', -- Добавлено в миграции 006
     diameter_mm INTEGER CHECK (diameter_mm > 0),
     material VARCHAR(100),
-    pressure_rating DECIMAL(5,2) CHECK (pressure_rating > 0), -- Переименовано из pressure_bar
+    pressure_bar NUMERIC(5,2) CHECK (pressure_bar > 0),
     installation_date DATE,
     status VARCHAR(20) DEFAULT 'active',
-    maintenance_contact VARCHAR(100),
-    notes TEXT,
     -- Координаты (для обратной совместимости)
     latitude_start NUMERIC(9,6),
     longitude_start NUMERIC(9,6),
@@ -324,6 +337,50 @@ CREATE TABLE IF NOT EXISTS infrastructure_alerts (
     resolved_by integer REFERENCES users(user_id)
 );
 
+-- Таблица алертов (legacy система, для обратной совместимости)
+CREATE TABLE IF NOT EXISTS alerts (
+    alert_id serial PRIMARY KEY,
+    metric_id bigint,
+    alert_type_id integer REFERENCES alert_types(alert_type_id),
+    severity varchar(20) NOT NULL,
+    status varchar(20) DEFAULT 'active',
+    created_at timestamptz DEFAULT now(),
+    resolved_at timestamptz
+);
+
+-- Индексы для таблицы alerts
+CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status);
+CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts(created_at);
+CREATE INDEX IF NOT EXISTS idx_alerts_metric ON alerts(metric_id);
+
+-- Партиционированная таблица для истории аналитики
+CREATE TABLE IF NOT EXISTS analytics_history (
+    id bigserial,
+    analysis_type varchar(50) NOT NULL,
+    infrastructure_id varchar(50),
+    infrastructure_type varchar(50),
+    analysis_date date NOT NULL,
+    analysis_data jsonb NOT NULL,
+    created_at timestamptz DEFAULT NOW(),
+    PRIMARY KEY (id, analysis_date)
+) PARTITION BY RANGE (analysis_date);
+
+-- Партиции для аналитической истории
+CREATE TABLE IF NOT EXISTS analytics_history_current 
+PARTITION OF analytics_history
+FOR VALUES FROM (date_trunc('month', CURRENT_DATE)) 
+TO (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month');
+
+CREATE TABLE IF NOT EXISTS analytics_history_prev 
+PARTITION OF analytics_history
+FOR VALUES FROM (date_trunc('month', CURRENT_DATE) - INTERVAL '1 month') 
+TO (date_trunc('month', CURRENT_DATE));
+
+-- Индексы для аналитической истории
+CREATE INDEX IF NOT EXISTS idx_analytics_history_type ON analytics_history(analysis_type);
+CREATE INDEX IF NOT EXISTS idx_analytics_history_infrastructure ON analytics_history(infrastructure_id, infrastructure_type);
+CREATE INDEX IF NOT EXISTS idx_analytics_history_date ON analytics_history(analysis_date);
+
 -- ===============================================
 -- СВЯЗИ МЕЖДУ ТАБЛИЦАМИ
 -- ===============================================
@@ -370,6 +427,9 @@ CREATE INDEX IF NOT EXISTS idx_transformers_power ON transformers(power_kva);
 CREATE INDEX IF NOT EXISTS idx_transformers_voltage ON transformers(voltage_kv);
 CREATE INDEX IF NOT EXISTS idx_transformers_status ON transformers(status);
 CREATE INDEX IF NOT EXISTS idx_transformers_geom ON transformers USING GIST(geom);
+-- Дополнительный индекс для координат transformers (миграция 004)
+CREATE INDEX IF NOT EXISTS idx_transformers_coordinates ON transformers(latitude, longitude)
+WHERE latitude IS NOT NULL AND longitude IS NOT NULL;
 
 -- Индексы для линий электропередач
 CREATE INDEX IF NOT EXISTS idx_lines_transformer_id ON lines(transformer_id);
@@ -382,7 +442,6 @@ CREATE INDEX IF NOT EXISTS idx_lines_branches ON lines USING gin(branches);
 -- Индексы для линий водоснабжения
 CREATE INDEX IF NOT EXISTS idx_water_lines_name ON water_lines(name);
 CREATE INDEX IF NOT EXISTS idx_water_lines_status ON water_lines(status);
-CREATE INDEX IF NOT EXISTS idx_water_lines_type ON water_lines(line_type);
 CREATE INDEX IF NOT EXISTS idx_water_lines_geom ON water_lines USING GIST(geom);
 CREATE INDEX IF NOT EXISTS idx_water_lines_main_path ON water_lines USING gin(main_path);
 CREATE INDEX IF NOT EXISTS idx_water_lines_branches ON water_lines USING gin(branches);
@@ -504,7 +563,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Функция для обновления geom трансформаторов (специфичная)
+-- Функция для обновления geom трансформаторов (специфичная версия)
+-- Отличается от общей функции update_geom_on_coordinates_change() 
+-- тем, что проверяет наличие координат перед обновлением
 CREATE OR REPLACE FUNCTION update_transformers_geom()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -661,7 +722,7 @@ CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(log_level);
 -- МАТЕРИАЛИЗОВАННЫЕ ПРЕДСТАВЛЕНИЯ
 -- ===============================================
 
--- Материализованное представление для загрузки трансформаторов в реальном времени
+-- Материализованное представление: Загрузка трансформаторов в реальном времени
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_transformer_load_realtime AS
 SELECT
     pt.id,
@@ -670,24 +731,27 @@ SELECT
     pt.status,
     pt.latitude,
     pt.longitude,
+    
     COUNT(DISTINCT b.building_id) as buildings_count,
     COUNT(DISTINCT c.controller_id) as controllers_count,
     COUNT(DISTINCT CASE WHEN c.status = 'active' THEN c.controller_id END) as active_controllers_count,
+    
     AVG(COALESCE(m.electricity_ph1, 0) + COALESCE(m.electricity_ph2, 0) + COALESCE(m.electricity_ph3, 0)) as avg_total_voltage,
     AVG(COALESCE(m.amperage_ph1, 0) + COALESCE(m.amperage_ph2, 0) + COALESCE(m.amperage_ph3, 0)) as avg_total_amperage,
-    -- Примерный расчет загрузки
+    
     CASE
         WHEN pt.capacity_kva > 0 THEN
-            LEAST(100, (AVG(COALESCE(m.amperage_ph1, 0) + COALESCE(m.amperage_ph2, 0) + COALESCE(m.amperage_ph3, 0)) * 0.4 / pt.capacity_kva) * 100)
+            LEAST(100, AVG(COALESCE(m.amperage_ph1, 0) + COALESCE(m.amperage_ph2, 0) + COALESCE(m.amperage_ph3, 0)) * 0.4 / pt.capacity_kva * 100)
         ELSE 0
     END as load_percent,
+    
     MAX(m.timestamp) as last_metric_time,
     COUNT(CASE WHEN m.timestamp > NOW() - INTERVAL '1 hour' THEN 1 END) as recent_metrics_count
+
 FROM power_transformers pt
-LEFT JOIN buildings b ON pt.id = b.power_transformer_id
+LEFT JOIN buildings b ON pt.id::VARCHAR = b.power_transformer_id::VARCHAR
 LEFT JOIN controllers c ON b.building_id = c.building_id
-LEFT JOIN metrics m ON c.controller_id = m.controller_id
-    AND m.timestamp > NOW() - INTERVAL '24 hours'
+LEFT JOIN metrics m ON c.controller_id = m.controller_id AND m.timestamp > NOW() - INTERVAL '24 hours'
 GROUP BY pt.id, pt.name, pt.capacity_kva, pt.status, pt.latitude, pt.longitude;
 
 -- Уникальный индекс для конкурентного обновления материализованного представления
@@ -699,17 +763,22 @@ CREATE INDEX IF NOT EXISTS idx_mv_transformer_load_status ON mv_transformer_load
 -- ФУНКЦИИ ДЛЯ АНАЛИТИКИ
 -- ===============================================
 
--- Функции для обновления материализованных представлений
+-- ===============================================
+-- ФУНКЦИИ ДЛЯ ОБНОВЛЕНИЯ МАТЕРИАЛИЗОВАННЫХ ПРЕДСТАВЛЕНИЙ
+-- ===============================================
+
+-- Функция для обновления материализованных представлений (legacy, для обратной совместимости)
 CREATE OR REPLACE FUNCTION refresh_transformer_analytics() RETURNS void AS $$
 BEGIN
+    -- Обновляем материализованное представление загрузки трансформаторов
     REFRESH MATERIALIZED VIEW CONCURRENTLY mv_transformer_load_realtime;
 
     INSERT INTO logs (timestamp, log_level, message)
-    VALUES (NOW(), 'INFO', 'Материализованное представление трансформаторов обновлено');
+    VALUES (NOW(), 'INFO', 'Материализованные представления аналитики трансформаторов обновлены');
 
 EXCEPTION WHEN OTHERS THEN
     INSERT INTO logs (timestamp, log_level, message)
-    VALUES (NOW(), 'ERROR', 'Ошибка обновления материализованного представления: ' || SQLERRM);
+    VALUES (NOW(), 'ERROR', 'Ошибка обновления материализованных представлений: ' || SQLERRM);
     RAISE;
 END;
 $$ LANGUAGE plpgsql;
@@ -741,6 +810,36 @@ BEGIN
         radius_meters
     )
     ORDER BY distance_meters;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Функция для архивирования ежедневной аналитики
+CREATE OR REPLACE FUNCTION archive_daily_analytics() RETURNS void AS $$
+BEGIN
+    -- Архивируем загрузку трансформаторов
+    INSERT INTO analytics_history (analysis_type, infrastructure_id, infrastructure_type, analysis_date, analysis_data)
+    SELECT
+        'daily_transformer_load',
+        id,
+        'transformer',
+        CURRENT_DATE,
+        jsonb_build_object(
+            'load_percent', load_percent,
+            'buildings_count', buildings_count,
+            'active_controllers_count', active_controllers_count,
+            'avg_total_voltage', avg_total_voltage,
+            'avg_total_amperage', avg_total_amperage
+        )
+    FROM mv_transformer_load_realtime
+    WHERE last_metric_time > CURRENT_DATE - INTERVAL '1 day';
+
+    INSERT INTO logs (timestamp, log_level, message)
+    VALUES (NOW(), 'INFO', 'Ежедневная аналитика заархивирована');
+
+EXCEPTION WHEN OTHERS THEN
+    INSERT INTO logs (timestamp, log_level, message)
+    VALUES (NOW(), 'ERROR', 'Ошибка архивирования аналитики: ' || SQLERRM);
+    RAISE;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -785,4 +884,4 @@ ANALYZE water_measurement_points;
 
 -- Логируем успешную инициализацию
 INSERT INTO logs (timestamp, log_level, message)
-VALUES (NOW(), 'INFO', 'База данных InfraSafe с PostGIS и оптимизированными индексами успешно инициализирована (версия 2.0)');
+VALUES (NOW(), 'INFO', 'База данных InfraSafe с PostGIS и оптимизированными индексами успешно инициализирована (версия 2.4, синхронизировано с реальной БД)');

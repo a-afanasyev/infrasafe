@@ -1,0 +1,87 @@
+InfraSafe - Система мониторинга инфраструктуры зданий
+Copyright 2025 InfraSafe Development Team
+
+Данный продукт включает программное обеспечение, разработанное
+командой InfraSafe (https://github.com/a-afanasyev/infrasafe)
+
+================================================================================
+
+Данный продукт использует следующие сторонние библиотеки:
+
+================================================================================
+
+Leaflet (https://leafletjs.com/)
+Copyright (c) 2010-2024, Volodymyr Agafonkin
+Copyright (c) 2010-2011, CloudMade
+Лицензия: BSD 2-Clause License
+https://github.com/Leaflet/Leaflet/blob/main/LICENSE
+
+Leaflet - это ведущая библиотека с открытым исходным кодом для 
+интерактивных карт, оптимизированная для мобильных устройств.
+
+================================================================================
+
+Leaflet.markercluster (https://github.com/Leaflet/Leaflet.markercluster)
+Copyright (c) 2012, Dave Leaver
+Лицензия: MIT License
+
+Плагин для кластеризации маркеров на картах Leaflet.
+
+================================================================================
+
+Express.js (https://expressjs.com/)
+Copyright (c) 2009-2014 TJ Holowaychuk <tj@vision-media.ca>
+Copyright (c) 2013-2014 Roman Shtylman <shtylman+expressjs@gmail.com>
+Copyright (c) 2014-2015 Douglas Christopher Wilson <doug@somethingdoug.com>
+Лицензия: MIT License
+https://github.com/expressjs/express/blob/master/LICENSE
+
+Express - это минималистичный и гибкий веб-фреймворк для Node.js.
+
+================================================================================
+
+PostgreSQL (https://www.postgresql.org/)
+Portions Copyright (c) 1996-2024, The PostgreSQL Global Development Group
+Portions Copyright (c) 1994, The Regents of the University of California
+Лицензия: PostgreSQL License
+https://www.postgresql.org/about/licence/
+
+PostgreSQL - это мощная объектно-реляционная система управления базами данных 
+с открытым исходным кодом.
+
+================================================================================
+
+Node.js (https://nodejs.org/)
+Copyright Node.js contributors. All rights reserved.
+Лицензия: MIT License
+https://github.com/nodejs/node/blob/main/LICENSE
+
+Node.js - это JavaScript runtime, построенный на движке V8.
+
+================================================================================
+
+Дополнительные зависимости:
+
+- bcrypt - MIT License
+- cors - MIT License
+- dompurify - Apache License 2.0 / Mozilla Public License 2.0
+- dotenv - BSD 2-Clause License
+- express-validator - MIT License
+- helmet - MIT License
+- jsonwebtoken - MIT License
+- morgan - MIT License
+- pg - MIT License
+- swagger-jsdoc - MIT License
+- swagger-ui-express - MIT License
+- winston - MIT License
+
+Полный список зависимостей и их лицензий можно найти в файле package.json
+и в директории node_modules каждого пакета.
+
+================================================================================
+
+Это программное обеспечение использует части кода и идей из различных
+проектов с открытым исходным кодом. Мы благодарны сообществу open source
+за их вклад в развитие технологий.
+
+

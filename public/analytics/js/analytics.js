@@ -19,26 +19,51 @@ const API_BASE = window.location.origin.includes('localhost:8080')
  */
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 Инициализация аналитики...');
-    await loadBuildings();
+    try {
+        console.log('📞 Вызываем loadBuildings()...');
+        await loadBuildings();
+        console.log('✅ loadBuildings() завершена');
+    } catch (error) {
+        console.error('❌ Ошибка инициализации:', error);
+        showLoading(false);
+    }
 });
 
 /**
  * Загрузить список зданий
  */
 async function loadBuildings() {
+    console.log('📥 Начинаем загрузку зданий...');
     try {
+        console.log('🔄 Показываем индикатор загрузки...');
         showLoading(true);
         
+        console.log('🌐 Отправляем запрос к API:', `${API_BASE}/buildings-metrics`);
         const response = await fetch(`${API_BASE}/buildings-metrics`);
+        console.log('📡 Запрос выполнен, статус:', response.ok);
         if (!response.ok) throw new Error('Ошибка загрузки зданий');
         
-        const data = await response.json();
+        const result = await response.json();
+        console.log('📦 Данные получены, парсим...');
         const selector = document.getElementById('building-selector');
+        console.log('🎯 Selector найден:', !!selector);
         
         selector.innerHTML = '<option value="">Выберите здание...</option>';
+        console.log('🧹 Очистили список зданий');
+        
+        // API может вернуть {data: [...]} или просто [...]
+        const data = result.data || result;
+        console.log('📊 Данных получено:', Array.isArray(data) ? data.length : 'не массив!');
+        
+        // Проверяем что data - это массив
+        if (!Array.isArray(data)) {
+            console.error('API вернул некорректный формат данных:', data);
+            throw new Error('Некорректный формат данных от API');
+        }
         
         // Фильтруем только здания с контроллерами
         const buildingsWithControllers = data.filter(b => b.controller_id);
+        console.log('🏢 Зданий с контроллерами:', buildingsWithControllers.length);
         
         buildingsWithControllers.forEach(building => {
             const option = document.createElement('option');
@@ -48,7 +73,9 @@ async function loadBuildings() {
             selector.appendChild(option);
         });
         
+        console.log('🔚 Заканчиваем loadBuildings, скрываем индикатор...');
         showLoading(false);
+        console.log('✅ Индикатор загрузки скрыт!');
         
     } catch (error) {
         console.error('Ошибка загрузки зданий:', error);
@@ -136,41 +163,58 @@ async function loadMetricsData() {
             // Если endpoint не существует, используем mock данные
             console.warn('Endpoint не найден, используем mock данные');
             metricsData = generateMockData(currentPeriod);
+            console.log('✅ Mock данные сгенерированы (no ok response)');
         } else {
             const data = await response.json();
             metricsData = data.data || data;
+            console.log('✅ Получены реальные данные из API');
         }
         
         document.getElementById('last-update').textContent = new Date().toLocaleString('ru-RU');
         
         // Создаем все графики
+        console.log('📊 Создаем графики...');
         createAllCharts();
+        console.log('✅ Графики созданы');
         
+        console.log('📊 Убираем индикатор загрузки...');
         showLoading(false);
+        console.log('✅ Индикатор загрузки убран');
         
     } catch (error) {
         console.error('Ошибка загрузки метрик:', error);
         
         // Используем mock данные при ошибке
+        console.warn('Генерируем mock данные после ошибки');
         metricsData = generateMockData(currentPeriod);
+        console.log('✅ Mock данные сгенерированы, создаем графики...');
         createAllCharts();
+        console.log('✅ Графики созданы, убираем индикатор загрузки');
         
         showLoading(false);
+        console.log('✅ Индикатор загрузки убран');
     }
 }
 
 /**
  * Создать все графики
  */
+/**
+ * Создать все графики с обработкой ошибок
+ */
 function createAllCharts() {
-    createVoltageChart();
-    createAmperageChart();
-    createPowerPhasesChart();
-    createPowerTotalChart();
-    createWaterPressureChart();
-    createWaterTemperatureChart();
-    createEnvironmentChart();
-    createLeakChart();
+    try {
+        createVoltageChart();
+        createAmperageChart();
+        createPowerPhasesChart();
+        createPowerTotalChart();
+        createWaterPressureChart();
+        createWaterTemperatureChart();
+        createEnvironmentChart();
+        createLeakChart();
+    } catch (error) {
+        console.error('Ошибка создания графиков:', error);
+    }
 }
 
 /**
@@ -197,7 +241,9 @@ function createVoltageChart() {
                     backgroundColor: 'rgba(59, 130, 246, 0.1)',
                     borderWidth: 2,
                     tension: 0.4,
-                    fill: true
+                    fill: true,
+                    pointRadius: 0,          // Убираем точки
+                    pointHoverRadius: 4      // Показываем при наведении
                 },
                 {
                     label: 'Фаза 2',
@@ -209,7 +255,9 @@ function createVoltageChart() {
                     backgroundColor: 'rgba(16, 185, 129, 0.1)',
                     borderWidth: 2,
                     tension: 0.4,
-                    fill: true
+                    fill: true,
+                    pointRadius: 0,          // Убираем точки
+                    pointHoverRadius: 4      // Показываем при наведении
                 },
                 {
                     label: 'Фаза 3',
@@ -221,11 +269,13 @@ function createVoltageChart() {
                     backgroundColor: 'rgba(245, 158, 11, 0.1)',
                     borderWidth: 2,
                     tension: 0.4,
-                    fill: true
+                    fill: true,
+                    pointRadius: 0,          // Убираем точки
+                    pointHoverRadius: 4      // Показываем при наведении
                 }
             ]
         },
-        options: getChartOptions('Напряжение (V)', 'V')
+        options: getChartOptions('Напряжение (V)', 'V', 'voltage')
     });
 }
 
@@ -250,7 +300,9 @@ function createAmperageChart() {
                     })),
                     borderColor: '#3b82f6',
                     borderWidth: 2,
-                    tension: 0.4
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4
                 },
                 {
                     label: 'Ток Фаза 2',
@@ -260,7 +312,9 @@ function createAmperageChart() {
                     })),
                     borderColor: '#10b981',
                     borderWidth: 2,
-                    tension: 0.4
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4
                 },
                 {
                     label: 'Ток Фаза 3',
@@ -270,11 +324,13 @@ function createAmperageChart() {
                     })),
                     borderColor: '#f59e0b',
                     borderWidth: 2,
-                    tension: 0.4
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4
                 }
             ]
         },
-        options: getChartOptions('Сила тока (A)', 'A')
+        options: getChartOptions('Сила тока (A)', 'A', 'amperage')
     });
 }
 
@@ -323,7 +379,7 @@ function createPowerPhasesChart() {
                 }
             ]
         },
-        options: getChartOptions('Мощность (кВт)', 'кВт')
+        options: getChartOptions('Мощность (кВт)', 'кВт', 'power')
     });
 }
 
@@ -353,10 +409,12 @@ function createPowerTotalChart() {
                 backgroundColor: 'rgba(139, 92, 246, 0.2)',
                 borderWidth: 3,
                 tension: 0.4,
-                fill: true
+                fill: true,
+                pointRadius: 0,
+                pointHoverRadius: 4
             }]
         },
-        options: getChartOptions('Общая мощность (кВт)', 'кВт')
+        options: getChartOptions('Общая мощность (кВт)', 'кВт', 'power')
     });
 }
 
@@ -381,7 +439,9 @@ function createWaterPressureChart() {
                     })),
                     borderColor: '#06b6d4',
                     borderWidth: 2,
-                    tension: 0.4
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4
                 },
                 {
                     label: 'ГВС подача',
@@ -391,7 +451,9 @@ function createWaterPressureChart() {
                     })),
                     borderColor: '#ef4444',
                     borderWidth: 2,
-                    tension: 0.4
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4
                 },
                 {
                     label: 'ГВС обратка',
@@ -401,11 +463,13 @@ function createWaterPressureChart() {
                     })),
                     borderColor: '#f97316',
                     borderWidth: 2,
-                    tension: 0.4
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4
                 }
             ]
         },
-        options: getChartOptions('Давление (Bar)', 'Bar')
+        options: getChartOptions('Давление (Bar)', 'Bar', 'pressure')
     });
 }
 
@@ -430,7 +494,9 @@ function createWaterTemperatureChart() {
                     })),
                     borderColor: '#06b6d4',
                     borderWidth: 2,
-                    tension: 0.4
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4
                 },
                 {
                     label: 'ГВС подача',
@@ -440,7 +506,9 @@ function createWaterTemperatureChart() {
                     })),
                     borderColor: '#ef4444',
                     borderWidth: 2,
-                    tension: 0.4
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4
                 },
                 {
                     label: 'ГВС обратка',
@@ -450,11 +518,13 @@ function createWaterTemperatureChart() {
                     })),
                     borderColor: '#f97316',
                     borderWidth: 2,
-                    tension: 0.4
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 4
                 }
             ]
         },
-        options: getChartOptions('Температура (°C)', '°C')
+        options: getChartOptions('Температура (°C)', '°C', 'temperature')
     });
 }
 
@@ -480,7 +550,9 @@ function createEnvironmentChart() {
                     borderColor: '#f59e0b',
                     borderWidth: 2,
                     tension: 0.4,
-                    yAxisID: 'y'
+                    yAxisID: 'y',
+                    pointRadius: 0,
+                    pointHoverRadius: 4
                 },
                 {
                     label: 'Влажность',
@@ -491,7 +563,9 @@ function createEnvironmentChart() {
                     borderColor: '#06b6d4',
                     borderWidth: 2,
                     tension: 0.4,
-                    yAxisID: 'y1'
+                    yAxisID: 'y1',
+                    pointRadius: 0,
+                    pointHoverRadius: 4
                 }
             ]
         },
@@ -561,10 +635,85 @@ function createLeakChart() {
 }
 
 /**
- * Получить базовые настройки графика
+ * Рассчитать оптимальный диапазон для оси Y
+ * Начинает не с 0, а с (min - step), чтобы лучше видны колебания
+ * @param {string} dataType - тип данных ('voltage', 'amperage', 'power', 'pressure', 'temperature')
+ * @returns {Object} - {min, max, suggestedMin, suggestedMax}
  */
-function getChartOptions(yAxisLabel, unit) {
+function calculateYAxisRange(dataType) {
+    if (metricsData.length === 0) return { beginAtZero: true };
+    
+    // Собираем все значения в зависимости от типа
+    let values = [];
+    
+    switch (dataType) {
+        case 'voltage':
+            values = metricsData.flatMap(d => [
+                parseFloat(d.electricity_ph1) || 0,
+                parseFloat(d.electricity_ph2) || 0,
+                parseFloat(d.electricity_ph3) || 0
+            ]);
+            break;
+        case 'amperage':
+            values = metricsData.flatMap(d => [
+                parseFloat(d.amperage_ph1) || 0,
+                parseFloat(d.amperage_ph2) || 0,
+                parseFloat(d.amperage_ph3) || 0
+            ]);
+            break;
+        case 'power':
+            values = metricsData.map(d => 
+                calculatePower(d.electricity_ph1, d.amperage_ph1) +
+                calculatePower(d.electricity_ph2, d.amperage_ph2) +
+                calculatePower(d.electricity_ph3, d.amperage_ph3)
+            );
+            break;
+        case 'pressure':
+            values = metricsData.flatMap(d => [
+                parseFloat(d.cold_water_pressure) || 0,
+                parseFloat(d.hot_water_in_pressure) || 0,
+                parseFloat(d.hot_water_out_pressure) || 0
+            ]);
+            break;
+        case 'temperature':
+            values = metricsData.flatMap(d => [
+                parseFloat(d.cold_water_temp) || 0,
+                parseFloat(d.hot_water_in_temp) || 0,
+                parseFloat(d.hot_water_out_temp) || 0
+            ]);
+            break;
+        default:
+            return { beginAtZero: true };
+    }
+    
+    // Убираем нулевые значения для точного расчета
+    values = values.filter(v => v > 0);
+    
+    if (values.length === 0) return { beginAtZero: true };
+    
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min;
+    
+    // Если диапазон очень маленький (почти нет колебаний), добавляем фиксированный запас
+    const step = range < 1 ? 1 : range * 0.1;
+    
+    return {
+        min: Math.max(0, min - step),  // Не уходим в отрицательные
+        max: max + step,
+        beginAtZero: false
+    };
+}
+
+/**
+ * Получить базовые настройки графика
+ * @param {string} yAxisLabel - Название оси Y
+ * @param {string} unit - Единица измерения
+ * @param {string} dataType - Тип данных для расчета диапазона
+ */
+function getChartOptions(yAxisLabel, unit, dataType = null) {
     const timeUnit = getTimeUnit(currentPeriod);
+    const yAxisRange = dataType ? calculateYAxisRange(dataType) : { beginAtZero: true };
     
     return {
         responsive: true,
@@ -606,7 +755,7 @@ function getChartOptions(yAxisLabel, unit) {
                 grid: { color: 'rgba(0, 0, 0, 0.05)' }
             },
             y: {
-                beginAtZero: true,
+                ...yAxisRange,
                 title: {
                     display: true,
                     text: yAxisLabel,
@@ -635,8 +784,13 @@ function switchTab(tabName) {
 /**
  * Показать/скрыть индикатор загрузки
  */
+/**
+ * Показать/скрыть индикатор загрузки
+ */
 function showLoading(show) {
     const overlay = document.getElementById('loading-overlay');
+    if (!overlay) return; // Защита от ошибок если элемент не найден
+    
     if (show) {
         overlay.classList.add('active');
     } else {

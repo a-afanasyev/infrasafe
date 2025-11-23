@@ -1,169 +1,214 @@
-# 📚 Документация Infrasafe - Полный индекс
+# 📚 ИНДЕКС ДОКУМЕНТАЦИИ InfraSafe
 
-## Навигатор по всей документации проекта
-
----
-
-## 🆕 Анализ shadcn/ui (новое!)
-
-### 📋 Главный документ
-- **[SHADCN-UI-COMPLETE-ANALYSIS.md](../SHADCN-UI-COMPLETE-ANALYSIS.md)** - Полный обзор анализа
-
-### 🎯 Общий анализ (Админка + Все страницы)
-1. **[shadcn-ui-README.md](./shadcn-ui-README.md)** - Навигационный центр
-2. **[shadcn-ui-analysis.md](./shadcn-ui-analysis.md)** - Полный анализ (~100 стр)
-3. **[shadcn-ui-quick-summary.md](./shadcn-ui-quick-summary.md)** - Краткое резюме (~20 стр)
-4. **[shadcn-ui-migration-examples.md](./shadcn-ui-migration-examples.md)** - Примеры кода (~50 стр)
-
-### 🗺️ Анализ фронтенда с картой
-1. **[shadcn-ui-map-README.md](./shadcn-ui-map-README.md)** - Навигация
-2. **[MAP-FRONTEND-SHADCN-SUMMARY.md](./MAP-FRONTEND-SHADCN-SUMMARY.md)** - Краткая сводка
-3. **[shadcn-ui-map-frontend-analysis.md](./shadcn-ui-map-frontend-analysis.md)** - Детальный анализ
-4. **[shadcn-ui-map-code-examples.md](./shadcn-ui-map-code-examples.md)** - Примеры кода
-
-### 🎨 Дополнительно
-- **[VISUAL-COMPARISON.md](./VISUAL-COMPARISON.md)** - Визуальное сравнение "До/После"
+> Последнее обновление: 22 ноября 2025
 
 ---
 
-## 📊 Ключевые цифры из анализа
+## 🚀 Быстрый старт
 
-### Экономия кода
-- **Админка:** 66% меньше кода (1680 → 575 строк)
-- **Карта:** 51% меньше кода (1145 → 565 строк)
-- **Общая:** 60% меньше кода (2825 → 1140 строк)
+Основные документы для начала работы (в корне проекта):
 
-### Улучшения
-- **Производительность:** +48%
-- **Accessibility:** +32% (72 → 95)
-- **Время разработки:** -70%
-- **Количество багов:** -60%
-
-### Временные оценки
-- **Минимальная версия:** 2-3 недели
-- **Полная миграция:** 7-9 недель
-- **Окупаемость:** 2-3 месяца
+- **[README.md](../README.md)** - Основная документация проекта
+- **[QUICK-START.md](../QUICK-START.md)** - Быстрый старт (5 минут)
+- **[LICENSE-GUIDE.md](../LICENSE-GUIDE.md)** - Руководство по лицензированию
+- **[DOCKER_DEPLOYMENT.md](../DOCKER_DEPLOYMENT.md)** - Docker развертывание
 
 ---
 
-## 🗂️ Остальная документация проекта
+## 📁 СТРУКТУРА ДОКУМЕНТАЦИИ
 
-### API документация
-- **[swagger/docs/](../swagger/docs/)** - Swagger API документация
+### 🏭 Production (docs/production/)
 
-### Планы и отчеты
-- **[PLAN-T012-security-audit.md](../PLAN-T012-security-audit.md)** - План аудита безопасности
-- **[PLAN-T012-security-fixes.md](../PLAN-T012-security-fixes.md)** - План исправлений безопасности
-- **[PLAN-T013-xss-fixes.md](../PLAN-T013-xss-fixes.md)** - План исправления XSS
-- **[PLAN-T019-admin-coordinates-editor.md](../PLAN-T019-admin-coordinates-editor.md)** - План редактора координат
-- **[PLAN-T020-lines-unification.md](../PLAN-T020-lines-unification.md)** - План унификации линий
+Документы готовности к production развертыванию:
 
-### Отчеты и аудиты
-- **[audit_0925_updated.md](../audit_0925_updated.md)** - Обновленный аудит
-- **[SECURITY-STATUS.md](../SECURITY-STATUS.md)** - Статус безопасности
-- **[VERIFICATION-SUMMARY-2025-10-22.md](../VERIFICATION-SUMMARY-2025-10-22.md)** - Сводка верификации
-- **[COMMIT-SUMMARY-2025-10-22.md](../COMMIT-SUMMARY-2025-10-22.md)** - Сводка коммитов
+- **[PRODUCTION-READINESS.md](production/PRODUCTION-READINESS.md)** - Полный чеклист готовности (200+ строк)
+- **[PRODUCTION-STATUS.md](production/PRODUCTION-STATUS.md)** - Краткий статус готовности
+- **[PUBLICATION-AUDIT-2025-11-22.md](production/PUBLICATION-AUDIT-2025-11-22.md)** - Детальный аудит проекта
+- **[STATUS-SUMMARY.md](production/STATUS-SUMMARY.md)** - Быстрая сводка статуса
+- **[SECURITY-STATUS.md](production/SECURITY-STATUS.md)** - Статус безопасности (90%)
+- **[SECURITY-FIXES-REPORT.md](production/SECURITY-FIXES-REPORT.md)** - Отчет по исправлениям безопасности
+- **[SECURITY-FIXES-PLAN.md](production/SECURITY-FIXES-PLAN.md)** - План исправлений безопасности
+- **[SECURITY-AUDIT-FRONTEND.md](production/SECURITY-AUDIT-FRONTEND.md)** - Аудит безопасности фронтенда
 
-### Руководства
-- **[QUICK-START.md](../QUICK-START.md)** - Быстрый старт
-- **[MAP_LAYERS_GUIDE.md](../MAP_LAYERS_GUIDE.md/)** - Руководство по слоям карты
+### 📊 Отчеты (docs/reports/)
 
-### Прогресс проекта
-- **[tasks.md](../tasks.md)** - Список задач
-- **[progress.md](../progress.md)** - Прогресс выполнения
-- **[activeContext.md](../activeContext.md)** - Активный контекст
+Отчеты о выполненной работе и изменениях:
+
+- **[SUMMARY.md](reports/SUMMARY.md)** - Общая сводка проекта
+- **[FINAL-WORK-SUMMARY.md](reports/FINAL-WORK-SUMMARY.md)** - Итоговая сводка работ
+- **[IMPROVEMENTS-README.md](reports/IMPROVEMENTS-README.md)** - Список улучшений
+- **COMMIT-SUMMARY-*.md** - Сводки коммитов
+- **FINAL-SESSION-SUMMARY-*.md** - Итоги рабочих сессий
+- **COMPLETE-SESSION-REPORT-*.md** - Полные отчеты сессий
+- **VERIFICATION-SUMMARY-*.md** - Отчеты верификации
+- **GENERATOR-TOKEN-FIX-REPORT.md** - Исправление токенов генератора
+- **NULL-CHECK-FIX-REPORT.md** - Исправление null проверок
+- **POWER-ANALYTICS-COMPLETE-REPORT.md** - Отчет по аналитике энергопотребления
+- **DATABASE-INIT-UPDATE-REPORT.md** - Обновление инициализации БД
+
+### 📋 Планы разработки (docs/plans/)
+
+Планы и creative решения:
+
+- **PLAN-T012-security-audit.md** - План аудита безопасности
+- **PLAN-T012-security-fixes.md** - План исправлений безопасности
+- **PLAN-T013-xss-fixes.md** - План исправления XSS
+- **PLAN-T019-admin-coordinates-editor.md** - План редактора координат
+- **PLAN-T020-lines-unification.md** - План унификации линий
+- **PLAN-T021-industrial-map-panel.md** - План промышленной панели карты
+- **admin-optimization-plan.md** - План оптимизации админки
+- **creative-T003-testing-solution.md** - Решение по тестированию
+- **creative-T010-layers-system-solution.md** - Решение системы слоев
+- **creative-T021-industrial-map-panel.md** - Решение промышленной панели
+
+### 🗂️ Архив (docs/archive/)
+
+Старые отчеты, завершенные задачи и неактуальная документация (~80 файлов):
+
+**Старые аудиты:**
+- audit_0925.md, audit_0925_updated.md
+- CLEANUP_ANALYSIS.md
+- SHADCN-UI-COMPLETE-ANALYSIS.md
+
+**Завершенные задачи (T012, T013, T018, T020):**
+- T012-* (SQL Injection исправления)
+- T013-* (XSS исправления)  
+- T018-* (Infrastructure lines)
+- T020-* (Lines unification)
+
+**Старые отчеты и сессии:**
+- SESSION-REPORT-*, COMMIT-SUMMARY-*
+- ADMIN-*-TEST-REPORT-*, FRONTEND-*
+- GENERATOR-*, TRANSFORMER-FIXES-*
+- MAP-LAYERS-IMPLEMENTATION-REPORT.md
+
+**Неиспользуемые анализы:**
+- shadcn-ui-* (7 файлов ShadCN UI анализа)
+- admin/frontend-optimization-plan.md (дубликаты)
+
+**Старые исправления:**
+- CASCADE-DELETE-FIX.md
+- CLUSTER-COLOR-FIX-REPORT.md
+- NULL-CHECK-FIX-REPORT.md
+
+### 🔧 Внутренние документы (docs/internal/)
+
+Документы для разработчиков (не для публикации):
+
+- **[progress.md](internal/progress.md)** - Текущий прогресс разработки (98%)
+- **[tasks.md](internal/tasks.md)** - Список задач
+- **[activeContext.md](internal/activeContext.md)** - Активный контекст
+- **[MEMORY-BANK-SUMMARY.md](internal/MEMORY-BANK-SUMMARY.md)** - Сводка Memory Bank
+- **[CLAUDE.md](internal/CLAUDE.md)** - Заметки Claude AI
+- **[claude_opus_plan.md](internal/claude_opus_plan.md)** - План работы с Opus
+
+### 🛠️ Технические документы (docs/)
+
+Техническая документация:
+
+#### API и Backend
+- **[API_TESTING.md](API_TESTING.md)** - Руководство по тестированию API
+- **[ARCHITECTURE_ANALYSIS.md](ARCHITECTURE_ANALYSIS.md)** - Анализ архитектуры
+- **[POWER_ANALYTICS_IMPLEMENTATION.md](POWER_ANALYTICS_IMPLEMENTATION.md)** - Реализация аналитики энергопотребления
+- **[analytics.md](analytics.md)** - Система аналитики
+
+#### Database
+- **[DATABASE-SCHEMA-AUDIT-2025-11-02.md](DATABASE-SCHEMA-AUDIT-2025-11-02.md)** - Аудит схемы БД
+
+#### Docker и развертывание
+- **[DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md)** - Docker развертывание (копия)
+- **[README-UNIFIED-DEPLOYMENT.md](README-UNIFIED-DEPLOYMENT.md)** - Унифицированное развертывание
+- **[DEVELOPMENT_DOCKER_GUIDE.md](DEVELOPMENT_DOCKER_GUIDE.md)** - Docker для разработки
+
+#### Frontend
+- **[FRONTEND-FIXES-SUMMARY.md](FRONTEND-FIXES-SUMMARY.md)** - Исправления фронтенда
+- **[FRONTEND-TEST-REPORT.md](FRONTEND-TEST-REPORT.md)** - Отчет тестирования фронтенда
+- **[MAP_LAYERS_GUIDE.md/](MAP_LAYERS_GUIDE.md/)** - Руководство по слоям карты
+
+#### Администрирование
+- Множество ADMIN-*.md файлов с тестами и исправлениями админки
+
+#### Другое
+- **[COMMERCIAL-PROPOSAL-TEMPLATE.md](COMMERCIAL-PROPOSAL-TEMPLATE.md)** - Шаблон коммерческого предложения
+- **[INFRASTRUCTURE-LINES-GUIDE.md](INFRASTRUCTURE-LINES-GUIDE.md)** - Руководство по линиям инфраструктуры
 
 ---
 
-## 🚀 Быстрые ссылки
+## 🔍 БЫСТРЫЙ ПОИСК
 
-### Хочу начать с shadcn/ui
-→ [SHADCN-UI-COMPLETE-ANALYSIS.md](../SHADCN-UI-COMPLETE-ANALYSIS.md) (3 минуты)  
-→ [shadcn-ui-quick-summary.md](./shadcn-ui-quick-summary.md) (10 минут)
+### По теме:
 
-### Хочу детали по админке
-→ [shadcn-ui-analysis.md](./shadcn-ui-analysis.md) (30 минут)  
-→ [shadcn-ui-migration-examples.md](./shadcn-ui-migration-examples.md) (20 минут)
+**Безопасность:**
+- [SECURITY-STATUS.md](production/SECURITY-STATUS.md)
+- [SECURITY-FIXES-REPORT.md](production/SECURITY-FIXES-REPORT.md)
+- [SECURITY-AUDIT-FRONTEND.md](production/SECURITY-AUDIT-FRONTEND.md)
 
-### Хочу детали по карте
-→ [shadcn-ui-map-README.md](./shadcn-ui-map-README.md) (5 минут)  
-→ [shadcn-ui-map-frontend-analysis.md](./shadcn-ui-map-frontend-analysis.md) (20 минут)
+**Production:**
+- [PRODUCTION-READINESS.md](production/PRODUCTION-READINESS.md)
+- [PRODUCTION-STATUS.md](production/PRODUCTION-STATUS.md)
+- [PUBLICATION-AUDIT-2025-11-22.md](production/PUBLICATION-AUDIT-2025-11-22.md)
 
-### Хочу увидеть визуальные изменения
-→ [VISUAL-COMPARISON.md](./VISUAL-COMPARISON.md) (15 минут)
+**Тестирование:**
+- [API_TESTING.md](API_TESTING.md)
+- [tests/README.md](../tests/README.md)
 
-### Хочу примеры кода
-→ [shadcn-ui-migration-examples.md](./shadcn-ui-migration-examples.md) - Админка  
-→ [shadcn-ui-map-code-examples.md](./shadcn-ui-map-code-examples.md) - Карта
+**Docker:**
+- [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md)
+- [DEVELOPMENT_DOCKER_GUIDE.md](DEVELOPMENT_DOCKER_GUIDE.md)
 
----
-
-## 📦 Состав анализа shadcn/ui
-
-### Всего документов: **11**
-- Навигационных: 3
-- Аналитических: 4
-- С примерами кода: 3
-- Визуальных: 1
-
-### Общий объем: **~300 страниц**
-- Быстрое чтение (summaries): ~50 стр (1 час)
-- Полное изучение (все docs): ~300 стр (4-5 часов)
+**API:**
+- [API_TESTING.md](API_TESTING.md)
+- [swagger/](../swagger/)
+- Swagger UI: http://localhost:8080/api-docs
 
 ---
 
-## ✅ Рекомендуемый путь изучения
+## 📊 СТАТИСТИКА ДОКУМЕНТАЦИИ
 
-### Для менеджеров и decision makers (30 минут)
-1. [SHADCN-UI-COMPLETE-ANALYSIS.md](../SHADCN-UI-COMPLETE-ANALYSIS.md) - 5 мин
-2. [shadcn-ui-quick-summary.md](./shadcn-ui-quick-summary.md) - 10 мин
-3. [MAP-FRONTEND-SHADCN-SUMMARY.md](./MAP-FRONTEND-SHADCN-SUMMARY.md) - 5 мин
-4. [VISUAL-COMPARISON.md](./VISUAL-COMPARISON.md) - 10 мин
+### Общая структура:
+- **docs/ (актуальные):** 21 файл
+- **docs/production/:** 8 файлов (готовность к публикации)
+- **docs/reports/:** 3 файла (актуальные отчеты)
+- **docs/plans/:** 10 файлов (планы разработки)
+- **docs/internal/:** 6 файлов (внутренние документы)
+- **docs/archive/:** 80 файлов (старые отчеты и завершенные задачи)
 
-### Для тех-лидов и архитекторов (2 часа)
-1. [shadcn-ui-README.md](./shadcn-ui-README.md) - 5 мин
-2. [shadcn-ui-analysis.md](./shadcn-ui-analysis.md) - 40 мин
-3. [shadcn-ui-map-frontend-analysis.md](./shadcn-ui-map-frontend-analysis.md) - 20 мин
-4. [VISUAL-COMPARISON.md](./VISUAL-COMPARISON.md) - 15 мин
-5. Просмотр примеров кода - 40 мин
-
-### Для разработчиков (3-4 часа)
-1. Краткие summaries - 30 мин
-2. Полные анализы - 1 час
-3. Все примеры кода - 1.5 часа
-4. Визуальное сравнение - 15 мин
-5. Эксперименты с компонентами - 1 час
+### Статус проекта:
+- **Production готовность:** 85%
+- **Функционал:** 98%
+- **Безопасность:** 90%
+- **Документация:** Актуализирована (22.11.2025)
 
 ---
 
-## 🎯 Заключение
+## 🔄 ОБНОВЛЕНИЯ
 
-Полная документация по анализу shadcn/ui для проекта Infrasafe готова! 
+**22 ноября 2025 (вечер):**
+- ✅ Архивация неактуальной документации (~50+ файлов)
+- ✅ docs/ очищена: осталось только 21 актуальный документ
+- ✅ docs/archive/ содержит 80 старых отчетов и завершенных задач
+- ✅ docs/reports/ сокращена с 27 до 3 актуальных файлов
+- ✅ Обновлен INDEX.md с актуальной структурой
 
-**Охвачено:**
-✅ Админка (8 таблиц, 8 форм, 5 модальных окон)  
-✅ Фронтенд с картой (sidebar, popup, controls)  
-✅ Общие компоненты (toast, skeleton, badges)  
-✅ Примеры кода "До → После"  
-✅ Визуальные сравнения  
-✅ Планы миграции  
-✅ ROI анализ  
+**22 ноября 2025 (утро):**
+- ✅ Реорганизована структура документации
+- ✅ Создан INDEX.md (180+ строк)
+- ✅ ~50 документов перемещены из корня в docs/
+- ✅ Удалены ~10 backup файлов
+- ✅ Создан production аудит (4 новых документа)
+- ✅ Обновлен .gitignore
 
-**Начните с простого - установите Toast (30 минут) и увидите результат! 🚀**
-
-```bash
-npx shadcn@latest init
-npx shadcn@latest add sonner
-```
+**Предыдущие обновления:** См. архив
 
 ---
 
-<div align="center">
+## 💡 КАК ИСПОЛЬЗОВАТЬ
 
-**Infrasafe Documentation Index**  
-**Updated: 23 октября 2025**
+1. **Новичкам:** Начните с [README.md](../README.md) и [QUICK-START.md](../QUICK-START.md)
+2. **Разработчикам:** Изучите [ARCHITECTURE_ANALYSIS.md](ARCHITECTURE_ANALYSIS.md) и [API_TESTING.md](API_TESTING.md)
+3. **DevOps:** Смотрите [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md)
+4. **Production:** [PRODUCTION-READINESS.md](production/PRODUCTION-READINESS.md)
 
-[📊 Анализ shadcn/ui](../SHADCN-UI-COMPLETE-ANALYSIS.md) • [🗺️ Анализ карты](./shadcn-ui-map-README.md) • [🎨 Визуальное сравнение](./VISUAL-COMPARISON.md)
+---
 
-</div>
-
+**Последнее обновление:** 22 ноября 2025

@@ -34,7 +34,14 @@ const authenticateJWT = async (req, res, next) => {
         }
 
         // Проверка токена
-        jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', async (err, decoded) => {
+        if (!process.env.JWT_SECRET) {
+            logger.error('JWT_SECRET is not defined in environment variables');
+            return res.status(500).json({
+                success: false,
+                message: 'Internal server configuration error'
+            });
+        }
+        jwt.verify(token, process.env.JWT_SECRET, async (err, decoded) => {
             if (err) {
                 logger.warn(`Неудачная попытка аутентификации: ${err.message}`);
                 return res.status(401).json({
@@ -121,8 +128,16 @@ const authenticateRefresh = async (req, res, next) => {
             });
         }
 
+        if (!process.env.JWT_REFRESH_SECRET) {
+            logger.error('JWT_REFRESH_SECRET is not defined in environment variables');
+            return res.status(500).json({
+                success: false,
+                message: 'Internal server configuration error'
+            });
+        }
+
         // Проверка refresh токена
-        jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || 'your-secret-key', async (err, decoded) => {
+        jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET, async (err, decoded) => {
             if (err) {
                 logger.warn(`Неудачная попытка обновления токена: ${err.message}`);
                 return res.status(401).json({
@@ -201,7 +216,11 @@ const optionalAuth = async (req, res, next) => {
         }
 
         // Проверка токена
-        jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', async (err, decoded) => {
+        if (!process.env.JWT_SECRET) {
+            req.user = null;
+            return next();
+        }
+        jwt.verify(token, process.env.JWT_SECRET, async (err, decoded) => {
             if (err) {
                 req.user = null;
                 return next();

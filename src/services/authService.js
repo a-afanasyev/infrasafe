@@ -7,7 +7,10 @@ const db = require('../config/database');
 class AuthService {
     constructor() {
         this.saltRounds = 12;
-        this.jwtSecret = process.env.JWT_SECRET || 'your-secret-key';
+        if (!process.env.JWT_SECRET) {
+            throw new Error('JWT_SECRET environment variable is not defined');
+        }
+        this.jwtSecret = process.env.JWT_SECRET;
         this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
         this.refreshTokenExpiresIn = '7d';
         this.cachePrefix = 'auth';

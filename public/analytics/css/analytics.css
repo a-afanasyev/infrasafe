@@ -283,9 +283,9 @@ body {
     left: 0;
     right: 0;
     bottom: 0;
+    display: none; /* По умолчанию скрыт */
     background: rgba(0, 0, 0, 0.7);
     backdrop-filter: blur(4px);
-    display: none;
     align-items: center;
     justify-content: center;
     flex-direction: column;

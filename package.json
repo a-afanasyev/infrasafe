@@ -21,10 +21,26 @@
     "monitoring",
     "buildings",
     "controllers",
-    "metrics"
+    "metrics",
+    "iot",
+    "smart-building",
+    "infrastructure",
+    "habitat-monitoring",
+    "leaflet",
+    "docker",
+    "nodejs",
+    "postgresql"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "InfraSafe Development Team",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/a-afanasyev/infrasafe.git"
+  },
+  "homepage": "https://github.com/a-afanasyev/infrasafe#readme",
+  "bugs": {
+    "url": "https://github.com/a-afanasyev/infrasafe/issues"
+  },
   "dependencies": {
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
