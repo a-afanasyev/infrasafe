@@ -62,6 +62,131 @@ services:
       - leaflet-network
     restart: unless-stopped
 
+  # MQTT брокер Mosquitto
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    user: "1000:1000"
+    ports:
+      - "1884:1883"
+    volumes:
+      - /home/infrasafe/mosquitto/config:/mosquitto/config
+      - /home/infrasafe/mosquitto/data:/mosquitto/data
+      - /home/infrasafe/mosquitto/log:/mosquitto/log
+    environment:
+      - TZ=Asia/Tashkent
+    networks:
+      - leaflet-network
+    restart: unless-stopped
+
+  # InfluxDB - база данных временных рядов
+  influxdb:
+    image: influxdb:alpine
+    ports:
+      - "8086:8086"
+    volumes:
+      - /home/infrasafe/influxdb/data:/var/lib/influxdb2
+      - /home/infrasafe/influxdb/conf:/etc/influxdb
+      - /home/infrasafe/influxdb/engine:/var/lib/influxdb2/engine
+    environment:
+      - TZ=Asia/Tashkent
+    networks:
+      - leaflet-network
+    restart: unless-stopped
+
+  # Grafana - визуализация метрик
+  grafana:
+    image: grafana/grafana:latest
+    user: "1000:1000"
+    volumes:
+      - /home/infrasafe/grafana/data:/var/lib/grafana
+      - /home/infrasafe/grafana/conf:/etc/grafana
+      - /home/infrasafe/grafana/log:/var/log/grafana
+    ports:
+      - "3001:3000"  # Изменен порт с 3000 на 3001, т.к. 3000 занят app
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Tashkent
+    networks:
+      - leaflet-network
+    restart: unless-stopped
+
+  # Node-RED - визуальное программирование потоков данных
+  nodered:
+    image: nodered/node-red:latest-minimal
+    user: "1000:1000"
+    volumes:
+      - /home/infrasafe/node-red/data:/data
+    ports:
+      - "1880:1880"
+    environment:
+      - TZ=Asia/Tashkent
+    networks:
+      - leaflet-network
+    restart: unless-stopped
+
+  # WireGuard - VPN сервер
+  wireguard:
+    image: lscr.io/linuxserver/wireguard:latest
+    privileged: true
+    volumes:
+      - /home/infrasafe/wireguard/config:/config
+    ports:
+      - "51820:51820/tcp"
+      - "51820:51820/udp"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Moscow
+      - SERVERURL=95.46.96.105
+      - SERVERPORT=51820
+      - PEERS=10
+      - PEERDNS=1.1.1.1
+      - INTERNAL_SUBNET=10.13.13.0
+      - ALLOWEDIPS=0.0.0.0/0
+      - LOG_CONFS=false
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+    networks:
+      - leaflet-network
+    restart: unless-stopped
+
+  # Nginx Production - Reverse Proxy с SSL
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Production конфигурация Nginx из ~/nginx-docker
+      - ~/nginx-docker/nginx.production.conf:/etc/nginx/nginx.conf:ro
+      # SSL сертификаты (монтируйте с хоста)
+      - /etc/letsencrypt/live/infrasafe.aisolutions.uz:/etc/nginx/ssl:ro
+      # Статические файлы из frontend контейнера
+      - ./index.html:/usr/share/nginx/html/index.html:ro
+      - ./admin.html:/usr/share/nginx/html/admin.html:ro
+      - ./about.html:/usr/share/nginx/html/about.html:ro
+      - ./contacts.html:/usr/share/nginx/html/contacts.html:ro
+      - ./documentation.html:/usr/share/nginx/html/documentation.html:ro
+      - ./css:/usr/share/nginx/html/css:ro
+      - ./public:/usr/share/nginx/html/public:ro
+      - ./data:/usr/share/nginx/html/data:ro
+    depends_on:
+      - app
+      - frontend
+    networks:
+      - leaflet-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
 volumes:
   postgres_data:
 

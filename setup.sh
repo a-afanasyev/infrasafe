@@ -21,20 +21,26 @@ if command -v docker &> /dev/null && command -v docker-compose &> /dev/null; the
     echo -e "${GREEN}Docker и Docker Compose установлены. Используем Docker для развертывания.${NC}"
 
     # Выбор режима запуска
-    read -p "Выберите режим запуска (dev/prod): " mode
+    read -p "Выберите режим запуска (unified/dev/prod): " mode
 
     if [ "$mode" = "prod" ]; then
         echo "Запуск приложения в production режиме..."
-        docker-compose -f docker-compose.prod.yml up -d --build
-    else
+        docker compose -f docker-compose.prod.yml up -d --build
+        COMPOSE_FILE="docker-compose.prod.yml"
+    elif [ "$mode" = "dev" ]; then
         echo "Запуск приложения в development режиме..."
-        docker-compose up -d --build
+        docker compose -f docker-compose.dev.yml up -d --build
+        COMPOSE_FILE="docker-compose.dev.yml"
+    else
+        echo "Запуск приложения в unified режиме (рекомендуется)..."
+        docker compose -f docker-compose.unified.yml up -d --build
+        COMPOSE_FILE="docker-compose.unified.yml"
     fi
 
-    echo -e "${GREEN}Приложение запущено на http://localhost:3000${NC}"
-    echo -e "${GREEN}API документация доступна на http://localhost:3000/api-docs${NC}"
-    echo -e "${YELLOW}Для просмотра логов выполните:${NC} docker-compose logs -f app"
-    echo -e "${YELLOW}Для остановки:${NC} docker-compose down"
+    echo -e "${GREEN}Приложение запущено на http://localhost:8080${NC}"
+    echo -e "${GREEN}API документация доступна на http://localhost:8080/api-docs${NC}"
+    echo -e "${YELLOW}Для просмотра логов выполните:${NC} docker compose -f $COMPOSE_FILE logs -f app"
+    echo -e "${YELLOW}Для остановки:${NC} docker compose -f $COMPOSE_FILE down"
 
 elif command -v node &> /dev/null && command -v npm &> /dev/null; then
     echo -e "${GREEN}Node.js и npm установлены. Запускаем локально.${NC}"

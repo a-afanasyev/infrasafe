@@ -85,9 +85,15 @@
 ├── test_api.sh            # Полное тестирование API
 ├── test_api_quick.sh      # Быстрое тестирование API
 ├── setup.sh               # Скрипт настройки проекта
-├── docker-compose.yml     # Docker композиция
-├── Dockerfile             # Docker контейнер для бэкенда
-├── Dockerfile.frontend    # Docker контейнер для фронтенда
+├── docker-compose.unified.yml  # Единая Docker композиция (рекомендуется)
+├── docker-compose.dev.yml      # Docker композиция для разработки
+├── docker-compose.prod.yml     # Docker композиция для production
+├── docker-compose.generator.yml # Docker композиция для генератора метрик
+├── Dockerfile.unified           # Multi-stage Dockerfile (unified)
+├── Dockerfile.dev               # Dockerfile для разработки
+├── Dockerfile.prod              # Dockerfile для production
+├── Dockerfile.frontend.dev      # Dockerfile фронтенда для разработки
+├── Dockerfile.frontend-only     # Dockerfile фронтенда для production
 ├── nginx.conf            # Конфигурация Nginx
 ├── package.json          # Зависимости Node.js
 ├── swagger_init_debug.js # Swagger документация
@@ -118,11 +124,14 @@
 
 2.  **Запустить проект:**
     ```bash
-    # Запуск всех сервисов
-    docker-compose up -d
+    # Рекомендуемый способ - единое развертывание
+    docker compose -f docker-compose.unified.yml up --build -d
 
-    # Или с перестроением контейнеров
-    docker-compose up --build -d
+    # Или для разработки
+    docker compose -f docker-compose.dev.yml up --build -d
+
+    # Или для production
+    docker compose -f docker-compose.prod.yml up --build -d
     ```
 
 3.  **Проверить статус контейнеров:**
@@ -193,19 +202,22 @@
 ### Управление Docker сервисами
 
 ```bash
-# Остановка сервисов
-docker-compose down
+# Остановка сервисов (для unified)
+docker compose -f docker-compose.unified.yml down
 
 # Остановка с удалением данных
-docker-compose down -v
+docker compose -f docker-compose.unified.yml down -v
 
 # Просмотр логов
-docker-compose logs -f app     # Логи бэкенда
-docker-compose logs -f frontend # Логи фронтенда
-docker-compose logs -f postgres # Логи базы данных
+docker compose -f docker-compose.unified.yml logs -f app     # Логи бэкенда
+docker compose -f docker-compose.unified.yml logs -f frontend # Логи фронтенда
+docker compose -f docker-compose.unified.yml logs -f postgres # Логи базы данных
 
 # Перезапуск отдельного сервиса
-docker-compose restart app
+docker compose -f docker-compose.unified.yml restart app
+
+# Проверка статуса
+docker compose -f docker-compose.unified.yml ps
 ```
 
 ## Ключевые функции платформы:
