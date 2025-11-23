@@ -95,6 +95,19 @@
     </div>
 
     <div class="card">
+      <h3>💾 Бэкап и восстановление</h3>
+      <div class="row">
+        <button id="exportJson" style="background:#2196F3; color:white;">📤 Экспорт JSON</button>
+        <button id="importJson" style="background:#FF9800; color:white;">📥 Импорт JSON</button>
+        <input type="file" id="importFileInput" accept=".json" style="display:none;" />
+      </div>
+      <p style="margin-top:8px; color:#666; font-size:14px;">
+        Экспорт: сохраняет все конфигурации в JSON файл для бэкапа.<br>
+        Импорт: восстанавливает конфигурации из JSON файла (существующие будут перезаписаны).
+      </p>
+    </div>
+
+    <div class="card">
       <button id="run">Выполнить генерацию один раз</button>
       <div id="result" style="margin-top:8px"></div>
     </div>
@@ -332,9 +345,16 @@
         document.getElementById('formCard').style.display = 'none';
       }
 
-      document.getElementById('save').addEventListener('click', async () => {
+      /**
+       * Сохранить диапазоны для текущего здания
+       * Эта функция используется как при нажатии кнопки "Сохранить", так и при автоматическом сохранении после копирования
+       */
+      async function saveRanges() {
         const buildingId = document.getElementById('buildingId').value.trim();
-        if (!buildingId) { alert('Укажите Building ID'); return; }
+        if (!buildingId) { 
+          alert('Укажите Building ID'); 
+          return false;
+        }
 
         const payload = {
           electricity: {
@@ -364,16 +384,33 @@
           leakProbability: Number(document.getElementById('leakp').value)
         };
 
-        const resp = await fetch(`/api/ranges/${encodeURIComponent(buildingId)}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
-        });
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({}));
-          alert(err.message || 'Ошибка сохранения');
-          return;
+        try {
+          const resp = await fetch(`/api/ranges/${encodeURIComponent(buildingId)}`, {
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify(payload)
+          });
+          
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            alert(err.message || 'Ошибка сохранения');
+            return false;
+          }
+          
+          await loadRanges();
+          return true;
+        } catch (error) {
+          alert('Ошибка при сохранении: ' + error.message);
+          return false;
         }
-        await loadRanges();
-        alert('Сохранено');
+      }
+
+      // Обработчик кнопки "Сохранить диапазоны"
+      document.getElementById('save').addEventListener('click', async () => {
+        const success = await saveRanges();
+        if (success) {
+          alert('Сохранено');
+        }
       });
 
       document.getElementById('run').addEventListener('click', async () => {
@@ -400,7 +437,7 @@
       });
 
       // Обработчик кнопки "Копировать"
-      document.getElementById('copyConfig').addEventListener('click', () => {
+      document.getElementById('copyConfig').addEventListener('click', async () => {
         const sourceBuildingId = document.getElementById('copyFromBuilding').value;
         const targetBuildingId = document.getElementById('buildingId').value.trim();
         
@@ -482,7 +519,210 @@
           // Прокручиваем к форме
           document.getElementById('formCard').scrollIntoView({ behavior: 'smooth' });
           
-          alert(`✅ Данные из здания #${sourceBuildingId} скопированы.\n\nТеперь вы можете отредактировать их и сохранить для здания #${targetBuildingId}.`);
+          // Автоматически сохраняем скопированные данные
+          const saveSuccess = await saveRanges();
+          if (saveSuccess) {
+            alert(`✅ Данные из здания #${sourceBuildingId} скопированы и сохранены для здания #${targetBuildingId}.`);
+          } else {
+            alert(`⚠️ Данные из здания #${sourceBuildingId} скопированы в форму, но не удалось сохранить.\n\nПроверьте заполнение полей и нажмите "Сохранить диапазоны" вручную.`);
+          }
+        }
+      });
+
+      /**
+       * Экспорт всех конфигураций в JSON файл
+       */
+      async function exportToJson() {
+        try {
+          // Получаем все конфигурации
+          const resp = await fetch('/api/ranges');
+          if (!resp.ok) {
+            throw new Error('Ошибка при получении данных');
+          }
+          
+          const result = await resp.json();
+          const data = result.data || {};
+          
+          // Создаем объект для экспорта с метаданными
+          const exportData = {
+            version: '1.0',
+            exportDate: new Date().toISOString(),
+            description: 'InfraSafe Generator Configuration Backup',
+            ranges: data
+          };
+          
+          // Преобразуем в JSON с форматированием
+          const jsonString = JSON.stringify(exportData, null, 2);
+          
+          // Создаем blob и скачиваем файл
+          const blob = new Blob([jsonString], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `infrasafe-generator-backup-${new Date().toISOString().split('T')[0]}.json`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          
+          alert(`✅ Экспорт выполнен успешно!\n\nСохранено конфигураций: ${Object.keys(data).length}`);
+        } catch (error) {
+          alert('❌ Ошибка при экспорте: ' + error.message);
+        }
+      }
+
+      /**
+       * Импорт конфигураций из JSON файла
+       */
+      async function importFromJson(file) {
+        try {
+          console.log('[Импорт] Начало импорта файла:', file.name);
+          
+          // Читаем файл
+          const text = await file.text();
+          console.log('[Импорт] Размер файла:', text.length, 'символов');
+          
+          const importData = JSON.parse(text);
+          console.log('[Импорт] JSON распарсен, структура:', {
+            hasVersion: !!importData.version,
+            hasRanges: !!importData.ranges,
+            keys: Object.keys(importData)
+          });
+          
+          // Проверяем структуру файла
+          let rangesToImport = {};
+          if (importData.ranges && typeof importData.ranges === 'object') {
+            // Новый формат с метаданными
+            rangesToImport = importData.ranges;
+            console.log('[Импорт] Используется новый формат с метаданными');
+          } else if (typeof importData === 'object' && !importData.version) {
+            // Старый формат - просто объект с диапазонами
+            rangesToImport = importData;
+            console.log('[Импорт] Используется старый формат');
+          } else {
+            console.error('[Импорт] Некорректный формат файла:', importData);
+            throw new Error('Некорректный формат JSON файла');
+          }
+          
+          // Подсчитываем количество конфигураций
+          const count = Object.keys(rangesToImport).length;
+          console.log('[Импорт] Найдено конфигураций:', count);
+          console.log('[Импорт] Здания:', Object.keys(rangesToImport));
+          
+          if (count === 0) {
+            alert('⚠️ В файле нет конфигураций для импорта');
+            return;
+          }
+          
+          // Проверяем первую конфигурацию для отладки
+          const firstBuildingId = Object.keys(rangesToImport)[0];
+          const firstConfig = rangesToImport[firstBuildingId];
+          console.log('[Импорт] Пример конфигурации для здания', firstBuildingId, ':', {
+            hasElectricity: !!firstConfig.electricity,
+            hasAmperage: !!firstConfig.amperage,
+            hasWaterPressure: !!firstConfig.waterPressure,
+            hasWaterTemp: !!firstConfig.waterTemp,
+            hasEnvironment: !!firstConfig.environment,
+            leakProbability: firstConfig.leakProbability,
+            leakProbabilityType: typeof firstConfig.leakProbability
+          });
+          
+          // Подтверждение импорта
+          const confirmMessage = `📥 Импорт конфигураций\n\n` +
+            `Найдено конфигураций: ${count}\n` +
+            `Здания: ${Object.keys(rangesToImport).join(', ')}\n\n` +
+            `⚠️ Внимание: существующие конфигурации для этих зданий будут перезаписаны!\n\n` +
+            `Продолжить импорт?`;
+          
+          if (!confirm(confirmMessage)) {
+            console.log('[Импорт] Импорт отменен пользователем');
+            return;
+          }
+          
+          // Отправляем данные на сервер для импорта
+          console.log('[Импорт] Отправка данных на сервер...');
+          const requestBody = { ranges: rangesToImport };
+          console.log('[Импорт] Размер данных для отправки:', JSON.stringify(requestBody).length, 'символов');
+          
+          const resp = await fetch('/api/ranges/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+          });
+          
+          console.log('[Импорт] Ответ сервера:', {
+            status: resp.status,
+            statusText: resp.statusText,
+            ok: resp.ok
+          });
+          
+          if (!resp.ok) {
+            const err = await resp.json().catch((parseError) => {
+              console.error('[Импорт] Ошибка парсинга ответа сервера:', parseError);
+              return { message: 'Ошибка при получении ответа от сервера' };
+            });
+            
+            console.error('[Импорт] Ошибка сервера:', err);
+            
+            let errorMessage = err.message || 'Ошибка при импорте';
+            
+            // Если есть детальные ошибки, показываем их
+            if (err.errors && Array.isArray(err.errors) && err.errors.length > 0) {
+              console.error('[Импорт] Детальные ошибки:', err.errors);
+              errorMessage += '\n\nДетали ошибок:\n' + err.errors.slice(0, 10).join('\n');
+              if (err.errors.length > 10) {
+                errorMessage += `\n... и еще ${err.errors.length - 10} ошибок`;
+              }
+            }
+            
+            throw new Error(errorMessage);
+          }
+          
+          const result = await resp.json();
+          console.log('[Импорт] Результат импорта:', result);
+          
+          // Обновляем список конфигураций
+          await loadRanges();
+          
+          // Формируем сообщение об успехе с информацией об ошибках, если они есть
+          let successMessage = `✅ Импорт выполнен успешно!\n\nИмпортировано конфигураций: ${result.imported || count}`;
+          if (result.total && result.total > result.imported) {
+            successMessage += ` из ${result.total}`;
+          }
+          
+          if (result.errors && Array.isArray(result.errors) && result.errors.length > 0) {
+            console.warn('[Импорт] Есть ошибки при импорте:', result.errors);
+            successMessage += `\n\n⚠️ Ошибки при импорте (${result.errors.length}):\n` + 
+              result.errors.slice(0, 5).join('\n');
+            if (result.errors.length > 5) {
+              successMessage += `\n... и еще ${result.errors.length - 5} ошибок`;
+            }
+          }
+          
+          console.log('[Импорт] Импорт завершен успешно');
+          alert(successMessage);
+        } catch (error) {
+          console.error('[Импорт] Критическая ошибка:', error);
+          console.error('[Импорт] Stack trace:', error.stack);
+          alert('❌ Ошибка при импорте: ' + error.message);
+        }
+      }
+
+      // Обработчик кнопки "Экспорт JSON"
+      document.getElementById('exportJson').addEventListener('click', exportToJson);
+
+      // Обработчик кнопки "Импорт JSON"
+      document.getElementById('importJson').addEventListener('click', () => {
+        document.getElementById('importFileInput').click();
+      });
+
+      // Обработчик выбора файла для импорта
+      document.getElementById('importFileInput').addEventListener('change', (event) => {
+        const file = event.target.files[0];
+        if (file) {
+          importFromJson(file);
+          // Сбрасываем значение input, чтобы можно было выбрать тот же файл снова
+          event.target.value = '';
         }
       });
 

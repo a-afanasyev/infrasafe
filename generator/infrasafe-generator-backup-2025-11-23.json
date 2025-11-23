@@ -1,0 +1,1042 @@
+{
+  "version": "1.0",
+  "exportDate": "2025-11-23T20:49:27.404Z",
+  "description": "InfraSafe Generator Configuration Backup",
+  "ranges": {
+    "29": {
+      "electricity": {
+        "ph1": [
+          200,
+          250
+        ],
+        "ph2": [
+          200,
+          250
+        ],
+        "ph3": [
+          200,
+          250
+        ]
+      },
+      "amperage": {
+        "ph1": [
+          5,
+          40
+        ],
+        "ph2": [
+          10,
+          45
+        ],
+        "ph3": [
+          8,
+          50
+        ]
+      },
+      "waterPressure": {
+        "cold": [
+          3,
+          6
+        ],
+        "hotIn": [
+          0,
+          0
+        ],
+        "hotOut": [
+          0,
+          0
+        ]
+      },
+      "waterTemp": {
+        "cold": [
+          8,
+          15
+        ],
+        "hotIn": [
+          0,
+          0
+        ],
+        "hotOut": [
+          0,
+          0
+        ]
+      },
+      "environment": {
+        "airTemp": [
+          4,
+          20
+        ],
+        "humidity": [
+          20,
+          50
+        ]
+      },
+      "leakProbability": 0.0001
+    },
+    "30": {
+      "electricity": {
+        "ph1": [
+          200,
+          250
+        ],
+        "ph2": [
+          200,
+          250
+        ],
+        "ph3": [
+          200,
+          250
+        ]
+      },
+      "amperage": {
+        "ph1": [
+          5,
+          40
+        ],
+        "ph2": [
+          10,
+          45
+        ],
+        "ph3": [
+          8,
+          50
+        ]
+      },
+      "waterPressure": {
+        "cold": [
+          3,
+          6
+        ],
+        "hotIn": [
+          0,
+          0
+        ],
+        "hotOut": [
+          0,
+          0
+        ]
+      },
+      "waterTemp": {
+        "cold": [
+          8,
+          15
+        ],
+        "hotIn": [
+          0,
+          0
+        ],
+        "hotOut": [
+          0,
+          0
+        ]
+      },
+      "environment": {
+        "airTemp": [
+          4,
+          20
+        ],
+        "humidity": [
+          20,
+          50
+        ]
+      },
+      "leakProbability": 0.0001
+    },
+    "31": {
+      "electricity": {
+        "ph1": [
+          200,
+          250
+        ],
+        "ph2": [
+          200,
+          250
+        ],
+        "ph3": [
+          200,
+          250
+        ]
+      },
+      "amperage": {
+        "ph1": [
+          5,
+          40
+        ],
+        "ph2": [
+          10,
+          45
+        ],
+        "ph3": [
+          8,
+          50
+        ]
+      },
+      "waterPressure": {
+        "cold": [
+          3,
+          6
+        ],
+        "hotIn": [
+          0,
+          0
+        ],
+        "hotOut": [
+          0,
+          0
+        ]
+      },
+      "waterTemp": {
+        "cold": [
+          8,
+          15
+        ],
+        "hotIn": [
+          0,
+          0
+        ],
+        "hotOut": [
+          0,
+          0
+        ]
+      },
+      "environment": {
+        "airTemp": [
+          4,
+          20
+        ],
+        "humidity": [
+          20,
+          50
+        ]
+      },
+      "leakProbability": 0.0001
+    },
+    "44": {
+      "electricity": {
+        "ph1": [
+          200,
+          250
+        ],
+        "ph2": [
+          200,
+          250
+        ],
+        "ph3": [
+          200,
+          250
+        ]
+      },
+      "amperage": {
+        "ph1": [
+          5,
+          40
+        ],
+        "ph2": [
+          10,
+          45
+        ],
+        "ph3": [
+          8,
+          50
+        ]
+      },
+      "waterPressure": {
+        "cold": [
+          3,
+          6
+        ],
+        "hotIn": [
+          6,
+          7
+        ],
+        "hotOut": [
+          5,
+          6
+        ]
+      },
+      "waterTemp": {
+        "cold": [
+          8,
+          15
+        ],
+        "hotIn": [
+          65,
+          86
+        ],
+        "hotOut": [
+          55,
+          65
+        ]
+      },
+      "environment": {
+        "airTemp": [
+          4,
+          20
+        ],
+        "humidity": [
+          20,
+          50
+        ]
+      },
+      "leakProbability": 0.0001
+    },
+    "45": {
+      "electricity": {
+        "ph1": [
+          200,
+          250
+        ],
+        "ph2": [
+          200,
+          250
+        ],
+        "ph3": [
+          200,
+          250
+        ]
+      },
+      "amperage": {
+        "ph1": [
+          5,
+          40
+        ],
+        "ph2": [
+          10,
+          45
+        ],
+        "ph3": [
+          8,
+          50
+        ]
+      },
+      "waterPressure": {
+        "cold": [
+          3,
+          6
+        ],
+        "hotIn": [
+          6,
+          7
+        ],
+        "hotOut": [
+          5,
+          6
+        ]
+      },
+      "waterTemp": {
+        "cold": [
+          8,
+          15
+        ],
+        "hotIn": [
+          65,
+          86
+        ],
+        "hotOut": [
+          55,
+          65
+        ]
+      },
+      "environment": {
+        "airTemp": [
+          4,
+          20
+        ],
+        "humidity": [
+          20,
+          50
+        ]
+      },
+      "leakProbability": 0.0001
+    },
+    "46": {
+      "electricity": {
+        "ph1": [
+          200,
+          250
+        ],
+        "ph2": [
+          200,
+          250
+        ],
+        "ph3": [
+          200,
+          250
+        ]
+      },
+      "amperage": {
+        "ph1": [
+          5,
+          40
+        ],
+        "ph2": [
+          10,
+          45
+        ],
+        "ph3": [
+          8,
+          50
+        ]
+      },
+      "waterPressure": {
+        "cold": [
+          3,
+          6
+        ],
+        "hotIn": [
+          6,
+          7
+        ],
+        "hotOut": [
+          5,
+          6
+        ]
+      },
+      "waterTemp": {
+        "cold": [
+          8,
+          15
+        ],
+        "hotIn": [
+          65,
+          86
+        ],
+        "hotOut": [
+          55,
+          65
+        ]
+      },
+      "environment": {
+        "airTemp": [
+          4,
+          20
+        ],
+        "humidity": [
+          20,
+          50
+        ]
+      },
+      "leakProbability": 0.0001
+    },
+    "47": {
+      "electricity": {
+        "ph1": [
+          200,
+          250
+        ],
+        "ph2": [
+          200,
+          250
+        ],
+        "ph3": [
+          200,
+          250
+        ]
+      },
+      "amperage": {
+        "ph1": [
+          5,
+          40
+        ],
+        "ph2": [
+          10,
+          45
+        ],
+        "ph3": [
+          8,
+          50
+        ]
+      },
+      "waterPressure": {
+        "cold": [
+          3,
+          6
+        ],
+        "hotIn": [
+          6,
+          7
+        ],
+        "hotOut": [
+          5,
+          6
+        ]
+      },
+      "waterTemp": {
+        "cold": [
+          8,
+          15
+        ],
+        "hotIn": [
+          65,
+          86
+        ],
+        "hotOut": [
+          55,
+          65
+        ]
+      },
+      "environment": {
+        "airTemp": [
+          4,
+          20
+        ],
+        "humidity": [
+          20,
+          50
+        ]
+      },
+      "leakProbability": 0.0001
+    },
+    "48": {
+      "electricity": {
+        "ph1": [
+          200,
+          250
+        ],
+        "ph2": [
+          200,
+          250
+        ],
+        "ph3": [
+          200,
+          250
+        ]
+      },
+      "amperage": {
+        "ph1": [
+          5,
+          40
+        ],
+        "ph2": [
+          10,
+          45
+        ],
+        "ph3": [
+          8,
+          50
+        ]
+      },
+      "waterPressure": {
+        "cold": [
+          3,
+          6
+        ],
+        "hotIn": [
+          6,
+          7
+        ],
+        "hotOut": [
+          5,
+          6
+        ]
+      },
+      "waterTemp": {
+        "cold": [
+          8,
+          15
+        ],
+        "hotIn": [
+          65,
+          86
+        ],
+        "hotOut": [
+          55,
+          65
+        ]
+      },
+      "environment": {
+        "airTemp": [
+          4,
+          20
+        ],
+        "humidity": [
+          20,
+          50
+        ]
+      },
+      "leakProbability": 0.0001
+    },
+    "49": {
+      "electricity": {
+        "ph1": [
+          200,
+          250
+        ],
+        "ph2": [
+          200,
+          250
+        ],
+        "ph3": [
+          200,
+          250
+        ]
+      },
+      "amperage": {
+        "ph1": [
+          5,
+          40
+        ],
+        "ph2": [
+          10,
+          45
+        ],
+        "ph3": [
+          8,
+          50
+        ]
+      },
+      "waterPressure": {
+        "cold": [
+          3,
+          6
+        ],
+        "hotIn": [
+          6,
+          7
+        ],
+        "hotOut": [
+          5,
+          6
+        ]
+      },
+      "waterTemp": {
+        "cold": [
+          8,
+          15
+        ],
+        "hotIn": [
+          65,
+          86
+        ],
+        "hotOut": [
+          55,
+          65
+        ]
+      },
+      "environment": {
+        "airTemp": [
+          4,
+          20
+        ],
+        "humidity": [
+          20,
+          50
+        ]
+      },
+      "leakProbability": 0.0001
+    },
+    "50": {
+      "electricity": {
+        "ph1": [
+          200,
+          250
+        ],
+        "ph2": [
+          200,
+          250
+        ],
+        "ph3": [
+          200,
+          250
+        ]
+      },
+      "amperage": {
+        "ph1": [
+          5,
+          40
+        ],
+        "ph2": [
+          10,
+          45
+        ],
+        "ph3": [
+          8,
+          50
+        ]
+      },
+      "waterPressure": {
+        "cold": [
+          3,
+          6
+        ],
+        "hotIn": [
+          6,
+          7
+        ],
+        "hotOut": [
+          5,
+          6
+        ]
+      },
+      "waterTemp": {
+        "cold": [
+          8,
+          15
+        ],
+        "hotIn": [
+          65,
+          86
+        ],
+        "hotOut": [
+          55,
+          65
+        ]
+      },
+      "environment": {
+        "airTemp": [
+          4,
+          20
+        ],
+        "humidity": [
+          20,
+          50
+        ]
+      },
+      "leakProbability": 0.0001
+    },
+    "51": {
+      "electricity": {
+        "ph1": [
+          200,
+          250
+        ],
+        "ph2": [
+          200,
+          250
+        ],
+        "ph3": [
+          200,
+          250
+        ]
+      },
+      "amperage": {
+        "ph1": [
+          5,
+          40
+        ],
+        "ph2": [
+          10,
+          45
+        ],
+        "ph3": [
+          8,
+          50
+        ]
+      },
+      "waterPressure": {
+        "cold": [
+          3,
+          6
+        ],
+        "hotIn": [
+          6,
+          7
+        ],
+        "hotOut": [
+          5,
+          6
+        ]
+      },
+      "waterTemp": {
+        "cold": [
+          8,
+          15
+        ],
+        "hotIn": [
+          65,
+          86
+        ],
+        "hotOut": [
+          55,
+          65
+        ]
+      },
+      "environment": {
+        "airTemp": [
+          4,
+          20
+        ],
+        "humidity": [
+          20,
+          50
+        ]
+      },
+      "leakProbability": 0.0001
+    },
+    "52": {
+      "electricity": {
+        "ph1": [
+          200,
+          250
+        ],
+        "ph2": [
+          200,
+          250
+        ],
+        "ph3": [
+          200,
+          250
+        ]
+      },
+      "amperage": {
+        "ph1": [
+          5,
+          40
+        ],
+        "ph2": [
+          10,
+          45
+        ],
+        "ph3": [
+          8,
+          50
+        ]
+      },
+      "waterPressure": {
+        "cold": [
+          3,
+          6
+        ],
+        "hotIn": [
+          6,
+          7
+        ],
+        "hotOut": [
+          5,
+          6
+        ]
+      },
+      "waterTemp": {
+        "cold": [
+          8,
+          15
+        ],
+        "hotIn": [
+          65,
+          86
+        ],
+        "hotOut": [
+          55,
+          65
+        ]
+      },
+      "environment": {
+        "airTemp": [
+          4,
+          20
+        ],
+        "humidity": [
+          20,
+          50
+        ]
+      },
+      "leakProbability": 0.0001
+    },
+    "53": {
+      "electricity": {
+        "ph1": [
+          200,
+          250
+        ],
+        "ph2": [
+          200,
+          250
+        ],
+        "ph3": [
+          200,
+          250
+        ]
+      },
+      "amperage": {
+        "ph1": [
+          5,
+          40
+        ],
+        "ph2": [
+          10,
+          45
+        ],
+        "ph3": [
+          8,
+          50
+        ]
+      },
+      "waterPressure": {
+        "cold": [
+          3,
+          6
+        ],
+        "hotIn": [
+          6,
+          7
+        ],
+        "hotOut": [
+          5,
+          6
+        ]
+      },
+      "waterTemp": {
+        "cold": [
+          8,
+          15
+        ],
+        "hotIn": [
+          65,
+          86
+        ],
+        "hotOut": [
+          55,
+          65
+        ]
+      },
+      "environment": {
+        "airTemp": [
+          4,
+          20
+        ],
+        "humidity": [
+          20,
+          50
+        ]
+      },
+      "leakProbability": 0.0001
+    },
+    "54": {
+      "electricity": {
+        "ph1": [
+          200,
+          250
+        ],
+        "ph2": [
+          200,
+          250
+        ],
+        "ph3": [
+          200,
+          250
+        ]
+      },
+      "amperage": {
+        "ph1": [
+          5,
+          40
+        ],
+        "ph2": [
+          10,
+          45
+        ],
+        "ph3": [
+          8,
+          50
+        ]
+      },
+      "waterPressure": {
+        "cold": [
+          3,
+          6
+        ],
+        "hotIn": [
+          6,
+          7
+        ],
+        "hotOut": [
+          5,
+          6
+        ]
+      },
+      "waterTemp": {
+        "cold": [
+          8,
+          15
+        ],
+        "hotIn": [
+          65,
+          86
+        ],
+        "hotOut": [
+          55,
+          65
+        ]
+      },
+      "environment": {
+        "airTemp": [
+          4,
+          20
+        ],
+        "humidity": [
+          20,
+          50
+        ]
+      },
+      "leakProbability": 0.0001
+    },
+    "55": {
+      "electricity": {
+        "ph1": [
+          200,
+          250
+        ],
+        "ph2": [
+          200,
+          250
+        ],
+        "ph3": [
+          200,
+          250
+        ]
+      },
+      "amperage": {
+        "ph1": [
+          5,
+          40
+        ],
+        "ph2": [
+          10,
+          45
+        ],
+        "ph3": [
+          8,
+          50
+        ]
+      },
+      "waterPressure": {
+        "cold": [
+          3,
+          6
+        ],
+        "hotIn": [
+          6,
+          7
+        ],
+        "hotOut": [
+          5,
+          6
+        ]
+      },
+      "waterTemp": {
+        "cold": [
+          8,
+          15
+        ],
+        "hotIn": [
+          65,
+          86
+        ],
+        "hotOut": [
+          55,
+          65
+        ]
+      },
+      "environment": {
+        "airTemp": [
+          4,
+          20
+        ],
+        "humidity": [
+          20,
+          50
+        ]
+      },
+      "leakProbability": 0.0001
+    }
+  }
+}

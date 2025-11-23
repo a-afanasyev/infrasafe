@@ -30,6 +30,159 @@ app.get('/api/ranges', (_req, res) => {
   res.json({ success: true, data: getAllRanges() });
 });
 
+// Импорт конфигураций из JSON (массовая загрузка)
+// ВАЖНО: Этот маршрут должен быть ПЕРЕД /api/ranges/:buildingId, 
+// иначе Express будет интерпретировать "import" как buildingId
+app.post('/api/ranges/import', (req, res) => {
+  try {
+    console.log('[Импорт API] Получен запрос на импорт');
+    console.log('[Импорт API] Тело запроса:', {
+      hasRanges: !!req.body.ranges,
+      rangesType: typeof req.body.ranges,
+      rangesKeys: req.body.ranges ? Object.keys(req.body.ranges) : null,
+      rangesCount: req.body.ranges ? Object.keys(req.body.ranges).length : 0
+    });
+    
+    const { ranges } = req.body || {};
+    
+    if (!ranges || typeof ranges !== 'object') {
+      console.error('[Импорт API] Некорректный формат данных:', {
+        ranges: ranges,
+        rangesType: typeof ranges,
+        body: req.body
+      });
+      return res.status(400).json({ success: false, message: 'Некорректный формат данных. Ожидается объект ranges.' });
+    }
+    
+    let imported = 0;
+    let errors = [];
+    
+    /**
+     * Валидация структуры диапазонов
+     * Проверяет, что объект содержит массивы [min, max] для всех фаз
+     */
+    function validateRangeGroup(group, groupName) {
+      if (!group || typeof group !== 'object') {
+        return `отсутствует группа ${groupName}`;
+      }
+      
+      // Проверяем все поля в группе
+      for (const [key, value] of Object.entries(group)) {
+        if (!Array.isArray(value) || value.length !== 2) {
+          return `${groupName}.${key} должен быть массивом [min, max]`;
+        }
+        const [min, max] = value;
+        if (typeof min !== 'number' || typeof max !== 'number') {
+          return `${groupName}.${key} должен содержать числа`;
+        }
+        if (min > max) {
+          return `${groupName}.${key}: min (${min}) больше max (${max})`;
+        }
+      }
+      
+      return null;
+    }
+    
+    // Импортируем каждую конфигурацию
+    for (const [buildingId, config] of Object.entries(ranges)) {
+      try {
+        console.log(`[Импорт API] Обработка здания #${buildingId}`);
+        
+        // Проверяем наличие всех обязательных групп
+        if (!config.electricity || !config.amperage || !config.waterPressure || 
+            !config.waterTemp || !config.environment) {
+          const missing = [];
+          if (!config.electricity) missing.push('electricity');
+          if (!config.amperage) missing.push('amperage');
+          if (!config.waterPressure) missing.push('waterPressure');
+          if (!config.waterTemp) missing.push('waterTemp');
+          if (!config.environment) missing.push('environment');
+          
+          console.error(`[Импорт API] Здание #${buildingId}: отсутствуют группы:`, missing);
+          errors.push(`Здание #${buildingId}: отсутствуют обязательные группы данных (${missing.join(', ')})`);
+          continue;
+        }
+        
+        // Проверяем leakProbability
+        if (typeof config.leakProbability !== 'number') {
+          console.error(`[Импорт API] Здание #${buildingId}: leakProbability имеет тип ${typeof config.leakProbability}, значение:`, config.leakProbability);
+          errors.push(`Здание #${buildingId}: leakProbability должно быть числом (получено: ${typeof config.leakProbability})`);
+          continue;
+        }
+        
+        // Валидируем каждую группу диапазонов
+        const electricityError = validateRangeGroup(config.electricity, 'electricity');
+        if (electricityError) {
+          errors.push(`Здание #${buildingId}: ${electricityError}`);
+          continue;
+        }
+        
+        const amperageError = validateRangeGroup(config.amperage, 'amperage');
+        if (amperageError) {
+          errors.push(`Здание #${buildingId}: ${amperageError}`);
+          continue;
+        }
+        
+        const waterPressureError = validateRangeGroup(config.waterPressure, 'waterPressure');
+        if (waterPressureError) {
+          errors.push(`Здание #${buildingId}: ${waterPressureError}`);
+          continue;
+        }
+        
+        const waterTempError = validateRangeGroup(config.waterTemp, 'waterTemp');
+        if (waterTempError) {
+          errors.push(`Здание #${buildingId}: ${waterTempError}`);
+          continue;
+        }
+        
+        const environmentError = validateRangeGroup(config.environment, 'environment');
+        if (environmentError) {
+          errors.push(`Здание #${buildingId}: ${environmentError}`);
+          continue;
+        }
+        
+        // Ограничение leakProbability в [0,1]
+        const lp = Math.max(0, Math.min(1, Number(config.leakProbability)));
+        
+        // Сохраняем конфигурацию
+        setBuildingRange(String(buildingId), {
+          electricity: config.electricity,
+          amperage: config.amperage,
+          waterPressure: config.waterPressure,
+          waterTemp: config.waterTemp,
+          environment: config.environment,
+          leakProbability: lp
+        });
+        
+        imported++;
+      } catch (error) {
+        errors.push(`Здание #${buildingId}: ${error.message}`);
+      }
+    }
+    
+    if (imported === 0 && errors.length > 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Не удалось импортировать ни одной конфигурации',
+        errors 
+      });
+    }
+    
+    return res.json({ 
+      success: true, 
+      imported,
+      total: Object.keys(ranges).length,
+      errors: errors.length > 0 ? errors : undefined,
+      data: getAllRanges() 
+    });
+  } catch (error) {
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Ошибка при импорте: ' + (error?.message || 'Неизвестная ошибка') 
+    });
+  }
+});
+
 // Получить диапазоны по конкретному buildingId
 app.get('/api/ranges/:buildingId', (req, res) => {
   const id = String(req.params.buildingId);

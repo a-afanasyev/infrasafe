@@ -1,9 +1,8 @@
-name: infrasafe-generator-only
-
 services:
   generator:
     build:
       context: ./generator
+      dockerfile: Dockerfile
     image: infrasafe-generator:latest
     env_file:
       - ./generator/.env
@@ -12,17 +11,25 @@ services:
     volumes:
       # Персистентность локального файла настроек диапазонов
       - generator_data:/app/generator-data.json
-
+    environment:
+      - TZ=Asia/Tashkent
+      - NODE_ENV=production
     networks:
-      - infrasafe-dev
+      - leaflet-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8081/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     labels:
       - "description=InfraSafe Test Data Generator"
       - "role=generator"
 
 volumes:
-  generator_data: {}
+  generator_data:
 
 networks:
-  infrasafe-dev:
-    external: true
+  leaflet-network:
+    driver: bridge
