@@ -1587,7 +1587,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         img.style.cssText = 'width: 35px; height: 35px; object-fit: contain;';
         
         const span = document.createElement('span');
-        span.textContent = 'Olmazor Holding Grand';
+        span.textContent = 'InfraSafe';
         
         wrapper.appendChild(img);
         wrapper.appendChild(span);
