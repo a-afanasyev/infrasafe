@@ -9,6 +9,7 @@
     <meta name="theme-color" content="#F4F7FA">
     
     <!-- ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Content Security Policy для защиты от XSS -->
+    <!-- Примечание: frame-ancestors не работает в meta теге, настраивается через Nginx заголовки -->
     <meta http-equiv="Content-Security-Policy" content="
         default-src 'self';
         script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;
@@ -16,7 +17,6 @@
         font-src 'self' https://fonts.gstatic.com;
         img-src 'self' data: https:;
         connect-src 'self' https://*;
-        frame-ancestors 'none';
         base-uri 'self';
         form-action 'self';
     ">

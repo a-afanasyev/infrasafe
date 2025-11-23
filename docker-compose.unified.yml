@@ -24,6 +24,8 @@ services:
     volumes:
       - .:/app
       - /app/node_modules
+    # Создаем директорию logs с правильными правами
+    command: sh -c "mkdir -p /app/logs && chmod 777 /app/logs && npm run dev"
     environment:
       - NODE_ENV=development
       - PORT=3000
