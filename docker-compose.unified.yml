@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Фронтенд на Nginx
   frontend:
@@ -165,8 +163,10 @@ services:
       # ВАЖНО: Файл должен находиться в корне проекта
       # Альтернатива: используйте абсолютный путь /home/infrasafe/nginx-docker/nginx.production.conf
       - ./nginx.production.conf:/etc/nginx/nginx.conf:ro
-      # SSL сертификаты (монтируйте с хоста)
-      - /etc/letsencrypt/live/infrasafe.aisolutions.uz:/etc/nginx/ssl:ro
+      # SSL сертификаты (монтируем отдельные файлы)
+      - /etc/letsencrypt/live/infrasafe.aisolutions.uz/fullchain.pem:/etc/nginx/ssl/fullchain.pem:ro
+      - /etc/letsencrypt/live/infrasafe.aisolutions.uz/privkey.pem:/etc/nginx/ssl/privkey.pem:ro
+      - /etc/letsencrypt/live/infrasafe.aisolutions.uz/chain.pem:/etc/nginx/ssl/chain.pem:ro
       # Статические файлы из frontend контейнера
       - ./index.html:/usr/share/nginx/html/index.html:ro
       - ./admin.html:/usr/share/nginx/html/admin.html:ro
