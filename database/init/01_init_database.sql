@@ -602,63 +602,75 @@ $$ LANGUAGE plpgsql;
 -- ===============================================
 
 -- Триггеры для автоматического обновления геометрии
-CREATE TRIGGER IF NOT EXISTS trig_buildings_geom
+DROP TRIGGER IF EXISTS trig_buildings_geom ON buildings;
+CREATE TRIGGER trig_buildings_geom
     BEFORE INSERT OR UPDATE OF latitude, longitude ON buildings
     FOR EACH ROW EXECUTE FUNCTION update_geom_on_coordinates_change();
 
-CREATE TRIGGER IF NOT EXISTS trig_transformers_geom
+DROP TRIGGER IF EXISTS trig_transformers_geom ON transformers;
+CREATE TRIGGER trig_transformers_geom
     BEFORE INSERT OR UPDATE OF latitude, longitude ON transformers
     FOR EACH ROW
     WHEN (NEW.latitude IS NOT NULL AND NEW.longitude IS NOT NULL)
     EXECUTE FUNCTION update_transformers_geom();
 
-CREATE TRIGGER IF NOT EXISTS trig_power_transformers_geom
+DROP TRIGGER IF EXISTS trig_power_transformers_geom ON power_transformers;
+CREATE TRIGGER trig_power_transformers_geom
     BEFORE INSERT OR UPDATE OF latitude, longitude ON power_transformers
     FOR EACH ROW EXECUTE FUNCTION update_geom_on_coordinates_change();
 
-CREATE TRIGGER IF NOT EXISTS trig_cold_water_sources_geom
+DROP TRIGGER IF EXISTS trig_cold_water_sources_geom ON cold_water_sources;
+CREATE TRIGGER trig_cold_water_sources_geom
     BEFORE INSERT OR UPDATE OF latitude, longitude ON cold_water_sources
     FOR EACH ROW EXECUTE FUNCTION update_geom_on_coordinates_change();
 
-CREATE TRIGGER IF NOT EXISTS trig_heat_sources_geom
+DROP TRIGGER IF EXISTS trig_heat_sources_geom ON heat_sources;
+CREATE TRIGGER trig_heat_sources_geom
     BEFORE INSERT OR UPDATE OF latitude, longitude ON heat_sources
     FOR EACH ROW EXECUTE FUNCTION update_geom_on_coordinates_change();
 
 -- Триггер для обновления heartbeat
-CREATE TRIGGER IF NOT EXISTS trig_update_heartbeat
+DROP TRIGGER IF EXISTS trig_update_heartbeat ON metrics;
+CREATE TRIGGER trig_update_heartbeat
 AFTER INSERT ON metrics
 FOR EACH ROW
 EXECUTE FUNCTION update_controller_heartbeat();
 
 -- Триггеры для автоматического обновления updated_at
-CREATE TRIGGER IF NOT EXISTS trigger_transformers_updated_at
+DROP TRIGGER IF EXISTS trigger_transformers_updated_at ON transformers;
+CREATE TRIGGER trigger_transformers_updated_at
     BEFORE UPDATE ON transformers
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER IF NOT EXISTS trigger_lines_updated_at
+DROP TRIGGER IF EXISTS trigger_lines_updated_at ON lines;
+CREATE TRIGGER trigger_lines_updated_at
     BEFORE UPDATE ON lines
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER IF NOT EXISTS trigger_water_lines_updated_at
+DROP TRIGGER IF EXISTS trigger_water_lines_updated_at ON water_lines;
+CREATE TRIGGER trigger_water_lines_updated_at
     BEFORE UPDATE ON water_lines
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
 -- Триггеры для конвертации координат в пути
-CREATE TRIGGER IF NOT EXISTS trig_lines_convert_endpoints
+DROP TRIGGER IF EXISTS trig_lines_convert_endpoints ON lines;
+CREATE TRIGGER trig_lines_convert_endpoints
 BEFORE INSERT OR UPDATE ON lines
 FOR EACH ROW
 EXECUTE FUNCTION convert_line_endpoints_to_path();
 
-CREATE TRIGGER IF NOT EXISTS trig_lines_update_geom
+DROP TRIGGER IF EXISTS trig_lines_update_geom ON lines;
+CREATE TRIGGER trig_lines_update_geom
 BEFORE INSERT OR UPDATE ON lines
 FOR EACH ROW
 EXECUTE FUNCTION update_line_geom_from_path();
 
 -- Триггер для обновления geom линий водоснабжения из координат
-CREATE TRIGGER IF NOT EXISTS trig_water_lines_geom_from_coordinates
+DROP TRIGGER IF EXISTS trig_water_lines_geom_from_coordinates ON water_lines;
+CREATE TRIGGER trig_water_lines_geom_from_coordinates
 BEFORE INSERT OR UPDATE OF latitude_start, longitude_start, latitude_end, longitude_end ON water_lines
 FOR EACH ROW
 EXECUTE FUNCTION update_water_lines_geom_from_coordinates();
@@ -668,38 +680,63 @@ EXECUTE FUNCTION update_water_lines_geom_from_coordinates();
 -- ===============================================
 
 -- Добавление внешних ключей для зданий
-ALTER TABLE buildings ADD CONSTRAINT IF NOT EXISTS fk_buildings_power_transformer
-    FOREIGN KEY (power_transformer_id) REFERENCES power_transformers(id);
-
-ALTER TABLE buildings ADD CONSTRAINT IF NOT EXISTS fk_buildings_cold_water_source
-    FOREIGN KEY (cold_water_source_id) REFERENCES cold_water_sources(id);
-
-ALTER TABLE buildings ADD CONSTRAINT IF NOT EXISTS fk_buildings_heat_source
-    FOREIGN KEY (heat_source_id) REFERENCES heat_sources(id);
-
-ALTER TABLE buildings ADD CONSTRAINT IF NOT EXISTS fk_buildings_primary_transformer
-    FOREIGN KEY (primary_transformer_id) REFERENCES transformers(transformer_id);
-
-ALTER TABLE buildings ADD CONSTRAINT IF NOT EXISTS fk_buildings_backup_transformer
-    FOREIGN KEY (backup_transformer_id) REFERENCES transformers(transformer_id);
-
-ALTER TABLE buildings ADD CONSTRAINT IF NOT EXISTS fk_buildings_primary_line
-    FOREIGN KEY (primary_line_id) REFERENCES lines(line_id);
-
-ALTER TABLE buildings ADD CONSTRAINT IF NOT EXISTS fk_buildings_backup_line
-    FOREIGN KEY (backup_line_id) REFERENCES lines(line_id);
-
-ALTER TABLE buildings ADD CONSTRAINT IF NOT EXISTS fk_buildings_cold_water_line
-    FOREIGN KEY (cold_water_line_id) REFERENCES water_lines(line_id);
-
-ALTER TABLE buildings ADD CONSTRAINT IF NOT EXISTS fk_buildings_hot_water_line
-    FOREIGN KEY (hot_water_line_id) REFERENCES water_lines(line_id);
-
-ALTER TABLE buildings ADD CONSTRAINT IF NOT EXISTS fk_buildings_cold_water_supplier
-    FOREIGN KEY (cold_water_supplier_id) REFERENCES water_suppliers(supplier_id);
-
-ALTER TABLE buildings ADD CONSTRAINT IF NOT EXISTS fk_buildings_hot_water_supplier
-    FOREIGN KEY (hot_water_supplier_id) REFERENCES water_suppliers(supplier_id);
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_buildings_power_transformer') THEN
+        ALTER TABLE buildings ADD CONSTRAINT fk_buildings_power_transformer
+            FOREIGN KEY (power_transformer_id) REFERENCES power_transformers(id);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_buildings_cold_water_source') THEN
+        ALTER TABLE buildings ADD CONSTRAINT fk_buildings_cold_water_source
+            FOREIGN KEY (cold_water_source_id) REFERENCES cold_water_sources(id);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_buildings_heat_source') THEN
+        ALTER TABLE buildings ADD CONSTRAINT fk_buildings_heat_source
+            FOREIGN KEY (heat_source_id) REFERENCES heat_sources(id);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_buildings_primary_transformer') THEN
+        ALTER TABLE buildings ADD CONSTRAINT fk_buildings_primary_transformer
+            FOREIGN KEY (primary_transformer_id) REFERENCES transformers(transformer_id);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_buildings_backup_transformer') THEN
+        ALTER TABLE buildings ADD CONSTRAINT fk_buildings_backup_transformer
+            FOREIGN KEY (backup_transformer_id) REFERENCES transformers(transformer_id);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_buildings_primary_line') THEN
+        ALTER TABLE buildings ADD CONSTRAINT fk_buildings_primary_line
+            FOREIGN KEY (primary_line_id) REFERENCES lines(line_id);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_buildings_backup_line') THEN
+        ALTER TABLE buildings ADD CONSTRAINT fk_buildings_backup_line
+            FOREIGN KEY (backup_line_id) REFERENCES lines(line_id);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_buildings_cold_water_line') THEN
+        ALTER TABLE buildings ADD CONSTRAINT fk_buildings_cold_water_line
+            FOREIGN KEY (cold_water_line_id) REFERENCES water_lines(line_id);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_buildings_hot_water_line') THEN
+        ALTER TABLE buildings ADD CONSTRAINT fk_buildings_hot_water_line
+            FOREIGN KEY (hot_water_line_id) REFERENCES water_lines(line_id);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_buildings_cold_water_supplier') THEN
+        ALTER TABLE buildings ADD CONSTRAINT fk_buildings_cold_water_supplier
+            FOREIGN KEY (cold_water_supplier_id) REFERENCES water_suppliers(supplier_id);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_buildings_hot_water_supplier') THEN
+        ALTER TABLE buildings ADD CONSTRAINT fk_buildings_hot_water_supplier
+            FOREIGN KEY (hot_water_supplier_id) REFERENCES water_suppliers(supplier_id);
+    END IF;
+END $$;
 
 -- ===============================================
 -- СИСТЕМА ЛОГИРОВАНИЯ
