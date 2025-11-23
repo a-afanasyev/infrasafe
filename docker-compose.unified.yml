@@ -162,7 +162,8 @@ services:
       - "443:443"
     volumes:
       # Production конфигурация Nginx из ~/nginx-docker
-      - ~/nginx-docker/nginx.production.conf:/etc/nginx/nginx.conf:ro
+      # ВАЖНО: Используйте абсолютный путь или переменную окружения ${HOME}/nginx-docker/nginx.production.conf
+      - ${HOME}/nginx-docker/nginx.production.conf:/etc/nginx/nginx.conf:ro
       # SSL сертификаты (монтируйте с хоста)
       - /etc/letsencrypt/live/infrasafe.aisolutions.uz:/etc/nginx/ssl:ro
       # Статические файлы из frontend контейнера
