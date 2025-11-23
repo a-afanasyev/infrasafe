@@ -34,6 +34,9 @@ services:
       - DB_NAME=infrasafe
       - DB_USER=postgres
       - DB_PASSWORD=postgres
+      # JWT секреты (для production используйте надежные значения из .env)
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-key-change-in-production}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-dev-refresh-secret-key-change-in-production}
     depends_on:
       postgres:
         condition: service_healthy
