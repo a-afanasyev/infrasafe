@@ -124,7 +124,7 @@ router.use((req, res, next) => {
 router.get('/', (req, res) => {
     res.json({
         name: 'InfraSafe Habitat IQ API',
-        version: '1.0.0',
+        version: '1.0.1',
         description: 'API для системы мониторинга зданий',
         endpoints: [
             '/api/auth - Авторизация и управление пользователями',
