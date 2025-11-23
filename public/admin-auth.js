@@ -158,9 +158,8 @@ class AdminAuth {
                         <div id="login-error" class="error-message" style="display: none;"></div>
                     </form>
                     <div class="login-info">
-                        <p><strong>Тестовые данные:</strong></p>
-                        <p>Логин: <code>admin</code></p>
-                        <p>Пароль: <code>Admin123</code></p>
+                        <p><strong>Для входа используйте учетные данные администратора</strong></p>
+                        <p style="font-size: 0.85rem; color: #666;">Обратитесь к администратору системы для получения доступа</p>
                     </div>
                 </div>
             </div>
