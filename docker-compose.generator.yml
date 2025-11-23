@@ -12,8 +12,7 @@ services:
     volumes:
       # Персистентность локального файла настроек диапазонов
       - generator_data:/app/generator-data.json
-    depends_on:
-      - app
+
     networks:
       - infrasafe-dev
     restart: unless-stopped
