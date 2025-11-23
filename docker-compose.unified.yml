@@ -24,8 +24,8 @@ services:
     volumes:
       - .:/app
       - /app/node_modules
-    # Создаем директорию logs с правильными правами
-    command: sh -c "mkdir -p /app/logs && chmod 777 /app/logs && npm run dev"
+      # Named volume для логов, чтобы избежать проблем с правами доступа
+      - app_logs:/app/logs
     environment:
       - NODE_ENV=development
       - PORT=3000
@@ -193,6 +193,7 @@ services:
 
 volumes:
   postgres_data:
+  app_logs:
 
 networks:
   leaflet-network:
