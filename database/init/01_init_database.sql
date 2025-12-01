@@ -280,6 +280,48 @@ ALTER TABLE IF EXISTS cold_water_sources ADD COLUMN IF NOT EXISTS geom geometry(
 ALTER TABLE IF EXISTS heat_sources ADD COLUMN IF NOT EXISTS geom geometry(POINT, 4326);
 ALTER TABLE IF EXISTS power_transformers ADD COLUMN IF NOT EXISTS geom geometry(POINT, 4326);
 ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS password_hash varchar(255);
+ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS full_name varchar(100);
+ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT NOW();
+ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS last_login timestamptz;
+ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS failed_login_attempts integer DEFAULT 0;
+ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS last_failed_login timestamptz;
+ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS account_locked_until timestamptz;
+ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS is_active boolean DEFAULT true;
+DO $$
+BEGIN
+    -- Переносим legacy-колонку active в is_active, либо синхронизируем значения
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'users' AND column_name = 'active'
+    ) THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'users' AND column_name = 'is_active'
+        ) THEN
+            ALTER TABLE users RENAME COLUMN active TO is_active;
+        ELSE
+            UPDATE users SET is_active = active WHERE is_active IS NULL;
+        END IF;
+    END IF;
+    
+    -- Переносим legacy-колонку password в password_hash, если она есть
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'users' AND column_name = 'password'
+    ) THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'users' AND column_name = 'password_hash'
+        ) THEN
+            ALTER TABLE users ADD COLUMN password_hash varchar(255);
+        END IF;
+        UPDATE users SET password_hash = password
+        WHERE password_hash IS NULL AND password IS NOT NULL;
+    END IF;
+END $$;
+ALTER TABLE IF EXISTS users ALTER COLUMN is_active SET DEFAULT true;
+ALTER TABLE IF EXISTS users ALTER COLUMN created_at SET DEFAULT NOW();
+ALTER TABLE IF EXISTS users ALTER COLUMN role SET DEFAULT 'user';
 
 -- ===============================================
 -- СИСТЕМА МЕТРИК И МОНИТОРИНГА

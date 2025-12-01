@@ -22,6 +22,20 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
+-- Cleanup target tables before seeding (order matters for FK integrity)
+--
+TRUNCATE TABLE public.metrics RESTART IDENTITY;
+TRUNCATE TABLE public.controllers RESTART IDENTITY;
+TRUNCATE TABLE public.buildings RESTART IDENTITY;
+TRUNCATE TABLE public.transformers RESTART IDENTITY;
+TRUNCATE TABLE public.power_transformers RESTART IDENTITY;
+TRUNCATE TABLE public.heat_sources RESTART IDENTITY;
+TRUNCATE TABLE public.cold_water_sources RESTART IDENTITY;
+TRUNCATE TABLE public.infrastructure_alerts RESTART IDENTITY;
+TRUNCATE TABLE public.alert_types RESTART IDENTITY;
+TRUNCATE TABLE public.users RESTART IDENTITY;
+
+--
 -- Data for Name: alert_types; Type: TABLE DATA; Schema: public; Owner: -
 --
 
