@@ -274,6 +274,8 @@ CREATE TABLE IF NOT EXISTS heat_sources (
 -- Добавляем недостающие колонки для совместимости со снапшотом
 -- ===============================================
 ALTER TABLE IF EXISTS buildings ADD COLUMN IF NOT EXISTS geom geometry(POINT, 4326);
+ALTER TABLE IF EXISTS buildings ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT NOW();
+ALTER TABLE IF EXISTS buildings ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT NOW();
 ALTER TABLE IF EXISTS cold_water_sources ADD COLUMN IF NOT EXISTS geom geometry(POINT, 4326);
 ALTER TABLE IF EXISTS heat_sources ADD COLUMN IF NOT EXISTS geom geometry(POINT, 4326);
 ALTER TABLE IF EXISTS power_transformers ADD COLUMN IF NOT EXISTS geom geometry(POINT, 4326);
