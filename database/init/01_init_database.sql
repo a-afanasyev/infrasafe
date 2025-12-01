@@ -13,6 +13,7 @@
 --   - Удалён индекс idx_water_lines_type (поле line_type отсутствует в БД)
 -- Изменения версии 2.4:
 --   - Добавлена функция archive_daily_analytics() для архивирования ежедневной аналитики
+--   - Таблица metrics приведена к непартиционированной структуре, совпадающей с дампом 02_seed_data.sql (снимок 2025-11-15)
 -- ===============================================
 
 -- Включение расширения PostGIS для работы с географическими данными
@@ -272,9 +273,9 @@ CREATE TABLE IF NOT EXISTS heat_sources (
 -- СИСТЕМА МЕТРИК И МОНИТОРИНГА
 -- ===============================================
 
--- Партиционированная таблица для метрик
+-- Таблица метрик (непартиционированная — соответствует дампу seed от 2025-11-15)
 CREATE TABLE IF NOT EXISTS metrics (
-    metric_id bigserial,
+    metric_id bigserial PRIMARY KEY,
     controller_id integer REFERENCES controllers(controller_id),
     timestamp timestamptz NOT NULL,
     -- Электричество
@@ -296,17 +297,8 @@ CREATE TABLE IF NOT EXISTS metrics (
     -- Окружение
     air_temp numeric(5,2),
     humidity numeric(5,2),
-    leak_sensor boolean,
-    -- Составной PRIMARY KEY включающий ключ партиционирования
-    PRIMARY KEY (metric_id, timestamp)
-) PARTITION BY RANGE (timestamp);
-
--- Создание партиций для метрик
-CREATE TABLE IF NOT EXISTS metrics_current_month PARTITION OF metrics
-    FOR VALUES FROM (date_trunc('month', CURRENT_DATE)) TO (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month');
-
-CREATE TABLE IF NOT EXISTS metrics_prev_month PARTITION OF metrics
-    FOR VALUES FROM (date_trunc('month', CURRENT_DATE) - INTERVAL '1 month') TO (date_trunc('month', CURRENT_DATE));
+    leak_sensor boolean
+);
 
 -- ===============================================
 -- СИСТЕМА АЛЕРТОВ
