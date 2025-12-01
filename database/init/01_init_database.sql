@@ -322,6 +322,8 @@ END $$;
 ALTER TABLE IF EXISTS users ALTER COLUMN is_active SET DEFAULT true;
 ALTER TABLE IF EXISTS users ALTER COLUMN created_at SET DEFAULT NOW();
 ALTER TABLE IF EXISTS users ALTER COLUMN role SET DEFAULT 'user';
+-- legacy password column: make it nullable so seed with only password_hash succeeds
+ALTER TABLE IF EXISTS users ALTER COLUMN password DROP NOT NULL;
 
 -- ===============================================
 -- СИСТЕМА МЕТРИК И МОНИТОРИНГА

@@ -21,19 +21,25 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+-- Ensure PostGIS functions exist (needed by triggers that build geom)
+CREATE EXTENSION IF NOT EXISTS postgis;
+
 --
 -- Cleanup target tables before seeding (order matters for FK integrity)
 --
-TRUNCATE TABLE public.metrics RESTART IDENTITY;
-TRUNCATE TABLE public.controllers RESTART IDENTITY;
-TRUNCATE TABLE public.buildings RESTART IDENTITY;
-TRUNCATE TABLE public.transformers RESTART IDENTITY;
-TRUNCATE TABLE public.power_transformers RESTART IDENTITY;
-TRUNCATE TABLE public.heat_sources RESTART IDENTITY;
-TRUNCATE TABLE public.cold_water_sources RESTART IDENTITY;
-TRUNCATE TABLE public.infrastructure_alerts RESTART IDENTITY;
-TRUNCATE TABLE public.alert_types RESTART IDENTITY;
-TRUNCATE TABLE public.users RESTART IDENTITY;
+TRUNCATE TABLE
+    public.metrics,
+    public.controllers,
+    public.buildings,
+    public.transformers,
+    public.power_transformers,
+    public.heat_sources,
+    public.cold_water_sources,
+    public.infrastructure_alerts,
+    public.alerts,
+    public.alert_types,
+    public.users
+RESTART IDENTITY CASCADE;
 
 --
 -- Data for Name: alert_types; Type: TABLE DATA; Schema: public; Owner: -
