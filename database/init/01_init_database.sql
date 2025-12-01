@@ -518,8 +518,8 @@ CREATE INDEX IF NOT EXISTS idx_infrastructure_alerts_infrastructure ON infrastru
 -- Функция для обновления геометрии при изменении координат
 CREATE OR REPLACE FUNCTION update_geom_on_coordinates_change() RETURNS TRIGGER AS $$
 BEGIN
-    NEW.geom = ST_SetSRID(
-        ST_MakePoint(NEW.longitude::double precision, NEW.latitude::double precision),
+    NEW.geom = public.ST_SetSRID(
+        public.ST_MakePoint(NEW.longitude::double precision, NEW.latitude::double precision),
         4326
     );
     NEW.updated_at = NOW();
@@ -590,7 +590,7 @@ BEGIN
     -- Если есть main_path, строим LINESTRING из него
     IF NEW.main_path IS NOT NULL AND jsonb_array_length(NEW.main_path) >= 2 THEN
         -- Извлекаем координаты из JSONB и строим LINESTRING
-        NEW.geom = ST_GeomFromText(
+        NEW.geom = public.ST_GeomFromText(
             'LINESTRING(' || (
                 SELECT string_agg(
                     (point->>'lng')::text || ' ' || (point->>'lat')::text, 
@@ -606,7 +606,7 @@ BEGIN
           AND NEW.longitude_start IS NOT NULL
           AND NEW.latitude_end IS NOT NULL
           AND NEW.longitude_end IS NOT NULL THEN
-        NEW.geom = ST_GeomFromText(
+        NEW.geom = public.ST_GeomFromText(
             'LINESTRING(' || 
             NEW.longitude_start || ' ' || NEW.latitude_start || ', ' ||
             NEW.longitude_end || ' ' || NEW.latitude_end || 
@@ -626,8 +626,8 @@ CREATE OR REPLACE FUNCTION update_transformers_geom()
 RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.latitude IS NOT NULL AND NEW.longitude IS NOT NULL THEN
-        NEW.geom = ST_SetSRID(
-            ST_MakePoint(NEW.longitude::double precision, NEW.latitude::double precision),
+        NEW.geom = public.ST_SetSRID(
+            public.ST_MakePoint(NEW.longitude::double precision, NEW.latitude::double precision),
             4326
         );
     END IF;
@@ -642,10 +642,10 @@ BEGIN
     IF NEW.latitude_start IS NOT NULL AND NEW.longitude_start IS NOT NULL AND
        NEW.latitude_end IS NOT NULL AND NEW.longitude_end IS NOT NULL THEN
         
-        NEW.geom = ST_SetSRID(
-            ST_MakeLine(
-                ST_MakePoint(NEW.longitude_start::double precision, NEW.latitude_start::double precision),
-                ST_MakePoint(NEW.longitude_end::double precision, NEW.latitude_end::double precision)
+        NEW.geom = public.ST_SetSRID(
+            public.ST_MakeLine(
+                public.ST_MakePoint(NEW.longitude_start::double precision, NEW.latitude_start::double precision),
+                public.ST_MakePoint(NEW.longitude_end::double precision, NEW.latitude_end::double precision)
             ),
             4326
         );
@@ -893,16 +893,16 @@ BEGIN
     SELECT
         b.building_id,
         b.name,
-        ST_Distance(
-            ST_Transform(pt.geom, 3857),
-            ST_Transform(b.geom, 3857)
+        public.ST_Distance(
+            public.ST_Transform(pt.geom, 3857),
+            public.ST_Transform(b.geom, 3857)
         ) as distance_meters
     FROM buildings b
     CROSS JOIN power_transformers pt
     WHERE pt.id = transformer_id_param
-    AND ST_DWithin(
-        ST_Transform(pt.geom, 3857),
-        ST_Transform(b.geom, 3857),
+    AND public.ST_DWithin(
+        public.ST_Transform(pt.geom, 3857),
+        public.ST_Transform(b.geom, 3857),
         radius_meters
     )
     ORDER BY distance_meters;
