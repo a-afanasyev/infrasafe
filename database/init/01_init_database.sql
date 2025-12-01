@@ -270,8 +270,23 @@ CREATE TABLE IF NOT EXISTS heat_sources (
 );
 
 -- ===============================================
+-- СИНХРОНИЗАЦИЯ С СОСТОЯНИЕМ SEED (2025-11-15)
+-- Добавляем недостающие колонки для совместимости со снапшотом
+-- ===============================================
+ALTER TABLE IF EXISTS buildings ADD COLUMN IF NOT EXISTS geom geometry(POINT, 4326);
+ALTER TABLE IF EXISTS cold_water_sources ADD COLUMN IF NOT EXISTS geom geometry(POINT, 4326);
+ALTER TABLE IF EXISTS heat_sources ADD COLUMN IF NOT EXISTS geom geometry(POINT, 4326);
+ALTER TABLE IF EXISTS power_transformers ADD COLUMN IF NOT EXISTS geom geometry(POINT, 4326);
+ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS password_hash varchar(255);
+
+-- ===============================================
 -- СИСТЕМА МЕТРИК И МОНИТОРИНГА
 -- ===============================================
+
+-- Сбрасываем legacy-партиции метрик и саму таблицу, чтобы привести к структуре seed
+DROP TABLE IF EXISTS metrics_current_month;
+DROP TABLE IF EXISTS metrics_prev_month;
+DROP TABLE IF EXISTS metrics CASCADE;
 
 -- Таблица метрик (непартиционированная — соответствует дампу seed от 2025-11-15)
 CREATE TABLE IF NOT EXISTS metrics (
