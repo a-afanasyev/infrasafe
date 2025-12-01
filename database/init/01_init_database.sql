@@ -530,7 +530,7 @@ $$ LANGUAGE plpgsql;
 -- Функция для обновления last_heartbeat в контроллерах
 CREATE OR REPLACE FUNCTION update_controller_heartbeat() RETURNS TRIGGER AS $$
 BEGIN
-    UPDATE controllers
+    UPDATE public.controllers
     SET last_heartbeat = NEW.timestamp
     WHERE controller_id = NEW.controller_id;
     RETURN NEW;
@@ -869,11 +869,11 @@ BEGIN
     -- Обновляем материализованное представление загрузки трансформаторов
     REFRESH MATERIALIZED VIEW CONCURRENTLY mv_transformer_load_realtime;
 
-    INSERT INTO logs (timestamp, log_level, message)
+    INSERT INTO public.logs (timestamp, log_level, message)
     VALUES (NOW(), 'INFO', 'Материализованные представления аналитики трансформаторов обновлены');
 
 EXCEPTION WHEN OTHERS THEN
-    INSERT INTO logs (timestamp, log_level, message)
+    INSERT INTO public.logs (timestamp, log_level, message)
     VALUES (NOW(), 'ERROR', 'Ошибка обновления материализованных представлений: ' || SQLERRM);
     RAISE;
 END;
@@ -897,8 +897,8 @@ BEGIN
             public.ST_Transform(pt.geom, 3857),
             public.ST_Transform(b.geom, 3857)
         ) as distance_meters
-    FROM buildings b
-    CROSS JOIN power_transformers pt
+    FROM public.buildings b
+    CROSS JOIN public.power_transformers pt
     WHERE pt.id = transformer_id_param
     AND public.ST_DWithin(
         public.ST_Transform(pt.geom, 3857),
@@ -926,14 +926,14 @@ BEGIN
             'avg_total_voltage', avg_total_voltage,
             'avg_total_amperage', avg_total_amperage
         )
-    FROM mv_transformer_load_realtime
+    FROM public.mv_transformer_load_realtime
     WHERE last_metric_time > CURRENT_DATE - INTERVAL '1 day';
 
-    INSERT INTO logs (timestamp, log_level, message)
+    INSERT INTO public.logs (timestamp, log_level, message)
     VALUES (NOW(), 'INFO', 'Ежедневная аналитика заархивирована');
 
 EXCEPTION WHEN OTHERS THEN
-    INSERT INTO logs (timestamp, log_level, message)
+    INSERT INTO public.logs (timestamp, log_level, message)
     VALUES (NOW(), 'ERROR', 'Ошибка архивирования аналитики: ' || SQLERRM);
     RAISE;
 END;
