@@ -518,7 +518,10 @@ CREATE INDEX IF NOT EXISTS idx_infrastructure_alerts_infrastructure ON infrastru
 -- Функция для обновления геометрии при изменении координат
 CREATE OR REPLACE FUNCTION update_geom_on_coordinates_change() RETURNS TRIGGER AS $$
 BEGIN
-    NEW.geom = ST_SetSRID(ST_MakePoint(NEW.longitude, NEW.latitude), 4326);
+    NEW.geom = ST_SetSRID(
+        ST_MakePoint(NEW.longitude::double precision, NEW.latitude::double precision),
+        4326
+    );
     NEW.updated_at = NOW();
     RETURN NEW;
 END;
@@ -623,7 +626,10 @@ CREATE OR REPLACE FUNCTION update_transformers_geom()
 RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.latitude IS NOT NULL AND NEW.longitude IS NOT NULL THEN
-        NEW.geom = ST_SetSRID(ST_MakePoint(NEW.longitude, NEW.latitude), 4326);
+        NEW.geom = ST_SetSRID(
+            ST_MakePoint(NEW.longitude::double precision, NEW.latitude::double precision),
+            4326
+        );
     END IF;
     RETURN NEW;
 END;
@@ -638,8 +644,8 @@ BEGIN
         
         NEW.geom = ST_SetSRID(
             ST_MakeLine(
-                ST_MakePoint(NEW.longitude_start, NEW.latitude_start),
-                ST_MakePoint(NEW.longitude_end, NEW.latitude_end)
+                ST_MakePoint(NEW.longitude_start::double precision, NEW.latitude_start::double precision),
+                ST_MakePoint(NEW.longitude_end::double precision, NEW.latitude_end::double precision)
             ),
             4326
         );
