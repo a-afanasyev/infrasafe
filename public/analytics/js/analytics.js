@@ -143,11 +143,13 @@ async function loadMetricsData() {
         );
         
         if (!response.ok) {
-            metricsData = generateMockData(currentPeriod);
-        } else {
-            const data = await response.json();
-            metricsData = data.data || data;
+            showMetricsError('Данные метрик временно недоступны.');
+            showLoading(false);
+            return;
         }
+
+        const data = await response.json();
+        metricsData = data.data || data;
 
         document.getElementById('last-update').textContent = new Date().toLocaleString('ru-RU');
 
@@ -156,9 +158,7 @@ async function loadMetricsData() {
 
     } catch (error) {
         console.error('Ошибка загрузки метрик:', error);
-
-        metricsData = generateMockData(currentPeriod);
-        createAllCharts();
+        showMetricsError('Данные метрик временно недоступны.');
         showLoading(false);
     }
 }
@@ -752,6 +752,23 @@ function switchTab(tabName) {
  * Показать/скрыть индикатор загрузки
  */
 /**
+ * Показать ошибку загрузки метрик
+ */
+function showMetricsError(message) {
+    const chartsContainer = document.querySelector('.charts-grid');
+    if (chartsContainer) {
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'metrics-error';
+        errorDiv.style.cssText = 'grid-column: 1/-1; text-align: center; padding: 2rem; color: #ef4444; font-size: 1.1rem;';
+        errorDiv.textContent = message;
+        // Remove previous error if any
+        const prev = chartsContainer.querySelector('.metrics-error');
+        if (prev) prev.remove();
+        chartsContainer.prepend(errorDiv);
+    }
+}
+
+/**
  * Показать/скрыть индикатор загрузки
  */
 function showLoading(show) {
@@ -788,36 +805,3 @@ function calculatePower(voltage, amperage) {
     return (v * a * 0.95) / 1000;
 }
 
-/**
- * Генерация mock данных для демонстрации
- * (удалите эту функцию когда будет готов backend endpoint)
- */
-function generateMockData(period) {
-    const now = new Date();
-    const points = period === '1h' ? 60 : period === '6h' ? 72 : period === '24h' ? 96 : 168;
-    const interval = period === '1h' ? 60000 : period === '6h' ? 300000 : period === '24h' ? 900000 : 3600000;
-    
-    const data = [];
-    for (let i = points; i >= 0; i--) {
-        const timestamp = new Date(now - (i * interval));
-        data.push({
-            timestamp: timestamp.toISOString(),
-            electricity_ph1: 220 + Math.random() * 10 - 5,
-            electricity_ph2: 220 + Math.random() * 10 - 5,
-            electricity_ph3: 220 + Math.random() * 10 - 5,
-            amperage_ph1: 5 + Math.random() * 3,
-            amperage_ph2: 5 + Math.random() * 3,
-            amperage_ph3: 5 + Math.random() * 3,
-            cold_water_pressure: 2.5 + Math.random() * 0.5,
-            cold_water_temp: 12 + Math.random() * 2,
-            hot_water_in_pressure: 3 + Math.random() * 0.5,
-            hot_water_in_temp: 55 + Math.random() * 5,
-            hot_water_out_pressure: 2.8 + Math.random() * 0.3,
-            hot_water_out_temp: 45 + Math.random() * 5,
-            ambient_temp: 20 + Math.random() * 5,
-            humidity: 50 + Math.random() * 10,
-            leak_sensor: Math.random() > 0.95 ? 1 : 0
-        });
-    }
-    return data;
-}
