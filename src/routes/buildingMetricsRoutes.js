@@ -35,7 +35,7 @@ const router = express.Router();
  *                     type: string
  *                   management_company:
  *                     type: string
- *                   hot_water:
+ *                   has_hot_water:
  *                     type: boolean
  *                   controller_id:
  *                     type: integer

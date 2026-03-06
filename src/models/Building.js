@@ -108,19 +108,19 @@ class Building {
     static async create(buildingData) {
         try {
             const {
-                name, address, town, latitude, longitude, management_company, region, hot_water,
+                name, address, town, latitude, longitude, management_company, region, has_hot_water,
                 primary_transformer_id, backup_transformer_id, primary_line_id, backup_line_id,
                 cold_water_line_id, hot_water_line_id, cold_water_supplier_id, hot_water_supplier_id
             } = buildingData;
 
             const { rows } = await db.query(
                 `INSERT INTO buildings
-                (name, address, town, latitude, longitude, management_company, region, hot_water,
+                (name, address, town, latitude, longitude, management_company, region, has_hot_water,
                  primary_transformer_id, backup_transformer_id, primary_line_id, backup_line_id,
                  cold_water_line_id, hot_water_line_id, cold_water_supplier_id, hot_water_supplier_id)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
                 RETURNING *`,
-                [name, address, town, latitude, longitude, management_company, region, hot_water,
+                [name, address, town, latitude, longitude, management_company, region, has_hot_water,
                  primary_transformer_id, backup_transformer_id, primary_line_id, backup_line_id,
                  cold_water_line_id, hot_water_line_id, cold_water_supplier_id, hot_water_supplier_id]
             );
@@ -142,7 +142,7 @@ class Building {
     static async update(id, buildingData) {
         try {
             const {
-                name, address, town, latitude, longitude, management_company, region, hot_water,
+                name, address, town, latitude, longitude, management_company, region, has_hot_water,
                 primary_transformer_id, backup_transformer_id, primary_line_id, backup_line_id,
                 cold_water_line_id, hot_water_line_id, cold_water_supplier_id, hot_water_supplier_id
             } = buildingData;
@@ -150,14 +150,14 @@ class Building {
             const { rows } = await db.query(
                 `UPDATE buildings
                 SET name = $1, address = $2, town = $3, latitude = $4, longitude = $5,
-                    management_company = $6, region = $7, hot_water = $8,
+                    management_company = $6, region = $7, has_hot_water = $8,
                     primary_transformer_id = $9, backup_transformer_id = $10,
                     primary_line_id = $11, backup_line_id = $12,
                     cold_water_line_id = $13, hot_water_line_id = $14,
                     cold_water_supplier_id = $15, hot_water_supplier_id = $16
                 WHERE building_id = $17
                 RETURNING *`,
-                [name, address, town, latitude, longitude, management_company, region, hot_water,
+                [name, address, town, latitude, longitude, management_company, region, has_hot_water,
                  primary_transformer_id, backup_transformer_id, primary_line_id, backup_line_id,
                  cold_water_line_id, hot_water_line_id, cold_water_supplier_id, hot_water_supplier_id, id]
             );
