@@ -9,14 +9,15 @@ class WaterLine {
         this.description = data.description;
         this.diameter_mm = data.diameter_mm;
         this.material = data.material;
-        this.pressure_rating = data.pressure_rating;
+        this.pressure_bar = data.pressure_bar;
         this.installation_date = data.installation_date;
-        this.length_km = data.length_km;
         this.status = data.status;
-        this.maintenance_contact = data.maintenance_contact;
-        this.notes = data.notes;
-        this.line_type = data.line_type;
-        this.supplier_id = data.supplier_id;
+        this.latitude_start = data.latitude_start;
+        this.longitude_start = data.longitude_start;
+        this.latitude_end = data.latitude_end;
+        this.longitude_end = data.longitude_end;
+        this.main_path = data.main_path;
+        this.branches = data.branches;
         this.created_at = data.created_at;
         this.updated_at = data.updated_at;
         this.connected_buildings = data.connected_buildings || [];
@@ -144,12 +145,6 @@ class WaterLine {
                 paramCount++;
             }
             
-            if (lineData.line_type) {
-                fields.push('line_type');
-                values.push(lineData.line_type);
-                paramCount++;
-            }
-            
             if (lineData.diameter_mm !== undefined) {
                 fields.push('diameter_mm');
                 values.push(lineData.diameter_mm);
@@ -162,21 +157,15 @@ class WaterLine {
                 paramCount++;
             }
             
-            if (lineData.pressure_rating !== undefined) {
-                fields.push('pressure_rating');
-                values.push(lineData.pressure_rating);
+            if (lineData.pressure_bar !== undefined) {
+                fields.push('pressure_bar');
+                values.push(lineData.pressure_bar);
                 paramCount++;
             }
             
             if (lineData.installation_date !== undefined) {
                 fields.push('installation_date');
                 values.push(lineData.installation_date);
-                paramCount++;
-            }
-            
-            if (lineData.length_km !== undefined) {
-                fields.push('length_km');
-                values.push(lineData.length_km);
                 paramCount++;
             }
             
@@ -259,12 +248,6 @@ class WaterLine {
                 values.push(lineData.description);
             }
             
-            if (lineData.line_type !== undefined) {
-                paramCount++;
-                updates.push(`line_type = $${paramCount}`);
-                values.push(lineData.line_type);
-            }
-            
             if (lineData.diameter_mm !== undefined) {
                 paramCount++;
                 updates.push(`diameter_mm = $${paramCount}`);
@@ -277,22 +260,16 @@ class WaterLine {
                 values.push(lineData.material);
             }
             
-            if (lineData.pressure_rating !== undefined) {
+            if (lineData.pressure_bar !== undefined) {
                 paramCount++;
-                updates.push(`pressure_rating = $${paramCount}`);
-                values.push(lineData.pressure_rating);
+                updates.push(`pressure_bar = $${paramCount}`);
+                values.push(lineData.pressure_bar);
             }
             
             if (lineData.installation_date !== undefined) {
                 paramCount++;
                 updates.push(`installation_date = $${paramCount}`);
                 values.push(lineData.installation_date);
-            }
-            
-            if (lineData.length_km !== undefined) {
-                paramCount++;
-                updates.push(`length_km = $${paramCount}`);
-                values.push(lineData.length_km);
             }
             
             if (lineData.status !== undefined) {
