@@ -1,6 +1,14 @@
 // Jest setup файл для глобальной конфигурации тестов
 require('dotenv').config({ path: '.env.test' });
 
+// Ensure JWT secrets are always set for tests
+if (!process.env.JWT_SECRET) {
+  process.env.JWT_SECRET = 'test-secret-key';
+}
+if (!process.env.JWT_REFRESH_SECRET) {
+  process.env.JWT_REFRESH_SECRET = 'test-refresh-secret-key';
+}
+
 // Настройка для тестов
 
 // Глобальные переменные для тестов

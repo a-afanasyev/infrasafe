@@ -51,7 +51,8 @@ const login = async (req, res, next) => {
 // Регистрация нового пользователя
 const register = async (req, res, next) => {
     try {
-        const { username, email, password, role = 'user' } = req.body;
+        const { username, email, password } = req.body;
+        const role = 'user';
 
         if (!username || !password) {
             return res.status(400).json({

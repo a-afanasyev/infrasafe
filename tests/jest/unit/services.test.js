@@ -218,6 +218,67 @@ describe('Service Layer Unit Tests', () => {
       cacheService.set.mockResolvedValue(undefined);
     });
 
+    test('registerUser - ignores role from input, always assigns user', async () => {
+      const db = require('../../../src/config/database');
+      db.query.mockResolvedValueOnce({ rows: [] }); // findUserByUsernameOrEmail
+
+      const bcrypt = require('bcrypt');
+      bcrypt.hash = jest.fn().mockResolvedValue('$2b$10$hashed');
+
+      db.query.mockResolvedValueOnce({
+        rows: [{
+          user_id: 99,
+          username: 'attacker',
+          email: 'attacker@test.com',
+          role: 'user',
+          created_at: new Date(),
+          is_active: true
+        }]
+      }); // INSERT
+
+      const result = await authService.registerUser({
+        username: 'attacker',
+        email: 'attacker@test.com',
+        password: 'Attack123',
+        role: 'admin' // attacker tries to escalate
+      });
+
+      // Verify INSERT was called with 'user', not 'admin'
+      const insertCall = db.query.mock.calls[1];
+      expect(insertCall[1][3]).toBe('user');
+      expect(result.role).toBe('user');
+    });
+
+    test('generateTokens - refresh token uses separate secret', () => {
+      const originalRefreshSecret = process.env.JWT_REFRESH_SECRET;
+      const originalSecret = process.env.JWT_SECRET;
+
+      process.env.JWT_SECRET = 'access-secret-123';
+      process.env.JWT_REFRESH_SECRET = 'refresh-secret-456';
+
+      // Re-create authService with new env vars
+      const jwt = require('jsonwebtoken');
+      const AuthService = require('../../../src/services/authService').constructor;
+      const freshService = new AuthService();
+
+      const tokens = freshService.generateTokens({
+        user_id: 1,
+        username: 'test',
+        email: 'test@test.com',
+        role: 'user'
+      });
+
+      // Refresh token should verify with refresh secret
+      const decoded = jwt.verify(tokens.refreshToken, 'refresh-secret-456');
+      expect(decoded.type).toBe('refresh');
+
+      // Refresh token should NOT verify with access secret
+      expect(() => jwt.verify(tokens.refreshToken, 'access-secret-123')).toThrow();
+
+      process.env.JWT_SECRET = originalSecret;
+      process.env.JWT_REFRESH_SECRET = originalRefreshSecret;
+    });
+
     test('authenticateUser - успешная аутентификация пользователя', async () => {
       const mockUser = {
         user_id: 1,

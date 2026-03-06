@@ -1,6 +1,7 @@
 const express = require('express');
 const authController = require('../controllers/authController');
 const { authenticateJWT, authenticateRefresh } = require('../middleware/auth');
+const { authLimiter, registerLimiter } = require('../middleware/rateLimiter');
 const router = express.Router();
 
 /**
@@ -58,7 +59,7 @@ const router = express.Router();
  *       400:
  *         description: Отсутствуют обязательные поля
  */
-router.post('/login', authController.login);
+router.post('/login', authLimiter.middleware(), authController.login);
 
 /**
  * @swagger
@@ -84,11 +85,9 @@ router.post('/login', authController.login);
  *                 type: string
  *                 minLength: 6
  *                 description: Пароль (минимум 6 символов)
- *               role:
+ *               email:
  *                 type: string
- *                 enum: [user, admin]
- *                 default: user
- *                 description: Роль пользователя
+ *                 description: Email пользователя
  *     responses:
  *       201:
  *         description: Пользователь успешно зарегистрирован
@@ -118,7 +117,7 @@ router.post('/login', authController.login);
  *       409:
  *         description: Пользователь уже существует
  */
-router.post('/register', authController.register);
+router.post('/register', registerLimiter.middleware(), authController.register);
 
 /**
  * @swagger

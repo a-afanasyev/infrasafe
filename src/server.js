@@ -37,8 +37,13 @@ app.use(helmet({
         }
     }
 })); // Безопасность
-app.use(cors()); // CORS
-app.use(express.json()); // Парсинг JSON
+app.use(cors({
+    origin: process.env.CORS_ORIGIN
+        ? process.env.CORS_ORIGIN.split(',').map(s => s.trim())
+        : ['http://localhost:3000', 'http://localhost:8080'],
+    credentials: true
+})); // CORS
+app.use(express.json({ limit: '1mb' })); // Парсинг JSON
 app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } })); // Логирование HTTP запросов
 
 // Health check endpoint для Docker
@@ -49,38 +54,40 @@ app.get('/health', (req, res) => {
 // Статические файлы
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Swagger документация
-const swaggerOptions = {
-    definition: {
-        openapi: '3.0.0',
-        info: {
-            title: 'Infrasafe API',
-            version: '1.0.0',
-            description: 'API документация для системы мониторинга зданий',
-        },
-        servers: [
-            {
-                url: `http://localhost:${PORT}/api`,
-                description: 'Development server',
+// Swagger документация (только в development)
+if (process.env.NODE_ENV !== 'production') {
+    const swaggerOptions = {
+        definition: {
+            openapi: '3.0.0',
+            info: {
+                title: 'Infrasafe API',
+                version: '1.0.0',
+                description: 'API документация для системы мониторинга зданий',
             },
-        ],
-        components: {
-            securitySchemes: {
-                bearerAuth: {
-                    type: 'http',
-                    scheme: 'bearer',
-                    bearerFormat: 'JWT',
-                    description: 'Требуется для маршрутов, которые изменяют данные (POST, PUT, DELETE, PATCH)'
+            servers: [
+                {
+                    url: `http://localhost:${PORT}/api`,
+                    description: 'Development server',
+                },
+            ],
+            components: {
+                securitySchemes: {
+                    bearerAuth: {
+                        type: 'http',
+                        scheme: 'bearer',
+                        bearerFormat: 'JWT',
+                        description: 'Требуется для маршрутов, которые изменяют данные (POST, PUT, DELETE, PATCH)'
+                    }
                 }
-            }
+            },
+            security: [], // По умолчанию авторизация не требуется для GET запросов
         },
-        security: [], // По умолчанию авторизация не требуется для GET запросов
-    },
-    apis: ['./src/routes/*.js'], // Пути к файлам с JSDoc комментариями
-};
+        apis: ['./src/routes/*.js'], // Пути к файлам с JSDoc комментариями
+    };
 
-const swaggerSpec = swaggerJsdoc(swaggerOptions);
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+    const swaggerSpec = swaggerJsdoc(swaggerOptions);
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+}
 
 // API маршруты
 app.use('/api', apiRoutes);

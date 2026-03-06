@@ -260,6 +260,21 @@ const adminLimiter = new SimpleRateLimiter({
     }
 });
 
+// Ограничения для auth-маршрутов
+const authLimiter = new SimpleRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: 'Слишком много попыток входа. Попробуйте через 15 минут.',
+    keyGenerator: (req) => `auth:login:${req.ip || req.connection.remoteAddress}`
+});
+
+const registerLimiter = new SimpleRateLimiter({
+    windowMs: 60 * 60 * 1000,
+    max: 5,
+    message: 'Слишком много регистраций. Попробуйте через час.',
+    keyGenerator: (req) => `auth:register:${req.ip || req.connection.remoteAddress}`
+});
+
 // Ограничения для CRUD операций
 const crudLimiter = new SimpleRateLimiter({
     windowMs: 60 * 1000, // 1 минута
@@ -316,5 +331,7 @@ module.exports = {
     analyticsLimiter,
     adminLimiter,
     crudLimiter,
+    authLimiter,
+    registerLimiter,
     rateLimitStrict: adminLimiter.middleware()
 };

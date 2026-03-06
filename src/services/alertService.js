@@ -426,6 +426,8 @@ class InfrastructureAlertService {
     async getAlertStatistics(days = 7) {
         await this.ensureInitialized();
 
+        const safeDays = Math.max(1, Math.min(365, parseInt(days, 10) || 7));
+
         const query = `
             SELECT
                 severity,
@@ -434,15 +436,15 @@ class InfrastructureAlertService {
                 COUNT(*) as count,
                 DATE(created_at) as date
             FROM infrastructure_alerts
-            WHERE created_at >= NOW() - INTERVAL '${days} days'
+            WHERE created_at >= NOW() - INTERVAL '1 day' * $1
             GROUP BY severity, infrastructure_type, status, DATE(created_at)
             ORDER BY date DESC, severity, infrastructure_type
         `;
 
-        const result = await db.query(query);
+        const result = await db.query(query, [safeDays]);
 
         return {
-            period_days: days,
+            period_days: safeDays,
             statistics: result.rows,
             active_alerts_count: this.activeAlerts.size
         };

@@ -11,6 +11,7 @@ class AuthService {
             throw new Error('JWT_SECRET environment variable is not defined');
         }
         this.jwtSecret = process.env.JWT_SECRET;
+        this.jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
         this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
         this.refreshTokenExpiresIn = '7d';
         this.cachePrefix = 'auth';
@@ -21,7 +22,8 @@ class AuthService {
     // Регистрация нового пользователя
     async registerUser(userData) {
         try {
-            const { username, email, password, role = 'user' } = userData;
+            const { username, email, password } = userData;
+            const role = 'user';
 
             // Валидация входных данных
             this.validateUserData({ username, email, password });
@@ -135,7 +137,7 @@ class AuthService {
 
             const refreshToken = jwt.sign(
                 { user_id: user.user_id, type: 'refresh' },
-                this.jwtSecret,
+                this.jwtRefreshSecret,
                 {
                     expiresIn: this.refreshTokenExpiresIn,
                     issuer: 'infrasafe-api',
@@ -198,7 +200,7 @@ class AuthService {
     // Обновление токена
     async refreshToken(refreshToken) {
         try {
-            const decoded = jwt.verify(refreshToken, this.jwtSecret);
+            const decoded = jwt.verify(refreshToken, this.jwtRefreshSecret);
 
             if (decoded.type !== 'refresh') {
                 const error = new Error('Недействительный refresh токен');
