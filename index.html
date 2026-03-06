@@ -132,70 +132,31 @@
                 <span class="tab-icon">📊</span>
                 <span class="tab-label">СТАТУСЫ</span>
             </button>
+            <button class="tab-btn" data-tab="filters" aria-selected="false">
+                <span class="tab-icon">🔍</span>
+                <span class="tab-label">ФИЛЬТРЫ</span>
+            </button>
         </nav>
-        
+
         <!-- Контент вкладок -->
         <div class="push-panel-content">
             <!-- Вкладка СЛОИ -->
             <section class="tab-content active" data-content="layers">
                 <!-- Содержимое слоев будет добавлено динамически -->
             </section>
-            
+
             <!-- Вкладка СТАТУСЫ -->
             <section class="tab-content" data-content="status">
                 <!-- Содержимое статусов будет добавлено динамически -->
             </section>
+
+            <!-- Вкладка ФИЛЬТРЫ -->
+            <section class="tab-content" data-content="filters">
+                <!-- Содержимое фильтров будет добавлено динамически -->
+            </section>
         </div>
     </aside>
 
-    <!-- Старый sidebar (будет удален после миграции) -->
-    <div id="sidebar" class="collapsed">
-        <div class="sidebar-content">
-            <div id="ok-group" class="status-group">
-                <div class="group-header">
-                    <div class="icon normal-icon"></div>
-                    <span class="group-title">Нет проблем</span>
-                    <span class="group-counter">0</span>
-                </div>
-                <div class="status-items"></div>
-            </div>
-            <div id="warning-group" class="status-group">
-                <div class="group-header">
-                    <div class="icon warning-icon"></div>
-                    <span class="group-title">Предупреждение</span>
-                    <span class="group-counter">0</span>
-                </div>
-                <div class="status-items"></div>
-            </div>
-            <div id="leak-group" class="status-group">
-                <div class="group-header">
-                    <div class="icon leak-icon"></div>
-                    <span class="group-title">Вода в подвале</span>
-                    <span class="group-counter">0</span>
-                </div>
-                <div class="status-items"></div>
-            </div>
-            <div id="critical-group" class="status-group">
-                <div class="group-header">
-                    <div class="icon critical-icon"></div>
-                    <span class="group-title">Авария</span>
-                    <span class="group-counter">0</span>
-                </div>
-                <div class="status-items"></div>
-            </div>
-            <div id="no-group" class="status-group">
-                <div class="group-header">
-                    <div class="icon no-controller-icon"></div>
-                    <span class="group-title">Нет контроллера</span>
-                    <span class="group-counter">0</span>
-                </div>
-                <div class="status-items"></div>
-            </div>
-        </div>
-        <button class="sidebar-toggle" id="sidebarToggle">
-            <img src="public/images/toggle-icon.svg" alt="Toggle Sidebar">
-        </button>
-    </div>
     <div class="content">
         <div class="map-wrapper neomorph">
             <div id="map"></div>

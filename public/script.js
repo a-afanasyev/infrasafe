@@ -773,99 +773,125 @@ document.addEventListener('DOMContentLoaded', async function () {
         
         /**
          * Обновить группы статусов в промышленной панели
-         * Вызывается из loadData() для синхронизации со старым sidebar
+         * Работает напрямую с window.buildingsData без DOM-клонирования
          */
         updateStatusGroups() {
             const statusGroups = ['ok', 'warning', 'leak', 'critical', 'no'];
-            
+            const buildingsData = window.buildingsData || [];
+
             statusGroups.forEach(groupId => {
-                // Получаем старые элементы из старого sidebar
-                const oldGroup = document.querySelector(`#${groupId}-group .status-items`);
-                if (!oldGroup) return;
-                
-                // Получаем новые элементы промышленной панели
+                // Получаем элементы промышленной панели
                 const industrialGroup = document.querySelector(`#industrial-${groupId}-group .status-group-items`);
                 const industrialCounter = document.querySelector(`#industrial-${groupId}-group .group-counter`);
-                
-                if (industrialGroup && industrialCounter) {
-                    // Очищаем старые элементы
-                    industrialGroup.innerHTML = '';
-                    
-                    // Клонируем элементы из старого sidebar
-                    Array.from(oldGroup.children).forEach(item => {
-                        const clone = item.cloneNode(true);
-                        // Используем CSS класс вместо инлайн-стилей
-                        clone.className = 'status-group-item';
-                        
-                        // Обновляем размеры всех изображений внутри
-                        const images = clone.querySelectorAll('img');
-                        images.forEach(img => {
-                            img.style.width = '20px';
-                            img.style.height = '20px';
-                            img.style.objectFit = 'contain';
-                        });
-                        
-                        // Добавляем обработчик клика для центрирования карты и открытия popup
-                        clone.addEventListener('click', function() {
-                            const buildingId = parseInt(this.dataset.buildingId);
-                            const lat = parseFloat(this.dataset.latitude);
-                            const lng = parseFloat(this.dataset.longitude);
-                            
-                            if (lat && lng) {
-                                // Находим маркер здания в кластере
-                                let targetMarker = null;
-                                markers.eachLayer(marker => {
-                                    if (marker.building_id === buildingId) {
-                                        targetMarker = marker;
-                                    }
-                                });
-                                
-                                if (targetMarker) {
-                                    // Используем popup маркера напрямую
-                                    map.flyTo([lat, lng], 16, {
-                                        duration: 0.5
-                                    });
-                                    
-                                    // Открываем popup маркера
-                                    setTimeout(() => {
-                                        targetMarker.openPopup();
-                                        markers.unspiderfy();
-                                    }, 300);
-                                } else {
-                                    // Если маркер не найден, используем сохраненный popup контент
-                                    const savedPopupContent = buildingPopupStorage.get(buildingId);
-                                    
-                                    map.flyTo([lat, lng], 16, {
-                                        duration: 0.5
-                                    });
-                                    
-                                    // Создаем popup с полным контентом
-                                    if (savedPopupContent) {
-                                        L.popup()
-                                            .setLatLng([lat, lng])
-                                            .setContent(savedPopupContent)
-                                            .openOn(map);
-                                    }
+
+                if (!industrialGroup || !industrialCounter) return;
+
+                // Очищаем старые элементы
+                industrialGroup.innerHTML = '';
+
+                // Фильтруем здания по статусу
+                const filteredBuildings = buildingsData.filter(b => b.status === groupId);
+
+                // Создаем элементы для каждого здания
+                filteredBuildings.forEach(building => {
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'status-group-item';
+                    itemDiv.style.cursor = 'pointer';
+
+                    // Сохраняем данные в data-атрибутах
+                    itemDiv.dataset.buildingId = building.building_id;
+                    itemDiv.dataset.latitude = building.latitude;
+                    itemDiv.dataset.longitude = building.longitude;
+
+                    // Создаем иконки статусов
+                    if (building.controller_id) {
+                        // Иконка электричества
+                        const elecImg = document.createElement('img');
+                        elecImg.src = building.electricityImage;
+                        elecImg.alt = 'Electricity';
+                        elecImg.style.cssText = 'width: 20px; height: 20px; object-fit: contain;';
+                        itemDiv.appendChild(elecImg);
+
+                        // Иконка холодной воды (если есть)
+                        if (building.isColdWaterOK) {
+                            const coldImg = document.createElement('img');
+                            coldImg.src = building.coldWaterImage;
+                            coldImg.alt = 'Cold Water';
+                            coldImg.style.cssText = 'width: 20px; height: 20px; object-fit: contain;';
+                            itemDiv.appendChild(coldImg);
+                        }
+
+                        // Иконка горячей воды (если подключено)
+                        if (building.hasHotWater) {
+                            const hotImg = document.createElement('img');
+                            hotImg.src = building.hotWaterImage;
+                            hotImg.alt = 'Hot Water';
+                            hotImg.style.cssText = 'width: 20px; height: 20px; object-fit: contain;';
+                            itemDiv.appendChild(hotImg);
+                        }
+
+                        // Иконка датчика протечки
+                        const leakImg = document.createElement('img');
+                        leakImg.src = building.leakSensorImage;
+                        leakImg.alt = 'Leak Sensor';
+                        leakImg.style.cssText = 'width: 20px; height: 20px; object-fit: contain;';
+                        itemDiv.appendChild(leakImg);
+                    } else {
+                        // Иконка "нет контроллера"
+                        const noCtrlImg = document.createElement('img');
+                        noCtrlImg.src = 'data/images/no_controller.png';
+                        noCtrlImg.alt = 'No Controller';
+                        noCtrlImg.style.cssText = 'width: 20px; height: 20px; object-fit: contain;';
+                        itemDiv.appendChild(noCtrlImg);
+                    }
+
+                    // Название здания
+                    const nameText = document.createTextNode(' ' + building.building_name);
+                    itemDiv.appendChild(nameText);
+
+                    // Обработчик клика — центрирование карты и открытие popup
+                    itemDiv.addEventListener('click', () => {
+                        const lat = building.latitude;
+                        const lng = building.longitude;
+                        const buildingId = building.building_id;
+
+                        if (lat && lng) {
+                            // Находим маркер здания
+                            let targetMarker = null;
+                            markers.eachLayer(marker => {
+                                if (marker.building_id === buildingId) {
+                                    targetMarker = marker;
+                                }
+                            });
+
+                            if (targetMarker) {
+                                map.flyTo([lat, lng], 16, { duration: 0.5 });
+                                setTimeout(() => {
+                                    targetMarker.openPopup();
+                                    markers.unspiderfy();
+                                }, 300);
+                            } else {
+                                // Используем сохраненный popup контент
+                                const savedPopupContent = buildingPopupStorage.get(buildingId);
+                                map.flyTo([lat, lng], 16, { duration: 0.5 });
+                                if (savedPopupContent) {
+                                    L.popup()
+                                        .setLatLng([lat, lng])
+                                        .setContent(savedPopupContent)
+                                        .openOn(map);
                                 }
                             }
-                        });
-                        
-                        // Добавляем стиль курсора для визуальной обратной связи
-                        clone.style.cursor = 'pointer';
-                        
-                        industrialGroup.appendChild(clone);
+                        }
                     });
-                    
-                    // Обновляем счетчик
-                    industrialCounter.textContent = oldGroup.children.length;
-                    
-                    // Показываем группу если есть элементы
-                    if (oldGroup.children.length > 0) {
-                        industrialGroup.style.display = 'block';
-                    } else {
-                        industrialGroup.style.display = 'none';
-                    }
-                }
+
+                    industrialGroup.appendChild(itemDiv);
+                });
+
+                // Обновляем счетчик
+                industrialCounter.textContent = filteredBuildings.length;
+
+                // Показываем/скрываем группу
+                industrialGroup.style.display = filteredBuildings.length > 0 ? 'block' : 'none';
             });
         }
         
@@ -1715,121 +1741,6 @@ document.addEventListener('DOMContentLoaded', async function () {
     };
     ukControl.addTo(map);
 
-    // Инициализация сворачиваемых групп в сайдбаре
-    initCollapsibleGroups();
-
-    // Инициализация заголовков с количеством элементов
-    updateGroupHeaders();
-
-    // Функция для инициализации сворачиваемых групп в сайдбаре
-    function initCollapsibleGroups() {
-        const groupHeaders = document.querySelectorAll('.group-header');
-
-        groupHeaders.forEach(header => {
-            // Добавляем текстовую подсказку
-            header.title = 'Нажмите, чтобы свернуть/развернуть';
-
-            // Добавляем обработчик клика на заголовок
-            header.onclick = function(event) {
-                event.stopPropagation(); // Предотвращаем всплытие события
-
-                // Проверяем, не свернут ли сайдбар
-                const sidebar = document.getElementById('sidebar');
-                if (sidebar && sidebar.classList.contains('collapsed')) {
-                    return; // Если сайдбар свернут, не обрабатываем клик
-                }
-
-                // Переключаем класс для заголовка
-                this.classList.toggle('collapsed');
-
-                // Получаем контейнер элементов
-                const itemsContainer = this.nextElementSibling;
-                if (itemsContainer && itemsContainer.classList.contains('status-items')) {
-                    itemsContainer.classList.toggle('collapsed');
-                }
-            };
-        });
-    }
-
-    // Функция для обновления заголовков с количеством элементов
-    function updateGroupHeaders() {
-        const sidebarGroups = ['ok-group', 'warning-group', 'critical-group', 'no-group', 'leak-group'];
-
-        sidebarGroups.forEach(groupId => {
-            const header = document.querySelector(`#${groupId} h3`);
-            const itemsContainer = header?.nextElementSibling;
-
-            if (header && itemsContainer) {
-                const count = itemsContainer.children.length;
-
-                // Определяем текст в зависимости от группы
-                let text;
-                switch(groupId) {
-                    case 'ok-group':
-                        text = `Нормальное (${count})`;
-                        // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                        header.textContent = '';
-                        const iconDiv1 = document.createElement('div');
-                        iconDiv1.className = 'icon normal-icon';
-                        const textSpan1 = document.createElement('span');
-                        textSpan1.textContent = text;
-                        header.appendChild(iconDiv1);
-                        header.appendChild(textSpan1);
-                        break;
-                    case 'warning-group':
-                        text = `Предупреждение (${count})`;
-                        // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                        header.textContent = '';
-                        const iconDiv2 = document.createElement('div');
-                        iconDiv2.className = 'icon warning-icon';
-                        const textSpan2 = document.createElement('span');
-                        textSpan2.textContent = text;
-                        header.appendChild(iconDiv2);
-                        header.appendChild(textSpan2);
-                        break;
-                    case 'critical-group':
-                        text = `Критическое (${count})`;
-                        // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                        header.textContent = '';
-                        const iconDiv3 = document.createElement('div');
-                        iconDiv3.className = 'icon critical-icon';
-                        const textSpan3 = document.createElement('span');
-                        textSpan3.textContent = text;
-                        header.appendChild(iconDiv3);
-                        header.appendChild(textSpan3);
-                        break;
-                    case 'no-group':
-                        text = `Нет контроллеров (${count})`;
-                        // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                        header.textContent = '';
-                        const iconDiv4 = document.createElement('div');
-                        iconDiv4.className = 'icon no-controller-icon';
-                        const textSpan4 = document.createElement('span');
-                        textSpan4.textContent = text;
-                        header.appendChild(iconDiv4);
-                        header.appendChild(textSpan4);
-                        break;
-                    case 'leak-group':
-                        text = `Протечка (${count})`;
-                        // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                        header.textContent = '';
-                        const iconDiv5 = document.createElement('div');
-                        iconDiv5.className = 'icon leak-icon';
-                        const textSpan5 = document.createElement('span');
-                        textSpan5.textContent = text;
-                        header.appendChild(iconDiv5);
-                        header.appendChild(textSpan5);
-                        if (count > 0) {
-                            header.classList.add('blinking-leak-header');
-                        } else {
-                            header.classList.remove('blinking-leak-header');
-                        }
-                        break;
-                }
-            }
-        });
-    }
-
     // Create a group to hold markers
     // Заменяем обычную группу маркеров на кластеризованную группу
     let markers = L.markerClusterGroup({
@@ -2062,17 +1973,19 @@ document.addEventListener('DOMContentLoaded', async function () {
     // Глобальное хранилище для popup контента зданий (для клика из списка статусов)
     const buildingPopupStorage = new Map();
 
+    // Глобальное хранилище данных зданий для промышленной панели
+    // Используется updateStatusGroups() вместо DOM-клонирования
+    window.buildingsData = [];
+
     // Функция загрузки данных с сервера
     async function loadData() {
         try {
-            // Очищаем старые маркеры и боковую панель
+            // Очищаем старые маркеры и хранилища данных
             markers.clearLayers();
             // Очищаем хранилище popup контента
             buildingPopupStorage.clear();
-            // ИСПРАВЛЕНИЕ XSS: Используем textContent вместо innerHTML для очистки
-            document.querySelectorAll('#ok-group .status-items, #warning-group .status-items, #critical-group .status-items, #no-group .status-items, #leak-group .status-items').forEach(group => {
-                group.textContent = '';
-            });
+            // Очищаем хранилище данных зданий для промышленной панели
+            window.buildingsData = [];
 
             // Fetch data from the backend using API client
             const response = await apiClient.fetch('/buildings-metrics');
@@ -2411,105 +2324,27 @@ document.addEventListener('DOMContentLoaded', async function () {
                     }
                 });
 
-                // Update the sidebar with building information
-                const sidebarGroup = document.querySelector(`#${status}-group .status-items`);
-                if (sidebarGroup) {
-                    const sidebarItem = document.createElement("div");
-                    sidebarItem.classList.add("sidebar-item");
-                    
-                    // Сохраняем данные здания в data-атрибутах для обработчика клика
-                    sidebarItem.dataset.buildingId = item.building_id;
-                    sidebarItem.dataset.latitude = item.latitude;
-                    sidebarItem.dataset.longitude = item.longitude;
-                    sidebarItem.dataset.buildingName = item.building_name || '';
-                    
-                    // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                    if (item.controller_id) {
-                        // Создаем элементы безопасным способом
-                        const elecImg = document.createElement('img');
-                        elecImg.src = electricityImage;
-                        elecImg.alt = 'Electricity_Status';
-                        elecImg.style.width = '20px';
-                        elecImg.style.height = '20px';
-                        elecImg.style.objectFit = 'contain';
-                        sidebarItem.appendChild(elecImg);
-                        
-                        if (isColdWaterOK) {
-                            const coldWaterImg = document.createElement('img');
-                            coldWaterImg.src = coldWaterImage;
-                            coldWaterImg.alt = 'Cold_Water_Status';
-                            coldWaterImg.style.width = '20px';
-                            coldWaterImg.style.height = '20px';
-                            coldWaterImg.style.objectFit = 'contain';
-                            sidebarItem.appendChild(coldWaterImg);
-                        }
-                        
-                        if (item.hot_water !== false) {
-                            const hotWaterImg = document.createElement('img');
-                            hotWaterImg.src = hotWaterImage;
-                            hotWaterImg.alt = 'Hot_Water_Status';
-                            hotWaterImg.style.width = '20px';
-                            hotWaterImg.style.height = '20px';
-                            hotWaterImg.style.objectFit = 'contain';
-                            sidebarItem.appendChild(hotWaterImg);
-                        }
-                        
-                        const leakImg = document.createElement('img');
-                        leakImg.src = leakSensorImage;
-                        leakImg.alt = 'Leak_Sensor_Status';
-                        leakImg.style.width = '20px';
-                        leakImg.style.height = '20px';
-                        leakImg.style.objectFit = 'contain';
-                        sidebarItem.appendChild(leakImg);
-                        
-                        const buildingNameText = document.createTextNode(item.building_name || '');
-                        sidebarItem.appendChild(buildingNameText);
-                    } else {
-                        const noControllerImg = document.createElement('img');
-                        noControllerImg.src = 'data/images/no_controller.png';
-                        noControllerImg.alt = 'No_Controller';
-                        noControllerImg.style.width = '20px';
-                        noControllerImg.style.height = '20px';
-                        noControllerImg.style.objectFit = 'contain';
-                        sidebarItem.appendChild(noControllerImg);
-                        
-                        const buildingNameText = document.createTextNode(item.building_name || '');
-                        sidebarItem.appendChild(buildingNameText);
-                    }
-
-                    sidebarItem.addEventListener("click", function () {
-                        // Сохраняем координаты и уникальный ID маркера для надежности
-                        const markerLat = item.latitude;
-                        const markerLng = item.longitude;
-                        const markerId = item.building_id || item.controller_id || item.building_name;
-
-                        // Создаем попап мгновенно - не ждем анимацию карты
-                        const popup = L.popup()
-                            .setLatLng([markerLat, markerLng])
-                            .setContent(popupContent)
-                            .openOn(map);
-
-                        // Быстро перемещаемся к маркеру с минимальной анимацией
-                        map.flyTo([markerLat, markerLng], 16, {
-                            duration: 0.5 // Уменьшаем время анимации до 0.5 секунды
-                        });
-
-                        // Расформируем кластеры при необходимости
-                        markers.unspiderfy();
-                    });
-                    sidebarGroup.appendChild(sidebarItem);
-                } else {
-                    console.warn("Sidebar group not found for status:", status);
-                }
+                // Сохраняем данные здания в глобальный массив для промышленной панели
+                window.buildingsData.push({
+                    building_id: item.building_id,
+                    latitude: item.latitude,
+                    longitude: item.longitude,
+                    building_name: item.building_name || '',
+                    status: status,
+                    controller_id: item.controller_id,
+                    electricityImage: electricityImage,
+                    coldWaterImage: coldWaterImage,
+                    hotWaterImage: hotWaterImage,
+                    leakSensorImage: leakSensorImage,
+                    isColdWaterOK: isColdWaterOK,
+                    hasHotWater: item.hot_water !== false
+                });
             });
 
             // Обновляем информацию на карте
             if (markers.getLayers().length > 0) {
                 map.fitBounds(markers.getBounds(), { padding: [50, 50] });
             }
-
-            // Обновляем счетчики элементов в заголовках и заголовок группы протечек
-            updateGroupHeaders();
 
             // Синхронизируем статусы с промышленной панелью
             if (window.industrialPanel && typeof window.industrialPanel.updateStatusGroups === 'function') {
@@ -2520,14 +2355,8 @@ document.addEventListener('DOMContentLoaded', async function () {
             hideMapSkeleton();
 
             // Обновляем время последнего обновления
-            lastUpdateTime = new Date(); // Устанавливаем новое время обновления
+            lastUpdateTime = new Date();
             updateLastUpdateTime();
-
-            // Убедимся, что состояние свернутых групп соответствует нашим правилам
-            updateGroupsCollapsedState();
-
-            // После обновления данных обновляем счетчики
-            updateGroupCounters();
 
             // Возвращаем успешный результат
             return true;
@@ -2543,210 +2372,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
     }
 
-    // Функция для обновления состояния свернутых групп
-    function updateGroupsCollapsedState() {
-        const sidebarGroups = ['ok-group', 'warning-group', 'critical-group', 'no-group', 'leak-group'];
-
-        sidebarGroups.forEach(groupId => {
-            const group = document.querySelector(`#${groupId}`);
-            const statusItems = group?.querySelector('.status-items');
-            const groupHeader = group?.querySelector('.group-header');
-
-            if (statusItems && groupHeader) {
-                // Сворачиваем все группы по умолчанию
-                statusItems.classList.add('collapsed');
-                groupHeader.classList.add('collapsed');
-            }
-        });
-    }
-
-    // Функция для исправления возможных проблем с сайдбаром
-    function fixSidebarCollapsible() {
-        // Убедимся, что у всех заголовков есть обработчики событий и правильные стили
-        const sidebarHeaders = document.querySelectorAll('#sidebar h3');
-
-        sidebarHeaders.forEach(header => {
-            // Добавляем стиль курсора
-            header.style.cursor = 'pointer';
-
-            // Убедимся, что заголовок является кликабельным
-            if (!header.onclick) {
-                header.onclick = function(event) {
-                    event.stopPropagation();
-                    this.classList.toggle('collapsed');
-
-                    const itemsContainer = this.nextElementSibling;
-                    if (itemsContainer) {
-                        if (itemsContainer.classList.contains('collapsed')) {
-                            itemsContainer.classList.remove('collapsed');
-                            itemsContainer.style.display = 'block';
-                        } else {
-                            itemsContainer.classList.add('collapsed');
-                            itemsContainer.style.display = 'none';
-                        }
-                    }
-                };
-            }
-
-            // Применяем правильные стили к содержимому
-            const itemsContainer = header.nextElementSibling;
-            if (itemsContainer) {
-                if (header.classList.contains('collapsed')) {
-                    itemsContainer.classList.add('collapsed');
-                    itemsContainer.style.display = 'none';
-                } else {
-                    itemsContainer.classList.remove('collapsed');
-                    itemsContainer.style.display = 'block';
-                }
-            }
-        });
-    }
-
-    // Инициализация сайдбара
-    const sidebar = document.getElementById('sidebar');
-    const sidebarToggle = document.getElementById('sidebarToggle');
-
-    if (sidebar && sidebarToggle) {
-        // Добавляем обработчик клика на кнопку переключения
-        sidebarToggle.onclick = function(e) {
-            e.stopPropagation();
-            sidebar.classList.toggle('collapsed');
-
-            // Обновляем состояние групп при сворачивании/разворачивании
-            const statusGroups = document.querySelectorAll('.status-group');
-            statusGroups.forEach(group => {
-                const statusItems = group.querySelector('.status-items');
-                if (statusItems) {
-                    if (sidebar.classList.contains('collapsed')) {
-                        statusItems.classList.add('collapsed');
-                    } else {
-                        // При разворачивании сайдбара восстанавливаем предыдущее состояние групп
-                        const groupHeader = group.querySelector('.group-header');
-                        if (groupHeader && !groupHeader.classList.contains('collapsed')) {
-                            statusItems.classList.remove('collapsed');
-                        }
-                    }
-                }
-            });
-        };
-
-        // Добавляем обработчики для заголовков групп
-        const groupHeaders = document.querySelectorAll('.group-header');
-        groupHeaders.forEach(header => {
-            header.onclick = function(e) {
-                e.stopPropagation();
-
-                // Если сайдбар свернут, разворачиваем его и открываем группу
-                if (sidebar.classList.contains('collapsed')) {
-                    sidebar.classList.remove('collapsed');
-                    // Сворачиваем все группы
-                    document.querySelectorAll('.status-group').forEach(group => {
-                        const items = group.querySelector('.status-items');
-                        const header = group.querySelector('.group-header');
-                        if (items && header) {
-                            items.classList.add('collapsed');
-                            header.classList.add('collapsed');
-                        }
-                    });
-                    // Разворачиваем только текущую группу
-                    const statusItems = this.nextElementSibling;
-                    if (statusItems) {
-                        statusItems.classList.remove('collapsed');
-                        this.classList.remove('collapsed');
-                    }
-                } else {
-                    // Если сайдбар развернут, просто переключаем состояние группы
-                    const statusItems = this.nextElementSibling;
-                    if (statusItems && statusItems.classList.contains('status-items')) {
-                        statusItems.classList.toggle('collapsed');
-                        this.classList.toggle('collapsed');
-                    }
-                }
-            };
-        });
-    }
-
-    // Функция для показа подсказки при клике на группу в свернутом состоянии
-    function showGroupTooltip(title) {
-        // Удаляем существующую подсказку, если она есть
-        const existingTooltip = document.querySelector('.group-tooltip');
-        if (existingTooltip) {
-            existingTooltip.remove();
-        }
-
-        // Создаем новую подсказку
-        const tooltip = document.createElement('div');
-        tooltip.className = 'group-tooltip';
-        tooltip.textContent = title;
-
-        // Добавляем стили для подсказки
-        tooltip.style.position = 'fixed';
-        tooltip.style.background = 'rgba(0, 0, 0, 0.8)';
-        tooltip.style.color = 'white';
-        tooltip.style.padding = '8px 12px';
-        tooltip.style.borderRadius = '4px';
-        tooltip.style.fontSize = '14px';
-        tooltip.style.zIndex = '1001';
-        tooltip.style.pointerEvents = 'none';
-
-        // Позиционируем подсказку
-        const sidebar = document.getElementById('sidebar');
-        const rect = sidebar.getBoundingClientRect();
-        tooltip.style.left = `${rect.right + 10}px`;
-        tooltip.style.top = `${rect.top + 10}px`;
-
-        // Добавляем подсказку на страницу
-        document.body.appendChild(tooltip);
-
-        // Удаляем подсказку через 2 секунды
-        setTimeout(() => {
-            tooltip.remove();
-        }, 2000);
-    }
-
-    // Инициализируем сайдбар при загрузке страницы
-    document.addEventListener('DOMContentLoaded', () => {
-        initializeSidebar();
-    });
-
     // Загрузка данных при инициализации
     await loadData();
-
-    // Функция для обновления счетчиков в группах
-    function updateGroupCounters() {
-        const groups = ['ok', 'warning', 'leak', 'critical', 'no'];
-
-        groups.forEach(group => {
-            const groupElement = document.getElementById(`${group}-group`);
-            const itemsContainer = groupElement.querySelector('.status-items');
-            const counterElement = groupElement.querySelector('.group-counter');
-
-            // Подсчитываем количество элементов в группе
-            const itemCount = itemsContainer.children.length;
-
-            // Обновляем счетчик
-            counterElement.textContent = itemCount;
-
-            // Скрываем счетчик, если элементов нет
-            counterElement.style.display = itemCount > 0 ? 'flex' : 'none';
-        });
-    }
-
-    // Добавляем обновление счетчиков при инициализации
-    document.addEventListener('DOMContentLoaded', async function () {
-        // ... existing code ...
-
-        // Инициализация счетчиков
-        updateGroupCounters();
-
-        // Наблюдаем за изменениями в группах
-        const observer = new MutationObserver(updateGroupCounters);
-
-        // Наблюдаем за изменениями во всех группах
-        ['ok', 'warning', 'leak', 'critical', 'no'].forEach(group => {
-            const groupElement = document.getElementById(`${group}-group`);
-            const itemsContainer = groupElement.querySelector('.status-items');
-            observer.observe(itemsContainer, { childList: true, subtree: true });
-        });
-    });
 });
