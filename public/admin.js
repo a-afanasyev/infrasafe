@@ -1,5 +1,3 @@
-console.log('🚀 НОВАЯ ВЕРСИЯ ФАЙЛА ЗАГРУЖЕНА - v=1749768508');
-
 document.addEventListener("DOMContentLoaded", function () {
     const backendURL = "/api";
 

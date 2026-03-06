@@ -17,13 +17,10 @@ const API_BASE = window.BACKEND_URL || '/api';
  * Инициализация при загрузке страницы
  */
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('🚀 Инициализация аналитики...');
     try {
-        console.log('📞 Вызываем loadBuildings()...');
         await loadBuildings();
-        console.log('✅ loadBuildings() завершена');
     } catch (error) {
-        console.error('❌ Ошибка инициализации:', error);
+        console.error('Ошибка инициализации:', error);
         showLoading(false);
     }
 });
@@ -32,38 +29,27 @@ document.addEventListener('DOMContentLoaded', async () => {
  * Загрузить список зданий
  */
 async function loadBuildings() {
-    console.log('📥 Начинаем загрузку зданий...');
     try {
-        console.log('🔄 Показываем индикатор загрузки...');
         showLoading(true);
-        
-        console.log('🌐 Отправляем запрос к API:', `${API_BASE}/buildings-metrics`);
+
         const response = await fetch(`${API_BASE}/buildings-metrics`);
-        console.log('📡 Запрос выполнен, статус:', response.ok);
         if (!response.ok) throw new Error('Ошибка загрузки зданий');
-        
+
         const result = await response.json();
-        console.log('📦 Данные получены, парсим...');
         const selector = document.getElementById('building-selector');
-        console.log('🎯 Selector найден:', !!selector);
-        
+
+        // Safe: static HTML string with no user input
         selector.innerHTML = '<option value="">Выберите здание...</option>';
-        console.log('🧹 Очистили список зданий');
-        
+
         // API может вернуть {data: [...]} или просто [...]
         const data = result.data || result;
-        console.log('📊 Данных получено:', Array.isArray(data) ? data.length : 'не массив!');
-        
-        // Проверяем что data - это массив
+
         if (!Array.isArray(data)) {
-            console.error('API вернул некорректный формат данных:', data);
             throw new Error('Некорректный формат данных от API');
         }
-        
-        // Фильтруем только здания с контроллерами
+
         const buildingsWithControllers = data.filter(b => b.controller_id);
-        console.log('🏢 Зданий с контроллерами:', buildingsWithControllers.length);
-        
+
         buildingsWithControllers.forEach(building => {
             const option = document.createElement('option');
             option.value = building.building_id;
@@ -71,11 +57,9 @@ async function loadBuildings() {
             option.dataset.building = JSON.stringify(building);
             selector.appendChild(option);
         });
-        
-        console.log('🔚 Заканчиваем loadBuildings, скрываем индикатор...');
+
         showLoading(false);
-        console.log('✅ Индикатор загрузки скрыт!');
-        
+
     } catch (error) {
         console.error('Ошибка загрузки зданий:', error);
         showLoading(false);
@@ -159,39 +143,23 @@ async function loadMetricsData() {
         );
         
         if (!response.ok) {
-            // Если endpoint не существует, используем mock данные
-            console.warn('Endpoint не найден, используем mock данные');
             metricsData = generateMockData(currentPeriod);
-            console.log('✅ Mock данные сгенерированы (no ok response)');
         } else {
             const data = await response.json();
             metricsData = data.data || data;
-            console.log('✅ Получены реальные данные из API');
         }
-        
+
         document.getElementById('last-update').textContent = new Date().toLocaleString('ru-RU');
-        
-        // Создаем все графики
-        console.log('📊 Создаем графики...');
+
         createAllCharts();
-        console.log('✅ Графики созданы');
-        
-        console.log('📊 Убираем индикатор загрузки...');
         showLoading(false);
-        console.log('✅ Индикатор загрузки убран');
-        
+
     } catch (error) {
         console.error('Ошибка загрузки метрик:', error);
-        
-        // Используем mock данные при ошибке
-        console.warn('Генерируем mock данные после ошибки');
+
         metricsData = generateMockData(currentPeriod);
-        console.log('✅ Mock данные сгенерированы, создаем графики...');
         createAllCharts();
-        console.log('✅ Графики созданы, убираем индикатор загрузки');
-        
         showLoading(false);
-        console.log('✅ Индикатор загрузки убран');
     }
 }
 
