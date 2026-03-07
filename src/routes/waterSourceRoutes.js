@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
 const { createError } = require('../utils/helpers');
+const { applyCrudRateLimit } = require('../middleware/rateLimiter');
 const logger = require('../utils/logger');
 
 /**
@@ -183,7 +184,7 @@ router.get('/:id', async (req, res, next) => {
  *       400:
  *         description: Ошибка валидации
  */
-router.post('/', async (req, res, next) => {
+router.post('/', applyCrudRateLimit, async (req, res, next) => {
     try {
         const {
             id, name, address, latitude, longitude, source_type,
@@ -237,7 +238,7 @@ router.post('/', async (req, res, next) => {
  *       404:
  *         description: Источник не найден
  */
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', applyCrudRateLimit, async (req, res, next) => {
     try {
         const { id } = req.params;
         const {
@@ -293,7 +294,7 @@ router.put('/:id', async (req, res, next) => {
  *       404:
  *         description: Источник не найден
  */
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', applyCrudRateLimit, async (req, res, next) => {
     try {
         const { id } = req.params;
         const result = await query('DELETE FROM cold_water_sources WHERE id = $1 RETURNING *', [id]);

@@ -16,6 +16,7 @@ const waterSupplierRoutes = require('./waterSupplierRoutes');
 const powerAnalyticsRoutes = require('./powerAnalyticsRoutes');
 const metricController = require('../controllers/metricController');
 const { authenticateJWT } = require('../middleware/auth');
+const { applyTelemetryRateLimit } = require('../middleware/rateLimiter');
 const { createError } = require('../utils/helpers');
 
 const router = express.Router();
@@ -72,7 +73,7 @@ const router = express.Router();
  */
 // Специальные маршруты, для которых не требуется аутентификация
 // Маршрут телеметрии должен быть доступен без аутентификации
-router.post('/metrics/telemetry', metricController.receiveTelemetry);
+router.post('/metrics/telemetry', applyTelemetryRateLimit, metricController.receiveTelemetry);
 
 // Определяем middleware для защищенных маршрутов - PUT, POST, DELETE
 router.use((req, res, next) => {

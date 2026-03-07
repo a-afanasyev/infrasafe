@@ -1,6 +1,7 @@
 const express = require('express');
 const controllerController = require('../controllers/controllerController');
 const { authenticateJWT } = require('../middleware/auth');
+const { applyCrudRateLimit } = require('../middleware/rateLimiter');
 const { validateControllerCreate, validateIdParam } = require('../middleware/validators');
 const router = express.Router();
 
@@ -78,7 +79,7 @@ router.get('/', controllerController.getAllControllers);
  *       403:
  *         description: Недействительный токен
  */
-router.post('/update-status-by-activity', authenticateJWT, controllerController.updateControllersStatusByActivity);
+router.post('/update-status-by-activity', applyCrudRateLimit, authenticateJWT, controllerController.updateControllersStatusByActivity);
 
 /**
  * @swagger
@@ -243,7 +244,7 @@ router.get('/:id/metrics', controllerController.getControllerMetrics);
  *       403:
  *         description: Недействительный токен
  */
-router.post('/', authenticateJWT, validateControllerCreate, controllerController.createController);
+router.post('/', applyCrudRateLimit, authenticateJWT, validateControllerCreate, controllerController.createController);
 
 /**
  * @swagger
@@ -281,7 +282,7 @@ router.post('/', authenticateJWT, validateControllerCreate, controllerController
  *       400:
  *         description: Ошибка валидации данных
  */
-router.put('/:id', authenticateJWT, validateIdParam, validateControllerCreate, controllerController.updateController);
+router.put('/:id', applyCrudRateLimit, authenticateJWT, validateIdParam, validateControllerCreate, controllerController.updateController);
 
 /**
  * @swagger
@@ -316,7 +317,7 @@ router.put('/:id', authenticateJWT, validateIdParam, validateControllerCreate, c
  *       400:
  *         description: Неверное значение статуса
  */
-router.patch('/:id/status', authenticateJWT, validateIdParam, controllerController.updateControllerStatus);
+router.patch('/:id/status', applyCrudRateLimit, authenticateJWT, validateIdParam, controllerController.updateControllerStatus);
 
 /**
  * @swagger
@@ -339,6 +340,6 @@ router.patch('/:id/status', authenticateJWT, validateIdParam, controllerControll
  *       400:
  *         description: Невозможно удалить контроллер с привязанными метриками
  */
-router.delete('/:id', authenticateJWT, validateIdParam, controllerController.deleteController);
+router.delete('/:id', applyCrudRateLimit, authenticateJWT, validateIdParam, controllerController.deleteController);
 
 module.exports = router;

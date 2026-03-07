@@ -1,6 +1,7 @@
 const express = require('express');
 const metricController = require('../controllers/metricController');
 const { authenticateJWT } = require('../middleware/auth');
+const { applyCrudRateLimit } = require('../middleware/rateLimiter');
 const router = express.Router();
 
 /**
@@ -98,7 +99,7 @@ router.get('/latest', metricController.getLastMetricsForAllControllers);
  *       400:
  *         description: Неверный параметр days
  */
-router.delete('/cleanup', authenticateJWT, metricController.cleanupOldMetrics);
+router.delete('/cleanup', applyCrudRateLimit, authenticateJWT, metricController.cleanupOldMetrics);
 
 /**
  * @swagger
@@ -285,7 +286,7 @@ router.get('/:id', metricController.getMetricById);
  *       403:
  *         description: Недействительный токен
  */
-router.post('/', metricController.createMetric);
+router.post('/', applyCrudRateLimit, metricController.createMetric);
 
 /**
  * @swagger
@@ -306,6 +307,6 @@ router.post('/', metricController.createMetric);
  *       404:
  *         description: Метрика не найдена
  */
-router.delete('/:id', metricController.deleteMetric);
+router.delete('/:id', applyCrudRateLimit, metricController.deleteMetric);
 
 module.exports = router;

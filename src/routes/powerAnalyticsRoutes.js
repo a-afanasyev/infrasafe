@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const powerAnalyticsController = require('../controllers/powerAnalyticsController');
 const { authenticateJWT } = require('../middleware/auth');
+const { applyCrudRateLimit } = require('../middleware/rateLimiter');
 
 /**
  * @swagger
@@ -108,6 +109,6 @@ router.get('/phase-imbalance', powerAnalyticsController.getPhaseImbalanceAnalysi
  *       200:
  *         description: Данные успешно обновлены
  */
-router.post('/refresh', authenticateJWT, powerAnalyticsController.refreshPowerViews);
+router.post('/refresh', applyCrudRateLimit, authenticateJWT, powerAnalyticsController.refreshPowerViews);
 
 module.exports = router;

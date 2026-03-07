@@ -16,9 +16,10 @@ class SimpleRateLimiter {
         this.store = new Map();
 
         // Очистка устаревших записей каждую минуту
-        setInterval(() => {
+        this.cleanupInterval = setInterval(() => {
             this.cleanup();
         }, 60000);
+        this.cleanupInterval.unref();
 
         logger.info(`Rate limiter инициализирован: ${this.max} запросов в ${this.windowMs}ms`);
     }
@@ -138,6 +139,14 @@ class SimpleRateLimiter {
         this.store.clear();
         logger.info(`Rate limiter сброшен: очищено ${oldSize} записей`);
     }
+
+    // Остановка интервала очистки для предотвращения утечки таймеров
+    destroy() {
+        if (this.cleanupInterval) {
+            clearInterval(this.cleanupInterval);
+            this.cleanupInterval = null;
+        }
+    }
 }
 
 // Slow down middleware - замедляет запросы при превышении лимитов
@@ -153,9 +162,10 @@ class SimpleSlowDown {
         this.store = new Map();
 
         // Очистка каждую минуту
-        setInterval(() => {
+        this.cleanupInterval = setInterval(() => {
             this.cleanup();
         }, 60000);
+        this.cleanupInterval.unref();
 
         logger.info(`Slow down инициализирован: замедление после ${this.delayAfter} запросов`);
     }
@@ -226,6 +236,14 @@ class SimpleSlowDown {
             next();
         };
     }
+
+    // Остановка интервала очистки для предотвращения утечки таймеров
+    destroy() {
+        if (this.cleanupInterval) {
+            clearInterval(this.cleanupInterval);
+            this.cleanupInterval = null;
+        }
+    }
 }
 
 // Предустановленные конфигурации для разных типов API
@@ -275,6 +293,16 @@ const registerLimiter = new SimpleRateLimiter({
     keyGenerator: (req) => `auth:register:${req.ip || req.connection.remoteAddress}`
 });
 
+// Ограничения для телеметрии (публичный эндпоинт)
+const telemetryLimiter = new SimpleRateLimiter({
+    windowMs: 60 * 1000, // 1 минута
+    max: 120, // максимум 120 запросов в минуту
+    message: 'Слишком много запросов телеметрии. Попробуйте позже.',
+    keyGenerator: (req) => `telemetry:${req.ip || req.connection.remoteAddress}`,
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
 // Ограничения для CRUD операций
 const crudLimiter = new SimpleRateLimiter({
     windowMs: 60 * 1000, // 1 минута
@@ -297,6 +325,10 @@ const applyCrudRateLimit = [
     crudLimiter.middleware()
 ];
 
+const applyTelemetryRateLimit = [
+    telemetryLimiter.middleware()
+];
+
 // Функция для получения статистики всех rate limiter'ов
 function getAllRateLimitStats() {
     return {
@@ -308,6 +340,7 @@ function getAllRateLimitStats() {
         },
         admin: adminLimiter.getStats(),
         crud: crudLimiter.getStats(),
+        telemetry: telemetryLimiter.getStats(),
         auth: authLimiter.getStats(),
         register: registerLimiter.getStats()
     };
@@ -319,9 +352,22 @@ function resetAllRateLimits() {
     analyticsSlowDown.store.clear();
     adminLimiter.reset();
     crudLimiter.reset();
+    telemetryLimiter.reset();
     authLimiter.reset();
     registerLimiter.reset();
     logger.info('Все rate limiter\'ы сброшены');
+}
+
+// Остановка всех таймеров очистки (для graceful shutdown и тестов)
+function destroyAllLimiters() {
+    analyticsLimiter.destroy();
+    analyticsSlowDown.destroy();
+    adminLimiter.destroy();
+    crudLimiter.destroy();
+    telemetryLimiter.destroy();
+    authLimiter.destroy();
+    registerLimiter.destroy();
+    logger.info('Все rate limiter таймеры остановлены');
 }
 
 module.exports = {
@@ -330,11 +376,14 @@ module.exports = {
     applyAnalyticsRateLimit,
     applyAdminRateLimit,
     applyCrudRateLimit,
+    applyTelemetryRateLimit,
     getAllRateLimitStats,
     resetAllRateLimits,
+    destroyAllLimiters,
     analyticsLimiter,
     adminLimiter,
     crudLimiter,
+    telemetryLimiter,
     authLimiter,
     registerLimiter,
     rateLimitStrict: adminLimiter.middleware()
