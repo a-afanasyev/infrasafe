@@ -14,6 +14,9 @@ const init = async () => {
             database: process.env.DB_NAME,
             password: process.env.DB_PASSWORD,
             port: parseInt(process.env.DB_PORT || '5432'),
+            max: 20,
+            min: 2,
+            idleTimeoutMillis: 30000,
         });
 
         // Проверка соединения
