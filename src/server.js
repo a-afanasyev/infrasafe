@@ -38,9 +38,7 @@ app.use(helmet({
     }
 })); // Безопасность
 app.use(cors({
-    origin: process.env.CORS_ORIGIN
-        ? process.env.CORS_ORIGIN.split(',').map(s => s.trim())
-        : ['http://localhost:3000', 'http://localhost:8080'],
+    origin: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : 'http://localhost:8080',
     credentials: true
 })); // CORS
 app.use(express.json({ limit: '1mb' })); // Парсинг JSON
