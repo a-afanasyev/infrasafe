@@ -96,6 +96,8 @@ desktop.ini
 *.backup*
 *~
 * 2
+* copy.*
+* copy *
 database/backups/
 *.sql.gz
 
