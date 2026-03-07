@@ -250,7 +250,7 @@ const analyticsSlowDown = new SimpleSlowDown({
 // Строгие ограничения для административных операций
 const adminLimiter = new SimpleRateLimiter({
     windowMs: 60 * 1000, // 1 минута
-    max: 100, // максимум 100 операций в минуту (увеличено для тестирования)
+    max: 20, // максимум 20 операций в минуту
     message: 'Слишком много административных операций. Попробуйте позже.',
     keyGenerator: (req) => {
         // Для админских операций учитываем и IP, и пользователя
@@ -307,7 +307,9 @@ function getAllRateLimitStats() {
             delay_after: analyticsSlowDown.delayAfter
         },
         admin: adminLimiter.getStats(),
-        crud: crudLimiter.getStats()
+        crud: crudLimiter.getStats(),
+        auth: authLimiter.getStats(),
+        register: registerLimiter.getStats()
     };
 }
 
@@ -317,6 +319,8 @@ function resetAllRateLimits() {
     analyticsSlowDown.store.clear();
     adminLimiter.reset();
     crudLimiter.reset();
+    authLimiter.reset();
+    registerLimiter.reset();
     logger.info('Все rate limiter\'ы сброшены');
 }
 
