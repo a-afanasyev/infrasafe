@@ -17,6 +17,7 @@ logs/
 .env.production
 .env.staging
 .env.test
+generator/.env
 
 # ==========================================
 # Node.js
