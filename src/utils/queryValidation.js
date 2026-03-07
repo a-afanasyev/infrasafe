@@ -52,8 +52,8 @@ const allowedSortColumns = {
     
     // Водные линии
     water_lines: [
-        'line_id', 'name', 'pressure', 'flow_rate', 'status',
-        'diameter', 'material', 'installation_date',
+        'line_id', 'name', 'pressure_bar', 'status',
+        'diameter_mm', 'material', 'installation_date',
         'created_at', 'updated_at'
     ],
     

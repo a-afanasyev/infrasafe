@@ -963,12 +963,15 @@ class AdminController {
                 description,
                 diameter_mm,
                 material,
-                pressure_rating,
+                pressure_bar,
                 installation_date,
-                length_km,
-                line_type,
-                supplier_id,
-                status = 'active'
+                status = 'active',
+                latitude_start,
+                longitude_start,
+                latitude_end,
+                longitude_end,
+                main_path,
+                branches
             } = req.body;
 
             if (!name || !diameter_mm || !material) {
@@ -976,13 +979,17 @@ class AdminController {
             }
 
             const query = `
-                INSERT INTO water_lines (name, description, diameter_mm, material, pressure_rating, installation_date, length_km, line_type, supplier_id, status)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                INSERT INTO water_lines (name, description, diameter_mm, material, pressure_bar, installation_date, status,
+                    latitude_start, longitude_start, latitude_end, longitude_end, main_path, branches)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                 RETURNING *
             `;
 
             const result = await pool.query(query, [
-                name, description, diameter_mm, material, pressure_rating, installation_date, length_km, line_type, supplier_id, status
+                name, description, diameter_mm, material, pressure_bar, installation_date, status,
+                latitude_start, longitude_start, latitude_end, longitude_end,
+                main_path ? JSON.stringify(main_path) : null,
+                branches ? JSON.stringify(branches) : '[]'
             ]);
 
             res.status(201).json({
@@ -1038,12 +1045,15 @@ class AdminController {
                 description,
                 diameter_mm,
                 material,
-                pressure_rating,
+                pressure_bar,
                 installation_date,
-                length_km,
-                line_type,
-                supplier_id,
-                status
+                status,
+                latitude_start,
+                longitude_start,
+                latitude_end,
+                longitude_end,
+                main_path,
+                branches
             } = req.body;
 
             const updateFields = [];
@@ -1066,29 +1076,41 @@ class AdminController {
                 updateFields.push(`material = $${paramIndex++}`);
                 params.push(material);
             }
-            if (pressure_rating !== undefined) {
-                updateFields.push(`pressure_rating = $${paramIndex++}`);
-                params.push(pressure_rating);
+            if (pressure_bar !== undefined) {
+                updateFields.push(`pressure_bar = $${paramIndex++}`);
+                params.push(pressure_bar);
             }
             if (installation_date !== undefined) {
                 updateFields.push(`installation_date = $${paramIndex++}`);
                 params.push(installation_date);
             }
-            if (length_km !== undefined) {
-                updateFields.push(`length_km = $${paramIndex++}`);
-                params.push(length_km);
-            }
-            if (line_type !== undefined) {
-                updateFields.push(`line_type = $${paramIndex++}`);
-                params.push(line_type);
-            }
-            if (supplier_id !== undefined) {
-                updateFields.push(`supplier_id = $${paramIndex++}`);
-                params.push(supplier_id);
-            }
             if (status !== undefined) {
                 updateFields.push(`status = $${paramIndex++}`);
                 params.push(status);
+            }
+            if (latitude_start !== undefined) {
+                updateFields.push(`latitude_start = $${paramIndex++}`);
+                params.push(latitude_start);
+            }
+            if (longitude_start !== undefined) {
+                updateFields.push(`longitude_start = $${paramIndex++}`);
+                params.push(longitude_start);
+            }
+            if (latitude_end !== undefined) {
+                updateFields.push(`latitude_end = $${paramIndex++}`);
+                params.push(latitude_end);
+            }
+            if (longitude_end !== undefined) {
+                updateFields.push(`longitude_end = $${paramIndex++}`);
+                params.push(longitude_end);
+            }
+            if (main_path !== undefined) {
+                updateFields.push(`main_path = $${paramIndex++}`);
+                params.push(JSON.stringify(main_path));
+            }
+            if (branches !== undefined) {
+                updateFields.push(`branches = $${paramIndex++}`);
+                params.push(JSON.stringify(branches));
             }
 
             if (updateFields.length === 0) {

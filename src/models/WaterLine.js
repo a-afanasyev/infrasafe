@@ -367,7 +367,7 @@ class WaterLine {
         try {
             const { rows } = await db.query(
                 `SELECT wl.* FROM water_lines wl
-                 JOIN buildings b ON wl.line_id = b.water_line_id
+                 JOIN buildings b ON wl.line_id = b.cold_water_line_id OR wl.line_id = b.hot_water_line_id
                  WHERE b.building_id = $1`,
                 [buildingId]
             );
