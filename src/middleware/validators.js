@@ -70,8 +70,9 @@ const validateMetricCreate = [
     body('electricity_ph1').isFloat().withMessage('Электричество фаза 1 должно быть числом'),
     body('electricity_ph2').isFloat().withMessage('Электричество фаза 2 должно быть числом'),
     body('electricity_ph3').isFloat().withMessage('Электричество фаза 3 должно быть числом'),
-    body('cold_water_pr').isFloat().withMessage('Давление холодной воды должно быть числом'),
-    body('hot_water_pr').isFloat().withMessage('Давление горячей воды должно быть числом'),
+    body('cold_water_pressure').isFloat().withMessage('Давление холодной воды должно быть числом'),
+    body('hot_water_in_pressure').isFloat().withMessage('Давление горячей воды (вход) должно быть числом'),
+    body('hot_water_out_pressure').isFloat().withMessage('Давление горячей воды (выход) должно быть числом'),
     handleValidationErrors
 ];
 

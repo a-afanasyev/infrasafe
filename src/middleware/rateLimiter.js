@@ -25,10 +25,7 @@ class SimpleRateLimiter {
     }
 
     defaultKeyGenerator(req) {
-        // Используем IP адрес и User-Agent для идентификации
-        const ip = req.ip || req.connection.remoteAddress || req.socket.remoteAddress;
-        const userAgent = req.get('User-Agent') || 'unknown';
-        return `${ip}:${userAgent.substring(0, 50)}`;
+        return req.ip || req.connection.remoteAddress || req.socket.remoteAddress || 'unknown';
     }
 
     cleanup() {

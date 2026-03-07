@@ -12,7 +12,10 @@ class AuthService {
             throw new Error('JWT_SECRET environment variable is not defined');
         }
         this.jwtSecret = process.env.JWT_SECRET;
-        this.jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || (process.env.JWT_SECRET + '-refresh');
+        if (!process.env.JWT_REFRESH_SECRET) {
+            throw new Error('JWT_REFRESH_SECRET environment variable is required');
+        }
+        this.jwtRefreshSecret = process.env.JWT_REFRESH_SECRET;
         this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
         this.refreshTokenExpiresIn = '7d';
         this.cachePrefix = 'auth';
@@ -226,6 +229,9 @@ class AuthService {
                 error.code = 'USER_NOT_FOUND';
                 throw error;
             }
+
+            // Blacklist the consumed refresh token to prevent reuse
+            await this.blacklistToken(refreshToken);
 
             // Генерируем новые токены
             const tokens = this.generateTokens(user);

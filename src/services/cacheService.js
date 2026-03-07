@@ -50,9 +50,10 @@ class CacheService {
 
     // Очистка устаревших записей из memory cache
     startCleanupTimer() {
-        setInterval(() => {
+        this.cleanupTimer = setInterval(() => {
             this.cleanupMemoryCache();
         }, 60000); // Очистка каждую минуту
+        this.cleanupTimer.unref();
     }
 
     cleanupMemoryCache() {
@@ -60,7 +61,7 @@ class CacheService {
         let cleanedCount = 0;
 
         for (const [key, cached] of this.analyticsCache.entries()) {
-            if (now - cached.timestamp > this.memoryTTL) {
+            if (now - cached.timestamp > (cached.ttl || this.memoryTTL)) {
                 this.analyticsCache.delete(key);
                 cleanedCount++;
             }
@@ -172,7 +173,7 @@ class CacheService {
         // Memory cache
         if (this.analyticsCache.has(key)) {
             const cached = this.analyticsCache.get(key);
-            if (Date.now() - cached.timestamp < ttl) {
+            if (Date.now() - cached.timestamp < (cached.ttl || ttl || this.memoryTTL)) {
                 return cached.data;
             } else {
                 this.analyticsCache.delete(key);
@@ -205,7 +206,8 @@ class CacheService {
         // Memory cache
         this.analyticsCache.set(key, {
             data,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            ttl: options.ttl ? options.ttl * 1000 : this.memoryTTL
         });
 
         // Redis cache
@@ -285,6 +287,11 @@ class CacheService {
 
     // Закрытие соединений
     async close() {
+        if (this.cleanupTimer) {
+            clearInterval(this.cleanupTimer);
+            this.cleanupTimer = null;
+        }
+
         if (this.redisClient) {
             try {
                 await this.redisClient.quit();

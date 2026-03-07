@@ -10,6 +10,13 @@
 
 const request = require('supertest');
 
+// Mock auth middleware — эти тесты проверяют SQL injection, а не авторизацию
+jest.mock('../../../src/middleware/auth', () => ({
+    authenticateJWT: (req, res, next) => { req.user = { id: 1, role: 'admin' }; next(); },
+    isAdmin: (req, res, next) => next(),
+    authenticateRefresh: (req, res, next) => next()
+}));
+
 // Импортируем Express app напрямую, без запуска сервера
 const express = require('express');
 const cors = require('cors');

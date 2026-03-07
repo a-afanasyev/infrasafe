@@ -1,8 +1,12 @@
 const express = require('express');
 const adminController = require('../controllers/adminController');
 const { rateLimitStrict } = require('../middleware/rateLimiter');
+const { authenticateJWT, isAdmin } = require('../middleware/auth');
 
 const router = express.Router();
+
+// Protect ALL admin routes: require valid JWT + admin role
+router.use(authenticateJWT, isAdmin);
 
 /**
  * @swagger

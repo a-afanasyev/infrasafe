@@ -322,7 +322,7 @@ router.get('/status', analyticsController.getSystemStatus);
  *       200:
  *         description: Аналитика обновлена
  */
-router.post('/refresh', applyAdminRateLimit, authenticateJWT, analyticsController.refreshAnalytics);
+router.post('/refresh', applyAdminRateLimit, authenticateJWT, isAdmin, analyticsController.refreshAnalytics);
 
 /**
  * @swagger
@@ -336,7 +336,7 @@ router.post('/refresh', applyAdminRateLimit, authenticateJWT, analyticsControlle
  *       200:
  *         description: Кэши очищены
  */
-router.post('/cache/invalidate', applyAdminRateLimit, authenticateJWT, analyticsController.invalidateCaches);
+router.post('/cache/invalidate', applyAdminRateLimit, authenticateJWT, isAdmin, analyticsController.invalidateCaches);
 
 /**
  * @swagger
@@ -350,7 +350,7 @@ router.post('/cache/invalidate', applyAdminRateLimit, authenticateJWT, analytics
  *       200:
  *         description: Circuit Breaker'ы сброшены
  */
-router.post('/circuit-breakers/reset', applyAdminRateLimit, authenticateJWT, analyticsController.resetCircuitBreakers);
+router.post('/circuit-breakers/reset', applyAdminRateLimit, authenticateJWT, isAdmin, analyticsController.resetCircuitBreakers);
 
 /**
  * @swagger
@@ -382,7 +382,7 @@ router.post('/circuit-breakers/reset', applyAdminRateLimit, authenticateJWT, ana
  *       200:
  *         description: Пороги обновлены
  */
-router.put('/thresholds', applyAdminRateLimit, authenticateJWT, analyticsController.updateThresholds);
+router.put('/thresholds', applyAdminRateLimit, authenticateJWT, isAdmin, analyticsController.updateThresholds);
 
 // === CRUD ЭНДПОИНТЫ ДЛЯ ТРАНСФОРМАТОРОВ ===
 

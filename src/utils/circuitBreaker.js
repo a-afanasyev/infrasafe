@@ -158,7 +158,7 @@ class CircuitBreaker {
 
     // Мониторинг состояния
     startMonitoring() {
-        setInterval(() => {
+        this.monitoringTimer = setInterval(() => {
             const state = this.getState();
 
             // Логируем состояние только при изменениях или проблемах
@@ -174,6 +174,15 @@ class CircuitBreaker {
                 });
             }
         }, this.monitoringInterval);
+        this.monitoringTimer.unref();
+    }
+
+    // Остановка мониторинга и очистка таймера
+    destroy() {
+        if (this.monitoringTimer) {
+            clearInterval(this.monitoringTimer);
+            this.monitoringTimer = null;
+        }
     }
 
     // Установка нового порога отказов
