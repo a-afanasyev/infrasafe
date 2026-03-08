@@ -11,7 +11,8 @@ const router = express.Router();
  *   get:
  *     summary: Получить список всех контроллеров
  *     description: Возвращает список всех контроллеров с пагинацией
- *     security: [] # Без авторизации
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: page
@@ -87,7 +88,8 @@ router.post('/update-status-by-activity', applyCrudRateLimit, isAdmin, controlle
  *   get:
  *     summary: Статистика контроллеров
  *     description: Возвращает аналитику по контроллерам (по статусам и зданиям)
- *     security: [] # Без авторизации
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: Статистика контроллеров
@@ -135,7 +137,8 @@ router.get('/statistics', controllerController.getControllersStatistics);
  *   get:
  *     summary: Получить контроллер по ID
  *     description: Возвращает один контроллер по его ID
- *     security: [] # Без авторизации
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id

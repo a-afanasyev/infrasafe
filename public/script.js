@@ -2318,7 +2318,11 @@ document.addEventListener('DOMContentLoaded', async function () {
                                 const totalPowerRow = document.getElementById(`total-power-row-${item.building_id}`);
                                 
                                 if (totalPower && totalPowerRow) {
-                                    totalPower.innerHTML = `<strong>Общая мощность:</strong> ${data.total_power_kw} кВт`;
+                                    totalPower.textContent = '';
+                                    const strongPower = document.createElement('strong');
+                                    strongPower.textContent = 'Общая мощность:';
+                                    totalPower.appendChild(strongPower);
+                                    totalPower.appendChild(document.createTextNode(` ${parseFloat(data.total_power_kw) || 0} кВт`));
                                     totalPowerRow.style.display = '';
                                 }
                             }

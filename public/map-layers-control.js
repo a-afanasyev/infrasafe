@@ -173,8 +173,7 @@ class MapLayersControl {
                     await this.loadWaterSources(headers);
                     break;
                 case "🚰 Линии водоснабжения":
-                    await this.loadColdWaterLines(headers);
-                    await this.loadHotWaterLines(headers);
+                    await this.loadWaterLines(headers);
                     break;
                 case "🔥 Источники тепла":
                     await this.loadHeatSources(headers);
@@ -496,9 +495,7 @@ class MapLayersControl {
                     await this.loadWaterSources(headers);
                     break;
                 case "🚰 Линии водоснабжения":
-                    // Загружаем оба типа линий водоснабжения (ХВС и ГВС)
-                    await this.loadColdWaterLines(headers);
-                    await this.loadHotWaterLines(headers);
+                    await this.loadWaterLines(headers);
                     break;
                 case "🔥 Источники тепла":
                     await this.loadHeatSources(headers);
@@ -867,20 +864,64 @@ class MapLayersControl {
     }
 
     async loadWaterLines(headers) {
-        const response = await fetch(`${this.apiBaseUrl}/water-lines`, { headers });
-        const data = await response.json();
-        
-        const layer = this.overlays["🚰 Линии водоснабжения"];
-        layer.clearLayers();
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/water-lines`, { headers });
+            if (response.status === 401) throw new Error('401 Unauthorized');
 
-        data.data.forEach(line => {
-            // Генерируем координаты линии (в реальном проекте они должны быть в БД)
-            const coordinates = this.generateLineCoordinates(line);
-            const polyline = this.createWaterLine(line, coordinates);
-            layer.addLayer(polyline);
-        });
+            if (!response.ok) {
+                if (response.status === 404 || response.status === 500) {
+                    console.warn('Линии водоснабжения не доступны');
+                    this.updateLayerCount("🚰 Линии водоснабжения", 0);
+                    return;
+                }
+                throw new Error(`HTTP ${response.status}`);
+            }
 
-        this.updateLayerCount("🚰 Линии водоснабжения", data.data.length);
+            const result = await response.json();
+            const allLines = result.data || [];
+
+            const normalize = (t) => (t || '').trim().toUpperCase();
+
+            // Фильтруем ХВС и ГВС линии
+            const coldLines = allLines.filter(l => normalize(l.line_type) === 'ХВС');
+            const hotLines = allLines.filter(l => normalize(l.line_type) === 'ГВС');
+
+            const layer = this.overlays["🚰 Линии водоснабжения"];
+            layer.clearLayers();
+
+            // Отрисовываем линии ХВС (холодное водоснабжение)
+            coldLines.forEach(line => {
+                if (line.main_path && line.main_path.length >= 2) {
+                    const adaptedLine = {
+                        ...line,
+                        line_type: 'cold_water',
+                        display_color: '#0066FF',
+                        line_width: 4,
+                        branches: line.branches || []
+                    };
+                    this.drawInfrastructureLine(adaptedLine, layer);
+                }
+            });
+
+            // Отрисовываем линии ГВС (горячее водоснабжение)
+            hotLines.forEach(line => {
+                if (line.main_path && line.main_path.length >= 2) {
+                    const adaptedLine = {
+                        ...line,
+                        line_type: 'hot_water',
+                        display_color: '#FF0000',
+                        line_width: 4,
+                        branches: line.branches || []
+                    };
+                    this.drawInfrastructureLine(adaptedLine, layer);
+                }
+            });
+
+            this.updateLayerCount("🚰 Линии водоснабжения", coldLines.length + hotLines.length);
+        } catch (error) {
+            console.warn('Ошибка при загрузке линий водоснабжения:', error);
+            this.updateLayerCount("🚰 Линии водоснабжения", 0);
+        }
     }
 
     createWaterLine(line, coordinates) {
@@ -1431,102 +1472,6 @@ class MapLayersControl {
     }
 
     /**
-     * Загрузка линий холодного водоснабжения (ХВС)
-     * Цвет: синий (#0066FF)
-     */
-    async loadColdWaterLines(headers) {
-        try {
-            const response = await fetch(`${this.apiBaseUrl}/water-lines`, { headers });
-            if (response.status === 401) throw new Error('401 Unauthorized');
-
-            if (!response.ok) {
-                if (response.status === 404 || response.status === 500) {
-                    console.warn('Линии водоснабжения не доступны');
-                    this.updateLayerCount("🚰 Линии водоснабжения", 0);
-                    return;
-                }
-                throw new Error(`HTTP ${response.status}`);
-            }
-
-            const result = await response.json();
-            const allLines = result.data || [];
-            
-            // Фильтруем только ХВС линии
-            const lines = allLines.filter(line => line.line_type === 'ХВС');
-
-            const layer = this.overlays["🚰 Линии водоснабжения"];
-            layer.clearLayers();
-
-            // Отрисовываем каждую линию (если есть main_path)
-            lines.forEach(line => {
-                if (line.main_path && line.main_path.length >= 2) {
-                    const adaptedLine = {
-                        ...line,
-                        line_type: 'cold_water',
-                        display_color: '#0066FF',
-                        line_width: 4,
-                        branches: line.branches || []
-                    };
-                    this.drawInfrastructureLine(adaptedLine, layer);
-                }
-            });
-
-            this.updateLayerCount("🚰 Линии водоснабжения", lines.length);
-        } catch (error) {
-            console.warn('Ошибка при загрузке линий ХВС:', error);
-            this.updateLayerCount("🚰 Линии водоснабжения", 0);
-        }
-    }
-
-    /**
-     * Загрузка линий горячего водоснабжения (ГВС)
-     * Цвет: красный (#FF0000)
-     */
-    async loadHotWaterLines(headers) {
-        try {
-            const response = await fetch(`${this.apiBaseUrl}/water-lines`, { headers });
-            if (response.status === 401) throw new Error('401 Unauthorized');
-
-            if (!response.ok) {
-                if (response.status === 404 || response.status === 500) {
-                    console.warn('Линии водоснабжения не доступны');
-                    return;
-                }
-                throw new Error(`HTTP ${response.status}`);
-            }
-
-            const result = await response.json();
-            const allLines = result.data || [];
-            
-            // Фильтруем только ГВС линии
-            const lines = allLines.filter(line => line.line_type === 'ГВС');
-
-            const layer = this.overlays["🚰 Линии водоснабжения"];
-            
-            // Добавляем к существующим линиям ХВС
-            lines.forEach(line => {
-                if (line.main_path && line.main_path.length >= 2) {
-                    const adaptedLine = {
-                        ...line,
-                        line_type: 'hot_water',
-                        display_color: '#FF0000',
-                        line_width: 4,
-                        branches: line.branches || []
-                    };
-                    this.drawInfrastructureLine(adaptedLine, layer);
-                }
-            });
-
-            // Обновляем общий счетчик (ХВС + ГВС)
-            const currentCount = parseInt(this.layerCounts.get("🚰 Линии водоснабжения") || '0');
-            this.updateLayerCount("🚰 Линии водоснабжения", currentCount + lines.length);
-        } catch (error) {
-            console.warn('Ошибка при загрузке линий ГВС:', error);
-            // При ошибке не меняем счетчик, оставляем текущее значение
-        }
-    }
-
-    /**
      * Загрузка линий электропередач
      * Цвет: желто-оранжевый (#FFA500)
      */
@@ -1772,15 +1717,24 @@ class MapLayersControl {
                             const totalPower = parseFloat(lineP.total_power_kw) || 0;
                             const buildingsCount = lineP.buildings_count || 0;
                             
-                            powerContainer.innerHTML = `
-                                <p style="margin: 5px 0; color: #2d3748;"><strong>⚡ Суммарная нагрузка:</strong> ${totalPower.toFixed(2)} кВт</p>
-                                <p style="margin: 5px 0; font-size: 12px; color: #4a5568;">
-                                    Зданий на линии: ${buildingsCount} | 
-                                    По фазам: ${parseFloat(lineP.total_power_ph1_kw || 0).toFixed(1)} / 
-                                    ${parseFloat(lineP.total_power_ph2_kw || 0).toFixed(1)} / 
-                                    ${parseFloat(lineP.total_power_ph3_kw || 0).toFixed(1)} кВт
-                                </p>
-                            `;
+                            powerContainer.textContent = '';
+
+                            const p1 = document.createElement('p');
+                            p1.style.cssText = 'margin: 5px 0; color: #2d3748;';
+                            const icon1 = document.createElement('strong');
+                            icon1.textContent = '⚡ Суммарная нагрузка:';
+                            p1.appendChild(icon1);
+                            p1.appendChild(document.createTextNode(` ${(parseFloat(totalPower) || 0).toFixed(2)} кВт`));
+
+                            const p2 = document.createElement('p');
+                            p2.style.cssText = 'margin: 5px 0; font-size: 12px; color: #4a5568;';
+                            const ph1 = (parseFloat(lineP.total_power_ph1_kw) || 0).toFixed(1);
+                            const ph2 = (parseFloat(lineP.total_power_ph2_kw) || 0).toFixed(1);
+                            const ph3 = (parseFloat(lineP.total_power_ph3_kw) || 0).toFixed(1);
+                            p2.textContent = `Зданий на линии: ${parseInt(buildingsCount, 10) || 0} | По фазам: ${ph1} / ${ph2} / ${ph3} кВт`;
+
+                            powerContainer.appendChild(p1);
+                            powerContainer.appendChild(p2);
                         }
                     }
                 } catch (error) {

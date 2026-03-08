@@ -9,7 +9,8 @@ const router = express.Router();
  *   get:
  *     summary: Получить список всех метрик
  *     description: Возвращает список всех метрик с пагинацией
- *     security: [] # Без авторизации
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: page

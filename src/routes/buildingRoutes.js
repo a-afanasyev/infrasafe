@@ -10,7 +10,8 @@ const router = express.Router();
  *   get:
  *     summary: Получить список всех зданий
  *     description: Возвращает список всех зданий с пагинацией
- *     security: [] # Без авторизации
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: page
@@ -49,7 +50,8 @@ router.get('/', buildingController.getAllBuildings);
  *   get:
  *     summary: Поиск зданий в радиусе
  *     description: Находит здания в заданном радиусе от указанных координат
- *     security: [] # Без авторизации
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: latitude
@@ -121,7 +123,8 @@ router.get('/search', buildingController.findBuildingsInRadius);
  *   get:
  *     summary: Статистика зданий
  *     description: Возвращает аналитику по зданиям (по городам и управляющим компаниям)
- *     security: [] # Без авторизации
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: Статистика зданий
@@ -167,7 +170,8 @@ router.get('/statistics', buildingController.getBuildingsStatistics);
  *   get:
  *     summary: Получить здание по ID
  *     description: Возвращает одно здание по его ID
- *     security: [] # Без авторизации
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
