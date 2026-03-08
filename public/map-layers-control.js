@@ -48,15 +48,65 @@ class MapLayersControl {
         }
     }
 
+    // Проверяем наличие токена (авторизован ли пользователь)
+    isAuthenticated() {
+        if (window.DOMSecurity && window.DOMSecurity.getValidToken) {
+            return !!window.DOMSecurity.getValidToken();
+        }
+        return !!localStorage.getItem('admin_token');
+    }
+
+    // Обработка смены состояния авторизации (вызывается из script.js)
+    async handleAuthChange(isLoggedIn) {
+        if (isLoggedIn) {
+            // Загружаем данные инфраструктурных слоев
+            await this.loadInfrastructureLayers();
+        } else {
+            // Очищаем инфраструктурные слои
+            this.clearInfrastructureLayers();
+        }
+    }
+
+    // Загрузка только инфраструктурных слоев (требуют JWT)
+    async loadInfrastructureLayers() {
+        const infraLayers = [
+            "⚡ Трансформаторы",
+            "🔌 Линии электропередач",
+            "💧 Источники воды",
+            "🚰 Линии водоснабжения",
+            "🔥 Источники тепла",
+            "📊 Контроллеры",
+            "⚠️ Алерты"
+        ];
+        await Promise.all(infraLayers.map(layer => this.loadLayerDataSilent(layer)));
+    }
+
+    // Очистка инфраструктурных слоев при выходе
+    clearInfrastructureLayers() {
+        const infraLayerNames = [
+            "⚡ Трансформаторы", "🔌 Линии электропередач", "💧 Источники воды",
+            "🚰 Линии водоснабжения", "🔥 Источники тепла", "📊 Контроллеры", "⚠️ Алерты"
+        ];
+        for (const name of infraLayerNames) {
+            if (this.overlays[name]) {
+                this.overlays[name].clearLayers();
+                if (this.map.hasLayer(this.overlays[name])) {
+                    this.map.removeLayer(this.overlays[name]);
+                }
+            }
+            this.layerCounts.set(name, 0);
+        }
+    }
+
     async init() {
         console.log('🗺️ Initializing map layers control...');
-        
+
         // Проверяем что карта существует
         if (!this.map) {
             console.error('❌ Map is not defined! Cannot initialize MapLayersControl');
             return;
         }
-        
+
         try {
             this.initializeLayers();
             // Не создаем визуальную панель если используется IndustrialPushPanel
@@ -64,20 +114,26 @@ class MapLayersControl {
                 this.createLayerControl();
             }
             this.setupEventHandlers();
-            
-            // Загружаем данные для всех слоев (для обновления счетчиков), но не показываем на карте
-            // Используем Promise.all для параллельной загрузки и ждем завершения
-            await Promise.all([
-                this.loadLayerDataSilent("🏢 Здания"),
-                this.loadLayerDataSilent("⚡ Трансформаторы"),
-                this.loadLayerDataSilent("🔌 Линии электропередач"),
-                this.loadLayerDataSilent("💧 Источники воды"),
-                this.loadLayerDataSilent("🚰 Линии водоснабжения"),
-                this.loadLayerDataSilent("🔥 Источники тепла"),
-                this.loadLayerDataSilent("📊 Контроллеры"),
-                this.loadLayerDataSilent("⚠️ Алерты")
-            ]);
-            
+
+            // Загружаем данные для слоев — инфраструктурные только при наличии токена
+            const layerPromises = [
+                this.loadLayerDataSilent("🏢 Здания")
+            ];
+
+            if (this.isAuthenticated()) {
+                layerPromises.push(
+                    this.loadLayerDataSilent("⚡ Трансформаторы"),
+                    this.loadLayerDataSilent("🔌 Линии электропередач"),
+                    this.loadLayerDataSilent("💧 Источники воды"),
+                    this.loadLayerDataSilent("🚰 Линии водоснабжения"),
+                    this.loadLayerDataSilent("🔥 Источники тепла"),
+                    this.loadLayerDataSilent("📊 Контроллеры"),
+                    this.loadLayerDataSilent("⚠️ Алерты")
+                );
+            }
+
+            await Promise.all(layerPromises);
+
             console.log('✅ Map layers control initialized successfully');
             console.log('✅ All layer data loaded, layerCounts:', Array.from(this.layerCounts.entries()));
         } catch (error) {
@@ -117,8 +173,8 @@ class MapLayersControl {
                     await this.loadWaterSources(headers);
                     break;
                 case "🚰 Линии водоснабжения":
-                    await this.loadColdWaterLines();
-                    await this.loadHotWaterLines();
+                    await this.loadColdWaterLines(headers);
+                    await this.loadHotWaterLines(headers);
                     break;
                 case "🔥 Источники тепла":
                     await this.loadHeatSources(headers);
@@ -131,7 +187,12 @@ class MapLayersControl {
                     break;
             }
         } catch (error) {
-            console.error(`Ошибка при загрузке данных для ${layerName}:`, error);
+            // Тихо обрабатываем 401 — пользователь не авторизован, слой просто не загружается
+            if (error && error.message && error.message.includes('401')) {
+                console.log(`🔒 Слой "${layerName}" требует авторизации, пропускаем`);
+            } else {
+                console.error(`Ошибка при загрузке данных для ${layerName}:`, error);
+            }
         }
     }
 
@@ -429,15 +490,15 @@ class MapLayersControl {
                     await this.loadTransformers(headers);
                     break;
                 case "🔌 Линии электропередач":
-                    await this.loadPowerLines();
+                    await this.loadPowerLines(headers);
                     break;
                 case "💧 Источники воды":
                     await this.loadWaterSources(headers);
                     break;
                 case "🚰 Линии водоснабжения":
                     // Загружаем оба типа линий водоснабжения (ХВС и ГВС)
-                    await this.loadColdWaterLines();
-                    await this.loadHotWaterLines();
+                    await this.loadColdWaterLines(headers);
+                    await this.loadHotWaterLines(headers);
                     break;
                 case "🔥 Источники тепла":
                     await this.loadHeatSources(headers);
@@ -485,7 +546,11 @@ class MapLayersControl {
                 fetch(`${this.apiBaseUrl}/transformers?page=1&limit=100`, { headers }),
                 fetch(`${this.apiBaseUrl}/power-analytics/transformers`, { headers }).catch(() => null)
             ]);
-            
+
+            if (transformersResponse.status === 401) {
+                throw new Error('401 Unauthorized');
+            }
+
             const transformersData = await transformersResponse.json();
             const powerData = powerResponse ? await powerResponse.json() : null;
             
@@ -1082,30 +1147,14 @@ class MapLayersControl {
         }
     }
 
-    // Загрузка линий электропередач на карту
-    async loadPowerLines(headers) {
-        const response = await fetch(`${this.apiBaseUrl}/lines`, { headers });
-        const data = await response.json();
-        
-        const layer = this.overlays["🔌 Линии электропередач"];
-        layer.clearLayers();
-
-        const lines = data.data || [];
-
-        lines.forEach(line => {
-            // Для линий нужны координаты трансформаторов которые они соединяют
-            // Пока отобразим как текстовые маркеры в центре карты или не отображаем
-            // TODO: Реализовать получение координат трансформаторов и рисование линий
-        });
-
-        this.updateLayerCount("🔌 Линии электропередач", lines.length);
-    }
+    // Загрузка линий электропередач на карту (старая версия — заменена полной реализацией ниже)
 
     // Загрузка источников воды на карту
     async loadWaterSources(headers) {
         try {
             const response = await fetch(`${this.apiBaseUrl}/water-sources`, { headers });
-            
+
+            if (response.status === 401) throw new Error('401 Unauthorized');
             // Endpoint может не существовать (404)
             if (response.status === 404) {
                 console.warn('Water sources endpoint not available');
@@ -1171,7 +1220,8 @@ class MapLayersControl {
     async loadHeatSources(headers) {
         try {
             const response = await fetch(`${this.apiBaseUrl}/heat-sources`, { headers });
-            
+
+            if (response.status === 401) throw new Error('401 Unauthorized');
             // Endpoint может вернуть ошибку
             if (!response.ok) {
                 console.warn('Heat sources endpoint error:', response.status);
@@ -1236,6 +1286,7 @@ class MapLayersControl {
     // Загрузка контроллеров на карту
     async loadControllers(headers) {
         const response = await fetch(`${this.apiBaseUrl}/buildings-metrics`, { headers });
+        if (response.status === 401) throw new Error('401 Unauthorized');
         const data = await response.json();
         
         const layer = this.overlays["📊 Контроллеры"];
@@ -1293,6 +1344,7 @@ class MapLayersControl {
     // Загрузка алертов на карту
     async loadAlerts(headers) {
         const response = await fetch(`${this.apiBaseUrl}/alerts?status=active`, { headers });
+        if (response.status === 401) throw new Error('401 Unauthorized');
         const data = await response.json();
         
         const layer = this.overlays["⚠️ Алерты"];
@@ -1382,10 +1434,11 @@ class MapLayersControl {
      * Загрузка линий холодного водоснабжения (ХВС)
      * Цвет: синий (#0066FF)
      */
-    async loadColdWaterLines() {
+    async loadColdWaterLines(headers) {
         try {
-            const response = await fetch(`${this.apiBaseUrl}/water-lines`);
-            
+            const response = await fetch(`${this.apiBaseUrl}/water-lines`, { headers });
+            if (response.status === 401) throw new Error('401 Unauthorized');
+
             if (!response.ok) {
                 if (response.status === 404 || response.status === 500) {
                     console.warn('Линии водоснабжения не доступны');
@@ -1429,10 +1482,11 @@ class MapLayersControl {
      * Загрузка линий горячего водоснабжения (ГВС)
      * Цвет: красный (#FF0000)
      */
-    async loadHotWaterLines() {
+    async loadHotWaterLines(headers) {
         try {
-            const response = await fetch(`${this.apiBaseUrl}/water-lines`);
-            
+            const response = await fetch(`${this.apiBaseUrl}/water-lines`, { headers });
+            if (response.status === 401) throw new Error('401 Unauthorized');
+
             if (!response.ok) {
                 if (response.status === 404 || response.status === 500) {
                     console.warn('Линии водоснабжения не доступны');
@@ -1476,14 +1530,15 @@ class MapLayersControl {
      * Загрузка линий электропередач
      * Цвет: желто-оранжевый (#FFA500)
      */
-    async loadPowerLines() {
+    async loadPowerLines(headers) {
         try {
             const layer = this.overlays["🔌 Линии электропередач"];
             layer.clearLayers();
-            
+
             // Загружаем линии из lines (линии электропередач)
-            const linesResponse = await fetch(`${this.apiBaseUrl}/lines`);
-            
+            const linesResponse = await fetch(`${this.apiBaseUrl}/lines`, { headers });
+            if (linesResponse.status === 401) throw new Error('401 Unauthorized');
+
             if (!linesResponse.ok) {
                 if (linesResponse.status === 404 || linesResponse.status === 500) {
                     console.warn('Линии электропередач не доступны');

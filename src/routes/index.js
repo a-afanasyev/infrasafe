@@ -75,25 +75,29 @@ const router = express.Router();
 // Маршрут телеметрии должен быть доступен без аутентификации
 router.post('/metrics/telemetry', applyTelemetryRateLimit, metricController.receiveTelemetry);
 
-// Определяем middleware для защищенных маршрутов - PUT, POST, DELETE
+// Default-deny: все маршруты требуют JWT, кроме явного allowlist
+const PUBLIC_ROUTES = [
+    { method: 'POST', path: '/auth/login' },
+    { method: 'POST', path: '/auth/register' },
+    { method: 'POST', path: '/auth/refresh' },
+    { method: 'POST', path: '/metrics/telemetry' },
+    { method: 'GET',  path: '/buildings-metrics' },
+    { method: 'GET',  path: '/' },
+];
+
+const isPublicRoute = (method, path) => {
+    // Normalize trailing slash: /buildings-metrics/ → /buildings-metrics
+    const normalizedPath = path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path;
+    return PUBLIC_ROUTES.some(r =>
+        r.method === method && normalizedPath === r.path
+    );
+};
+
 router.use((req, res, next) => {
-    // Исключаем маршрут телеметрии из проверки
-    if (req.path === '/metrics/telemetry' && req.method === 'POST') {
+    if (isPublicRoute(req.method, req.path)) {
         return next();
     }
-
-    // Исключаем маршруты авторизации из проверки
-    if (req.path.startsWith('/auth/')) {
-        return next();
-    }
-
-    // Защищаем только маршруты, которые изменяют данные
-    if (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE' || req.method === 'PATCH') {
-        authenticateJWT(req, res, next);
-    } else {
-        // Для GET запросов - разрешаем без аутентификации
-        next();
-    }
+    authenticateJWT(req, res, next);
 });
 
 /**

@@ -2055,100 +2055,95 @@ document.addEventListener('DOMContentLoaded', async function () {
                 item.latitude = parseFloat(item.latitude);
                 item.longitude = parseFloat(item.longitude);
 
-                // Determine electricity status
+                // Проверяем, есть ли метрики (авторизованный vs анонимный доступ)
+                const hasMetrics = item.electricity_ph1 !== undefined && item.electricity_ph1 !== null;
 
-                //Determine phase 1 status
-                const isPhase1Ok = item.electricity_ph1 > 200 && item.electricity_ph1 < 240;
-                const electricityImage1 = isPhase1Ok
-                    ? 'data/images/Electricity_Green.png'
-                    : 'data/images/Electricity_Red.png';
+                // Переменные для статуса (инициализируем значениями по умолчанию)
+                let isPhase1Ok = false, isPhase2Ok = false, isPhase3Ok = false;
+                let isElectricityOK = false, isColdWaterOK = false, isHotWaterOK = true;
+                let hasLeak = false;
+                let electricityImage = 'data/images/Electricity_Red.png';
+                let electricityImage1 = electricityImage, electricityImage2 = electricityImage, electricityImage3 = electricityImage;
+                let coldWaterImage = 'data/images/Water_No_Blue.png';
+                let hotWaterImage = 'data/images/Water_Red.png';
+                let leakSensorImage = 'data/images/Leak_Green.png';
+                let status;
 
-                //Determine phase 2 status
-                const isPhase2Ok = item.electricity_ph2 > 200 && item.electricity_ph2 < 240;
-                const electricityImage2 = isPhase2Ok
-                    ? 'data/images/Electricity_Green.png'
-                    : 'data/images/Electricity_Red.png';
+                if (hasMetrics) {
+                    // Авторизованный пользователь — полные данные
+                    // Determine electricity status
+                    isPhase1Ok = item.electricity_ph1 > 200 && item.electricity_ph1 < 240;
+                    electricityImage1 = isPhase1Ok ? 'data/images/Electricity_Green.png' : 'data/images/Electricity_Red.png';
+                    isPhase2Ok = item.electricity_ph2 > 200 && item.electricity_ph2 < 240;
+                    electricityImage2 = isPhase2Ok ? 'data/images/Electricity_Green.png' : 'data/images/Electricity_Red.png';
+                    isPhase3Ok = item.electricity_ph3 > 200 && item.electricity_ph3 < 240;
+                    electricityImage3 = isPhase3Ok ? 'data/images/Electricity_Green.png' : 'data/images/Electricity_Red.png';
+                    isElectricityOK = isPhase1Ok && isPhase2Ok && isPhase3Ok;
+                    electricityImage = isElectricityOK ? 'data/images/Electricity_Green.png' : 'data/images/Electricity_Red.png';
 
-                //Determine phase 3 status
-                const isPhase3Ok = item.electricity_ph3 > 200 && item.electricity_ph3 < 240;
-                const electricityImage3 = isPhase3Ok
-                    ? 'data/images/Electricity_Green.png'
-                    : 'data/images/Electricity_Red.png';
+                    // Determine cold water status
+                    isColdWaterOK = item.cold_water_pressure && item.cold_water_pressure > 1;
+                    coldWaterImage = isColdWaterOK ? 'data/images/Water_Blue.png' : 'data/images/Water_No_Blue.png';
 
-                const isElectricityOK = isPhase1Ok && isPhase2Ok && isPhase3Ok;
-                const electricityImage = isElectricityOK
-                    ? 'data/images/Electricity_Green.png'
-                    : 'data/images/Electricity_Red.png';
-
-                // Determine cold water status
-                const isColdWaterOK = item.cold_water_pressure && item.cold_water_pressure > 1;
-                const coldWaterImage = isColdWaterOK
-                    ? 'data/images/Water_Blue.png'
-                    : 'data/images/Water_No_Blue.png';
-
-                // Determine hot water status
-                // Если здание не подключено к ГВС (hot_water === false или NULL), то это не ошибка
-                // Если подключено к ГВС (hot_water === true), то проверяем наличие и корректность данных
-                const isHotWaterOK = item.hot_water !== true ||
+                    // Determine hot water status
+                    isHotWaterOK = item.hot_water !== true ||
                                    (item.hot_water === true &&
                                     item.hot_water_in_pressure && item.hot_water_out_pressure &&
                                     item.hot_water_in_pressure >= 1 && item.hot_water_out_pressure >= 1);
-                const hotWaterImage = (item.hot_water === false) 
-                    ? 'data/images/Water_Red.png'  // Серая иконка для неподключенных зданий
-                    : (isHotWaterOK ? 'data/images/Water_Red.png' : 'data/images/Water_No_Red.png');
+                    hotWaterImage = (item.hot_water === false)
+                        ? 'data/images/Water_Red.png'
+                        : (isHotWaterOK ? 'data/images/Water_Red.png' : 'data/images/Water_No_Red.png');
 
-                // Определяем статус датчика протечки
-                const hasLeak = item.leak_sensor === true;
-                const leakSensorImage = hasLeak
-                    ? 'data/images/leak1.png'
-                    : 'data/images/Leak_Green.png';
+                    // Определяем статус датчика протечки
+                    hasLeak = item.leak_sensor === true;
+                    leakSensorImage = hasLeak ? 'data/images/leak1.png' : 'data/images/Leak_Green.png';
 
-                // Увеличиваем счетчик зданий с протечкой
-                if (hasLeak) {
-                    leakBuildingsCount++;
-                }
+                    // Увеличиваем счетчик зданий с протечкой
+                    if (hasLeak) {
+                        leakBuildingsCount++;
+                    }
 
-                // Determine marker color based on status
-                let status;
-                if (hasLeak) {
-                    status = 'leak'; // Новый статус для зданий с протечкой
-                } else if (isElectricityOK && isColdWaterOK && isHotWaterOK) {
-                    status = 'ok';
-                } else if (item.controller_id && (
-                    // Проверяем полное отсутствие основных систем
-                    ((!item.electricity_ph1 || item.electricity_ph1 <= 0) &&
-                     (!item.electricity_ph2 || item.electricity_ph2 <= 0) &&
-                     (!item.electricity_ph3 || item.electricity_ph3 <= 0)) || // Нет электричества
-                    (!item.cold_water_pressure || item.cold_water_pressure <= 0) || // Нет холодной воды
-                    // Проверяем ГВС только если здание должно иметь ГВС
-                    (item.hot_water &&
-                     (!item.hot_water_in_pressure || item.hot_water_in_pressure <= 0) &&
-                     (!item.hot_water_out_pressure || item.hot_water_out_pressure <= 0)) // Нет горячей воды
-                )) {
-                    status = 'critical';
-                } else if (item.controller_id && (
-                    // Проверяем частичное нарушение работы систем
-                    (item.electricity_ph1 > 0 || item.electricity_ph2 > 0 || item.electricity_ph3 > 0) && // Есть хотя бы одна фаза
-                    (item.cold_water_pressure && item.cold_water_pressure > 0) && // Есть холодная вода
-                    // ГВС: либо здание не требует ГВС, либо ГВС есть
-                    (!item.hot_water ||
-                     (item.hot_water_in_pressure && item.hot_water_in_pressure > 0) ||
-                     (item.hot_water_out_pressure && item.hot_water_out_pressure > 0))
-                )) {
-                    status = 'warning';
+                    // Determine marker color based on status
+                    if (hasLeak) {
+                        status = 'leak';
+                    } else if (isElectricityOK && isColdWaterOK && isHotWaterOK) {
+                        status = 'ok';
+                    } else if (item.controller_id && (
+                        ((!item.electricity_ph1 || item.electricity_ph1 <= 0) &&
+                         (!item.electricity_ph2 || item.electricity_ph2 <= 0) &&
+                         (!item.electricity_ph3 || item.electricity_ph3 <= 0)) ||
+                        (!item.cold_water_pressure || item.cold_water_pressure <= 0) ||
+                        (item.hot_water &&
+                         (!item.hot_water_in_pressure || item.hot_water_in_pressure <= 0) &&
+                         (!item.hot_water_out_pressure || item.hot_water_out_pressure <= 0))
+                    )) {
+                        status = 'critical';
+                    } else if (item.controller_id && (
+                        (item.electricity_ph1 > 0 || item.electricity_ph2 > 0 || item.electricity_ph3 > 0) &&
+                        (item.cold_water_pressure && item.cold_water_pressure > 0) &&
+                        (!item.hot_water ||
+                         (item.hot_water_in_pressure && item.hot_water_in_pressure > 0) ||
+                         (item.hot_water_out_pressure && item.hot_water_out_pressure > 0))
+                    )) {
+                        status = 'warning';
+                    } else {
+                        status = 'no';
+                    }
                 } else {
-                    status = 'no';
+                    // Анонимный пользователь — только наличие оборудования
+                    status = item.has_controller ? 'public' : 'no';
                 }
 
                 const circleOptions = {
-                    radius: status === 'leak' ? 10 : 8, // Более крупный размер для маркеров с протечкой
-                    weight: status === 'leak' ? 2 : 1, // Более толстая рамка для маркеров с протечкой
-                    color: status === 'leak' ? '#1e88e5' : 'white', // Ярко-синяя рамка для маркеров с протечкой
+                    radius: status === 'leak' ? 10 : 8,
+                    weight: status === 'leak' ? 2 : 1,
+                    color: status === 'leak' ? '#1e88e5' : 'white',
                     fillColor: status === 'ok' ? 'green' :
                                 status === 'warning' ? 'orange' :
-                                status === 'leak' ? '#2196f3' : // Более яркий синий цвет для маркеров протечки
-                                status === 'critical' ? 'red' : 'gray',
-                    fillOpacity: status === 'leak' ? 0.8 : 1, // Немного прозрачнее для эффекта мигания
+                                status === 'leak' ? '#2196f3' :
+                                status === 'critical' ? 'red' :
+                                status === 'public' ? '#607d8b' : 'gray',
+                    fillOpacity: status === 'leak' ? 0.8 : 1,
                 };
 
 
@@ -2181,9 +2176,18 @@ document.addEventListener('DOMContentLoaded', async function () {
                     if (value === null || value === undefined) return escapeHTML(defaultValue);
                     return escapeHTML(String(value) + suffix);
                 };
-                
+
                 // Create a popup with building details
-                if(status === 'no'){
+                if (status === 'public') {
+                    // Анонимный доступ — минимальная информация
+                    popupContent = `
+                    <div>
+                        <strong>${escapeHTML(item.building_name || '')}</strong><br>
+                        <span style="color: #607d8b;">${escapeHTML(item.address || '')}</span><br>
+                        <span style="color: #90a4ae; font-size: 0.85em;">Оборудование установлено</span>
+                    </div>`;
+                }
+                else if(status === 'no'){
                     popupContent = `
                     <div>
                         <strong>${escapeHTML(item.building_name || '')}</strong><br></br>
@@ -2371,6 +2375,140 @@ document.addEventListener('DOMContentLoaded', async function () {
             return false;
         }
     }
+
+    // ============================================================
+    // АВТОРИЗАЦИЯ НА КАРТЕ (кнопка + модальное окно)
+    // ============================================================
+
+    function updateAuthButton() {
+        const btn = document.getElementById('map-auth-btn');
+        const btnText = document.getElementById('map-auth-btn-text');
+        if (!btn || !btnText) return;
+
+        const token = localStorage.getItem('admin_token');
+        if (token) {
+            btn.classList.add('authenticated');
+            btnText.textContent = 'Выйти';
+            btn.setAttribute('aria-label', 'Выйти');
+        } else {
+            btn.classList.remove('authenticated');
+            btnText.textContent = 'Войти';
+            btn.setAttribute('aria-label', 'Войти');
+        }
+    }
+
+    function showLoginModal() {
+        const modal = document.getElementById('map-login-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            const usernameInput = document.getElementById('map-login-username');
+            if (usernameInput) usernameInput.focus();
+        }
+    }
+
+    function hideLoginModal() {
+        const modal = document.getElementById('map-login-modal');
+        if (modal) {
+            modal.style.display = 'none';
+            const errorEl = document.getElementById('map-login-error');
+            if (errorEl) errorEl.style.display = 'none';
+        }
+    }
+
+    // Кнопка "Войти"/"Выйти" в header
+    const authBtn = document.getElementById('map-auth-btn');
+    if (authBtn) {
+        authBtn.addEventListener('click', async () => {
+            const token = localStorage.getItem('admin_token');
+            if (token) {
+                // Выход — отзываем токен на сервере
+                try {
+                    await fetch(`${window.BACKEND_URL}/auth/logout`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                } catch (e) { /* продолжаем logout в любом случае */ }
+                localStorage.removeItem('admin_token');
+                apiClient.setToken(null);
+                updateAuthButton();
+                // Перезагружаем карту (анонимные данные)
+                loadData();
+                // Скрываем слои инфраструктуры
+                if (window.mapLayersControl) {
+                    window.mapLayersControl.handleAuthChange(false);
+                }
+                showToast('Вы вышли из системы', 'info');
+            } else {
+                showLoginModal();
+            }
+        });
+    }
+
+    // Закрытие модального окна
+    const loginClose = document.getElementById('map-login-close');
+    if (loginClose) {
+        loginClose.addEventListener('click', hideLoginModal);
+    }
+    const loginBackdrop = document.querySelector('.map-login-backdrop');
+    if (loginBackdrop) {
+        loginBackdrop.addEventListener('click', hideLoginModal);
+    }
+
+    // Обработка формы логина
+    const loginForm = document.getElementById('map-login-form');
+    if (loginForm) {
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('map-login-username').value;
+            const password = document.getElementById('map-login-password').value;
+            const submitBtn = document.getElementById('map-login-submit');
+            const errorEl = document.getElementById('map-login-error');
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Вход...';
+            if (errorEl) errorEl.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await response.json();
+
+                if (response.ok && (data.accessToken || data.token)) {
+                    const token = data.accessToken || data.token;
+                    apiClient.setToken(token);
+                    hideLoginModal();
+                    updateAuthButton();
+                    // Перезагружаем карту (полные данные)
+                    await loadData();
+                    // Показываем слои инфраструктуры
+                    if (window.mapLayersControl) {
+                        window.mapLayersControl.handleAuthChange(true);
+                    }
+                    showToast('Вы вошли в систему', 'success');
+                } else {
+                    const msg = data.message || data.error || 'Неверные учетные данные';
+                    if (errorEl) {
+                        errorEl.textContent = msg;
+                        errorEl.style.display = 'block';
+                    }
+                }
+            } catch (err) {
+                if (errorEl) {
+                    errorEl.textContent = 'Ошибка подключения к серверу';
+                    errorEl.style.display = 'block';
+                }
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Войти';
+            }
+        });
+    }
+
+    // Инициализация состояния кнопки
+    updateAuthButton();
 
     // Загрузка данных при инициализации
     await loadData();

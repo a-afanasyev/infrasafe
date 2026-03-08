@@ -14,7 +14,8 @@ const request = require('supertest');
 jest.mock('../../../src/middleware/auth', () => ({
     authenticateJWT: (req, res, next) => { req.user = { id: 1, role: 'admin' }; next(); },
     isAdmin: (req, res, next) => next(),
-    authenticateRefresh: (req, res, next) => next()
+    authenticateRefresh: (req, res, next) => next(),
+    optionalAuth: (req, res, next) => { req.user = { id: 1, role: 'admin' }; next(); }
 }));
 
 // Импортируем Express app напрямую, без запуска сервера

@@ -1,6 +1,6 @@
 const express = require('express');
 const authController = require('../controllers/authController');
-const { authenticateJWT, authenticateRefresh } = require('../middleware/auth');
+const { authenticateRefresh } = require('../middleware/auth');
 const { authLimiter, registerLimiter } = require('../middleware/rateLimiter');
 const router = express.Router();
 
@@ -156,7 +156,7 @@ router.post('/register', registerLimiter.middleware(), authController.register);
  *       404:
  *         description: Пользователь не найден
  */
-router.get('/profile', authenticateJWT, authController.getProfile);
+router.get('/profile', authController.getProfile);
 
 /**
  * @swagger
@@ -183,7 +183,7 @@ router.get('/profile', authenticateJWT, authController.getProfile);
  *       403:
  *         description: Недействительный токен
  */
-router.post('/logout', authenticateJWT, authController.logout);
+router.post('/logout', authController.logout);
 
 /**
  * @swagger
@@ -273,6 +273,6 @@ router.post('/refresh', authenticateRefresh, authController.refreshToken);
  *       403:
  *         description: Недействительный токен
  */
-router.post('/change-password', authenticateJWT, authController.changePassword);
+router.post('/change-password', authController.changePassword);
 
 module.exports = router;

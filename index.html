@@ -68,6 +68,15 @@
                     <li><a href="https://www.aisolutions.uz/aboutus" target="_blank">Контакты</a></li>
                 </ul>
             </nav>
+            <!-- Кнопка входа / выхода на карте -->
+            <button class="map-auth-btn" id="map-auth-btn" aria-label="Войти">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+                    <polyline points="10 17 15 12 10 7"></polyline>
+                    <line x1="15" y1="12" x2="3" y2="12"></line>
+                </svg>
+                <span id="map-auth-btn-text">Войти</span>
+            </button>
             <!-- Переключатель темы -->
             <button class="theme-toggle" id="theme-toggle" aria-label="Переключить тему">
                 <svg id="theme-icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
@@ -100,6 +109,27 @@
                     <line x1="6" y1="6" x2="18" y2="18"></line>
                 </svg>
             </button>
+        </div>
+    </div>
+
+    <!-- Модальное окно логина на карте -->
+    <div id="map-login-modal" class="map-login-modal" style="display:none;">
+        <div class="map-login-backdrop"></div>
+        <div class="map-login-form">
+            <button class="map-login-close" id="map-login-close" type="button" aria-label="Закрыть">&times;</button>
+            <h3>Вход в систему</h3>
+            <form id="map-login-form">
+                <div class="map-login-field">
+                    <label for="map-login-username">Логин</label>
+                    <input type="text" id="map-login-username" required autocomplete="username" placeholder="admin">
+                </div>
+                <div class="map-login-field">
+                    <label for="map-login-password">Пароль</label>
+                    <input type="password" id="map-login-password" required autocomplete="current-password" placeholder="••••••••">
+                </div>
+                <div id="map-login-error" class="map-login-error" style="display:none;"></div>
+                <button type="submit" class="map-login-submit" id="map-login-submit">Войти</button>
+            </form>
         </div>
     </div>
 
