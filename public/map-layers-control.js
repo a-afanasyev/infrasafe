@@ -881,10 +881,12 @@ class MapLayersControl {
             const allLines = result.data || [];
 
             const normalize = (t) => (t || '').trim().toUpperCase();
+            const isCold = (t) => { const n = normalize(t); return n === 'ХВС' || n === 'COLD_WATER' || n === 'COLD'; };
+            const isHot  = (t) => { const n = normalize(t); return n === 'ГВС' || n === 'HOT_WATER'  || n === 'HOT';  };
 
-            // Фильтруем ХВС и ГВС линии
-            const coldLines = allLines.filter(l => normalize(l.line_type) === 'ХВС');
-            const hotLines = allLines.filter(l => normalize(l.line_type) === 'ГВС');
+            // Фильтруем ХВС (ХВС / COLD_WATER / COLD) и ГВС (ГВС / HOT_WATER / HOT)
+            const coldLines = allLines.filter(l => isCold(l.line_type));
+            const hotLines  = allLines.filter(l => isHot(l.line_type));
 
             const layer = this.overlays["🚰 Линии водоснабжения"];
             layer.clearLayers();

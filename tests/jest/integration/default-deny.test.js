@@ -298,8 +298,11 @@ describe('Default-deny JWT middleware (src/routes/index.js)', () => {
             expect(res.body).toHaveProperty('status', 'healthy');
         });
 
-        test('GET /api/buildings-metrics returns 200 (in allowlist with optionalAuth)', async () => {
-            const res = await request(authPassApp).get('/api/buildings-metrics');
+        test('GET /api/buildings-metrics returns 200 without token (public allowlist, optionalAuth)', async () => {
+            // Must use denyApp: tests that the global middleware passes this route
+            // WITHOUT a token — this is the canonical source of truth for the policy.
+            // API_AUTH_MATRIX.md: GET /buildings-metrics → Public (optionalAuth, урезанные данные)
+            const res = await request(denyApp).get('/api/buildings-metrics');
             expect(res.status).toBe(200);
             expect(res.body).toHaveProperty('data');
             expect(Array.isArray(res.body.data)).toBe(true);

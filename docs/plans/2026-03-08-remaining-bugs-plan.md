@@ -111,7 +111,7 @@ SQL injection тест создаёт собственный Express app без 
 - Публичные маршруты без токена -> не 401:
   - `GET /buildings-metrics` -> 200 (урезанные данные, в allowlist)
   - `POST /auth/login` -> не 401 (в allowlist)
-  - `GET /` -> 200
+  - `GET /api/` -> 200
 - Защищённые маршруты с валидным токеном -> 200:
   - `GET /buildings` -> 200
 
