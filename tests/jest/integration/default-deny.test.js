@@ -381,7 +381,8 @@ describe('Default-deny JWT middleware (src/routes/index.js)', () => {
                 .post('/api/auth/register')
                 .send({ username: 'newuser', password: 'Pass1234' });
 
-            // Global middleware must not have responded with missing-token body
+            // Global middleware must not have responded with missing-token 401
+            expect(res.status).not.toBe(401);
             expect(res.body).not.toHaveProperty('message', 'Access token is missing');
         });
 

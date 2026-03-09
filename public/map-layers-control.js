@@ -1741,7 +1741,7 @@ class MapLayersControl {
                     console.warn('Не удалось загрузить данные мощности для линии:', error);
                     const powerContainer = document.getElementById(`line-power-${lineData.line_id}`);
                     if (powerContainer) {
-                        powerContainer.innerHTML = '';
+                        powerContainer.textContent = '';
                     }
                 }
             }, 100);

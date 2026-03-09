@@ -82,7 +82,7 @@ if (process.env.NODE_ENV !== 'production') {
                     }
                 }
             },
-            security: [], // По умолчанию авторизация не требуется для GET запросов
+            security: [{ bearerAuth: [] }], // По умолчанию JWT требуется (default-deny)
         },
         apis: ['./src/routes/*.js'], // Пути к файлам с JSDoc комментариями
     };
