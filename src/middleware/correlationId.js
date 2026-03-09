@@ -1,9 +1,9 @@
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 const HEADER_NAME = 'x-correlation-id';
 
 const correlationId = (req, res, next) => {
-    const id = req.headers[HEADER_NAME] || uuidv4();
+    const id = req.headers[HEADER_NAME] || crypto.randomUUID();
     req.correlationId = id;
     res.setHeader(HEADER_NAME, id);
     next();

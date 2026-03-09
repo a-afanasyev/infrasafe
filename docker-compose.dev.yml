@@ -7,7 +7,7 @@ services:
       context: .
       dockerfile: Dockerfile.frontend.dev
     ports:
-      - "8080:8080"
+      - "8088:8080"
     volumes:
       # Монтируем все статические файлы для мгновенного отражения изменений
       - ./index.html:/usr/share/nginx/html/index.html:ro
@@ -72,7 +72,7 @@ services:
       - DB_PASSWORD=postgres
       - JWT_SECRET=dev-secret-key-change-in-production
       - JWT_REFRESH_SECRET=dev-refresh-secret-key-change-in-production
-      - CORS_ORIGINS=http://localhost:8080,http://localhost:3000
+      - CORS_ORIGINS=http://localhost:8088,http://localhost:3000
     depends_on:
       postgres:
         condition: service_healthy
