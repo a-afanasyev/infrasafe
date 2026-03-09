@@ -362,6 +362,21 @@ class WaterLine {
         }
     }
 
+    static async findSuppliersForLine(lineId) {
+        try {
+            const { rows } = await db.query(
+                `SELECT DISTINCT ws.* FROM water_suppliers ws
+                 JOIN buildings b ON (ws.supplier_id = b.cold_water_supplier_id OR ws.supplier_id = b.hot_water_supplier_id)
+                 WHERE b.cold_water_line_id = $1 OR b.hot_water_line_id = $1`,
+                [lineId]
+            );
+            return rows;
+        } catch (error) {
+            logger.error(`Error in WaterLine.findSuppliersForLine: ${error.message}`);
+            throw createError(`Failed to fetch suppliers for line: ${error.message}`, 500);
+        }
+    }
+
     // Найти линию обслуживающую здание
     static async findByBuildingId(buildingId) {
         try {

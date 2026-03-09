@@ -9,6 +9,7 @@ const swaggerUi = require('swagger-ui-express');
 
 const apiRoutes = require('./routes');
 const errorHandler = require('./middleware/errorHandler');
+const correlationId = require('./middleware/correlationId');
 const logger = require('./utils/logger');
 const db = require('./config/database');
 
@@ -46,11 +47,17 @@ app.use(cors({
     credentials: true
 })); // CORS
 app.use(express.json({ limit: '1mb' })); // Парсинг JSON
+app.use(correlationId); // Correlation ID для трейсинга запросов
 app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } })); // Логирование HTTP запросов
 
 // Health check endpoint для Docker
-app.get('/health', (req, res) => {
-    res.status(200).send('healthy');
+app.get('/health', async (req, res) => {
+    try {
+        await db.query('SELECT 1');
+        res.status(200).json({ status: 'healthy', db: 'connected' });
+    } catch {
+        res.status(503).json({ status: 'unhealthy', db: 'disconnected' });
+    }
 });
 
 // Статические файлы
@@ -108,9 +115,11 @@ app.get('*', (req, res, next) => {
 app.use(errorHandler);
 
 // Инициализация базы данных и запуск сервера
+let server;
+
 db.init()
     .then(() => {
-        app.listen(PORT, () => {
+        server = app.listen(PORT, () => {
             logger.info(`Сервер запущен на порту ${PORT}`);
         });
     })
@@ -118,6 +127,24 @@ db.init()
         logger.error(`Ошибка инициализации базы данных: ${error.message}`);
         process.exit(1);
     });
+
+// Graceful shutdown
+const gracefulShutdown = async (signal) => {
+    logger.info(`Received ${signal}, starting graceful shutdown...`);
+    if (server) {
+        server.close(() => logger.info('HTTP server closed'));
+    }
+    try {
+        await db.close();
+    } catch (e) {
+        logger.error('DB close error:', e);
+    }
+    setTimeout(() => process.exit(1), 10000).unref();
+    process.exit(0);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Обработка необработанных исключений и обещаний
 process.on('uncaughtException', (err) => {

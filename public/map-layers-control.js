@@ -99,8 +99,6 @@ class MapLayersControl {
     }
 
     async init() {
-        console.log('🗺️ Initializing map layers control...');
-
         // Проверяем что карта существует
         if (!this.map) {
             console.error('❌ Map is not defined! Cannot initialize MapLayersControl');
@@ -134,8 +132,6 @@ class MapLayersControl {
 
             await Promise.all(layerPromises);
 
-            console.log('✅ Map layers control initialized successfully');
-            console.log('✅ All layer data loaded, layerCounts:', Array.from(this.layerCounts.entries()));
         } catch (error) {
             console.error('❌ Error initializing MapLayersControl:', error);
         }
@@ -188,7 +184,7 @@ class MapLayersControl {
         } catch (error) {
             // Тихо обрабатываем 401 — пользователь не авторизован, слой просто не загружается
             if (error && error.message && error.message.includes('401')) {
-                console.log(`🔒 Слой "${layerName}" требует авторизации, пропускаем`);
+                // Слой требует авторизации, пропускаем
             } else {
                 console.error(`Ошибка при загрузке данных для ${layerName}:`, error);
             }
@@ -230,7 +226,6 @@ class MapLayersControl {
         if (this.map && this.baseLayers["🗺️ Карта"]) {
             try {
                 this.baseLayers["🗺️ Карта"].addTo(this.map);
-                console.log('✅ Base map layer added');
             } catch (error) {
                 console.error('❌ Error adding base map layer:', error);
             }

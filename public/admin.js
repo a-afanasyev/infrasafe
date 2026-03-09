@@ -255,16 +255,13 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function loadSectionData(sectionName) {
-        console.log('loadSectionData called with:', sectionName);
         switch(sectionName) {
             case 'buildings':
                 if (!dataLoaded.buildings) loadBuildings();
                 // Перезагружаем данные формы при каждом переходе в секцию зданий
-                console.log('Reloading form data for buildings section...');
                 loadFormData();
                 break;
             case 'controllers':
-                console.log('Calling loadControllers...');
                 if (!dataLoaded.controllers) loadControllers();
                 break;
             case 'transformers':
@@ -274,11 +271,9 @@ document.addEventListener("DOMContentLoaded", function () {
                 if (!dataLoaded.lines) loadLines();
                 break;
             case 'water-lines':
-                console.log('Calling loadWaterLines...');
                 if (!dataLoaded['water-lines']) loadWaterLines();
                 break;
             case 'metrics':
-                console.log('Calling loadMetrics...');
                 if (!dataLoaded.metrics) loadMetrics();
                 // Загружаем контроллеры для формы метрик
                 loadControllersForMetrics();
@@ -297,7 +292,6 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     async function loadControllers() {
-        console.log('✅ loadControllers function called successfully');
         if (dataLoaded.controllers) return;
 
         // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
@@ -386,7 +380,6 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     async function loadMetrics() {
-        console.log('✅ loadMetrics function called successfully');
         if (dataLoaded.metrics) return;
 
         // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
@@ -470,7 +463,6 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     async function loadWaterLines() {
-        console.log('✅ loadWaterLines function called successfully');
         if (dataLoaded['water-lines']) return;
 
         // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
@@ -673,7 +665,6 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             const url = `${endpoint}?${params.toString()}`;
-            console.log(`Загрузка данных с ${url}`);
 
             const response = await fetch(url);
             if (!response.ok) {
@@ -1197,8 +1188,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 const checkboxes = document.querySelectorAll(`#${section}-section .item-checkbox`);
                 const allChecked = Array.from(checkboxes).every(cb => cb.checked);
                 
-                console.log(`🔘 Выбрать все в секции ${section}: текущее состояние all checked = ${allChecked}`);
-                
                 // Если все выбраны - снимаем выбор, иначе выбираем все
                 checkboxes.forEach(checkbox => {
                     checkbox.checked = !allChecked;
@@ -1213,8 +1202,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 // Обновляем текст кнопки
                 this.textContent = allChecked ? 'Выбрать все' : 'Снять выбор';
                 updateBatchButtons(section);
-                
-                console.log(`✅ Выбрано элементов: ${selectedItems[section].size}`);
             });
             selectAllBtn.dataset.handlerSet = 'true';
         }
@@ -1325,8 +1312,6 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
         
-        console.log(`🔥 Массовое удаление ${selectedCount} элементов из секции ${section}`);
-        
         let deleted = 0;
         let errors = [];
         
@@ -1364,7 +1349,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 
                 if (response.ok) {
                     deleted++;
-                    console.log(`  ✅ Удалён ${section} #${id}`);
                 } else {
                     const errorData = await response.json();
                     const errorMsg = errorData.error || errorData.message || 'Ошибка удаления';
@@ -1378,8 +1362,6 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         
         // Показываем результат
-        console.log(`✅ Завершено: Удалено ${deleted}/${selectedCount}`);
-        
         if (errors.length > 0) {
             showToast(`Удалено: ${deleted}/${selectedCount}. Ошибок: ${errors.length}`, 'warning');
             console.warn('Ошибки при массовом удалении:', errors);
@@ -1417,8 +1399,6 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
         
-        console.log(`🔄 Массовое изменение статуса ${selectedCount} элементов из секции ${section}`);
-        
         let updated = 0;
         let errors = [];
         
@@ -1451,7 +1431,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 
                 if (response.ok) {
                     updated++;
-                    console.log(`  ✅ Обновлён статус ${section} #${id} на ${newStatus}`);
                 } else {
                     const errorData = await response.json();
                     const errorMsg = errorData.error || errorData.message || 'Ошибка обновления';
@@ -1465,8 +1444,6 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         
         // Показываем результат
-        console.log(`✅ Завершено: Обновлено ${updated}/${selectedCount}`);
-        
         if (errors.length > 0) {
             showToast(`Обновлено: ${updated}/${selectedCount}. Ошибок: ${errors.length}`, 'warning');
             console.warn('Ошибки при массовом изменении статуса:', errors);
@@ -1538,7 +1515,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Глобальные функции для кнопок (будут доступны из HTML)
     window.editBuilding = async function(id) {
-        console.log('🏠 editBuilding вызвана для ID:', id);
         try {
             const response = await fetch(`/api/buildings/${id}`, {
                 headers: {
@@ -1591,8 +1567,6 @@ document.addEventListener("DOMContentLoaded", function () {
     };
 
     window.deleteBuilding = async function(id) {
-        console.log('🗑️ deleteBuilding вызвана для ID:', id);
-        
         try {
             // Сначала пробуем удалить без каскада
             const response = await fetch(`/api/buildings/${id}`, {
@@ -1639,8 +1613,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Каскадное удаление здания с контроллерами
     async function deleteBuildingCascade(buildingId, controllers) {
-        console.log('🔥 Каскадное удаление здания', buildingId, 'с', controllers.length, 'контроллерами');
-        
         try {
             let deletedControllers = 0;
             let deletedMetrics = 0;
@@ -1649,8 +1621,6 @@ document.addEventListener("DOMContentLoaded", function () {
             // Для каждого контроллера: удаляем метрики, затем контроллер
             for (const controller of controllers) {
                 try {
-                    console.log(`🔄 Обработка контроллера #${controller.controller_id}...`);
-                    
                     // Шаг 1: Получаем метрики контроллера
                     const metricsResponse = await fetch(`/api/metrics?controller_id=${controller.controller_id}&limit=10000`, {
                         headers: {
@@ -1661,8 +1631,6 @@ document.addEventListener("DOMContentLoaded", function () {
                     if (metricsResponse.ok) {
                         const metricsData = await metricsResponse.json();
                         const metrics = metricsData.data || [];
-                        
-                        console.log(`  📊 Найдено метрик: ${metrics.length}`);
                         
                         // Шаг 2: Удаляем все метрики контроллера
                         if (metrics.length > 0) {
@@ -1682,7 +1650,6 @@ document.addEventListener("DOMContentLoaded", function () {
                                     console.warn(`  ⚠️ Не удалось удалить метрику ${metric.metric_id}:`, metricError);
                                 }
                             }
-                            console.log(`  ✅ Удалено метрик: ${deletedMetrics} из ${metrics.length}`);
                         }
                     }
                     
@@ -1696,7 +1663,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
                     if (controllerResponse.ok) {
                         deletedControllers++;
-                        console.log(`  ✅ Контроллер ${controller.controller_id} удален`);
                     } else {
                         const errorData = await controllerResponse.json();
                         const errorMsg = `Контроллер #${controller.controller_id}: ${errorData.error || 'Ошибка удаления'}`;
@@ -1711,7 +1677,6 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             // Шаг 4: Теперь удаляем здание
-            console.log('🏢 Удаление здания...');
             const buildingResponse = await fetch(`/api/buildings/${buildingId}`, {
                 method: 'DELETE',
                 headers: {
@@ -1725,8 +1690,6 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             // Показываем результат
-            console.log(`✅ Завершено: Контроллеров ${deletedControllers}/${controllers.length}, Метрик ${deletedMetrics}`);
-            
             if (errors.length > 0) {
                 showToast(`Здание удалено. Контроллеров: ${deletedControllers}/${controllers.length}. Метрик: ${deletedMetrics}. Ошибки: ${errors.length}`, 'warning');
                 console.warn('Ошибки при удалении:', errors);
@@ -1959,10 +1922,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
             const lineResponse = await response.json();
             const line = lineResponse.data || lineResponse;
-
-            console.log('📋 Загружены данные линии для редактирования:', line);
-            console.log('📍 main_path:', line.main_path);
-            console.log('🌿 branches:', line.branches);
 
             // Открываем универсальный редактор линий с картой
             const editor = new InfrastructureLineEditor({
@@ -2288,18 +2247,6 @@ document.addEventListener("DOMContentLoaded", function () {
             const waterLinesData = waterLinesResponse.data || waterLinesResponse;
             const waterSuppliersData = waterSuppliersResponse.data || waterSuppliersResponse;
 
-            console.log('Transformers data:', transformersData);
-            console.log('Lines data:', linesData);
-            console.log('Water lines data:', waterLinesData);
-            console.log('Water suppliers data:', waterSuppliersData);
-
-            // ОТЛАДКА: Проверяем каждого поставщика
-            if (Array.isArray(waterSuppliersData)) {
-                waterSuppliersData.forEach((supplier, index) => {
-                    console.log(`Supplier ${index}:`, supplier.name, 'type:', supplier.type);
-                });
-            }
-
             // Заполняем dropdown трансформаторов (форма создания)
             fillDropdown('building-primary-transformer', transformersData, 'transformer_id', 'name');
             fillDropdown('building-backup-transformer', transformersData, 'transformer_id', 'name');
@@ -2331,30 +2278,10 @@ document.addEventListener("DOMContentLoaded", function () {
             fillDropdown('edit-building-hot-water-line', hotWaterLines, 'line_id', 'name');
 
             // Разделяем поставщиков на ХВС и ГВС
-            console.log('🔍 ОТЛАДКА: waterSuppliersData before filtering:', waterSuppliersData);
-            console.log('🔍 ОТЛАДКА: Is waterSuppliersData array?', Array.isArray(waterSuppliersData));
-
-            // Дополнительная проверка структуры данных
-            if (Array.isArray(waterSuppliersData)) {
-                console.log('🔍 ОТЛАДКА: Количество поставщиков:', waterSuppliersData.length);
-                waterSuppliersData.forEach((supplier, index) => {
-                    console.log(`🔍 ОТЛАДКА: Supplier ${index}:`, supplier.name, 'type:', supplier.type, 'typeof:', typeof supplier.type);
-                });
-            }
-
             const coldSuppliers = Array.isArray(waterSuppliersData) ?
-                waterSuppliersData.filter(s => {
-                    console.log('🔍 ОТЛАДКА: Checking supplier:', s.name, 'type:', s.type, 'is cold_water?', s.type === 'cold_water');
-                    return s.type === 'cold_water';
-                }) : [];
+                waterSuppliersData.filter(s => s.type === 'cold_water') : [];
             const hotSuppliers = Array.isArray(waterSuppliersData) ?
-                waterSuppliersData.filter(s => {
-                    console.log('🔍 ОТЛАДКА: Checking supplier:', s.name, 'type:', s.type, 'is hot_water?', s.type === 'hot_water');
-                    return s.type === 'hot_water';
-                }) : [];
-
-            console.log('🔍 ОТЛАДКА: Cold suppliers result:', coldSuppliers);
-            console.log('🔍 ОТЛАДКА: Hot suppliers result:', hotSuppliers);
+                waterSuppliersData.filter(s => s.type === 'hot_water') : [];
 
             // Заполняем dropdown поставщиков (форма создания)
             fillDropdown('building-cold-water-supplier', coldSuppliers, 'supplier_id', 'name');
@@ -2375,7 +2302,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Функция заполнения dropdown
     function fillDropdown(elementId, data, valueField, textField) {
-        console.log(`fillDropdown called for ${elementId}:`, {data, valueField, textField});
 
         const dropdown = document.getElementById(elementId);
         if (!dropdown) {
@@ -2398,19 +2324,16 @@ document.addEventListener("DOMContentLoaded", function () {
 
         // Добавляем данные
         data.forEach((item, index) => {
-            console.log(`Processing item ${index} for ${elementId}:`, item);
             if (item && item[valueField] !== undefined && item[textField]) {
                 const option = document.createElement('option');
                 option.value = item[valueField];
                 option.textContent = item[textField];
                 dropdown.appendChild(option);
-                console.log(`Added option: ${item[textField]} (${item[valueField]})`);
             } else {
                 console.warn(`Skipped item ${index} for ${elementId}:`, item, `valueField: ${valueField}, textField: ${textField}`);
             }
         });
 
-        console.log(`Заполнен dropdown ${elementId} с ${data.length} элементами`);
     }
 
     // Настройка связанных выпадающих списков
@@ -2888,13 +2811,10 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     function openUniversalModal(type, data, config) {
-        console.log('🔧 openUniversalModal вызвана:', { type, data, config });
         const modal = document.getElementById('universal-modal');
         const title = document.getElementById('universal-modal-title');
         const formFields = document.getElementById('universal-form-fields');
         const form = document.getElementById('universal-form');
-
-        console.log('📋 Найденные элементы:', { modal, title, formFields, form });
 
         // Устанавливаем заголовок
         title.textContent = config.title;
@@ -3042,9 +2962,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     // Создаем универсальное модальное окно при загрузке
-    console.log('🚀 Создаем универсальное модальное окно...');
     createUniversalModal();
-    console.log('✅ Универсальное модальное окно создано');
 
     // Добавляем стили для статусов контроллеров
     const statusStyles = `
@@ -3239,6 +3157,5 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // Загружаем данные для форм после инициализации всех функций
-    console.log('🔄 Вызываем loadFormData() в конце инициализации');
     loadFormData();
 });

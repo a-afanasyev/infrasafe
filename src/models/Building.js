@@ -101,6 +101,59 @@ class Building {
     }
 
     /**
+     * Найти здание по ID с контроллерами (один запрос, устраняет N+1)
+     */
+    static async findByIdWithControllers(id) {
+        try {
+            const { rows } = await db.query(
+                `SELECT
+                    b.*,
+                    pt.name as primary_transformer_name,
+                    bt.name as backup_transformer_name,
+                    pl.name as primary_line_name,
+                    bl.name as backup_line_name,
+                    cwl.name as cold_water_line_name,
+                    hwl.name as hot_water_line_name,
+                    cws.name as cold_water_supplier_name,
+                    hws.name as hot_water_supplier_name,
+                    COALESCE(
+                        json_agg(
+                            json_build_object(
+                                'controller_id', c.controller_id,
+                                'serial_number', c.serial_number,
+                                'model', c.model,
+                                'vendor', c.vendor,
+                                'status', c.status,
+                                'firmware_version', c.firmware_version,
+                                'location', c.location,
+                                'last_seen', c.last_seen
+                            )
+                        ) FILTER (WHERE c.controller_id IS NOT NULL),
+                        '[]'
+                    ) as controllers
+                FROM buildings b
+                LEFT JOIN transformers pt ON b.primary_transformer_id = pt.transformer_id
+                LEFT JOIN transformers bt ON b.backup_transformer_id = bt.transformer_id
+                LEFT JOIN lines pl ON b.primary_line_id = pl.line_id
+                LEFT JOIN lines bl ON b.backup_line_id = bl.line_id
+                LEFT JOIN water_lines cwl ON b.cold_water_line_id = cwl.line_id
+                LEFT JOIN water_lines hwl ON b.hot_water_line_id = hwl.line_id
+                LEFT JOIN water_suppliers cws ON b.cold_water_supplier_id = cws.supplier_id
+                LEFT JOIN water_suppliers hws ON b.hot_water_supplier_id = hws.supplier_id
+                LEFT JOIN controllers c ON c.building_id = b.building_id
+                WHERE b.building_id = $1
+                GROUP BY b.building_id, pt.name, bt.name, pl.name, bl.name,
+                         cwl.name, hwl.name, cws.name, hws.name`,
+                [id]
+            );
+            return rows.length ? rows[0] : null;
+        } catch (error) {
+            logger.error(`Error in Building.findByIdWithControllers: ${error.message}`);
+            throw createError(`Failed to fetch building with controllers: ${error.message}`, 500);
+        }
+    }
+
+    /**
      * Создать новое здание
      * @param {Object} buildingData - Данные для создания
      * @returns {Object} Созданное здание

@@ -48,17 +48,10 @@ router.get('/:id/supplier', async (req, res, next) => {
             return next(createError('Водная линия не найдена', 404));
         }
 
-        // Suppliers are now linked through buildings, not directly on the water line
-        const db = require('../config/database');
-        const { rows } = await db.query(
-            `SELECT DISTINCT ws.* FROM water_suppliers ws
-             JOIN buildings b ON (ws.supplier_id = b.cold_water_supplier_id OR ws.supplier_id = b.hot_water_supplier_id)
-             WHERE b.cold_water_line_id = $1 OR b.hot_water_line_id = $1`,
-            [req.params.id]
-        );
+        const suppliers = await WaterLine.findSuppliersForLine(req.params.id);
 
         res.json({
-            suppliers: rows,
+            suppliers,
             line: {
                 id: waterLine.line_id,
                 name: waterLine.name

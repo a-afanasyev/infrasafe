@@ -1,9 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { query } = require('../config/database');
-const { createError } = require('../utils/helpers');
+const heatSourceController = require('../controllers/heatSourceController');
 const { applyCrudRateLimit } = require('../middleware/rateLimiter');
-const logger = require('../utils/logger');
 
 /**
  * @swagger
@@ -84,49 +82,7 @@ const logger = require('../utils/logger');
  *                 pagination:
  *                   type: object
  */
-router.get('/', async (req, res, next) => {
-    try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
-        const offset = (page - 1) * limit;
-        const sort = req.query.sort || 'id';
-        const order = req.query.order || 'asc';
-
-        // Получаем общее количество записей
-        const countResult = await query('SELECT COUNT(*) FROM heat_sources');
-        const total = parseInt(countResult.rows[0].count);
-
-        // ИСПРАВЛЕНИЕ SQL INJECTION: Валидация параметров сортировки
-        const { validateSortOrder } = require('../utils/queryValidation');
-        const { validSort, validOrder } = validateSortOrder('heat_sources', sort, order);
-        
-        // Получаем данные с пагинацией
-        const result = await query(
-            `SELECT * FROM heat_sources
-             ORDER BY ${validSort} ${validOrder}
-             LIMIT $1 OFFSET $2`,
-            [limit, offset]
-        );
-
-        res.json({
-            data: result.rows,
-            pagination: {
-                page,
-                limit,
-                total,
-                totalPages: Math.ceil(total / limit)
-            }
-        });
-    } catch (error) {
-        logger.error(`Error fetching heat sources: ${error.message}`, {
-            stack: error.stack,
-            endpoint: '/api/heat-sources',
-            method: 'GET',
-            query: req.query
-        });
-        next(createError('Failed to fetch heat sources: ' + error.message, 500));
-    }
-});
+router.get('/', heatSourceController.getAll);
 
 /**
  * @swagger
@@ -146,26 +102,7 @@ router.get('/', async (req, res, next) => {
  *       404:
  *         description: Источник не найден
  */
-router.get('/:id', async (req, res, next) => {
-    try {
-        const { id } = req.params;
-        const result = await query('SELECT * FROM heat_sources WHERE id = $1', [id]);
-
-        if (result.rows.length === 0) {
-            return next(createError('Heat source not found', 404));
-        }
-
-        res.json(result.rows[0]);
-    } catch (error) {
-        logger.error(`Error fetching heat source: ${error.message}`, {
-            stack: error.stack,
-            endpoint: `/api/heat-sources/${req.params.id}`,
-            method: 'GET',
-            id: req.params.id
-        });
-        next(createError('Failed to fetch heat source: ' + error.message, 500));
-    }
-});
+router.get('/:id', heatSourceController.getById);
 
 /**
  * @swagger
@@ -185,35 +122,7 @@ router.get('/:id', async (req, res, next) => {
  *       400:
  *         description: Ошибка валидации
  */
-router.post('/', applyCrudRateLimit, async (req, res, next) => {
-    try {
-        const {
-            id, name, address, latitude, longitude, source_type,
-            capacity_mw, fuel_type, installation_date,
-            status, maintenance_contact, notes
-        } = req.body;
-
-        const result = await query(
-            `INSERT INTO heat_sources
-             (id, name, address, latitude, longitude, source_type, capacity_mw,
-              fuel_type, installation_date, status, maintenance_contact, notes)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-             RETURNING *`,
-            [id, name, address, latitude, longitude, source_type, capacity_mw,
-             fuel_type, installation_date, status || 'active', maintenance_contact, notes]
-        );
-
-        res.status(201).json(result.rows[0]);
-    } catch (error) {
-        logger.error(`Error creating heat source: ${error.message}`, {
-            stack: error.stack,
-            endpoint: '/api/heat-sources',
-            method: 'POST',
-            body: req.body
-        });
-        next(createError('Failed to create heat source: ' + error.message, 500));
-    }
-});
+router.post('/', applyCrudRateLimit, heatSourceController.create);
 
 /**
  * @swagger
@@ -239,43 +148,7 @@ router.post('/', applyCrudRateLimit, async (req, res, next) => {
  *       404:
  *         description: Источник не найден
  */
-router.put('/:id', applyCrudRateLimit, async (req, res, next) => {
-    try {
-        const { id } = req.params;
-        const {
-            name, address, latitude, longitude, source_type,
-            capacity_mw, fuel_type, installation_date,
-            status, maintenance_contact, notes
-        } = req.body;
-
-        const result = await query(
-            `UPDATE heat_sources
-             SET name = $2, address = $3, latitude = $4, longitude = $5,
-                 source_type = $6, capacity_mw = $7, fuel_type = $8,
-                 installation_date = $9, status = $10, maintenance_contact = $11,
-                 notes = $12, updated_at = NOW()
-             WHERE id = $1
-             RETURNING *`,
-            [id, name, address, latitude, longitude, source_type, capacity_mw,
-             fuel_type, installation_date, status, maintenance_contact, notes]
-        );
-
-        if (result.rows.length === 0) {
-            return next(createError('Heat source not found', 404));
-        }
-
-        res.json(result.rows[0]);
-    } catch (error) {
-        logger.error(`Error updating heat source: ${error.message}`, {
-            stack: error.stack,
-            endpoint: `/api/heat-sources/${req.params.id}`,
-            method: 'PUT',
-            id: req.params.id,
-            body: req.body
-        });
-        next(createError('Failed to update heat source: ' + error.message, 500));
-    }
-});
+router.put('/:id', applyCrudRateLimit, heatSourceController.update);
 
 /**
  * @swagger
@@ -295,25 +168,6 @@ router.put('/:id', applyCrudRateLimit, async (req, res, next) => {
  *       404:
  *         description: Источник не найден
  */
-router.delete('/:id', applyCrudRateLimit, async (req, res, next) => {
-    try {
-        const { id } = req.params;
-        const result = await query('DELETE FROM heat_sources WHERE id = $1 RETURNING *', [id]);
-
-        if (result.rows.length === 0) {
-            return next(createError('Heat source not found', 404));
-        }
-
-        res.json({ message: 'Heat source deleted successfully', deleted: result.rows[0] });
-    } catch (error) {
-        logger.error(`Error deleting heat source: ${error.message}`, {
-            stack: error.stack,
-            endpoint: `/api/heat-sources/${req.params.id}`,
-            method: 'DELETE',
-            id: req.params.id
-        });
-        next(createError('Failed to delete heat source: ' + error.message, 500));
-    }
-});
+router.delete('/:id', applyCrudRateLimit, heatSourceController.remove);
 
 module.exports = router;

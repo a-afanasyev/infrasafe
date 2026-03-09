@@ -12,6 +12,7 @@ jest.mock('../../../src/config/database', () => ({
 jest.mock('../../../src/models/Building', () => ({
   findAll: jest.fn(),
   findById: jest.fn(),
+  findByIdWithControllers: jest.fn(),
   create: jest.fn()
 }));
 
@@ -80,29 +81,21 @@ describe('Service Layer Unit Tests', () => {
     });
 
     test('getBuildingById - успешное получение здания по ID', async () => {
-      const mockBuilding = {
+      const mockResult = {
         building_id: 1,
         name: 'Test Building',
-        address: 'Test Address'
+        address: 'Test Address',
+        controllers: [
+          { controller_id: 1, name: 'Test Controller', building_id: 1 }
+        ]
       };
 
-      const mockControllers = [
-        { controller_id: 1, name: 'Test Controller', building_id: 1 }
-      ];
-
-      const expectedResult = {
-        ...mockBuilding,
-        controllers: mockControllers
-      };
-
-      Building.findById.mockResolvedValue(mockBuilding);
-      Controller.findByBuildingId.mockResolvedValue(mockControllers);
+      Building.findByIdWithControllers.mockResolvedValue(mockResult);
 
       const result = await buildingService.getBuildingById(1);
 
-      expect(result).toEqual(expectedResult);
-      expect(Building.findById).toHaveBeenCalledWith(1);
-      expect(Controller.findByBuildingId).toHaveBeenCalledWith(1);
+      expect(result).toEqual(mockResult);
+      expect(Building.findByIdWithControllers).toHaveBeenCalledWith(1);
     });
 
     test('createBuilding - успешное создание здания', async () => {

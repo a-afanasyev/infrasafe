@@ -266,5 +266,5 @@ window.DOMSecurity = {
     getValidToken
 };
 
-console.log('✅ DOMSecurity утилиты загружены успешно');
+
 

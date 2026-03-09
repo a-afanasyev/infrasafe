@@ -92,5 +92,5 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = CSRFProtection;
 }
 
-console.log('✅ CSRF Protection утилита загружена успешно');
+
 

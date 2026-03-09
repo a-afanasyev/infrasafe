@@ -15,6 +15,7 @@ const errorHandler = (err, req, res, next) => {
 
     // Формируем ответ
     const errorResponse = {
+        success: false,
         error: {
             message: err.message || 'Внутренняя ошибка сервера',
             status: statusCode

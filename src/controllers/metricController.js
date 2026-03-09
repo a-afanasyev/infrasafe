@@ -1,6 +1,7 @@
 const metricService = require('../services/metricService');
 const logger = require('../utils/logger');
 const { createError } = require('../utils/helpers');
+const { sendError, sendNotFound } = require('../utils/apiResponse');
 
 // Получить все метрики
 const getAllMetrics = async (req, res, next) => {
@@ -21,7 +22,7 @@ const getMetricById = async (req, res, next) => {
         const metric = await metricService.getMetricById(id);
 
         if (!metric) {
-            return res.status(404).json({ error: 'Metric not found' });
+            return sendNotFound(res, 'Metric not found');
         }
 
         return res.status(200).json(metric);
@@ -52,7 +53,7 @@ const getMetricsByControllerId = async (req, res, next) => {
         return res.status(200).json(metrics);
     } catch (error) {
         if (error.code === 'CONTROLLER_NOT_FOUND') {
-            return res.status(404).json({ error: error.message });
+            return sendNotFound(res, error.message);
         }
 
         logger.error(`Error in getMetricsByControllerId: ${error.message}`);
@@ -67,7 +68,7 @@ const createMetric = async (req, res, next) => {
         return res.status(201).json(newMetric);
     } catch (error) {
         if (error.code === 'CONTROLLER_NOT_FOUND') {
-            return res.status(404).json({ error: error.message });
+            return sendNotFound(res, error.message);
         }
 
         logger.error(`Error in createMetric: ${error.message}`);
@@ -82,7 +83,7 @@ const receiveTelemetry = async (req, res, next) => {
         return res.status(201).json(result);
     } catch (error) {
         if (error.code === 'CONTROLLER_NOT_FOUND') {
-            return res.status(404).json({ error: error.message });
+            return sendNotFound(res, error.message);
         }
 
         logger.error(`Error in receiveTelemetry: ${error.message}`);
@@ -98,7 +99,7 @@ const deleteMetric = async (req, res, next) => {
         const result = await metricService.deleteMetric(id);
 
         if (!result) {
-            return res.status(404).json({ error: 'Metric not found' });
+            return sendNotFound(res, 'Metric not found');
         }
 
         return res.status(200).json({

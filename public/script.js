@@ -38,14 +38,12 @@ function initThemeToggle() {
                 localStorage.setItem('theme', 'light');
                 themeIconSun.style.display = 'none';
                 themeIconMoon.style.display = 'block';
-                console.log('🌞 Theme switched to light');
             } else {
                 // Переключаем на темную тему
                 htmlElement.classList.add('dark');
                 localStorage.setItem('theme', 'dark');
                 themeIconSun.style.display = 'block';
                 themeIconMoon.style.display = 'none';
-                console.log('🌙 Theme switched to dark');
             }
         });
     }
@@ -98,11 +96,8 @@ function initTestDataBanner() {
             localStorage.setItem('testDataBannerHidden', 'true');
             // Обновляем позиционирование других элементов
             updateLayoutForBanner(false);
-            console.log('🔔 Баннер "Тестовые данные" скрыт');
         }
     });
-    
-    console.log('✅ Баннер тестовых данных инициализирован');
 }
 
 /**
@@ -170,7 +165,6 @@ document.addEventListener('click', function(e) {
             banner.classList.add('hidden');
             localStorage.setItem('testDataBannerHidden', 'true');
             updateLayoutForBanner(false);
-            console.log('🔔 Баннер "Тестовые данные" скрыт (через делегирование)');
         }
     }
 });
@@ -370,8 +364,6 @@ document.addEventListener('DOMContentLoaded', async function () {
          * Настраивает обработчики событий для toggle кнопки и вкладок
          */
         init() {
-            console.log('🔧 Initializing IndustrialPushPanel...');
-            
             // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Проверяем наличие панели перед инициализацией
             if (!this.panel) {
                 console.error('❌ IndustrialPushPanel: панель не найдена в DOM, инициализация невозможна');
@@ -418,7 +410,6 @@ document.addEventListener('DOMContentLoaded', async function () {
             this.loadTabContent(this.currentTab);
             
             this.initialized = true;
-            console.log('✅ IndustrialPushPanel initialized successfully');
         }
         
         /**
@@ -440,13 +431,11 @@ document.addEventListener('DOMContentLoaded', async function () {
                 this.panel.classList.add('expanded');
                 // Принудительно устанавливаем transform для гарантии отображения
                 this.panel.style.transform = 'translateX(0)';
-                console.log('📂 Panel expanded');
             } else {
                 this.panel.classList.remove('expanded');
                 this.panel.classList.add('collapsed');
                 // Принудительно устанавливаем transform для гарантии скрытия
                 this.panel.style.transform = 'translateX(-100%)';
-                console.log('📁 Panel collapsed');
             }
         }
         
@@ -455,8 +444,6 @@ document.addEventListener('DOMContentLoaded', async function () {
          * @param {string} tabName - Имя вкладки (layers, status)
          */
         switchTab(tabName) {
-            console.log(`🔀 Switching to tab: ${tabName}`);
-            
             // Обновляем активные вкладки
             this.tabs.forEach(tab => {
                 const isActive = tab.dataset.tab === tabName;
@@ -480,8 +467,6 @@ document.addEventListener('DOMContentLoaded', async function () {
          * @param {string} tabName - Имя вкладки
          */
         loadTabContent(tabName) {
-            console.log(`📦 Loading content for tab: ${tabName}`);
-            
             switch(tabName) {
                 case 'layers':
                     this.loadLayersContent();
@@ -534,8 +519,6 @@ document.addEventListener('DOMContentLoaded', async function () {
             layersContent.appendChild(baseSection);
             layersContent.appendChild(overlaySection);
             
-            console.log('✅ Layers content structure created');
-            
             // Попытка интегрироваться с MapLayersControl если он уже инициализирован
             // Если нет - элементы будут заполнены вручную
             // Используем setTimeout для обеспечения полной инициализации MapLayersControl
@@ -552,8 +535,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                             // Очищаем списки перед заполнением
                             baseList.innerHTML = '';
                             overlayList.innerHTML = '';
-                            
-                            console.log('🔄 Populating layers with Industrial panel elements');
                             
                             // Базовые слои
                             Object.keys(mapLayersControl.baseLayers).forEach(name => {
@@ -613,7 +594,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                                 overlayList.appendChild(item);
                             });
                             
-                            console.log('✅ Layers populated successfully');
                         }
                     };
                     
@@ -645,14 +625,11 @@ document.addEventListener('DOMContentLoaded', async function () {
                     // Увеличиваем задержку чтобы дать время загрузиться данным
                     setTimeout(() => {
                         if (mapLayersControl.layerCounts && mapLayersControl.layerCounts.size > 0) {
-                            console.log('🔄 Refreshing layer counts from cache:', Array.from(mapLayersControl.layerCounts.entries()));
                             mapLayersControl.refreshLayerCounts();
                         } else {
-                            console.log('⚠️ No layer counts in cache yet, waiting for data to load...');
                             // Если счетчики еще не загружены, ждем еще немного и проверяем снова
                             setTimeout(() => {
                                 if (mapLayersControl.layerCounts && mapLayersControl.layerCounts.size > 0) {
-                                    console.log('🔄 Refreshing layer counts after delay:', Array.from(mapLayersControl.layerCounts.entries()));
                                     mapLayersControl.refreshLayerCounts();
                                 }
                             }, 1000);
@@ -765,7 +742,6 @@ document.addEventListener('DOMContentLoaded', async function () {
             });
             
             statusContent.appendChild(statusSection);
-            console.log('✅ Status content structure created');
             
             // Обновляем статусы после создания структуры
             this.updateStatusGroups();
@@ -1022,7 +998,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                 if (window.mapLayersControl && typeof window.mapLayersControl.applyFilters === 'function') {
                     window.mapLayersControl.applyFilters();
                 }
-                console.log('🔍 Filters applied');
             });
             
             const resetBtn = document.createElement('button');
@@ -1038,7 +1013,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                 loadInput.value = '100';
                 loadValue.textContent = '100%';
                 waterSelect.value = '';
-                console.log('🔁 Filters reset');
             });
             
             buttonsContainer.appendChild(applyBtn);
@@ -1046,7 +1020,6 @@ document.addEventListener('DOMContentLoaded', async function () {
             filtersSection.appendChild(buttonsContainer);
             
             filtersContent.appendChild(filtersSection);
-            console.log('✅ Filters content loaded');
         }
         
         /**
@@ -1572,7 +1545,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         }).setView([41.32, 69.25], 13);
         // Делаем map доступной глобально для других частей кода
         window.map = map;
-        console.log('✅ Map initialized');
     } catch (error) {
         console.error('❌ Error initializing map:', error);
         showToast('Ошибка инициализации карты: ' + error.message, 'error');
@@ -1585,7 +1557,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         try {
             window.USE_INDUSTRIAL_PANEL = true; // Флаг для предотвращения создания визуальной панели
             window.mapLayersControl = new MapLayersControl(map);
-            console.log('✅ MapLayersControl initialized (for IndustrialPanel)');
         } catch (error) {
             console.error('❌ Error initializing MapLayersControl:', error);
             // Fallback: если MapLayersControl не работает, создаем базовый слой вручную
@@ -1630,8 +1601,6 @@ document.addEventListener('DOMContentLoaded', async function () {
     // Инициализация промышленной панели управления
     industrialPanel = new IndustrialPushPanel();
     window.industrialPanel = industrialPanel;
-    console.log('✅ IndustrialPushPanel initialized');
-
     // Создаем кнопку переключения панели как Leaflet control внутри карты (сверху слева)
     if (map) {
         const panelToggleControl = L.control({ position: 'topleft' });
@@ -1664,10 +1633,8 @@ document.addEventListener('DOMContentLoaded', async function () {
             button.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                console.log('Toggle button clicked');
                 // Вызываем toggle напрямую через промышленную панель
                 if (window.industrialPanel && typeof window.industrialPanel.toggle === 'function') {
-                    console.log('Calling industrialPanel.toggle()');
                     window.industrialPanel.toggle();
                     // Обновляем иконку в зависимости от состояния панели
                     setTimeout(() => {
@@ -2016,8 +1983,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                 throw new Error('Некорректный формат данных от сервера');
             }
             
-            console.log(`✅ Загружено зданий: ${data.length}`);
-
             // Обновляем название УК на карте
             if (data.length > 0) {
                 // Собираем все уникальные названия УК
