@@ -773,6 +773,43 @@
             background: transparent !important;
             border: none !important;
         }
+
+        /* Expandable building detail rows */
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 8px;
+            padding: 8px;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+
+        .detail-grid div {
+            font-size: 0.9rem;
+        }
+
+        .building-detail-row td {
+            padding: 0 !important;
+            border-top: none !important;
+        }
+
+        .building-detail-row .detail-grid {
+            margin: 4px 8px 8px;
+        }
+
+        .btn-expand {
+            background: none;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            cursor: pointer;
+            padding: 2px 6px;
+            font-size: 0.8rem;
+            margin-right: 4px;
+        }
+
+        .btn-expand:hover {
+            background: #e8e8e8;
+        }
     </style>
 </head>
 <body>
@@ -827,37 +864,22 @@
     <!-- Buildings Table -->
     <h2>Таблица зданий</h2>
     <div class="table-container">
-        <table id="buildings-table" border="1" class="multi-row-table">
+        <table id="buildings-table" border="1">
             <thead>
-                <tr class="header-basic">
-                    <th rowspan="3"><input type="checkbox" id="buildings-select-all-checkbox"></th>
-                    <th rowspan="3" class="sortable" data-column="building_id">ID ↕</th>
-                    <th rowspan="3" class="sortable" data-column="name">Название ↕</th>
+                <tr>
+                    <th><input type="checkbox" id="buildings-select-all-checkbox"></th>
+                    <th class="sortable" data-column="building_id">ID ↕</th>
+                    <th class="sortable" data-column="name">Название ↕</th>
                     <th class="sortable" data-column="address">Адрес ↕</th>
                     <th class="sortable" data-column="town">Город ↕</th>
                     <th class="sortable" data-column="region">Регион ↕</th>
-                    <th>Широта</th>
-                    <th>Долгота</th>
-                    <th rowspan="3">Действия</th>
-                </tr>
-                <tr class="header-infra">
                     <th class="sortable" data-column="management_company">УК ↕</th>
-                    <th>Горячая вода</th>
-                    <th>Основной трансформатор</th>
-                    <th>Резервный трансформатор</th>
-                    <th>Основная линия</th>
-                </tr>
-                <tr class="header-water">
-                    <th>Резервная линия</th>
-                    <th>Линия ХВС</th>
-                    <th>Линия ГВС</th>
-                    <th>Поставщик ХВС</th>
-                    <th>Поставщик ГВС</th>
+                    <th>Действия</th>
                 </tr>
             </thead>
             <tbody>
                 <tr>
-                    <td colspan="9" style="text-align: center;">Загрузка данных...</td>
+                    <td colspan="8" style="text-align: center;">Загрузка данных...</td>
                 </tr>
             </tbody>
         </table>

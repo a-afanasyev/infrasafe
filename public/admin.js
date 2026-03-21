@@ -716,72 +716,92 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (data && data.length > 0) {
             data.forEach((building) => {
-                // Строка 1: Основная информация
-                const row1 = document.createElement("tr");
-                row1.className = "building-row-1";
-                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                // Main row — core fields only
+                const mainRow = document.createElement('tr');
+                mainRow.className = 'building-main-row';
+                mainRow.dataset.buildingId = building.building_id;
+
+                // Checkbox cell
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
                 checkbox.className = 'item-checkbox';
                 checkbox.setAttribute('data-id', building.building_id);
-                
+                mainRow.appendChild(createSecureTableCell(checkbox));
+
+                // Text cells — all use textContent (XSS-safe)
+                mainRow.appendChild(createSecureTableCell(safeValue(building.building_id)));
+                mainRow.appendChild(createSecureTableCell(safeValue(building.name)));
+                mainRow.appendChild(createSecureTableCell(safeValue(building.address)));
+                mainRow.appendChild(createSecureTableCell(safeValue(building.town)));
+                mainRow.appendChild(createSecureTableCell(safeValue(building.region)));
+                mainRow.appendChild(createSecureTableCell(safeValue(building.management_company)));
+
+                // Actions cell
+                const actionsCell = document.createElement('td');
+
+                const expandBtn = document.createElement('button');
+                expandBtn.className = 'btn-expand';
+                expandBtn.textContent = '\u25B6';
+                expandBtn.title = 'Подробности';
+                actionsCell.appendChild(expandBtn);
+
                 const editBtn = document.createElement('button');
                 editBtn.className = 'btn-sm';
                 editBtn.textContent = 'Изменить';
-                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
                 editBtn.addEventListener('click', () => editBuilding(building.building_id));
+                actionsCell.appendChild(editBtn);
 
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'btn-sm btn-danger';
                 deleteBtn.textContent = 'Удалить';
-                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
                 deleteBtn.addEventListener('click', () => deleteBuilding(building.building_id));
-                
-                const buttonCell = document.createElement('td');
-                buttonCell.setAttribute('rowspan', '3');
-                buttonCell.appendChild(editBtn);
-                buttonCell.appendChild(document.createElement('br'));
-                buttonCell.appendChild(deleteBtn);
-                
-                row1.appendChild(createSecureTableCell(checkbox, {rowspan: 3}));
-                row1.appendChild(createSecureTableCell(safeValue(building.building_id), {rowspan: 3}));
-                row1.appendChild(createSecureTableCell(safeValue(building.name), {rowspan: 3}));
-                row1.appendChild(createSecureTableCell(safeValue(building.address)));
-                row1.appendChild(createSecureTableCell(safeValue(building.town)));
-                row1.appendChild(createSecureTableCell(safeValue(building.region)));
-                row1.appendChild(createSecureTableCell(formatNumber(building.latitude, 6)));
-                row1.appendChild(createSecureTableCell(formatNumber(building.longitude, 6)));
-                row1.appendChild(buttonCell);
+                actionsCell.appendChild(deleteBtn);
 
-                // Строка 2: Инфраструктура
-                const row2 = document.createElement("tr");
-                row2.className = "building-row-2";
-                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                row2.appendChild(createSecureTableCell(safeValue(building.management_company)));
-                row2.appendChild(createSecureTableCell(building.hot_water ? "Да" : "Нет"));
-                row2.appendChild(createSecureTableCell(safeValue(building.primary_transformer_name)));
-                row2.appendChild(createSecureTableCell(safeValue(building.backup_transformer_name)));
-                row2.appendChild(createSecureTableCell(safeValue(building.primary_line_name)));
+                mainRow.appendChild(actionsCell);
+                newTableBody.appendChild(mainRow);
 
-                // Строка 3: Водоснабжение
-                const row3 = document.createElement("tr");
-                row3.className = "building-row-3 building-group";
-                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                row3.appendChild(createSecureTableCell(safeValue(building.backup_line_name)));
-                row3.appendChild(createSecureTableCell(safeValue(building.cold_water_line_name)));
-                row3.appendChild(createSecureTableCell(safeValue(building.hot_water_line_name)));
-                row3.appendChild(createSecureTableCell(safeValue(building.cold_water_supplier_name)));
-                row3.appendChild(createSecureTableCell(safeValue(building.hot_water_supplier_name)));
+                // Detail row (hidden by default)
+                const detailRow = document.createElement('tr');
+                detailRow.className = 'building-detail-row';
+                detailRow.style.display = 'none';
+                detailRow.dataset.detailFor = building.building_id;
 
-                newTableBody.appendChild(row1);
-                newTableBody.appendChild(row2);
-                newTableBody.appendChild(row3);
+                const detailCell = document.createElement('td');
+                detailCell.colSpan = 8;
+
+                const detailGrid = document.createElement('div');
+                detailGrid.className = 'detail-grid';
+
+                const details = [
+                    ['Координаты', formatNumber(building.latitude, 6) + ', ' + formatNumber(building.longitude, 6)],
+                    ['Горячая вода', building.hot_water ? 'Да' : 'Нет'],
+                    ['Осн. трансформатор', safeValue(building.primary_transformer_name, '\u2014')],
+                    ['Рез. трансформатор', safeValue(building.backup_transformer_name, '\u2014')],
+                    ['Осн. линия', safeValue(building.primary_line_name, '\u2014')],
+                    ['Рез. линия', safeValue(building.backup_line_name, '\u2014')],
+                    ['Линия ХВС', safeValue(building.cold_water_line_name, '\u2014')],
+                    ['Линия ГВС', safeValue(building.hot_water_line_name, '\u2014')],
+                    ['Поставщик ХВС', safeValue(building.cold_water_supplier_name, '\u2014')],
+                    ['Поставщик ГВС', safeValue(building.hot_water_supplier_name, '\u2014')]
+                ];
+
+                details.forEach(([label, value]) => {
+                    const div = document.createElement('div');
+                    const strong = document.createElement('strong');
+                    strong.textContent = label + ': ';
+                    div.appendChild(strong);
+                    div.appendChild(document.createTextNode(value));
+                    detailGrid.appendChild(div);
+                });
+
+                detailCell.appendChild(detailGrid);
+                detailRow.appendChild(detailCell);
+                newTableBody.appendChild(detailRow);
             });
         } else {
-            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
             const noDataRow = document.createElement('tr');
             const noDataCell = document.createElement('td');
-            noDataCell.setAttribute('colspan', '9');
+            noDataCell.setAttribute('colspan', '8');
             noDataCell.style.textAlign = 'center';
             noDataCell.textContent = 'Нет данных';
             noDataRow.appendChild(noDataCell);
@@ -1504,6 +1524,22 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
     // ИНИЦИАЛИЗАЦИЯ
     // ===============================================
+
+    // Delegated click handler for expand buttons — registered ONCE
+    document.getElementById('buildings-table').addEventListener('click', (e) => {
+        const expandBtn = e.target.closest('.btn-expand');
+        if (!expandBtn) return;
+
+        const mainRow = expandBtn.closest('tr');
+        const buildingId = mainRow.dataset.buildingId;
+        const detailRow = document.querySelector('tr[data-detail-for="' + buildingId + '"]');
+
+        if (detailRow) {
+            const isVisible = detailRow.style.display !== 'none';
+            detailRow.style.display = isVisible ? 'none' : 'table-row';
+            expandBtn.textContent = isVisible ? '\u25B6' : '\u25BC';
+        }
+    });
 
     // Загружаем данные для активной секции при старте
     // Ждём готовности auth — иначе запрос уйдёт без JWT и вернёт 401
