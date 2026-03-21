@@ -242,6 +242,16 @@
             background-color: white;
             border-radius: 5px;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .nav-separator {
+            color: #ccc;
+            font-size: 1.2rem;
+            margin: 0 4px;
+            user-select: none;
+            align-self: center;
         }
 
         .nav-btn {
@@ -722,6 +732,10 @@
                 flex-direction: column;
             }
 
+            .nav-separator {
+                display: none;
+            }
+
             .filters-panel,
             .batch-operations {
                 flex-direction: column;
@@ -820,14 +834,23 @@
     <div class="admin-container" style="display: none;">
     <!-- Навигационное меню -->
     <nav class="admin-nav" role="tablist" aria-label="Разделы администрирования">
+        <!-- Основные объекты -->
         <button class="nav-btn active" data-section="buildings" role="tab" aria-selected="true" aria-controls="buildings-section">Здания</button>
         <button class="nav-btn" data-section="controllers" role="tab" aria-selected="false" aria-controls="controllers-section">Контроллеры</button>
+        <button class="nav-btn" data-section="metrics" role="tab" aria-selected="false" aria-controls="metrics-section">Метрики</button>
+
+        <span class="nav-separator" aria-hidden="true">|</span>
+
+        <!-- Электроинфраструктура -->
         <button class="nav-btn" data-section="transformers" role="tab" aria-selected="false" aria-controls="transformers-section">Трансформаторы</button>
         <button class="nav-btn" data-section="lines" role="tab" aria-selected="false" aria-controls="lines-section">Линии</button>
+
+        <span class="nav-separator" aria-hidden="true">|</span>
+
+        <!-- Водоснабжение и теплоснабжение -->
         <button class="nav-btn" data-section="water-lines" role="tab" aria-selected="false" aria-controls="water-lines-section">Линии ХВС/ГВС</button>
         <button class="nav-btn" data-section="water-sources" role="tab" aria-selected="false" aria-controls="water-sources-section">Источники воды</button>
         <button class="nav-btn" data-section="heat-sources" role="tab" aria-selected="false" aria-controls="heat-sources-section">Источники тепла</button>
-        <button class="nav-btn" data-section="metrics" role="tab" aria-selected="false" aria-controls="metrics-section">Метрики</button>
     </nav>
 
     <!-- Глобальный поиск -->
