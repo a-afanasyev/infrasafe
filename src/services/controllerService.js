@@ -16,7 +16,7 @@ class ControllerService {
             const cacheKey = `${this.cachePrefix}:list:${page}:${limit}:${sort}:${order}`;
 
             // Проверяем кэш
-            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
+            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL });
             if (cached) {
                 logger.debug(`Controllers list получен из кэша: ${cacheKey}`);
                 return cached;
@@ -42,7 +42,7 @@ class ControllerService {
             const cacheKey = `${this.cachePrefix}:${id}`;
 
             // Проверяем кэш
-            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
+            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL });
             if (cached) {
                 logger.debug(`Controller ${id} получен из кэша`);
                 return cached;
@@ -70,7 +70,7 @@ class ControllerService {
             const cacheKey = `${this.cachePrefix}:building:${buildingId}`;
 
             // Проверяем кэш
-            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
+            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL });
             if (cached) {
                 logger.debug(`Controllers for building ${buildingId} получены из кэша`);
                 return cached;
@@ -104,7 +104,7 @@ class ControllerService {
             const cacheKey = `${this.cachePrefix}:${controllerId}:metrics:${startDate || 'all'}:${endDate || 'all'}`;
 
             // Для метрик используем более короткий TTL
-            const metricsCache = await cacheService.get(cacheKey, { ttl: 60000 }); // 1 минута
+            const metricsCache = await cacheService.get(cacheKey, { ttl: 60 }); // 1 минута
             if (metricsCache) {
                 logger.debug(`Metrics for controller ${controllerId} получены из кэша`);
                 return metricsCache;
@@ -229,7 +229,7 @@ class ControllerService {
         try {
             const cacheKey = `${this.cachePrefix}:serial:${serialNumber}`;
 
-            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
+            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL });
             if (cached) {
                 logger.debug(`Controller by serial ${serialNumber} получен из кэша`);
                 return cached;
@@ -311,7 +311,7 @@ class ControllerService {
         try {
             const cacheKey = `${this.cachePrefix}:statistics`;
 
-            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
+            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL });
             if (cached) {
                 return cached;
             }

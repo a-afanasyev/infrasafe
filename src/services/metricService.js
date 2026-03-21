@@ -24,7 +24,7 @@ class MetricService {
             const cacheKey = `${this.cachePrefix}:list:${page}:${limit}:${sort}:${order}`;
 
             // Для метрик используем короткий TTL
-            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
+            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL });
             if (cached) {
                 logger.debug(`Metrics list получен из кэша: ${cacheKey}`);
                 return cached;
@@ -48,7 +48,7 @@ class MetricService {
         try {
             const cacheKey = `${this.cachePrefix}:${id}`;
 
-            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
+            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL });
             if (cached) {
                 logger.debug(`Metric ${id} получена из кэша`);
                 return cached;
@@ -76,7 +76,7 @@ class MetricService {
             const cacheKey = `${this.cachePrefix}:last_all_controllers`;
 
             // Очень короткий TTL для актуальных данных
-            const cached = await cacheService.get(cacheKey, { ttl: this.realtimeCacheTTL * 1000 });
+            const cached = await cacheService.get(cacheKey, { ttl: this.realtimeCacheTTL });
             if (cached) {
                 logger.debug('Last metrics for all controllers получены из кэша');
                 return cached;
@@ -108,7 +108,7 @@ class MetricService {
 
             const cacheKey = `${this.cachePrefix}:controller:${controllerId}:${startDate || 'all'}:${endDate || 'all'}`;
 
-            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
+            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL });
             if (cached) {
                 logger.debug(`Metrics for controller ${controllerId} получены из кэша`);
                 return cached;
@@ -240,7 +240,7 @@ class MetricService {
         try {
             const cacheKey = `${this.cachePrefix}:aggregated:${controllerId}:${timeFrame}`;
 
-            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
+            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL });
             if (cached) {
                 logger.debug(`Aggregated metrics for controller ${controllerId} получены из кэша`);
                 return cached;

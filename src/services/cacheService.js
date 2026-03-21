@@ -168,7 +168,7 @@ class CacheService {
 
     // Универсальные методы кэширования
     async get(key, options = {}) {
-        const ttl = options.ttl || this.memoryTTL;
+        const ttl = options.ttl ? options.ttl * 1000 : this.memoryTTL; // convert seconds to ms
 
         // Memory cache
         if (this.analyticsCache.has(key)) {

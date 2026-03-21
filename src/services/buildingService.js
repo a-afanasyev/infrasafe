@@ -15,7 +15,7 @@ class BuildingService {
             const cacheKey = `${this.cachePrefix}:list:${page}:${limit}:${sort}:${order}`;
 
             // Проверяем кэш
-            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
+            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL });
             if (cached) {
                 logger.debug(`Buildings list получен из кэша: ${cacheKey}`);
                 return cached;
@@ -41,7 +41,7 @@ class BuildingService {
             const cacheKey = `${this.cachePrefix}:${id}:with_controllers`;
 
             // Проверяем кэш
-            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
+            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL });
             if (cached) {
                 logger.debug(`Building ${id} получен из кэша`);
                 return cached;
@@ -150,7 +150,7 @@ class BuildingService {
             const cacheKey = `${this.cachePrefix}:geo:${latitude}:${longitude}:${radiusMeters}`;
 
             // Проверяем кэш
-            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
+            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL });
             if (cached) {
                 logger.debug(`Buildings in radius получены из кэша`);
                 return cached;
@@ -194,7 +194,7 @@ class BuildingService {
             const cacheKey = `${this.cachePrefix}:statistics`;
 
             // Проверяем кэш
-            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
+            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL });
             if (cached) {
                 return cached;
             }

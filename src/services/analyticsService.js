@@ -103,7 +103,7 @@ class AnalyticsService {
 
         return await this.transformerAnalyticsBreaker.execute(async () => {
             // Проверяем кэш
-            const cached = await cacheService.get(cacheKey, { ttl: 120000 }); // 2 минуты
+            const cached = await cacheService.get(cacheKey, { ttl: 120 }); // 2 минуты
             if (cached) {
                 logger.debug('Список всех трансформаторов получен из кэша');
                 return cached;
@@ -133,7 +133,7 @@ class AnalyticsService {
 
         return await this.transformerAnalyticsBreaker.execute(async () => {
             // Проверяем кэш (короткий TTL для критических данных)
-            const cached = await cacheService.get(cacheKey, { ttl: 30000 }); // 30 секунд
+            const cached = await cacheService.get(cacheKey, { ttl: 30 }); // 30 секунд
             if (cached) {
                 logger.debug(`Перегруженные трансформаторы (>${actualThreshold}%) получены из кэша`);
                 return cached;
@@ -183,7 +183,7 @@ class AnalyticsService {
         const cacheKey = `transformer:${transformerId}:buildings:${maxDistance}:${limit}`;
 
         return await this.transformerAnalyticsBreaker.execute(async () => {
-            const cached = await cacheService.get(cacheKey, { ttl: 300000 }); // 5 минут
+            const cached = await cacheService.get(cacheKey, { ttl: 300 }); // 5 минут
             if (cached) {
                 return cached;
             }
@@ -200,7 +200,7 @@ class AnalyticsService {
         const cacheKey = `transformers:geo:${latitude}:${longitude}:${radiusMeters}`;
 
         return await this.transformerAnalyticsBreaker.execute(async () => {
-            const cached = await cacheService.get(cacheKey, { ttl: 600000 }); // 10 минут
+            const cached = await cacheService.get(cacheKey, { ttl: 600 }); // 10 минут
             if (cached) {
                 return cached;
             }
@@ -217,7 +217,7 @@ class AnalyticsService {
         const cacheKey = 'transformers:statistics';
 
         return await this.transformerAnalyticsBreaker.execute(async () => {
-            const cached = await cacheService.get(cacheKey, { ttl: 600000 }); // 10 минут
+            const cached = await cacheService.get(cacheKey, { ttl: 600 }); // 10 минут
             if (cached) {
                 return cached;
             }
@@ -234,7 +234,7 @@ class AnalyticsService {
         const cacheKey = 'analytics:load:by_zone';
 
         return await this.databaseBreaker.execute(async () => {
-            const cached = await cacheService.get(cacheKey, { ttl: 300000 }); // 5 минут
+            const cached = await cacheService.get(cacheKey, { ttl: 300 }); // 5 минут
             if (cached) {
                 return cached;
             }
@@ -269,7 +269,7 @@ class AnalyticsService {
         const cacheKey = `transformer:${transformerId}:forecast:${hours}h`;
 
         return await this.databaseBreaker.execute(async () => {
-            const cached = await cacheService.get(cacheKey, { ttl: 1800000 }); // 30 минут
+            const cached = await cacheService.get(cacheKey, { ttl: 1800 }); // 30 минут
             if (cached) {
                 return cached;
             }

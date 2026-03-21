@@ -319,7 +319,7 @@ class AuthService {
         try {
             const cacheKey = `${this.cachePrefix}:user:${userId}`;
 
-            const cached = await cacheService.get(cacheKey, { ttl: 300000 }); // 5 минут
+            const cached = await cacheService.get(cacheKey, { ttl: 300 }); // 5 минут
             if (cached) {
                 return cached;
             }
