@@ -70,8 +70,8 @@ services:
       - DB_NAME=infrasafe
       - DB_USER=postgres
       - DB_PASSWORD=postgres
-      - JWT_SECRET=dev-secret-key-change-in-production
-      - JWT_REFRESH_SECRET=dev-refresh-secret-key-change-in-production
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-key-change-in-production}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-dev-refresh-secret-key-change-in-production}
       - CORS_ORIGINS=http://localhost:8088,http://localhost:3000
     depends_on:
       postgres:
