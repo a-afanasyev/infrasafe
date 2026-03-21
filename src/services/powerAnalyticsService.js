@@ -68,10 +68,8 @@ const getBuildingsPower = async () => {
 };
 
 const getBuildingPower = async (buildingId) => {
-    const result = await db.query(
-        BUILDINGS_POWER_QUERY + ' HAVING b.building_id = $1',
-        [buildingId]
-    );
+    const wrappedQuery = `SELECT * FROM (${BUILDINGS_POWER_QUERY}) AS buildings_power WHERE building_id = $1`;
+    const result = await db.query(wrappedQuery, [buildingId]);
 
     if (result.rows.length === 0) {
         return null;
@@ -157,10 +155,8 @@ const getTransformersPower = async () => {
 };
 
 const getTransformerPower = async (transformerId) => {
-    const result = await db.query(
-        TRANSFORMERS_POWER_QUERY + ' HAVING t.transformer_id = $1',
-        [transformerId]
-    );
+    const wrappedQuery = `SELECT * FROM (${TRANSFORMERS_POWER_QUERY}) AS transformers_power WHERE transformer_id = $1`;
+    const result = await db.query(wrappedQuery, [transformerId]);
 
     if (result.rows.length === 0) {
         return null;

@@ -104,9 +104,28 @@ describe('powerAnalyticsService', () => {
             expect(result).toBeDefined();
             expect(result.building_id).toBe(5);
             expect(db.query).toHaveBeenCalledWith(
-                expect.stringContaining('HAVING b.building_id = $1'),
+                expect.stringContaining('WHERE building_id = $1'),
                 [5]
             );
+        });
+
+        test('getBuildingPower should use WHERE not HAVING', async () => {
+            db.query.mockResolvedValueOnce({
+                rows: [{
+                    building_id: 1, building_name: 'Test',
+                    controllers_count: '2',
+                    avg_voltage_ph1: 220, avg_voltage_ph2: 220, avg_voltage_ph3: 220,
+                    total_amperage_ph1: 10, total_amperage_ph2: 10, total_amperage_ph3: 10,
+                    last_measurement_time: new Date()
+                }],
+                rowCount: 1
+            });
+
+            await getBuildingPower(1);
+
+            const calledQuery = db.query.mock.calls[0][0];
+            expect(calledQuery).not.toContain('HAVING');
+            expect(calledQuery).toContain('WHERE building_id = $1');
         });
 
         test('returns null when building not found', async () => {
@@ -190,7 +209,7 @@ describe('powerAnalyticsService', () => {
 
             expect(result.id).toBe(3);
             expect(db.query).toHaveBeenCalledWith(
-                expect.stringContaining('HAVING t.transformer_id = $1'),
+                expect.stringContaining('WHERE transformer_id = $1'),
                 [3]
             );
         });
