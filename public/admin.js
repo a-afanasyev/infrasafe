@@ -1488,16 +1488,20 @@ document.addEventListener("DOMContentLoaded", function () {
         const prevBtn = document.getElementById(`${section}-prev-page`);
         const nextBtn = document.getElementById(`${section}-next-page`);
 
+        const currentPage = pagination[section].page;
+        const total = pagination[section].total || 0;
+        const totalPages = Math.max(1, Math.ceil(total / pagination[section].limit));
+
         if (pageInfo) {
-            const currentPage = pagination[section].page;
-            const totalPages = Math.ceil(pagination[section].total / pagination[section].limit);
             pageInfo.textContent = `Страница ${currentPage} из ${totalPages}`;
         }
 
+        // Clone buttons to remove all old event listeners (prevents leak)
         if (prevBtn) {
-            prevBtn.disabled = pagination[section].page <= 1;
-            // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-            prevBtn.addEventListener('click', () => {
+            const newPrev = prevBtn.cloneNode(true);
+            prevBtn.replaceWith(newPrev);
+            newPrev.disabled = currentPage <= 1;
+            newPrev.addEventListener('click', () => {
                 if (pagination[section].page > 1) {
                     pagination[section].page--;
                     dataLoaded[section] = false;
@@ -1507,12 +1511,12 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         if (nextBtn) {
-            const totalPages = Math.ceil(pagination[section].total / pagination[section].limit);
-            nextBtn.disabled = pagination[section].page >= totalPages;
-            // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-            nextBtn.addEventListener('click', () => {
-                const totalPages = Math.ceil(pagination[section].total / pagination[section].limit);
-                if (pagination[section].page < totalPages) {
+            const newNext = nextBtn.cloneNode(true);
+            nextBtn.replaceWith(newNext);
+            newNext.disabled = currentPage >= totalPages;
+            newNext.addEventListener('click', () => {
+                const tp = Math.max(1, Math.ceil((pagination[section].total || 0) / pagination[section].limit));
+                if (pagination[section].page < tp) {
                     pagination[section].page++;
                     dataLoaded[section] = false;
                     loadSectionData(section);
