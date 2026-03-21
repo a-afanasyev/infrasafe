@@ -26,7 +26,7 @@ class AlertController {
             logger.error('Ошибка получения активных алертов:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -54,9 +54,15 @@ class AlertController {
 
         } catch (error) {
             logger.error('Ошибка подтверждения алерта:', error);
+            if (error.message && error.message.includes('не найден')) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Алерт не найден или уже обработан'
+                });
+            }
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -84,9 +90,15 @@ class AlertController {
 
         } catch (error) {
             logger.error('Ошибка закрытия алерта:', error);
+            if (error.message && error.message.includes('не найден')) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Алерт не найден или уже обработан'
+                });
+            }
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -143,7 +155,7 @@ class AlertController {
             logger.error('Ошибка создания алерта:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -180,7 +192,7 @@ class AlertController {
             logger.error('Ошибка проверки трансформатора:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -200,7 +212,7 @@ class AlertController {
             logger.error('Ошибка массовой проверки трансформаторов:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -229,7 +241,7 @@ class AlertController {
             logger.error('Ошибка получения статистики алертов:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -248,7 +260,7 @@ class AlertController {
             logger.error('Ошибка получения порогов алертов:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -297,7 +309,7 @@ class AlertController {
             logger.error('Ошибка обновления порогов алертов:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -316,7 +328,7 @@ class AlertController {
             logger.error('Ошибка получения статуса системы алертов:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
