@@ -1075,18 +1075,37 @@
 
     <!-- Form to Add New Controller -->
     <h2>Добавить контроллер</h2>
-    <form id="add-controller-form">
-        <input type="text" id="controller-serial" placeholder="Серийный номер" required>
-        <input type="text" id="controller-vendor" placeholder="Производитель">
-        <input type="text" id="controller-model" placeholder="Модель">
-        <input type="number" id="controller-building-id" placeholder="ID здания" required>
-        <select id="controller-status">
-            <option value="online">В сети</option>
-            <option value="offline">Не в сети</option>
-            <option value="maintenance">Обслуживание</option>
-        </select>
-        <button type="submit">Добавить контроллер</button>
-    </form>
+    <div class="form-wrapper">
+        <form id="add-controller-form" class="horizontal-form">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="controller-serial">Серийный номер *</label>
+                    <input type="text" id="controller-serial" placeholder="Серийный номер" required>
+                </div>
+                <div class="form-group">
+                    <label for="controller-vendor">Производитель</label>
+                    <input type="text" id="controller-vendor" placeholder="Производитель">
+                </div>
+                <div class="form-group">
+                    <label for="controller-model">Модель</label>
+                    <input type="text" id="controller-model" placeholder="Модель">
+                </div>
+                <div class="form-group">
+                    <label for="controller-building-id">ID здания *</label>
+                    <input type="number" id="controller-building-id" placeholder="ID здания" required>
+                </div>
+                <div class="form-group">
+                    <label for="controller-status">Статус</label>
+                    <select id="controller-status">
+                        <option value="online">В сети</option>
+                        <option value="offline">Не в сети</option>
+                        <option value="maintenance">Обслуживание</option>
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="submit-btn">Добавить контроллер</button>
+        </form>
+    </div>
     </section>
 
     <!-- Transformers Section -->
@@ -1462,29 +1481,62 @@
 
     <!-- Form to Add New Water Source -->
     <h2>Добавить источник воды</h2>
-    <form id="add-water-source-form">
-        <input type="text" id="water-source-id" placeholder="ID источника" required>
-        <input type="text" id="water-source-name" placeholder="Название" required>
-        <input type="text" id="water-source-address" placeholder="Адрес" required>
-        <input type="number" step="0.000001" id="water-source-latitude" placeholder="Широта" required>
-        <input type="number" step="0.000001" id="water-source-longitude" placeholder="Долгота" required>
-        <select id="water-source-type" required>
-            <option value="">Выберите тип</option>
-            <option value="pumping_station">Насосная станция</option>
-            <option value="well">Скважина</option>
-            <option value="reservoir">Резервуар</option>
-        </select>
-        <input type="number" step="0.1" id="water-source-capacity" placeholder="Производительность (м³/ч)">
-        <input type="number" step="0.1" id="water-source-pressure" placeholder="Рабочее давление (бар)">
-        <input type="text" id="water-source-contact" placeholder="Контакт для обслуживания">
-        <textarea id="water-source-notes" placeholder="Примечания"></textarea>
-        <select id="water-source-status">
-            <option value="active">Активный</option>
-            <option value="inactive">Неактивный</option>
-            <option value="maintenance">На обслуживании</option>
-        </select>
-        <button type="submit">Добавить источник воды</button>
-    </form>
+    <div class="form-wrapper">
+        <form id="add-water-source-form" class="horizontal-form">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="water-source-name">Название *</label>
+                    <input type="text" id="water-source-name" placeholder="Название" required>
+                </div>
+                <div class="form-group">
+                    <label for="water-source-address">Адрес *</label>
+                    <input type="text" id="water-source-address" placeholder="Адрес" required>
+                </div>
+                <div class="form-group">
+                    <label for="water-source-latitude">Широта *</label>
+                    <input type="number" step="0.000001" id="water-source-latitude" placeholder="Широта" required min="-90" max="90">
+                </div>
+                <div class="form-group">
+                    <label for="water-source-longitude">Долгота *</label>
+                    <input type="number" step="0.000001" id="water-source-longitude" placeholder="Долгота" required min="-180" max="180">
+                </div>
+                <div class="form-group">
+                    <label for="water-source-type">Тип *</label>
+                    <select id="water-source-type" required>
+                        <option value="">Выберите тип</option>
+                        <option value="pumping_station">Насосная станция</option>
+                        <option value="well">Скважина</option>
+                        <option value="reservoir">Резервуар</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="water-source-capacity">Производительность (м³/ч)</label>
+                    <input type="number" step="0.1" id="water-source-capacity" placeholder="Производительность">
+                </div>
+                <div class="form-group">
+                    <label for="water-source-pressure">Рабочее давление (бар)</label>
+                    <input type="number" step="0.1" id="water-source-pressure" placeholder="Давление">
+                </div>
+                <div class="form-group">
+                    <label for="water-source-status">Статус</label>
+                    <select id="water-source-status">
+                        <option value="active">Активный</option>
+                        <option value="inactive">Неактивный</option>
+                        <option value="maintenance">На обслуживании</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="water-source-contact">Контакт для обслуживания</label>
+                    <input type="text" id="water-source-contact" placeholder="Контакт">
+                </div>
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label for="water-source-notes">Примечания</label>
+                    <textarea id="water-source-notes" placeholder="Примечания"></textarea>
+                </div>
+            </div>
+            <button type="submit" class="submit-btn">Добавить источник воды</button>
+        </form>
+    </div>
     </section>
 
     <!-- Heat Sources Section -->
@@ -1548,29 +1600,62 @@
 
     <!-- Form to Add New Heat Source -->
     <h2>Добавить источник тепла</h2>
-    <form id="add-heat-source-form">
-        <input type="text" id="heat-source-id" placeholder="ID источника" required>
-        <input type="text" id="heat-source-name" placeholder="Название" required>
-        <input type="text" id="heat-source-address" placeholder="Адрес" required>
-        <input type="number" step="0.000001" id="heat-source-latitude" placeholder="Широта" required>
-        <input type="number" step="0.000001" id="heat-source-longitude" placeholder="Долгота" required>
-        <select id="heat-source-type" required>
-            <option value="">Выберите тип</option>
-            <option value="boiler_house">Котельная</option>
-            <option value="heat_plant">Тепловая станция</option>
-            <option value="chp">ТЭЦ</option>
-        </select>
-        <input type="number" step="0.1" id="heat-source-capacity" placeholder="Тепловая мощность (МВт)">
-        <input type="text" id="heat-source-fuel" placeholder="Тип топлива">
-        <input type="text" id="heat-source-contact" placeholder="Контакт для обслуживания">
-        <textarea id="heat-source-notes" placeholder="Примечания"></textarea>
-        <select id="heat-source-status">
-            <option value="active">Активный</option>
-            <option value="inactive">Неактивный</option>
-            <option value="maintenance">На обслуживании</option>
-        </select>
-        <button type="submit">Добавить источник тепла</button>
-    </form>
+    <div class="form-wrapper">
+        <form id="add-heat-source-form" class="horizontal-form">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="heat-source-name">Название *</label>
+                    <input type="text" id="heat-source-name" placeholder="Название" required>
+                </div>
+                <div class="form-group">
+                    <label for="heat-source-address">Адрес *</label>
+                    <input type="text" id="heat-source-address" placeholder="Адрес" required>
+                </div>
+                <div class="form-group">
+                    <label for="heat-source-latitude">Широта *</label>
+                    <input type="number" step="0.000001" id="heat-source-latitude" placeholder="Широта" required min="-90" max="90">
+                </div>
+                <div class="form-group">
+                    <label for="heat-source-longitude">Долгота *</label>
+                    <input type="number" step="0.000001" id="heat-source-longitude" placeholder="Долгота" required min="-180" max="180">
+                </div>
+                <div class="form-group">
+                    <label for="heat-source-type">Тип *</label>
+                    <select id="heat-source-type" required>
+                        <option value="">Выберите тип</option>
+                        <option value="boiler_house">Котельная</option>
+                        <option value="heat_plant">Тепловая станция</option>
+                        <option value="chp">ТЭЦ</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="heat-source-capacity">Тепловая мощность (МВт)</label>
+                    <input type="number" step="0.1" id="heat-source-capacity" placeholder="Мощность">
+                </div>
+                <div class="form-group">
+                    <label for="heat-source-fuel">Тип топлива</label>
+                    <input type="text" id="heat-source-fuel" placeholder="Тип топлива">
+                </div>
+                <div class="form-group">
+                    <label for="heat-source-status">Статус</label>
+                    <select id="heat-source-status">
+                        <option value="active">Активный</option>
+                        <option value="inactive">Неактивный</option>
+                        <option value="maintenance">На обслуживании</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="heat-source-contact">Контакт для обслуживания</label>
+                    <input type="text" id="heat-source-contact" placeholder="Контакт">
+                </div>
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label for="heat-source-notes">Примечания</label>
+                    <textarea id="heat-source-notes" placeholder="Примечания"></textarea>
+                </div>
+            </div>
+            <button type="submit" class="submit-btn">Добавить источник тепла</button>
+        </form>
+    </div>
     </section>
 
     <!-- Metrics Section -->
