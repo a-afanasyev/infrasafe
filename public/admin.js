@@ -280,9 +280,10 @@ document.addEventListener("DOMContentLoaded", function () {
             section.classList.remove('active');
         });
 
-        // Убираем активный класс с кнопок
+        // Убираем активный класс с кнопок и обновляем aria-selected
         document.querySelectorAll('.nav-btn').forEach(btn => {
             btn.classList.remove('active');
+            btn.setAttribute('aria-selected', 'false');
         });
 
         // Показываем нужную секцию
@@ -295,6 +296,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const targetBtn = document.querySelector(`[data-section="${sectionName}"]`);
         if (targetBtn) {
             targetBtn.classList.add('active');
+            targetBtn.setAttribute('aria-selected', 'true');
         }
 
         // Загружаем данные для секции

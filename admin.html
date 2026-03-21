@@ -819,15 +819,15 @@
 
     <div class="admin-container" style="display: none;">
     <!-- Навигационное меню -->
-    <nav class="admin-nav">
-        <button class="nav-btn active" data-section="buildings">Здания</button>
-        <button class="nav-btn" data-section="controllers">Контроллеры</button>
-        <button class="nav-btn" data-section="transformers">Трансформаторы</button>
-        <button class="nav-btn" data-section="lines">Линии</button>
-        <button class="nav-btn" data-section="water-lines">Линии ХВС/ГВС</button>
-        <button class="nav-btn" data-section="water-sources">Источники воды</button>
-        <button class="nav-btn" data-section="heat-sources">Источники тепла</button>
-        <button class="nav-btn" data-section="metrics">Метрики</button>
+    <nav class="admin-nav" role="tablist" aria-label="Разделы администрирования">
+        <button class="nav-btn active" data-section="buildings" role="tab" aria-selected="true" aria-controls="buildings-section">Здания</button>
+        <button class="nav-btn" data-section="controllers" role="tab" aria-selected="false" aria-controls="controllers-section">Контроллеры</button>
+        <button class="nav-btn" data-section="transformers" role="tab" aria-selected="false" aria-controls="transformers-section">Трансформаторы</button>
+        <button class="nav-btn" data-section="lines" role="tab" aria-selected="false" aria-controls="lines-section">Линии</button>
+        <button class="nav-btn" data-section="water-lines" role="tab" aria-selected="false" aria-controls="water-lines-section">Линии ХВС/ГВС</button>
+        <button class="nav-btn" data-section="water-sources" role="tab" aria-selected="false" aria-controls="water-sources-section">Источники воды</button>
+        <button class="nav-btn" data-section="heat-sources" role="tab" aria-selected="false" aria-controls="heat-sources-section">Источники тепла</button>
+        <button class="nav-btn" data-section="metrics" role="tab" aria-selected="false" aria-controls="metrics-section">Метрики</button>
     </nav>
 
     <!-- Глобальный поиск -->
@@ -838,7 +838,7 @@
     </div>
 
     <!-- Buildings Section -->
-    <section id="buildings-section" class="admin-section active">
+    <section id="buildings-section" class="admin-section active" role="tabpanel" aria-label="Здания">
     <h2>Здания</h2>
 
     <!-- Фильтры для зданий -->
@@ -867,7 +867,7 @@
         <table id="buildings-table" border="1">
             <thead>
                 <tr>
-                    <th><input type="checkbox" id="buildings-select-all-checkbox"></th>
+                    <th><input type="checkbox" id="buildings-select-all-checkbox" aria-label="Выбрать все здания"></th>
                     <th class="sortable" data-column="building_id">ID ↕</th>
                     <th class="sortable" data-column="name">Название ↕</th>
                     <th class="sortable" data-column="address">Адрес ↕</th>
@@ -1012,7 +1012,7 @@
     </section>
 
     <!-- Controllers Section -->
-    <section id="controllers-section" class="admin-section">
+    <section id="controllers-section" class="admin-section" role="tabpanel" aria-label="Контроллеры">
     <h2>Контроллеры</h2>
 
     <!-- Фильтры для контроллеров -->
@@ -1050,7 +1050,7 @@
         <table id="controllers-table" border="1">
             <thead>
                 <tr>
-                    <th><input type="checkbox" id="controllers-select-all-checkbox"></th>
+                    <th><input type="checkbox" id="controllers-select-all-checkbox" aria-label="Выбрать все контроллеры"></th>
                     <th class="sortable" data-column="controller_id">ID ↕</th>
                     <th class="sortable" data-column="serial_number">Серийный номер ↕</th>
                     <th class="sortable" data-column="vendor">Производитель ↕</th>
@@ -1109,7 +1109,7 @@
     </section>
 
     <!-- Transformers Section -->
-    <section id="transformers-section" class="admin-section">
+    <section id="transformers-section" class="admin-section" role="tabpanel" aria-label="Трансформаторы">
     <h2>Трансформаторы</h2>
 
     <!-- Фильтры для трансформаторов -->
@@ -1139,7 +1139,7 @@
         <table id="transformers-table" border="1">
             <thead>
                 <tr>
-                    <th><input type="checkbox" id="transformers-select-all-checkbox"></th>
+                    <th><input type="checkbox" id="transformers-select-all-checkbox" aria-label="Выбрать все трансформаторы"></th>
                     <th class="sortable" data-column="transformer_id">ID ↕</th>
                     <th class="sortable" data-column="name">Название ↕</th>
                     <th class="sortable" data-column="power_kva">Мощность (кВА) ↕</th>
@@ -1218,7 +1218,7 @@
     </section>
 
     <!-- Lines Section -->
-    <section id="lines-section" class="admin-section">
+    <section id="lines-section" class="admin-section" role="tabpanel" aria-label="Линии">
     <h2>Линии электропередач</h2>
 
     <!-- Фильтры для линий -->
@@ -1250,7 +1250,7 @@
         <table id="lines-table" border="1">
             <thead>
                 <tr>
-                    <th><input type="checkbox" id="lines-select-all-checkbox"></th>
+                    <th><input type="checkbox" id="lines-select-all-checkbox" aria-label="Выбрать все линии"></th>
                     <th class="sortable" data-column="line_id">ID ↕</th>
                     <th class="sortable" data-column="name">Название ↕</th>
                     <th class="sortable" data-column="voltage_kv">Напряжение (кВ) ↕</th>
@@ -1284,7 +1284,7 @@
     </section>
 
     <!-- Water Lines Section -->
-    <section id="water-lines-section" class="admin-section">
+    <section id="water-lines-section" class="admin-section" role="tabpanel" aria-label="Линии ХВС/ГВС">
     <h2>Линии водоснабжения (ХВС/ГВС)</h2>
 
     <!-- Фильтры для линий водоснабжения -->
@@ -1333,7 +1333,7 @@
         <table id="water-lines-table" border="1">
             <thead>
                 <tr>
-                    <th><input type="checkbox" id="water-lines-select-all-checkbox"></th>
+                    <th><input type="checkbox" id="water-lines-select-all-checkbox" aria-label="Выбрать все линии водоснабжения"></th>
                     <th class="sortable" data-column="line_id">ID ↕</th>
                     <th class="sortable" data-column="name">Название ↕</th>
                     <th class="sortable" data-column="description">Описание ↕</th>
@@ -1421,7 +1421,7 @@
     </section>
 
     <!-- Water Sources Section -->
-    <section id="water-sources-section" class="admin-section">
+    <section id="water-sources-section" class="admin-section" role="tabpanel" aria-label="Источники воды">
     <h2>Источники холодной воды</h2>
 
     <!-- Фильтры для источников воды -->
@@ -1455,7 +1455,7 @@
         <table id="water-sources-table" border="1">
             <thead>
                 <tr>
-                    <th><input type="checkbox" id="water-sources-select-all-checkbox"></th>
+                    <th><input type="checkbox" id="water-sources-select-all-checkbox" aria-label="Выбрать все источники воды"></th>
                     <th class="sortable" data-column="id">ID ↕</th>
                     <th class="sortable" data-column="name">Название ↕</th>
                     <th class="sortable" data-column="address">Адрес ↕</th>
@@ -1540,7 +1540,7 @@
     </section>
 
     <!-- Heat Sources Section -->
-    <section id="heat-sources-section" class="admin-section">
+    <section id="heat-sources-section" class="admin-section" role="tabpanel" aria-label="Источники тепла">
     <h2>Источники тепла</h2>
 
     <!-- Фильтры для источников тепла -->
@@ -1574,7 +1574,7 @@
         <table id="heat-sources-table" border="1">
             <thead>
                 <tr>
-                    <th><input type="checkbox" id="heat-sources-select-all-checkbox"></th>
+                    <th><input type="checkbox" id="heat-sources-select-all-checkbox" aria-label="Выбрать все источники тепла"></th>
                     <th class="sortable" data-column="id">ID ↕</th>
                     <th class="sortable" data-column="name">Название ↕</th>
                     <th class="sortable" data-column="address">Адрес ↕</th>
@@ -1659,7 +1659,7 @@
     </section>
 
     <!-- Metrics Section -->
-    <section id="metrics-section" class="admin-section">
+    <section id="metrics-section" class="admin-section" role="tabpanel" aria-label="Метрики">
     <h2>Метрики</h2>
 
     <!-- Фильтры для метрик -->
@@ -1684,7 +1684,7 @@
         <table id="metrics-table" border="1">
             <thead>
                 <tr>
-                    <th><input type="checkbox" id="metrics-select-all-checkbox"></th>
+                    <th><input type="checkbox" id="metrics-select-all-checkbox" aria-label="Выбрать все метрики"></th>
                     <th class="sortable" data-column="metric_id">ID ↕</th>
                     <th class="sortable" data-column="controller_id">ID контроллера ↕</th>
                     <th class="sortable" data-column="timestamp">Время ↕</th>
@@ -1820,7 +1820,7 @@
     </section>
 
     <!-- Toast уведомления -->
-    <div id="toast-container"></div>
+    <div id="toast-container" aria-live="polite" role="status"></div>
 
     <!-- Модальные окна редактирования (скрыты по умолчанию) -->
     <!-- Модальное окно редактирования здания -->
