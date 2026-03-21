@@ -46,7 +46,7 @@ psql postgresql://postgres:postgres@localhost:5435/infrasafe
 # Init scripts run automatically via Docker entrypoint from database/init/
 # Schema: database/init/01_init_database.sql
 # Seed data: database/init/02_seed_data.sql
-# Migrations: database/migrations/003-006
+# Migrations: database/migrations/003-010
 ```
 
 ## Architecture
@@ -60,16 +60,22 @@ psql postgresql://postgres:postgres@localhost:5435/infrasafe
 `Nginx (8080)` -> `/api/*` proxied to -> `Express (3000)` -> `src/routes/index.js` (main router) -> per-entity route files -> controllers -> services -> models -> PostgreSQL
 
 ### Authentication
+- **Default-deny JWT** middleware in `src/routes/index.js` — all routes require auth by default
+- Public routes allowlist: POST `/auth/login`, POST `/auth/register`, POST `/auth/refresh`, POST `/metrics/telemetry`, GET `/buildings-metrics`, GET `/`
+- `optionalAuth` on `/buildings-metrics` — anonymous gets truncated data, authenticated gets full metrics
+- `isAdmin` guards on: admin routes, analytics transformer CRUD, power-analytics refresh, controller status updates
 - JWT with refresh tokens, blacklist, and account locking (`src/middleware/auth.js`)
-- GET requests are public; POST/PUT/DELETE/PATCH require Bearer token
-- Exception: `/api/metrics/telemetry` POST is public (device ingestion)
-- Auth routes (`/api/auth/*`) are excluded from JWT check
 
 ### Key Patterns
 - **Circuit Breaker**: `src/utils/circuitBreaker.js`, used in `analyticsService.js` for fault tolerance
 - **Multi-layer Caching**: `src/services/cacheService.js` (in-memory, Redis-ready)
 - **Alert Cooldown**: 15-minute cooldown between identical alerts in `src/services/alertService.js`
-- **SQL Injection Prevention**: Whitelist validation for sort/order params
+- **SQL Injection Prevention**: Whitelist validation via `src/utils/queryValidation.js` for sort/order params
+- **Standardized Responses**: `src/utils/apiResponse.js` — `sendError`, `sendNotFound`, `sendCreated`, `sendSuccess`
+- **Correlation ID**: `src/middleware/correlationId.js` — request tracing via `x-correlation-id` header
+- **Rate Limiting**: `src/middleware/rateLimiter.js` — brute-force and DDoS protection
+- **Graceful Shutdown**: SIGTERM/SIGINT handling in `src/server.js` — close HTTP server + DB pool
+- **Health Check**: `GET /health` — DB ping, returns `{ status: 'healthy' }` or 503
 
 ### API Routes (src/routes/index.js)
 All mounted under `/api`:
@@ -124,8 +130,14 @@ LOG_FILE=logs/app.log
 - **Test user**: testuser / TestPass123
 - **17 buildings** in Tashkent with coordinates, **34 metric records**
 
+## Test Suite
+- **175 tests** across **16 test suites**, all passing
+- Unit tests: `tests/jest/unit/` (10 files — services, controllers, models, middleware)
+- Integration tests: `tests/jest/integration/` (API, default-deny auth)
+- Security tests: `tests/jest/security/` (SQL injection, XSS, general security)
+
 ## Known Architecture Issues
 - `public/admin.js` (~2,300 lines) and `public/script.js` (~1,400 lines) are monolithic
 - Models execute SQL directly (no repository pattern), making unit testing harder
-- Some routes use `console.error` instead of the Winston logger
+- Some backend code uses `console.error` instead of Winston logger
 - Code duplication across water-related route files

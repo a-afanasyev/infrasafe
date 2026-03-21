@@ -1,112 +1,75 @@
-# ⚡ QUICK START - InfraSafe (20.10.2025)
+# QUICK START - InfraSafe
 
-## 🚀 Быстрый запуск
-
-### Генератор метрик
-```bash
-cd generator
-docker-compose -f docker-compose.generator.yml up -d
-open http://localhost:8081
-```
+## Быстрый запуск
 
 ### Основное приложение
 ```bash
-docker-compose -f docker-compose.dev.yml up -d
+docker compose -f docker-compose.dev.yml up --build -d
 open http://localhost:8080
+```
+
+### Генератор метрик (опционально)
+```bash
+docker compose -f docker-compose.generator.yml up -d
+open http://localhost:8081
 ```
 
 ---
 
-## 📍 URLs
+## URLs
 
 | Сервис | URL | Логин/Пароль |
 |--------|-----|--------------|
 | Карта | http://localhost:8080/ | - |
-| Админка | http://localhost:8080/admin.html | admin / Admin123 |
-| Генератор | http://localhost:8081 | - |
+| Админка | http://localhost:8080/admin.html | admin / admin123 |
+| Swagger UI | http://localhost:8080/api-docs | - |
 | API | http://localhost:3000/api | - |
+| Health Check | http://localhost:3000/health | - |
+| Генератор | http://localhost:8081 | - |
+| PostgreSQL | localhost:5435 | postgres / postgres |
 
 ---
 
-## ✅ Что работает
-
-### ⚡ Генератор (http://localhost:8081)
-- ✅ 14 полей настройки метрик
-- ✅ Автоматическая генерация (cron 2 мин)
-- ✅ Ручной запуск в UI
-- ✅ Интеграция с API
-
-### 🏢 Админка (http://localhost:8080/admin.html)
-- ✅ Удаление метрик (единичное и массовое)
-- ✅ Удаление зданий (обычное и каскадное)
-- ✅ Информативные диалоги
-- ✅ Защита от случайных удалений
-
-### 🗺️ Карта (http://localhost:8080/)
-- ✅ 33 маркера зданий (автозагрузка)
-- ✅ 16 маркеров трансформаторов
-- ✅ 17 маркеров контроллеров
-- ✅ Popup и tooltip для всех объектов
-- ✅ Включение/выключение слоёв
-
----
-
-## 📚 Документация
-
-| Документ | Описание |
-|----------|----------|
-| `SUMMARY.md` | Краткая сводка (1 страница) |
-| `IMPROVEMENTS-README.md` | Что нового |
-| `FINAL-WORK-SUMMARY.md` | Детальный отчёт |
-| `COMPLETE-SESSION-REPORT.md` | Полный отчёт сессии |
-| `docs/GENERATOR.md` | Руководство генератора |
-| `docs/BUILDING-DELETION-IMPROVEMENTS.md` | Улучшения админки |
-| `docs/MAP-LAYERS-IMPLEMENTATION-REPORT.md` | Слои карты |
-
----
-
-## 🐛 Решённые проблемы
-
-1. ✅ API недоступен из контейнера → `host.docker.internal`
-2. ✅ 401 Unauthorized → Пароль `Admin123`
-3. ✅ Пустой список зданий → `data?.data || data`
-4. ✅ Здания не удаляются → Каскадное удаление
-5. ✅ Слои не отображаются → 6 новых методов
-6. ✅ Координаты null → БД + Model
-7. ✅ Координаты как строки → `parseFloat()`
-
----
-
-## 📊 Статистика
-
-```
-Файлов изменено:     160
-Добавлено строк:     +25,714
-Удалено строк:       -1,544
-Коммит:              d6bf1b7
-Ветка:               frontend-development
-```
-
----
-
-## 🔧 Полезные команды
+## Тестирование
 
 ```bash
-# Проверка генератора
-curl http://localhost:8081/health
+npm test                  # Все 175 тестов
+npm run test:unit         # Unit-тесты
+npm run test:security     # Тесты безопасности
+npm run test:coverage     # С отчётом покрытия
+```
 
-# Логи генератора
-docker logs infrasafe-generator
+---
 
-# Проверка основного API
+## Полезные команды
+
+```bash
+# Логи
+docker compose -f docker-compose.dev.yml logs -f app
+docker compose -f docker-compose.dev.yml logs -f postgres
+
+# Health check
 curl http://localhost:3000/health
 
 # БД
-docker exec infrasafe-postgres-1 psql -U postgres -d infrasafe
+psql postgresql://postgres:postgres@localhost:5435/infrasafe
+
+# Остановка
+docker compose -f docker-compose.dev.yml down
+
+# Остановка с удалением данных
+docker compose -f docker-compose.dev.yml down -v
 ```
 
 ---
 
-**Статус**: ✅ Production Ready (98%)  
-**Дата**: 20 октября 2025
+## Документация
 
+| Документ | Описание |
+|----------|----------|
+| [README.md](README.md) | Основная документация |
+| [docs/API_AUTH_MATRIX.md](docs/API_AUTH_MATRIX.md) | Матрица авторизации API |
+| [docs/POWER-ANALYTICS-API.md](docs/POWER-ANALYTICS-API.md) | API аналитики электросетей |
+| [docs/GENERATOR.md](docs/GENERATOR.md) | Руководство генератора метрик |
+| [docs/DEVELOPMENT_DOCKER_GUIDE.md](docs/DEVELOPMENT_DOCKER_GUIDE.md) | Docker для разработки |
+| Swagger UI | http://localhost:8080/api-docs |
