@@ -266,8 +266,16 @@ class AuthService {
                 throw error;
             }
 
+            // Fetch password_hash separately (not cached by findUserById for security)
+            const hashResult = await db.query('SELECT password_hash FROM users WHERE user_id = $1', [userId]);
+            if (hashResult.rows.length === 0) {
+                const error = new Error('Пользователь не найден');
+                error.code = 'USER_NOT_FOUND';
+                throw error;
+            }
+
             // Проверяем текущий пароль
-            const isCurrentPasswordValid = await this.verifyPassword(currentPassword, user.password_hash);
+            const isCurrentPasswordValid = await this.verifyPassword(currentPassword, hashResult.rows[0].password_hash);
             if (!isCurrentPasswordValid) {
                 const error = new Error('Неверный текущий пароль');
                 error.code = 'INVALID_CURRENT_PASSWORD';
@@ -316,11 +324,12 @@ class AuthService {
                 return cached;
             }
 
-            const query = 'SELECT * FROM users WHERE user_id = $1';
+            const query = 'SELECT user_id, username, email, role, is_active, is_locked, created_at, updated_at FROM users WHERE user_id = $1';
             const result = await db.query(query, [userId]);
 
             if (result.rows.length > 0) {
-                const user = result.rows[0];
+                // Destructure to exclude password_hash from cached/returned object
+                const { password_hash, ...user } = result.rows[0];
                 await cacheService.set(cacheKey, user, { ttl: 300 });
                 return user;
             }
