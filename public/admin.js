@@ -60,6 +60,53 @@ document.addEventListener("DOMContentLoaded", function () {
     };
 
     // ===============================================
+    // MODAL UTILITIES
+    // ===============================================
+
+    function openModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (!modal) return;
+
+        modal.style.display = 'flex';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+
+        // Focus first input
+        const firstInput = modal.querySelector('input, select, textarea');
+        if (firstInput) setTimeout(() => firstInput.focus(), 50);
+
+        // Close on Escape
+        const escHandler = (e) => {
+            if (e.key === 'Escape') closeModal(modalId);
+        };
+        document.addEventListener('keydown', escHandler);
+        modal._escHandler = escHandler;
+
+        // Close on overlay click (not content click)
+        const clickHandler = (e) => {
+            if (e.target === modal) closeModal(modalId);
+        };
+        modal.addEventListener('click', clickHandler);
+        modal._clickHandler = clickHandler;
+    }
+
+    function closeModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (!modal) return;
+
+        modal.style.display = 'none';
+
+        if (modal._escHandler) {
+            document.removeEventListener('keydown', modal._escHandler);
+            delete modal._escHandler;
+        }
+        if (modal._clickHandler) {
+            modal.removeEventListener('click', modal._clickHandler);
+            delete modal._clickHandler;
+        }
+    }
+
+    // ===============================================
     // УТИЛИТЫ И ОБЩИЕ ФУНКЦИИ
     // ===============================================
 
@@ -1605,7 +1652,7 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             // Показываем модальное окно
-            document.getElementById('edit-building-modal').style.display = 'flex';
+            openModal('edit-building-modal');
 
         } catch (error) {
             console.error('Error loading building:', error);
@@ -1932,7 +1979,7 @@ document.addEventListener("DOMContentLoaded", function () {
             document.getElementById('edit-transformer-longitude').value = transformer.longitude || '';
 
             // Показываем модальное окно
-            document.getElementById('edit-transformer-modal').style.display = 'flex';
+            openModal('edit-transformer-modal');
         } catch (error) {
             console.error('Error loading transformer:', error);
             showToast('Ошибка загрузки данных трансформатора', 'error');
@@ -2038,7 +2085,7 @@ document.addEventListener("DOMContentLoaded", function () {
             document.getElementById('edit-water-source-status').value = source.status || 'active';
 
             // Показываем модальное окно
-            document.getElementById('edit-water-source-modal').style.display = 'flex';
+            openModal('edit-water-source-modal');
         } catch (error) {
             console.error('Error loading water source:', error);
             showToast('Ошибка загрузки данных источника воды', 'error');
@@ -2089,7 +2136,7 @@ document.addEventListener("DOMContentLoaded", function () {
             document.getElementById('edit-heat-source-status').value = source.status || 'active';
 
             // Показываем модальное окно
-            document.getElementById('edit-heat-source-modal').style.display = 'flex';
+            openModal('edit-heat-source-modal');
         } catch (error) {
             console.error('Error loading heat source:', error);
             showToast('Ошибка загрузки данных источника тепла', 'error');
@@ -2142,7 +2189,7 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!response.ok) throw new Error('Ошибка обновления трансформатора');
 
             showToast('Трансформатор успешно обновлен', 'success');
-            document.getElementById('edit-transformer-modal').style.display = 'none';
+            closeModal('edit-transformer-modal');
             dataLoaded.transformers = false;
             loadTransformers();
         } catch (error) {
@@ -2173,7 +2220,7 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!response.ok) throw new Error('Ошибка обновления линии');
 
             showToast('Линия успешно обновлена', 'success');
-            document.getElementById('edit-line-modal').style.display = 'none';
+            closeModal('edit-line-modal');
             dataLoaded.lines = false;
             loadLines();
         } catch (error) {
@@ -2210,7 +2257,7 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!response.ok) throw new Error('Ошибка обновления источника воды');
 
             showToast('Источник воды успешно обновлен', 'success');
-            document.getElementById('edit-water-source-modal').style.display = 'none';
+            closeModal('edit-water-source-modal');
             dataLoaded.waterSources = false;
             loadWaterSources();
         } catch (error) {
@@ -2247,7 +2294,7 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!response.ok) throw new Error('Ошибка обновления источника тепла');
 
             showToast('Источник тепла успешно обновлен', 'success');
-            document.getElementById('edit-heat-source-modal').style.display = 'none';
+            closeModal('edit-heat-source-modal');
             dataLoaded.heatSources = false;
             loadHeatSources();
         } catch (error) {
@@ -2258,19 +2305,19 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Обработчики кнопок отмены
     document.getElementById('cancel-edit-transformer').addEventListener('click', function() {
-        document.getElementById('edit-transformer-modal').style.display = 'none';
+        closeModal('edit-transformer-modal');
     });
 
     document.getElementById('cancel-edit-line').addEventListener('click', function() {
-        document.getElementById('edit-line-modal').style.display = 'none';
+        closeModal('edit-line-modal');
     });
 
     document.getElementById('cancel-edit-water-source').addEventListener('click', function() {
-        document.getElementById('edit-water-source-modal').style.display = 'none';
+        closeModal('edit-water-source-modal');
     });
 
     document.getElementById('cancel-edit-heat-source').addEventListener('click', function() {
-        document.getElementById('edit-heat-source-modal').style.display = 'none';
+        closeModal('edit-heat-source-modal');
     });
 
     // ===============================================
@@ -2979,11 +3026,11 @@ document.addEventListener("DOMContentLoaded", function () {
         document.getElementById('universal-cancel').addEventListener('click', closeUniversalModal);
 
         // Показываем модальное окно
-        modal.style.display = 'flex';
+        openModal('universal-modal');
     }
 
     function closeUniversalModal() {
-        document.getElementById('universal-modal').style.display = 'none';
+        closeModal('universal-modal');
     }
 
     // Создаем универсальное модальное окно
@@ -3116,7 +3163,7 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!response.ok) throw new Error('Ошибка обновления здания');
 
             showToast('Здание успешно обновлено', 'success');
-            document.getElementById('edit-building-modal').style.display = 'none';
+            closeModal('edit-building-modal');
             dataLoaded.buildings = false;
             loadBuildings();
 
@@ -3128,7 +3175,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Обработчик кнопки отмены редактирования здания
     document.getElementById('cancel-edit-building').addEventListener('click', () => {
-        document.getElementById('edit-building-modal').style.display = 'none';
+        closeModal('edit-building-modal');
     });
 
     // Обработчики для включения поставщиков при выборе линий (форма редактирования)
