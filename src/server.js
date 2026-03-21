@@ -48,7 +48,8 @@ app.use(cors({
 })); // CORS
 app.use(express.json({ limit: '1mb' })); // Парсинг JSON
 app.use(correlationId); // Correlation ID для трейсинга запросов
-app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } })); // Логирование HTTP запросов
+morgan.token('safepath', (req) => req.path); // path without query string
+app.use(morgan(':method :safepath :status :response-time ms', { stream: { write: message => logger.info(message.trim()) } })); // Логирование HTTP запросов
 
 // Health check endpoint для Docker
 app.get('/health', async (req, res) => {
@@ -131,15 +132,22 @@ db.init()
 // Graceful shutdown
 const gracefulShutdown = async (signal) => {
     logger.info(`Received ${signal}, starting graceful shutdown...`);
+    const forceExit = setTimeout(() => {
+        logger.error('Forced exit after timeout');
+        process.exit(1);
+    }, 10000);
+    forceExit.unref();
+
     if (server) {
-        server.close(() => logger.info('HTTP server closed'));
+        await new Promise(resolve => server.close(resolve));
+        logger.info('HTTP server closed');
     }
     try {
         await db.close();
+        logger.info('Database connection closed');
     } catch (e) {
         logger.error('DB close error:', e);
     }
-    setTimeout(() => process.exit(1), 10000).unref();
     process.exit(0);
 };
 
