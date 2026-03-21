@@ -1,4 +1,4 @@
-const pool = require('../config/database');
+const db = require('../config/database');
 const logger = require('../utils/logger');
 
 /**
@@ -15,7 +15,7 @@ class AdminService {
      */
     async batchDelete(tableName, idColumn, ids) {
         const query = `DELETE FROM ${tableName} WHERE ${idColumn} = ANY($1) RETURNING ${idColumn}`;
-        const result = await pool.query(query, [ids]);
+        const result = await db.query(query, [ids]);
         logger.info(`Batch delete from ${tableName}: ${result.rowCount} rows removed`);
         return result;
     }
@@ -31,7 +31,7 @@ class AdminService {
      */
     async batchUpdateColumn(tableName, idColumn, ids, column, value) {
         const query = `UPDATE ${tableName} SET ${column} = $1, updated_at = NOW() WHERE ${idColumn} = ANY($2) RETURNING ${idColumn}`;
-        const result = await pool.query(query, [value, ids]);
+        const result = await db.query(query, [value, ids]);
         logger.info(`Batch update ${column} in ${tableName}: ${result.rowCount} rows updated`);
         return result;
     }
