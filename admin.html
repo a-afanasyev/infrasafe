@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Database Admin Panel</title>
+    <title>InfraSafe - Администрирование</title>
     <link rel="icon" type="image/svg+xml" href="public/images/favicon.svg">
     <!-- Скрипт подключается в конце body -->
     <style>
@@ -45,7 +45,7 @@
             margin-bottom: 20px;
             background-color: white;
             /* Предотвращаем изменение размеров таблицы при загрузке данных */
-            table-layout: fixed;
+            table-layout: auto;
             /* Добавляем тень для лучшего визуального разделения */
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
             /* Предотвращаем мерцание при рендеринге */
@@ -209,7 +209,8 @@
             position: relative;
             min-height: 100px;
             /* Предотвращаем изменение размеров контейнера при загрузке данных */
-            overflow: hidden;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
             /* Добавляем плавное появление */
             transition: opacity 0.3s ease-in-out;
             /* Устанавливаем начальную прозрачность */
@@ -779,6 +780,7 @@
         <h1>🏢 InfraSafe - Администрирование</h1>
     </div>
 
+    <div class="admin-container" style="display: none;">
     <!-- Навигационное меню -->
     <nav class="admin-nav">
         <button class="nav-btn active" data-section="buildings">Здания</button>
@@ -823,7 +825,7 @@
     </div>
 
     <!-- Buildings Table -->
-    <h2>Buildings</h2>
+    <h2>Таблица зданий</h2>
     <div class="table-container">
         <table id="buildings-table" border="1" class="multi-row-table">
             <thead>
@@ -999,9 +1001,9 @@
         </select>
         <select id="controllers-status-filter">
             <option value="">Все статусы</option>
-            <option value="online">Online</option>
-            <option value="offline">Offline</option>
-            <option value="maintenance">Maintenance</option>
+            <option value="online">В сети</option>
+            <option value="offline">Не в сети</option>
+            <option value="maintenance">Обслуживание</option>
         </select>
         <button id="controllers-apply-filters">Применить</button>
         <button id="controllers-clear-filters">Очистить</button>
@@ -1013,15 +1015,15 @@
         <button id="controllers-bulk-delete" disabled>Удалить выбранные</button>
         <button id="controllers-bulk-status" disabled>Изменить статус</button>
         <select id="controllers-bulk-status-select" disabled>
-            <option value="online">Online</option>
-            <option value="offline">Offline</option>
-            <option value="maintenance">Maintenance</option>
+            <option value="online">В сети</option>
+            <option value="offline">Не в сети</option>
+            <option value="maintenance">Обслуживание</option>
         </select>
         <button id="controllers-export">Экспорт в CSV</button>
     </div>
 
     <!-- Controllers Table -->
-    <h2>Controllers</h2>
+    <h2>Таблица контроллеров</h2>
     <div class="table-container">
         <table id="controllers-table" border="1">
             <thead>
@@ -1050,18 +1052,18 @@
     </div>
 
     <!-- Form to Add New Controller -->
-    <h2>Add New Controller</h2>
+    <h2>Добавить контроллер</h2>
     <form id="add-controller-form">
-        <input type="text" id="controller-serial" placeholder="Serial Number" required>
-        <input type="text" id="controller-vendor" placeholder="Vendor">
-        <input type="text" id="controller-model" placeholder="Model">
-        <input type="number" id="controller-building-id" placeholder="Building ID" required>
+        <input type="text" id="controller-serial" placeholder="Серийный номер" required>
+        <input type="text" id="controller-vendor" placeholder="Производитель">
+        <input type="text" id="controller-model" placeholder="Модель">
+        <input type="number" id="controller-building-id" placeholder="ID здания" required>
         <select id="controller-status">
-            <option value="online">Online</option>
-            <option value="offline">Offline</option>
-            <option value="maintenance">Maintenance</option>
+            <option value="online">В сети</option>
+            <option value="offline">Не в сети</option>
+            <option value="maintenance">Обслуживание</option>
         </select>
-        <button type="submit">Add Controller</button>
+        <button type="submit">Добавить контроллер</button>
     </form>
     </section>
 
@@ -1570,7 +1572,7 @@
     </div>
 
     <!-- Metrics Table -->
-    <h2>Latest Metrics</h2>
+    <h2>Последние метрики</h2>
     <div class="table-container">
         <table id="metrics-table" border="1">
             <thead>
@@ -1851,9 +1853,9 @@
                 <input type="text" id="edit-controller-model" placeholder="Модель">
                 <input type="number" id="edit-controller-building-id" placeholder="ID здания" required>
                 <select id="edit-controller-status">
-                    <option value="online">Online</option>
-                    <option value="offline">Offline</option>
-                    <option value="maintenance">Maintenance</option>
+                    <option value="online">В сети</option>
+                    <option value="offline">Не в сети</option>
+                    <option value="maintenance">Обслуживание</option>
                 </select>
                 <div class="form-buttons">
                     <button type="submit">Сохранить</button>
@@ -1998,6 +2000,8 @@
             </form>
         </div>
     </div>
+
+    </div><!-- /.admin-container -->
 
     <!-- Подключение DOMPurify для защиты от XSS -->
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.7/dist/purify.min.js"></script>
