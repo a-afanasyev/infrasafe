@@ -29,6 +29,7 @@ class AdminAuth {
                 this.hideLoginForm();
                 this.showAdminPanel();
                 this.setupAuthHeaders();
+                window.dispatchEvent(new CustomEvent('admin-auth-ready'));
             } else {
                 this.logout();
             }
@@ -56,6 +57,7 @@ class AdminAuth {
                 this.hideLoginForm();
                 this.showAdminPanel();
                 this.setupAuthHeaders();
+                window.dispatchEvent(new CustomEvent('admin-auth-ready'));
                 return true;
             } else {
                 const errorData = await response.json();

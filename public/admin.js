@@ -1506,7 +1506,14 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     // Загружаем данные для активной секции при старте
-    loadSectionData('buildings');
+    // Ждём готовности auth — иначе запрос уйдёт без JWT и вернёт 401
+    if (window.adminAuth && window.adminAuth.isAuthenticated) {
+        loadSectionData('buildings');
+    } else {
+        window.addEventListener('admin-auth-ready', () => {
+            loadSectionData('buildings');
+        }, { once: true });
+    }
 
     // Показываем таблицы после загрузки
     document.querySelectorAll('.table-container').forEach(container => {
