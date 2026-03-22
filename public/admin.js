@@ -10,7 +10,8 @@ document.addEventListener("DOMContentLoaded", function () {
         'water-lines': { page: 1, limit: 10, total: 0 },
         metrics: { page: 1, limit: 10, total: 0 },
         waterSources: { page: 1, limit: 10, total: 0 },
-        heatSources: { page: 1, limit: 10, total: 0 }
+        heatSources: { page: 1, limit: 10, total: 0 },
+        alerts: { page: 1, limit: 10, total: 0 }
     };
 
     // Флаги для отслеживания загрузки данных
@@ -22,7 +23,8 @@ document.addEventListener("DOMContentLoaded", function () {
         'water-lines': false,
         metrics: false,
         waterSources: false,
-        heatSources: false
+        heatSources: false,
+        alerts: false
     };
 
     // Состояние фильтров
@@ -34,7 +36,8 @@ document.addEventListener("DOMContentLoaded", function () {
         'water-lines': {},
         metrics: {},
         waterSources: {},
-        heatSources: {}
+        heatSources: {},
+        alerts: {}
     };
 
     // Состояние сортировки
@@ -44,7 +47,8 @@ document.addEventListener("DOMContentLoaded", function () {
         transformers: { column: 'transformer_id', direction: 'asc' },
         lines: { column: 'line_id', direction: 'asc' },
         'water-lines': { column: 'line_id', direction: 'asc' },
-        metrics: { column: 'metric_id', direction: 'desc' }
+        metrics: { column: 'metric_id', direction: 'desc' },
+        alerts: { column: 'created_at', direction: 'desc' }
     };
 
     // Выбранные элементы для batch операций
@@ -56,7 +60,8 @@ document.addEventListener("DOMContentLoaded", function () {
         'water-lines': new Set(),
         metrics: new Set(),
         waterSources: new Set(),
-        heatSources: new Set()
+        heatSources: new Set(),
+        alerts: new Set()
     };
 
     // Entity cache for displaying names instead of IDs
@@ -386,6 +391,9 @@ document.addEventListener("DOMContentLoaded", function () {
                 break;
             case 'heat-sources':
                 if (!dataLoaded.heatSources) loadHeatSources();
+                break;
+            case 'alerts':
+                if (!dataLoaded.alerts) loadAlerts();
                 break;
         }
     }
@@ -982,6 +990,131 @@ document.addEventListener("DOMContentLoaded", function () {
             ]
         });
     }
+
+    // ===============================================
+    // ЗАГРУЗКА ТРЕВОГ
+    // ===============================================
+
+    async function loadAlerts() {
+        if (dataLoaded.alerts) return;
+        showLoadingMessage("#alerts-table tbody", "9");
+
+        try {
+            const data = await loadData('/api/alerts', 'alerts');
+            renderAlertsTable(data);
+            updatePagination('alerts');
+            dataLoaded.alerts = true;
+        } catch (error) {
+            console.error("Error loading alerts:", error);
+            showErrorMessage("#alerts-table tbody", "9");
+        }
+    }
+
+    function getAlertStatusLabel(status) {
+        const labels = {
+            'active': 'Активная',
+            'acknowledged': 'Подтверждена',
+            'resolved': 'Закрыта'
+        };
+        return labels[status] || status;
+    }
+
+    function getInfraTypeLabel(type) {
+        const labels = {
+            'transformer': 'Трансформатор',
+            'controller': 'Контроллер',
+            'water_source': 'Источник воды',
+            'heat_source': 'Источник тепла'
+        };
+        return labels[type] || type;
+    }
+
+    function renderAlertsTable(data) {
+        renderEntityTable({
+            tableId: 'alerts-table',
+            entityType: 'alerts',
+            idKey: 'alert_id',
+            data,
+            columns: [
+                { key: 'alert_id', label: 'ID' },
+                { key: 'infrastructure_type', label: 'Тип', render: (val) => getInfraTypeLabel(val) },
+                { key: 'severity', label: 'Важность', render: (val) => {
+                    const span = document.createElement('span');
+                    span.className = 'severity-badge severity-' + (val || '').toLowerCase();
+                    span.textContent = val;
+                    return span;
+                }},
+                { key: 'message', label: 'Сообщение' },
+                { key: 'infrastructure_id', label: 'Объект' },
+                { key: 'status', label: 'Статус', render: (val) => {
+                    const span = document.createElement('span');
+                    span.className = 'alert-status-badge alert-status-' + val;
+                    span.textContent = getAlertStatusLabel(val);
+                    return span;
+                }},
+                { key: 'created_at', label: 'Создан', render: (val) => formatDate(val) }
+            ],
+            actions: [
+                {
+                    label: 'Подтвердить',
+                    className: 'btn-sm',
+                    condition: (item) => item.status === 'active',
+                    handler: (item) => acknowledgeAlert(item.alert_id)
+                },
+                {
+                    label: 'Закрыть',
+                    className: 'btn-sm btn-danger',
+                    condition: (item) => item.status !== 'resolved',
+                    handler: (item) => resolveAlert(item.alert_id)
+                }
+            ]
+        });
+    }
+
+    async function acknowledgeAlert(alertId) {
+        if (!confirm('Подтвердить тревогу?')) return;
+        try {
+            const response = await fetch('/api/alerts/' + alertId + '/acknowledge', { method: 'PATCH' });
+            if (!response.ok) throw new Error('Ошибка подтверждения');
+            showToast('Тревога подтверждена', 'success');
+            dataLoaded.alerts = false;
+            loadAlerts();
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function resolveAlert(alertId) {
+        if (!confirm('Закрыть тревогу?')) return;
+        try {
+            const response = await fetch('/api/alerts/' + alertId + '/resolve', { method: 'PATCH' });
+            if (!response.ok) throw new Error('Ошибка закрытия');
+            showToast('Тревога закрыта', 'success');
+            dataLoaded.alerts = false;
+            loadAlerts();
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    // Alert filter handlers
+    ['alert-filter-severity', 'alert-filter-status', 'alert-filter-infra'].forEach(filterId => {
+        const el = document.getElementById(filterId);
+        if (el) {
+            el.addEventListener('change', function() {
+                filters.alerts = {};
+                const severity = document.getElementById('alert-filter-severity').value;
+                const status = document.getElementById('alert-filter-status').value;
+                const infra = document.getElementById('alert-filter-infra').value;
+                if (severity) filters.alerts.severity = severity;
+                if (status) filters.alerts.status = status;
+                if (infra) filters.alerts.infrastructure_type = infra;
+                pagination.alerts.page = 1;
+                dataLoaded.alerts = false;
+                loadAlerts();
+            });
+        }
+    });
 
     // ===============================================
     // УТИЛИТЫ ДЛЯ ФОРМАТИРОВАНИЯ
