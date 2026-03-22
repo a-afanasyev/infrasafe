@@ -59,6 +59,25 @@ document.addEventListener("DOMContentLoaded", function () {
         heatSources: new Set()
     };
 
+    // Entity cache for displaying names instead of IDs
+    const entityCache = {
+        buildings: {},
+        controllers: {},
+        transformers: {}
+    };
+
+    async function loadEntityCache() {
+        const fetches = [
+            fetch('/api/buildings?limit=200').then(r => r.json()).then(d => d.data || []).catch(() => []),
+            fetch('/api/controllers?limit=200').then(r => r.json()).then(d => d.data || []).catch(() => []),
+            fetch('/api/transformers?limit=200').then(r => r.json()).then(d => d.data || []).catch(() => [])
+        ];
+        const [buildings, controllers, transformers] = await Promise.all(fetches);
+        buildings.forEach(b => { entityCache.buildings[b.building_id] = b.name; });
+        controllers.forEach(c => { entityCache.controllers[c.controller_id] = c.serial_number; });
+        transformers.forEach(t => { entityCache.transformers[t.transformer_id] = t.name; });
+    }
+
     // ===============================================
     // MODAL UTILITIES
     // ===============================================
@@ -385,7 +404,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 { key: 'serial_number', label: 'Серийный номер' },
                 { key: 'vendor', label: 'Производитель' },
                 { key: 'model', label: 'Модель' },
-                { key: 'building_id', label: 'Здание' },
+                { key: 'building_id', label: 'Здание', render: (val) => entityCache.buildings[val] || val },
                 { key: 'status', label: 'Статус', render: (val) => {
                     const statusClass = val === 'online' ? 'status-online' :
                                         val === 'offline' ? 'status-offline' : 'status-maintenance';
@@ -432,7 +451,7 @@ document.addEventListener("DOMContentLoaded", function () {
             data,
             columns: [
                 { key: 'metric_id', label: 'ID' },
-                { key: 'controller_id', label: 'Контроллер' },
+                { key: 'controller_id', label: 'Контроллер', render: (val) => entityCache.controllers[val] || val },
                 { key: 'timestamp', label: 'Время', render: (v) => formatDate(v) },
                 { key: 'electricity_ph1', label: 'Эл. Ф1', render: (v) => formatNumber(v, 1) },
                 { key: 'electricity_ph2', label: 'Эл. Ф2', render: (v) => formatNumber(v, 1) },
@@ -838,7 +857,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 { key: 'name', label: 'Название' },
                 { key: 'voltage_kv', label: 'Напряжение, кВ', render: (v) => formatNumber(v, 1) },
                 { key: 'length_km', label: 'Длина, км', render: (v) => formatNumber(v, 3) },
-                { key: 'transformer_id', label: 'Трансформатор' }
+                { key: 'transformer_id', label: 'Трансформатор', render: (val) => entityCache.transformers[val] || val }
             ],
             actions: [
                 { label: 'Изменить', className: 'btn-sm', handler: (item) => editLine(item.line_id) },
@@ -1322,9 +1341,10 @@ document.addEventListener("DOMContentLoaded", function () {
     // Загружаем данные для активной секции при старте
     // Ждём готовности auth — иначе запрос уйдёт без JWT и вернёт 401
     if (window.adminAuth && window.adminAuth.isAuthenticated) {
-        loadSectionData('buildings');
+        loadEntityCache().then(() => loadSectionData('buildings'));
     } else {
-        window.addEventListener('admin-auth-ready', () => {
+        window.addEventListener('admin-auth-ready', async () => {
+            await loadEntityCache();
             loadSectionData('buildings');
         }, { once: true });
     }
@@ -1563,6 +1583,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     if (!updateResponse.ok) throw new Error('Ошибка обновления контроллера');
 
                     showToast('Контроллер успешно обновлен', 'success');
+                    loadEntityCache();
                     dataLoaded.controllers = false;
                     loadControllers();
                 }
@@ -1909,6 +1930,7 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!response.ok) throw new Error('Ошибка обновления трансформатора');
 
             showToast('Трансформатор успешно обновлен', 'success');
+            loadEntityCache();
             closeModal('edit-transformer-modal');
             dataLoaded.transformers = false;
             loadTransformers();
@@ -2415,6 +2437,7 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             showToast('Здание успешно добавлено', 'success');
+            loadEntityCache();
 
             // Очищаем форму
             document.getElementById('add-building-form').reset();
@@ -2460,6 +2483,7 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             showToast('Контроллер успешно добавлен', 'success');
+            loadEntityCache();
 
             // Очищаем форму
             document.getElementById('add-controller-form').reset();
@@ -2606,6 +2630,7 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             showToast('Трансформатор успешно добавлен', 'success');
+            loadEntityCache();
 
             // Очищаем форму
             document.getElementById('add-transformer-form').reset();
@@ -2883,6 +2908,7 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!response.ok) throw new Error('Ошибка обновления здания');
 
             showToast('Здание успешно обновлено', 'success');
+            loadEntityCache();
             closeModal('edit-building-modal');
             dataLoaded.buildings = false;
             loadBuildings();
