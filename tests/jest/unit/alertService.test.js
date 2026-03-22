@@ -81,4 +81,55 @@ describe('AlertService', () => {
       expect(db.query.mock.calls[0][1]).toEqual([7]);
     });
   });
+
+  describe('getActiveAlerts', () => {
+    test('defaults to status=active when no filter provided', async () => {
+      db.query
+        .mockResolvedValueOnce({ rows: [{ total: '0' }] })
+        .mockResolvedValueOnce({ rows: [] });
+
+      await alertService.getActiveAlerts();
+
+      const [countQuery, countParams] = db.query.mock.calls[0];
+      expect(countParams[0]).toBe('active');
+    });
+
+    test('uses provided status filter', async () => {
+      db.query
+        .mockResolvedValueOnce({ rows: [{ total: '2' }] })
+        .mockResolvedValueOnce({ rows: [{ alert_id: 1 }, { alert_id: 2 }] });
+
+      const result = await alertService.getActiveAlerts({ status: 'acknowledged' });
+
+      const [, countParams] = db.query.mock.calls[0];
+      expect(countParams[0]).toBe('acknowledged');
+      expect(result.total).toBe(2);
+      expect(result.data).toHaveLength(2);
+    });
+
+    test('applies pagination offset correctly', async () => {
+      db.query
+        .mockResolvedValueOnce({ rows: [{ total: '50' }] })
+        .mockResolvedValueOnce({ rows: [] });
+
+      await alertService.getActiveAlerts({}, { page: 3, limit: 10 });
+
+      const [dataQuery, dataParams] = db.query.mock.calls[1];
+      // limit=10, offset=(3-1)*10=20
+      expect(dataParams).toContain(10);
+      expect(dataParams).toContain(20);
+    });
+
+    test('validates sort column against whitelist, falls back to created_at', async () => {
+      db.query
+        .mockResolvedValueOnce({ rows: [{ total: '0' }] })
+        .mockResolvedValueOnce({ rows: [] });
+
+      await alertService.getActiveAlerts({}, { sort: 'DROP TABLE infrastructure_alerts;--' });
+
+      const [dataQuery] = db.query.mock.calls[1];
+      expect(dataQuery).toContain('ORDER BY ia.created_at');
+      expect(dataQuery).not.toContain('DROP');
+    });
+  });
 });

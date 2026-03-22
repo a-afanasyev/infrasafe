@@ -94,7 +94,7 @@ jest.mock('../../../src/services/controllerService', () => ({
 
 // Alert service (alertController → alertService)
 jest.mock('../../../src/services/alertService', () => ({
-    getActiveAlerts: jest.fn().mockResolvedValue([]),
+    getActiveAlerts: jest.fn().mockResolvedValue({ data: [], total: 0 }),
     createAlert: jest.fn().mockResolvedValue({ alert_id: 1 }),
     acknowledgeAlert: jest.fn().mockResolvedValue({ alert_id: 1 }),
     resolveAlert: jest.fn().mockResolvedValue({ alert_id: 1 }),

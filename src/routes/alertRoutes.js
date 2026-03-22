@@ -340,7 +340,7 @@ router.post('/', applyCrudRateLimit, alertController.createAlert);
  *                 data:
  *                   $ref: '#/components/schemas/Alert'
  */
-router.patch('/:alertId/acknowledge', applyCrudRateLimit, alertController.acknowledgeAlert);
+router.patch('/:alertId/acknowledge', applyCrudRateLimit, isAdmin, alertController.acknowledgeAlert);
 
 /**
  * @swagger
@@ -372,7 +372,7 @@ router.patch('/:alertId/acknowledge', applyCrudRateLimit, alertController.acknow
  *                 data:
  *                   $ref: '#/components/schemas/Alert'
  */
-router.patch('/:alertId/resolve', applyCrudRateLimit, alertController.resolveAlert);
+router.patch('/:alertId/resolve', applyCrudRateLimit, isAdmin, alertController.resolveAlert);
 
 // === НАСТРОЙКИ АЛЕРТОВ ===
 
