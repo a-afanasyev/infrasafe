@@ -197,58 +197,6 @@ document.addEventListener("DOMContentLoaded", function () {
         return noDataRow;
     }
 
-    // БЕЗОПАСНАЯ функция для создания строки таблицы buildings (ИСПРАВЛЕНИЕ XSS)
-    function createSecureBuildingRow(building, rowType) {
-        const row = document.createElement('tr');
-        row.className = `building-row-${rowType}`;
-        
-        if (rowType === 1) {
-            // Строка 1: Основная информация
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.className = 'item-checkbox';
-            checkbox.setAttribute('data-id', building.building_id);
-            
-            const editBtn = document.createElement('button');
-            editBtn.className = 'btn-sm';
-            editBtn.textContent = 'Изменить';
-            // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-            editBtn.addEventListener('click', () => editBuilding(building.building_id));
-
-            const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'btn-sm btn-danger';
-            deleteBtn.textContent = 'Удалить';
-            // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-            deleteBtn.addEventListener('click', () => deleteBuilding(building.building_id));
-            
-            const buttonCell = document.createElement('td');
-            buttonCell.setAttribute('rowspan', '3');
-            buttonCell.appendChild(editBtn);
-            buttonCell.appendChild(document.createElement('br'));
-            buttonCell.appendChild(deleteBtn);
-            
-            row.appendChild(createSecureTableCell(checkbox, {rowspan: 3}));
-            row.appendChild(createSecureTableCell(safeValue(building.building_id), {rowspan: 3}));
-            row.appendChild(createSecureTableCell(safeValue(building.name), {rowspan: 3}));
-            row.appendChild(createSecureTableCell(safeValue(building.address)));
-            row.appendChild(createSecureTableCell(safeValue(building.town)));
-            row.appendChild(createSecureTableCell(safeValue(building.region)));
-            row.appendChild(createSecureTableCell(formatNumber(building.latitude, 6)));
-            row.appendChild(createSecureTableCell(formatNumber(building.longitude, 6)));
-            row.appendChild(buttonCell);
-            
-        } else if (rowType === 2) {
-            // Строка 2: Инфраструктура
-            row.appendChild(createSecureTableCell(safeValue(building.management_company)));
-            row.appendChild(createSecureTableCell(building.hot_water ? "Да" : "Нет"));
-            row.appendChild(createSecureTableCell(safeValue(building.primary_transformer_name)));
-            row.appendChild(createSecureTableCell(safeValue(building.backup_transformer_name)));
-            row.appendChild(createSecureTableCell(safeValue(building.primary_line_name)));
-        }
-        
-        return row;
-    }
-
     // Функция для форматирования чисел
     function formatNumber(value, decimals = 2) {
         if (value === null || value === undefined || value === '') return 'N/A';
