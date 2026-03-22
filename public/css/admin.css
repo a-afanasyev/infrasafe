@@ -851,3 +851,22 @@ form {
     background: #e8f5e9;
     color: #2e7d32;
 }
+
+/* Metrics form alignment with horizontal-form */
+.horizontal-form .form-section {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-surface);
+}
+
+.horizontal-form .form-row {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.horizontal-form .form-row .form-group {
+    flex: 1;
+}
