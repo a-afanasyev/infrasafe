@@ -33,6 +33,8 @@
         <button class="nav-btn" data-section="water-lines" role="tab" aria-selected="false" aria-controls="water-lines-section">Линии ХВС/ГВС</button>
         <button class="nav-btn" data-section="water-sources" role="tab" aria-selected="false" aria-controls="water-sources-section">Источники воды</button>
         <button class="nav-btn" data-section="heat-sources" role="tab" aria-selected="false" aria-controls="heat-sources-section">Источники тепла</button>
+        <span class="nav-separator">|</span>
+        <button class="nav-btn" id="alerts-tab" data-section="alerts" role="tab" aria-selected="false" aria-controls="alerts-section">🚨 Тревоги</button>
     </nav>
 
     <!-- Глобальный поиск -->
@@ -1301,6 +1303,65 @@
             </form>
         </div>
     </div>
+
+    <!-- Тревоги -->
+    <section id="alerts-section" class="admin-section" role="tabpanel" aria-labelledby="alerts-tab">
+        <h2>🚨 Тревоги</h2>
+
+        <div class="filters-panel">
+            <div class="filter-group">
+                <label for="alert-filter-severity">Важность:</label>
+                <select id="alert-filter-severity">
+                    <option value="">Все</option>
+                    <option value="INFO">INFO</option>
+                    <option value="WARNING">WARNING</option>
+                    <option value="CRITICAL">CRITICAL</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="alert-filter-status">Статус:</label>
+                <select id="alert-filter-status">
+                    <option value="">Все</option>
+                    <option value="active">Активные</option>
+                    <option value="acknowledged">Подтверждённые</option>
+                    <option value="resolved">Закрытые</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="alert-filter-infra">Тип:</label>
+                <select id="alert-filter-infra">
+                    <option value="">Все</option>
+                    <option value="transformer">Трансформатор</option>
+                    <option value="controller">Контроллер</option>
+                    <option value="water_source">Источник воды</option>
+                    <option value="heat_source">Источник тепла</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table id="alerts-table">
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="alerts-select-all-checkbox" aria-label="Выбрать все тревоги"></th>
+                        <th>ID</th>
+                        <th>Тип</th>
+                        <th>Важность</th>
+                        <th>Сообщение</th>
+                        <th>Объект</th>
+                        <th>Статус</th>
+                        <th>Создан</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td colspan="9" style="text-align: center;">Нет данных</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination" id="alerts-pagination"></div>
+    </section>
 
     </div><!-- /.admin-container -->
 

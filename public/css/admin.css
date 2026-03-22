@@ -811,3 +811,43 @@ form {
 .heartbeat-dot.yellow { background: var(--color-warning); }
 .heartbeat-dot.red { background: var(--color-danger); }
 .heartbeat-dot.grey { background: var(--color-muted); }
+
+/* === Alert severity badges (semantic colors — intentionally not in :root variables) === */
+.severity-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+.severity-info {
+    background: #e3f2fd;
+    color: #1565c0;
+}
+.severity-warning {
+    background: #fff3e0;
+    color: #e65100;
+}
+.severity-critical {
+    background: #ffebee;
+    color: #c62828;
+}
+.alert-status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+}
+.alert-status-active {
+    background: #ffebee;
+    color: #c62828;
+}
+.alert-status-acknowledged {
+    background: #fff3e0;
+    color: #e65100;
+}
+.alert-status-resolved {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
