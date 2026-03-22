@@ -21,7 +21,7 @@ Fix all P0 bugs, P1 UX issues, and implement partial P2 improvements (CSS extrac
 - `public/admin-coordinate-editor.js` — fix localStorage key `'token'` → `'admin_token'` (line 337)
 - `src/controllers/alertController.js` — add `status` query param support to `getActiveAlerts`
 - `src/services/alertService.js` — parameterize status in `getActiveAlerts` WHERE clause
-- `src/routes/alertRoutes.js` — no changes needed (default-deny covers auth)
+- `src/routes/alertRoutes.js` — add `isAdmin` middleware to PATCH acknowledge/resolve routes (authorization fix)
 
 ### Created
 - `public/css/admin.css` — extracted from admin.html inline `<style>`, with CSS variables for colors
@@ -95,19 +95,44 @@ The real bug is in the **empty state**: `showNoDataMessage(newTableBody, "7")` o
 
 **Backend prerequisite**: The current `alertService.getActiveAlerts()` hardcodes `WHERE ia.status = 'active'`. Two changes needed:
 
-1. **Controller** (`alertController.js`): Extract `status` from `req.query`, validate via whitelist:
+1. **Controller** (`alertController.js`): Extract `status` from `req.query`, validate ALL filter params via whitelist:
 ```js
-const { severity, infrastructure_type, limit, status } = req.query;
+const { severity, infrastructure_type, limit, status, page, sort, order } = req.query;
+
+// Whitelist validation for all enum params
 const validStatuses = ['active', 'acknowledged', 'resolved'];
 if (status && !validStatuses.includes(status)) {
-    return res.status(400).json({ success: false, message: 'Недопустимый статус. Разрешены: active, acknowledged, resolved' });
+    return res.status(400).json({ success: false, message: 'Недопустимый статус' });
 }
+const validSeverities = ['INFO', 'WARNING', 'CRITICAL'];
+if (severity && !validSeverities.includes(severity.toUpperCase())) {
+    return res.status(400).json({ success: false, message: 'Недопустимый уровень важности' });
+}
+const validInfraTypes = ['transformer', 'water_source', 'heat_source'];
+if (infrastructure_type && !validInfraTypes.includes(infrastructure_type.toLowerCase())) {
+    return res.status(400).json({ success: false, message: 'Недопустимый тип инфраструктуры' });
+}
+
 if (status) filters.status = status;
+// Also pass page, sort, order to service for pagination support
 ```
 
-2. **Service** (`alertService.js`): Replace `const values = ['active']` with `const values = [filters.status || 'active']`. The `$1` position for status is already correct — no param index renumbering needed.
+2. **Service** (`alertService.js`): Two changes:
+   - Replace `const values = ['active']` with `const values = [filters.status || 'active']`. The `$1` position for status is already correct — no param index renumbering needed.
+   - **Add pagination support**: Accept `page`, `limit`, `sort`, `order` params. Add `OFFSET` calculation (`(page - 1) * limit`). Return response in the same shape as other endpoints: `{ data: [...], pagination: { page, limit, total } }`. The `sort` param must be validated against a whitelist of allowed column names (e.g., `['created_at', 'severity', 'status', 'infrastructure_type']`) using the existing `queryValidation.js` pattern to prevent SQL injection. The `order` param: validate `['asc', 'desc']` only.
 
-3. **Routes**: No changes needed. The PATCH routes for acknowledge/resolve do NOT explicitly list `authenticateJWT`, but they are covered by the **default-deny middleware** in `routes/index.js` (lines 96-101) which applies `authenticateJWT` to ALL non-public routes. The `/alerts/*` paths are not in the `PUBLIC_ROUTES` allowlist, so `req.user` WILL be populated by the time the controller runs.
+3. **Controller response shape**: Update `alertController.getActiveAlerts()` to return `{ success, data, pagination: { page, limit, total }, filters }` instead of `{ success, data, count, filters }`. This matches the response shape expected by `loadData()` helper in admin.js.
+
+4. **Routes** (`alertRoutes.js`): Add `isAdmin` middleware to PATCH acknowledge/resolve routes. Currently these routes only have `applyCrudRateLimit` — any authenticated user (not just admin) can acknowledge/close alerts. This is an authorization gap:
+```js
+// Before:
+router.patch('/:alertId/acknowledge', applyCrudRateLimit, alertController.acknowledgeAlert);
+router.patch('/:alertId/resolve', applyCrudRateLimit, alertController.resolveAlert);
+// After:
+router.patch('/:alertId/acknowledge', applyCrudRateLimit, isAdmin, alertController.acknowledgeAlert);
+router.patch('/:alertId/resolve', applyCrudRateLimit, isAdmin, alertController.resolveAlert);
+```
+Import `{ isAdmin }` from `../middleware/auth` (already imported for other routes in the file).
 
 **Nav**: Add 4th group separator + "Тревоги" tab button after heat-sources, with `role="tab"`, `aria-selected="false"`, `aria-controls="alerts-section"`.
 
@@ -217,12 +242,14 @@ const entityCache = {
 };
 
 async function loadEntityCache() {
-    // IMPORTANT: Models default to limit=10. Pass limit=9999 to get all records for cache.
+    // Models default to limit=10. Pass limit=200 for cache — sufficient for current scale
+    // (17 buildings, ~30 controllers, ~10 transformers). If entity count exceeds 200,
+    // switch to on-demand lookup instead of preloading.
     // Response shape is { data: [...], pagination: {...} } — unwrap via d.data.
     const fetches = [
-        fetch('/api/buildings?limit=9999').then(r => r.json()).then(d => d.data || []).catch(() => []),
-        fetch('/api/controllers?limit=9999').then(r => r.json()).then(d => d.data || []).catch(() => []),
-        fetch('/api/transformers?limit=9999').then(r => r.json()).then(d => d.data || []).catch(() => [])
+        fetch('/api/buildings?limit=200').then(r => r.json()).then(d => d.data || []).catch(() => []),
+        fetch('/api/controllers?limit=200').then(r => r.json()).then(d => d.data || []).catch(() => []),
+        fetch('/api/transformers?limit=200').then(r => r.json()).then(d => d.data || []).catch(() => [])
     ];
     const [buildings, controllers, transformers] = await Promise.all(fetches);
     buildings.forEach(b => entityCache.buildings[b.building_id] = b.name);
@@ -344,6 +371,8 @@ function renderEntityTable({ tableId, entityType, data, columns, actions, idKey,
 **Pagination**: The existing `updatePagination()` function remains unchanged — it works on `pagination[section]` which is section-agnostic.
 
 **Checkbox compatibility**: The generic renderer MUST use `className = 'item-checkbox'` and `dataset.id` (not `row-checkbox` / `.value`) to match the existing `updateCheckboxHandlers()` function which queries `.item-checkbox` and reads `dataset.id` for batch operations.
+
+**XSS safety contract**: The generic renderer is XSS-safe by design — `td.textContent = rendered` is always safe. When `col.render()` returns an HTMLElement, it MUST be constructed via DOM API (`createElement` + `textContent`), NEVER via `innerHTML`. This is a hard rule: **no `innerHTML` anywhere in `col.render()` implementations**. All existing render helpers (`createSecureTableCell`, `safeValue`, status badge creators) already follow this pattern.
 
 ## Testing Strategy
 
