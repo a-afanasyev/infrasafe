@@ -75,9 +75,11 @@ Used in 14 places across `admin.js` but never defined in CSS. Add to the new `ad
 }
 ```
 
-### 1.4 Fix colspan mismatch in water-lines-table
+### 1.4 Fix colspan mismatch in water-lines-table empty state
 
-`admin.html` `#water-lines-table` thead has 11 `<th>` columns. The render function in `admin.js` creates rows with fewer cells. Align thead to match what JS actually renders: checkbox, ID, Название, Диаметр (мм), Материал, Давление (бар), Статус, Действия = 8 columns. Remove Description, Дата установки, Подключенные здания from thead (these are not rendered by JS). Update empty-state colspan accordingly.
+The thead (11 columns) and JS render function (11 cells) actually MATCH — both render: checkbox, ID, Name, Description, Diameter, Material, Pressure, Installation date, Status, Connected buildings, Actions. Do NOT remove columns from thead.
+
+The real bug is in the **empty state**: `showNoDataMessage(newTableBody, "7")` on line 563 of `admin.js` passes colspan="7" but should be "11". Fix: change `"7"` to `"11"`. Also verify all other `showNoDataMessage()` calls have correct colspan values matching their respective table column counts.
 
 ### 1.5 Fix localStorage key in coordinate-editor
 
@@ -115,15 +117,7 @@ if (status) filters.status = status;
 - Empty state row
 
 **JS**:
-- `loadAlerts()` function — fetch `/api/alerts` with filter params, unwrap response envelope:
-  ```js
-  async function loadAlerts() {
-      const params = new URLSearchParams();
-      // add filter params from select elements...
-      const result = await fetch(`/api/alerts?${params}`).then(r => r.json());
-      renderEntityTable({ tableId: 'alerts-table', data: result.data || [], ... });
-  }
-  ```
+- `loadAlerts()` function — use the existing `loadData('/alerts', 'alerts')` helper (line 645) which handles pagination, sorting, filters, response envelope unwrapping, and error toasts automatically. Alert-specific filters (severity, status, infrastructure_type) go into `filters.alerts` object, which `loadData()` appends to query params. This ensures alerts get pagination, sorting, and error handling identical to all other sections.
   All fetch calls go through the existing `admin-auth.js` fetch interceptor which automatically adds `Authorization: Bearer` header for `/api/*` requests — no manual header management needed.
 - Render via generic table renderer (Section 3.2)
 - Action buttons with conditional visibility:
@@ -131,7 +125,7 @@ if (status) filters.status = status;
   - Закрыть (resolve) → PATCH `/api/alerts/:id/resolve`, condition: `item.status !== 'resolved'` (show on active and acknowledged)
 - Severity badges: INFO (blue), WARNING (orange), CRITICAL (red)
 - Wire up filter change → reload
-- **State objects**: Add `'alerts'` key to ALL section-keyed objects at the top of `admin.js`: `pagination`, `dataLoaded`, `filters`, `sorting`, `selectedItems`. (Note: there is NO `currentData` object in admin.js — pagination state lives in `pagination[section]`.) Also add to `switchSection()` and `loadSectionData()`.
+- **State objects**: Add `'alerts'` key to ALL section-keyed objects at the top of `admin.js`: `pagination`, `dataLoaded`, `filters`, `sorting`, `selectedItems`. (Note: there is NO `currentData` object in admin.js — pagination state lives in `pagination[section]`.) Default sorting: `alerts: { column: 'created_at', direction: 'desc' }` (matches backend ORDER BY). Also add to `switchSection()` and `loadSectionData()`.
 
 ### 1.7 Remove dead code stubs
 
@@ -214,7 +208,7 @@ Keep the existing `form-section` + `form-row` structure of the metrics form (whi
 
 ### 2.6 Entity cache with name display
 
-**Cache initialization** (in `admin.js`, after auth-ready):
+**Cache initialization** (in `admin.js`, call `loadEntityCache()` inside the existing `window.addEventListener('admin-auth-ready', ...)` handler, BEFORE `loadSectionData('buildings')` so names are available for first render):
 ```js
 const entityCache = {
     buildings: {},
@@ -254,6 +248,7 @@ function formatHeartbeat(timestamp) {
     if (!timestamp) return '—';
     const diff = Date.now() - new Date(timestamp).getTime();
     const minutes = Math.floor(diff / 60000);
+    if (minutes < 0) return 'Только что'; // clock skew guard
     if (minutes < 1) return 'Только что';
     if (minutes < 60) return `${minutes} мин назад`;
     const hours = Math.floor(minutes / 60);
@@ -266,16 +261,20 @@ Visual indicator: green dot if heartbeat < 5 min, yellow if < 30 min, red/grey i
 
 ## Section 3: Partial P2 — Generic Table Renderer
 
-### 3.2 Generic renderEntityTable()
+### 3.1 Generic renderEntityTable()
 
 **Function signature:**
 ```js
 function renderEntityTable({ tableId, entityType, data, columns, actions, idKey, emptyMessage }) {
-    const tbody = document.querySelector(`#${tableId} tbody`);
-    tbody.textContent = ''; // XSS-safe clear
+    // Use replaceChild pattern (same as existing render functions) for atomic DOM swap — no visual flash
+    const table = document.getElementById(tableId);
+    const oldTbody = table.querySelector('tbody');
+    const newTbody = document.createElement('tbody');
 
     if (!data || data.length === 0) {
-        // empty state row
+        newTbody.appendChild(showNoDataMessage(newTbody, String(columns.length + 2))); // +2 for checkbox + actions
+        table.replaceChild(newTbody, oldTbody);
+        updateCheckboxHandlers(entityType); // MUST call after render — wires up batch operations
         return;
     }
 
@@ -321,8 +320,11 @@ function renderEntityTable({ tableId, entityType, data, columns, actions, idKey,
             tr.appendChild(actionTd);
         }
 
-        tbody.appendChild(tr);
+        newTbody.appendChild(tr);
     });
+
+    table.replaceChild(newTbody, oldTbody);
+    updateCheckboxHandlers(entityType); // MUST call after render — wires up batch operations
 }
 ```
 
@@ -337,7 +339,7 @@ function renderEntityTable({ tableId, entityType, data, columns, actions, idKey,
 
 **Does NOT replace**: `renderBuildingsTable()` — unique expandable row logic.
 
-**Each table** becomes a config object + `renderEntityTable(config)` call. Custom cells (status badges, heartbeat indicators, severity badges) use the `render` function in column config.
+**Each table** becomes a config object + `renderEntityTable(config)` call. Custom cells (status badges, heartbeat indicators, severity badges) use the `render` function in column config. Note: water-lines table uses `getWaterLineStatusLabel()` (line 572) which returns feminine Russian forms ("Активная" vs "Активный") — the column config for water-lines must use this specific function, not the generic `getStatusLabel()`.
 
 **Pagination**: The existing `updatePagination()` function remains unchanged — it works on `pagination[section]` which is section-agnostic.
 
