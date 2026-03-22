@@ -297,6 +297,25 @@ document.addEventListener("DOMContentLoaded", function () {
         return date.toLocaleString('ru-RU');
     }
 
+    function formatHeartbeat(timestamp) {
+        if (!timestamp) return '—';
+        const diff = Date.now() - new Date(timestamp).getTime();
+        const minutes = Math.floor(diff / 60000);
+        if (minutes < 1) return 'Только что';
+        if (minutes < 60) return minutes + ' мин назад';
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return hours + ' ч назад';
+        return Math.floor(hours / 24) + ' д назад';
+    }
+
+    function getHeartbeatColor(timestamp) {
+        if (!timestamp) return 'grey';
+        const minutes = (Date.now() - new Date(timestamp).getTime()) / 60000;
+        if (minutes < 5) return 'green';
+        if (minutes < 30) return 'yellow';
+        return 'red';
+    }
+
     // ===============================================
     // НАВИГАЦИЯ МЕЖДУ СЕКЦИЯМИ
     // ===============================================
@@ -379,7 +398,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (dataLoaded.controllers) return;
 
         // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
-        showLoadingMessage("#controllers-table tbody", "8");
+        showLoadingMessage("#controllers-table tbody", "9");
 
         try {
             const data = await loadData('/api/admin/controllers', 'controllers');
@@ -389,7 +408,7 @@ document.addEventListener("DOMContentLoaded", function () {
         } catch (error) {
             console.error("Error loading controllers:", error);
             // ИСПРАВЛЕНИЕ XSS: Безопасное отображение ошибки
-            showErrorMessage("#controllers-table tbody", "8");
+            showErrorMessage("#controllers-table tbody", "9");
         }
     }
 
@@ -412,6 +431,16 @@ document.addEventListener("DOMContentLoaded", function () {
                     span.className = `status-badge ${statusClass}`;
                     span.textContent = getStatusLabel(val);
                     return span;
+                }},
+                { key: 'last_heartbeat', label: 'Пульс', render: (val) => {
+                    const container = document.createElement('span');
+                    container.className = 'heartbeat-indicator';
+                    const dot = document.createElement('span');
+                    dot.className = 'heartbeat-dot ' + getHeartbeatColor(val);
+                    container.appendChild(dot);
+                    const text = document.createTextNode(formatHeartbeat(val));
+                    container.appendChild(text);
+                    return container;
                 }}
             ],
             actions: [

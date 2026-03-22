@@ -794,3 +794,20 @@ form {
 .btn-danger:hover {
     background: var(--color-danger-hover);
 }
+
+/* === Heartbeat indicator === */
+.heartbeat-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.heartbeat-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+.heartbeat-dot.green { background: var(--color-primary); }
+.heartbeat-dot.yellow { background: var(--color-warning); }
+.heartbeat-dot.red { background: var(--color-danger); }
+.heartbeat-dot.grey { background: var(--color-muted); }
