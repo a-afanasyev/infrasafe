@@ -6,7 +6,7 @@ Fix all P0 bugs, P1 UX issues, and implement partial P2 improvements (CSS extrac
 
 ## Scope
 
-- **P0 (7 items)**: inline onclick removal, missing CSS classes, localStorage key bug, aria-labels, colspan fix, dead code removal, Alerts tab
+- **P0 (8 items)**: inline onclick removal, missing CSS classes, localStorage key bug, aria-labels, colspan fix, dead code removal, Alerts tab, header checkbox listener leak
 - **P1 (7 items)**: status localization, contrast fix, toast/logout overlap, metrics form unification, CSS extraction with variables, entity cache with name display, controller heartbeat
 - **Partial P2 (1 item)**: generic table renderer replacing 7 of 8 duplicate renderXxxTable functions
 
@@ -21,6 +21,7 @@ Fix all P0 bugs, P1 UX issues, and implement partial P2 improvements (CSS extrac
 - `public/admin-coordinate-editor.js` — fix localStorage key `'token'` → `'admin_token'` (line 337)
 - `src/controllers/alertController.js` — add `status` query param support to `getActiveAlerts`
 - `src/services/alertService.js` — parameterize status in `getActiveAlerts` WHERE clause
+- `src/routes/alertRoutes.js` — no changes needed (default-deny covers auth)
 
 ### Created
 - `public/css/admin.css` — extracted from admin.html inline `<style>`, with CSS variables for colors
@@ -104,6 +105,8 @@ if (status) filters.status = status;
 
 2. **Service** (`alertService.js`): Replace `const values = ['active']` with `const values = [filters.status || 'active']`. The `$1` position for status is already correct — no param index renumbering needed.
 
+3. **Routes**: No changes needed. The PATCH routes for acknowledge/resolve do NOT explicitly list `authenticateJWT`, but they are covered by the **default-deny middleware** in `routes/index.js` (lines 96-101) which applies `authenticateJWT` to ALL non-public routes. The `/alerts/*` paths are not in the `PUBLIC_ROUTES` allowlist, so `req.user` WILL be populated by the time the controller runs.
+
 **Nav**: Add 4th group separator + "Тревоги" tab button after heat-sources, with `role="tab"`, `aria-selected="false"`, `aria-controls="alerts-section"`.
 
 **HTML section**: New `<section id="alerts-section">` with:
@@ -128,11 +131,21 @@ if (status) filters.status = status;
   - Закрыть (resolve) → PATCH `/api/alerts/:id/resolve`, condition: `item.status !== 'resolved'` (show on active and acknowledged)
 - Severity badges: INFO (blue), WARNING (orange), CRITICAL (red)
 - Wire up filter change → reload
-- **State objects**: Add `'alerts'` key to ALL section-keyed objects at the top of `admin.js`: `pagination`, `currentData`, `dataLoaded`, `filters`, `sorting`, `selectedItems`. Also add to `switchSection()` and `loadSectionData()`.
+- **State objects**: Add `'alerts'` key to ALL section-keyed objects at the top of `admin.js`: `pagination`, `dataLoaded`, `filters`, `sorting`, `selectedItems`. (Note: there is NO `currentData` object in admin.js — pagination state lives in `pagination[section]`.) Also add to `switchSection()` and `loadSectionData()`.
 
 ### 1.7 Remove dead code stubs
 
 Delete lines 1753-1759 in `admin.js` — 7 function stubs that are immediately overwritten by real implementations below.
+
+### 1.8 Fix header checkbox listener leak
+
+In `updateCheckboxHandlers()` (admin.js ~line 1228), the `selectAllCheckbox` change handler is added WITHOUT a `handlerSet` guard — unlike the `selectAllBtn` handler (line 1203) which correctly checks `dataset.handlerSet`. Every table re-render accumulates another listener. Fix by adding the same guard pattern:
+```js
+if (selectAllCheckbox && !selectAllCheckbox.dataset.handlerSet) {
+    selectAllCheckbox.addEventListener('change', function() { ... });
+    selectAllCheckbox.dataset.handlerSet = 'true';
+}
+```
 
 ## Section 2: P1 UX Improvements
 
@@ -196,7 +209,7 @@ Keep the existing `form-section` + `form-row` structure of the metrics form (whi
    }
    ```
 4. Replace hardcoded colors throughout the CSS with variable references
-5. Replace `<style>...</style>` in `admin.html` with `<link rel="stylesheet" href="/css/admin.css">`
+5. Replace `<style>...</style>` in `admin.html` with `<link rel="stylesheet" href="public/css/admin.css">` (uses relative path consistent with existing `admin.html` conventions, e.g. `public/images/favicon.svg` on line 7)
 6. Add new classes from this plan (btn-sm, btn-danger, severity badges, alert filters, heartbeat styles)
 
 ### 2.6 Entity cache with name display
@@ -210,10 +223,12 @@ const entityCache = {
 };
 
 async function loadEntityCache() {
+    // IMPORTANT: Models default to limit=10. Pass limit=9999 to get all records for cache.
+    // Response shape is { data: [...], pagination: {...} } — unwrap via d.data.
     const fetches = [
-        fetch('/api/buildings').then(r => r.json()).then(d => d.data || []).catch(() => []),
-        fetch('/api/controllers').then(r => r.json()).then(d => d.data || []).catch(() => []),
-        fetch('/api/transformers').then(r => r.json()).then(d => d.data || []).catch(() => [])
+        fetch('/api/buildings?limit=9999').then(r => r.json()).then(d => d.data || []).catch(() => []),
+        fetch('/api/controllers?limit=9999').then(r => r.json()).then(d => d.data || []).catch(() => []),
+        fetch('/api/transformers?limit=9999').then(r => r.json()).then(d => d.data || []).catch(() => [])
     ];
     const [buildings, controllers, transformers] = await Promise.all(fetches);
     buildings.forEach(b => entityCache.buildings[b.building_id] = b.name);
@@ -271,8 +286,8 @@ function renderEntityTable({ tableId, entityType, data, columns, actions, idKey,
         const checkTd = document.createElement('td');
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
-        checkbox.className = 'row-checkbox';
-        checkbox.value = item[idKey];
+        checkbox.className = 'item-checkbox'; // MUST match existing selectors in updateCheckboxHandlers()
+        checkbox.dataset.id = item[idKey]; // MUST use dataset.id, not .value — existing batch handlers read dataset.id
         checkTd.appendChild(checkbox);
         tr.appendChild(checkTd);
 
@@ -324,7 +339,9 @@ function renderEntityTable({ tableId, entityType, data, columns, actions, idKey,
 
 **Each table** becomes a config object + `renderEntityTable(config)` call. Custom cells (status badges, heartbeat indicators, severity badges) use the `render` function in column config.
 
-**Pagination**: The existing `updatePagination()` function remains unchanged — it works on `currentData[section]` which is section-agnostic.
+**Pagination**: The existing `updatePagination()` function remains unchanged — it works on `pagination[section]` which is section-agnostic.
+
+**Checkbox compatibility**: The generic renderer MUST use `className = 'item-checkbox'` and `dataset.id` (not `row-checkbox` / `.value`) to match the existing `updateCheckboxHandlers()` function which queries `.item-checkbox` and reads `dataset.id` for batch operations.
 
 ## Testing Strategy
 
