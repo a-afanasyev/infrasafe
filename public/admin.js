@@ -197,6 +197,74 @@ document.addEventListener("DOMContentLoaded", function () {
         return noDataRow;
     }
 
+    // ===============================================
+    // GENERIC TABLE RENDERER
+    // ===============================================
+
+    function renderEntityTable({ tableId, entityType, data, columns, actions, idKey, emptyMessage }) {
+        const table = document.getElementById(tableId);
+        if (!table) return;
+        const oldTbody = table.querySelector('tbody');
+        const newTbody = document.createElement('tbody');
+
+        if (!data || data.length === 0) {
+            // +2 accounts for checkbox column + actions column
+            const colSpan = String(columns.length + (actions ? 2 : 1));
+            newTbody.appendChild(showNoDataMessage(newTbody, colSpan, emptyMessage));
+            table.replaceChild(newTbody, oldTbody);
+            updateCheckboxHandlers(entityType);
+            return;
+        }
+
+        data.forEach(item => {
+            const tr = document.createElement('tr');
+
+            // Checkbox cell
+            const checkTd = document.createElement('td');
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'item-checkbox';
+            checkbox.dataset.id = item[idKey];
+            checkTd.appendChild(checkbox);
+            tr.appendChild(checkTd);
+
+            // Data cells from column config
+            columns.forEach(col => {
+                const td = document.createElement('td');
+                if (col.render) {
+                    const rendered = col.render(item[col.key], item);
+                    if (rendered instanceof HTMLElement) {
+                        td.appendChild(rendered);
+                    } else {
+                        td.textContent = rendered;
+                    }
+                } else {
+                    td.textContent = item[col.key] ?? '—';
+                }
+                tr.appendChild(td);
+            });
+
+            // Action cells
+            if (actions && actions.length > 0) {
+                const actionTd = document.createElement('td');
+                actions.forEach(action => {
+                    if (action.condition && !action.condition(item)) return;
+                    const btn = document.createElement('button');
+                    btn.className = action.className || 'btn-sm';
+                    btn.textContent = action.label;
+                    btn.addEventListener('click', () => action.handler(item));
+                    actionTd.appendChild(btn);
+                });
+                tr.appendChild(actionTd);
+            }
+
+            newTbody.appendChild(tr);
+        });
+
+        table.replaceChild(newTbody, oldTbody);
+        updateCheckboxHandlers(entityType);
+    }
+
     // Функция для форматирования чисел
     function formatNumber(value, decimals = 2) {
         if (value === null || value === undefined || value === '') return 'N/A';
