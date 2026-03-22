@@ -108,7 +108,7 @@ const validSeverities = ['INFO', 'WARNING', 'CRITICAL'];
 if (severity && !validSeverities.includes(severity.toUpperCase())) {
     return res.status(400).json({ success: false, message: 'Недопустимый уровень важности' });
 }
-const validInfraTypes = ['transformer', 'water_source', 'heat_source'];
+const validInfraTypes = ['transformer', 'controller', 'water_source', 'heat_source'];
 if (infrastructure_type && !validInfraTypes.includes(infrastructure_type.toLowerCase())) {
     return res.status(400).json({ success: false, message: 'Недопустимый тип инфраструктуры' });
 }
@@ -137,7 +137,7 @@ Import `{ isAdmin }` from `../middleware/auth` (already imported for other route
 **Nav**: Add 4th group separator + "Тревоги" tab button after heat-sources, with `role="tab"`, `aria-selected="false"`, `aria-controls="alerts-section"`.
 
 **HTML section**: New `<section id="alerts-section">` with:
-- Filter bar: 3 `<select>` elements for severity (Все/INFO/WARNING/CRITICAL), status (Все/active/acknowledged/resolved), infrastructure_type (Все/transformer/water_source/heat_source)
+- Filter bar: 3 `<select>` elements for severity (Все/INFO/WARNING/CRITICAL), status (Все/active/acknowledged/resolved), infrastructure_type (Все/transformer/controller/water_source/heat_source)
 - `<table id="alerts-table">` with columns: ID, Тип, Severity, Сообщение, Объект, Статус, Создан, Действия
 - Empty state row
 
