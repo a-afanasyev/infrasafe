@@ -106,7 +106,8 @@ input, select {
 button {
     padding: 8px 15px;
     background-color: var(--color-primary);
-    color: black;
+    color: white;
+    font-weight: 600;
     border: none;
     border-radius: 4px;
     cursor: pointer;
@@ -273,7 +274,8 @@ button:disabled {
 
 .nav-btn.active {
     background-color: var(--color-primary);
-    color: black;
+    color: white;
+    font-weight: 600;
     border-color: var(--color-primary);
 }
 
@@ -480,7 +482,7 @@ table input[type="checkbox"] {
 /* Toast уведомления */
 #toast-container {
     position: fixed;
-    top: 20px;
+    top: 70px;
     right: 20px;
     z-index: 10000;
 }
@@ -627,11 +629,11 @@ table input[type="checkbox"] {
 .horizontal-form button[type="submit"] {
     padding: 15px 40px;
     background: linear-gradient(135deg, #4CAF50, #45a049);
-    color: black;
+    color: white;
     border: none;
     border-radius: 8px;
     font-size: 16px;
-    font-weight: bold;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.3s ease;
     box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
@@ -768,4 +770,27 @@ form {
 
 .btn-expand:hover {
     background: #e8e8e8;
+}
+
+/* === Button variants === */
+.btn-sm {
+    padding: 4px 10px;
+    font-size: 0.8rem;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    cursor: pointer;
+    background: var(--color-surface);
+    color: var(--color-text);
+    transition: background 0.2s;
+}
+.btn-sm:hover {
+    background: var(--color-hover);
+}
+.btn-danger {
+    background: var(--color-danger);
+    color: white;
+    border-color: var(--color-danger);
+}
+.btn-danger:hover {
+    background: var(--color-danger-hover);
 }
