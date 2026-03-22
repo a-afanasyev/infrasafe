@@ -403,13 +403,7 @@
                 </div>
                 
                 <div class="form-group">
-                    <button type="button" class="btn-secondary" onclick="
-                        const currentLat = parseFloat(document.getElementById('transformer-latitude').value) || null;
-                        const currentLng = parseFloat(document.getElementById('transformer-longitude').value) || null;
-                        openCoordinateEditor('transformer', null, currentLat, currentLng, null, (lat, lng) => {
-                            document.getElementById('transformer-latitude').value = lat;
-                            document.getElementById('transformer-longitude').value = lng;
-                        })">
+                    <button type="button" class="btn-secondary" id="btn-transformer-coord-picker">
                         📍 Указать на карте
                     </button>
                 </div>
@@ -1019,7 +1013,7 @@
 
         <div class="form-actions">
             <button type="submit" class="btn-primary">✅ Создать метрику</button>
-            <button type="button" class="btn-secondary" onclick="resetMetricsForm()">🔄 Сброс</button>
+            <button type="button" class="btn-secondary" id="btn-metrics-reset">🔄 Сброс</button>
         </div>
     </form>
     </section>
@@ -1155,7 +1149,7 @@
     </div>
 
     <!-- Модальное окно редактирования контроллера -->
-    <div id="edit-controller-modal" class="edit-form-overlay" style="display: none;">
+    <div id="edit-controller-modal" class="edit-form-overlay" style="display: none;" aria-label="Редактировать контроллер">
         <div class="edit-form">
             <h3>Редактировать контроллер</h3>
             <form id="edit-controller-form">
@@ -1212,13 +1206,7 @@
                 </div>
                 
                 <div class="form-group">
-                    <button type="button" class="btn-secondary" onclick="
-                        const currentLat = parseFloat(document.getElementById('edit-transformer-latitude').value) || null;
-                        const currentLng = parseFloat(document.getElementById('edit-transformer-longitude').value) || null;
-                        openCoordinateEditor('transformer', document.getElementById('edit-transformer-id').value, currentLat, currentLng, null, (lat, lng) => {
-                            document.getElementById('edit-transformer-latitude').value = lat;
-                            document.getElementById('edit-transformer-longitude').value = lng;
-                        })">
+                    <button type="button" class="btn-secondary" id="btn-edit-transformer-coord-picker">
                         📍 Указать на карте
                     </button>
                 </div>
@@ -1232,7 +1220,7 @@
     </div>
 
     <!-- Модальное окно редактирования линии -->
-    <div id="edit-line-modal" class="edit-form-overlay" style="display: none;">
+    <div id="edit-line-modal" class="edit-form-overlay" style="display: none;" aria-label="Редактировать линию">
         <div class="edit-form">
             <h3>Редактировать линию</h3>
             <form id="edit-line-form">
@@ -1250,7 +1238,7 @@
     </div>
 
     <!-- Модальное окно редактирования источника воды -->
-    <div id="edit-water-source-modal" class="edit-form-overlay" style="display: none;">
+    <div id="edit-water-source-modal" class="edit-form-overlay" style="display: none;" aria-label="Редактировать источник воды">
         <div class="edit-form">
             <h3>Редактировать источник воды</h3>
             <form id="edit-water-source-form">
@@ -1282,7 +1270,7 @@
     </div>
 
     <!-- Модальное окно редактирования источника тепла -->
-    <div id="edit-heat-source-modal" class="edit-form-overlay" style="display: none;">
+    <div id="edit-heat-source-modal" class="edit-form-overlay" style="display: none;" aria-label="Редактировать источник тепла">
         <div class="edit-form">
             <h3>Редактировать источник тепла</h3>
             <form id="edit-heat-source-form">

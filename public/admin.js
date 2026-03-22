@@ -560,7 +560,7 @@ document.addEventListener("DOMContentLoaded", function () {
             });
         } else {
             // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
-            newTableBody.appendChild(showNoDataMessage(newTableBody, "7"));
+            newTableBody.appendChild(showNoDataMessage(newTableBody, "11"));
         }
 
         const table = document.querySelector("#water-lines-table");
@@ -1188,7 +1188,9 @@ document.addEventListener("DOMContentLoaded", function () {
         const statusLabels = {
             'active': 'Активный',
             'inactive': 'Неактивный',
-            'maintenance': 'На обслуживании'
+            'maintenance': 'На обслуживании',
+            'online': 'В сети',
+            'offline': 'Не в сети'
         };
         return statusLabels[status] || status;
     }
@@ -1225,7 +1227,7 @@ document.addEventListener("DOMContentLoaded", function () {
         
         // Обработчик для чекбокса "выбрать все" (если есть в заголовке таблицы)
         const selectAllCheckbox = document.getElementById(`${section}-select-all-checkbox`);
-        if (selectAllCheckbox) {
+        if (selectAllCheckbox && !selectAllCheckbox.dataset.handlerSet) {
             selectAllCheckbox.addEventListener('change', function() {
                 const checkboxes = document.querySelectorAll(`#${section}-section .item-checkbox`);
                 checkboxes.forEach(checkbox => {
@@ -1239,6 +1241,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 });
                 updateBatchButtons(section);
             });
+            selectAllCheckbox.dataset.handlerSet = 'true';
         }
 
         // Обработчики для отдельных чекбоксов
@@ -1750,13 +1753,6 @@ document.addEventListener("DOMContentLoaded", function () {
             showToast(error.message || 'Ошибка каскадного удаления', 'error');
         }
     }
-    window.editController = function(id) { /* реализация */ };
-    window.deleteController = function(id) { /* реализация */ };
-    window.deleteMetric = function(id) { /* реализация */ };
-    window.editTransformer = function(id) { /* реализация */ };
-    window.deleteTransformer = function(id) { /* реализация */ };
-    window.editLine = function(id) { /* реализация */ };
-    window.deleteLine = function(id) { /* реализация */ };
 
     // ===============================================
     // ФУНКЦИИ РЕДАКТИРОВАНИЯ КОНТРОЛЛЕРОВ
@@ -1778,9 +1774,9 @@ document.addEventListener("DOMContentLoaded", function () {
                     { name: 'model', label: 'Модель', type: 'text' },
                     { name: 'building_id', label: 'ID здания', type: 'number', required: true },
                     { name: 'status', label: 'Статус', type: 'select', options: [
-                        { value: 'online', text: 'Online' },
-                        { value: 'offline', text: 'Offline' },
-                        { value: 'maintenance', text: 'Maintenance' }
+                        { value: 'online', text: 'В сети' },
+                        { value: 'offline', text: 'Не в сети' },
+                        { value: 'maintenance', text: 'На обслуживании' }
                     ]}
                 ],
                 onSave: async (data) => {
@@ -3198,6 +3194,33 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         });
         editor.show();
+    });
+
+    // === CSP-compliant onclick replacements (moved from inline onclick in admin.html) ===
+
+    // Add-transformer "Указать на карте" (was inline onclick in admin.html)
+    document.getElementById('btn-transformer-coord-picker')?.addEventListener('click', function() {
+        const currentLat = parseFloat(document.getElementById('transformer-latitude').value) || null;
+        const currentLng = parseFloat(document.getElementById('transformer-longitude').value) || null;
+        openCoordinateEditor('transformer', null, currentLat, currentLng, null, (lat, lng) => {
+            document.getElementById('transformer-latitude').value = lat;
+            document.getElementById('transformer-longitude').value = lng;
+        });
+    });
+
+    // Metrics form "Сброс" (was inline onclick in admin.html)
+    document.getElementById('btn-metrics-reset')?.addEventListener('click', function() {
+        resetMetricsForm();
+    });
+
+    // Edit-transformer "Указать на карте" (was inline onclick in admin.html)
+    document.getElementById('btn-edit-transformer-coord-picker')?.addEventListener('click', function() {
+        const currentLat = parseFloat(document.getElementById('edit-transformer-latitude').value) || null;
+        const currentLng = parseFloat(document.getElementById('edit-transformer-longitude').value) || null;
+        openCoordinateEditor('transformer', document.getElementById('edit-transformer-id').value, currentLat, currentLng, null, (lat, lng) => {
+            document.getElementById('edit-transformer-latitude').value = lat;
+            document.getElementById('edit-transformer-longitude').value = lng;
+        });
     });
 
     // Загружаем данные для форм после инициализации всех функций
