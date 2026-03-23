@@ -108,5 +108,5 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = SafeJsonParser;
 }
 
-console.log('✅ SafeJsonParser утилита загружена успешно');
+
 

@@ -17,6 +17,7 @@ logs/
 .env.production
 .env.staging
 .env.test
+generator/.env
 
 # ==========================================
 # Node.js
@@ -95,6 +96,8 @@ desktop.ini
 *.backup*
 *~
 * 2
+* copy.*
+* copy *
 database/backups/
 *.sql.gz
 

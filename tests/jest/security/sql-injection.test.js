@@ -10,6 +10,24 @@
 
 const request = require('supertest');
 
+// Mock database — эти тесты проверяют валидацию параметров, не реальные SQL запросы
+jest.mock('../../../src/config/database', () => ({
+    query: jest.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
+    pool: { connect: jest.fn() }
+}));
+
+jest.mock('../../../src/utils/logger', () => ({
+    info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn()
+}));
+
+// Mock auth middleware — эти тесты проверяют SQL injection, а не авторизацию
+jest.mock('../../../src/middleware/auth', () => ({
+    authenticateJWT: (req, res, next) => { req.user = { id: 1, role: 'admin' }; next(); },
+    isAdmin: (req, res, next) => next(),
+    authenticateRefresh: (req, res, next) => next(),
+    optionalAuth: (req, res, next) => { req.user = { id: 1, role: 'admin' }; next(); }
+}));
+
 // Импортируем Express app напрямую, без запуска сервера
 const express = require('express');
 const cors = require('cors');
@@ -30,20 +48,16 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/auth', authRoutes);
 
 describe('SQL Injection Protection Tests', () => {
-    let authToken;
-    
-    beforeAll(async () => {
-        // Получаем токен аутентификации для тестов
-        const loginResponse = await request(app)
-            .post('/api/auth/login')
-            .send({
-                username: 'admin',
-                password: 'admin123'
-            });
-        
-        if (loginResponse.body.token) {
-            authToken = loginResponse.body.token;
-        }
+    const db = require('../../../src/config/database');
+
+    beforeEach(() => {
+        // Default mock: return empty data + count for paginated queries
+        db.query.mockImplementation((sql) => {
+            if (typeof sql === 'string' && sql.includes('COUNT(*)')) {
+                return Promise.resolve({ rows: [{ count: '0' }], rowCount: 1 });
+            }
+            return Promise.resolve({ rows: [], rowCount: 0 });
+        });
     });
 
     describe('Buildings API - SQL Injection Protection', () => {
@@ -52,7 +66,7 @@ describe('SQL Injection Protection Tests', () => {
             
             const response = await request(app)
                 .get('/api/admin/buildings')
-                .set('Authorization', authToken ? `Bearer ${authToken}` : '')
+                .set('Authorization', 'Bearer mock-token')
                 .query({ 
                     sort: maliciousSort, 
                     order: 'ASC' 
@@ -66,7 +80,7 @@ describe('SQL Injection Protection Tests', () => {
         test('should use default sort for invalid column', async () => {
             const response = await request(app)
                 .get('/api/admin/buildings')
-                .set('Authorization', authToken ? `Bearer ${authToken}` : '')
+                .set('Authorization', 'Bearer mock-token')
                 .query({ 
                     sort: 'invalid_column_name', 
                     order: 'ASC' 
@@ -82,7 +96,7 @@ describe('SQL Injection Protection Tests', () => {
             
             const response = await request(app)
                 .get('/api/admin/buildings')
-                .set('Authorization', authToken ? `Bearer ${authToken}` : '')
+                .set('Authorization', 'Bearer mock-token')
                 .query({ 
                     sort: 'building_id', 
                     order: maliciousOrder 
@@ -97,7 +111,7 @@ describe('SQL Injection Protection Tests', () => {
             
             const response = await request(app)
                 .get('/api/admin/buildings')
-                .set('Authorization', authToken ? `Bearer ${authToken}` : '')
+                .set('Authorization', 'Bearer mock-token')
                 .query({ 
                     search: maliciousSearch 
                 });
@@ -113,7 +127,7 @@ describe('SQL Injection Protection Tests', () => {
             
             const response = await request(app)
                 .get('/api/admin/controllers')
-                .set('Authorization', authToken ? `Bearer ${authToken}` : '')
+                .set('Authorization', 'Bearer mock-token')
                 .query({ 
                     sort: maliciousSort, 
                     order: 'ASC' 
@@ -126,7 +140,7 @@ describe('SQL Injection Protection Tests', () => {
         test('should use whitelisted columns only', async () => {
             const response = await request(app)
                 .get('/api/admin/controllers')
-                .set('Authorization', authToken ? `Bearer ${authToken}` : '')
+                .set('Authorization', 'Bearer mock-token')
                 .query({ 
                     sort: 'controller_id', 
                     order: 'ASC' 
@@ -143,7 +157,7 @@ describe('SQL Injection Protection Tests', () => {
             
             const response = await request(app)
                 .get('/api/admin/metrics')
-                .set('Authorization', authToken ? `Bearer ${authToken}` : '')
+                .set('Authorization', 'Bearer mock-token')
                 .query({ 
                     sort: maliciousSort, 
                     order: 'DESC' 
@@ -156,7 +170,7 @@ describe('SQL Injection Protection Tests', () => {
         test('should use default sort for metrics', async () => {
             const response = await request(app)
                 .get('/api/admin/metrics')
-                .set('Authorization', authToken ? `Bearer ${authToken}` : '')
+                .set('Authorization', 'Bearer mock-token')
                 .query({ 
                     sort: 'invalid_metric_column', 
                     order: 'DESC' 
@@ -171,7 +185,7 @@ describe('SQL Injection Protection Tests', () => {
         test('should handle negative page numbers', async () => {
             const response = await request(app)
                 .get('/api/admin/buildings')
-                .set('Authorization', authToken ? `Bearer ${authToken}` : '')
+                .set('Authorization', 'Bearer mock-token')
                 .query({ 
                     page: -1, 
                     limit: 10 
@@ -184,7 +198,7 @@ describe('SQL Injection Protection Tests', () => {
         test('should limit maximum page size', async () => {
             const response = await request(app)
                 .get('/api/admin/buildings')
-                .set('Authorization', authToken ? `Bearer ${authToken}` : '')
+                .set('Authorization', 'Bearer mock-token')
                 .query({ 
                     page: 1, 
                     limit: 99999 
@@ -197,7 +211,7 @@ describe('SQL Injection Protection Tests', () => {
         test('should handle non-numeric pagination parameters', async () => {
             const response = await request(app)
                 .get('/api/admin/buildings')
-                .set('Authorization', authToken ? `Bearer ${authToken}` : '')
+                .set('Authorization', 'Bearer mock-token')
                 .query({ 
                     page: 'abc', 
                     limit: 'xyz' 
@@ -212,7 +226,7 @@ describe('SQL Injection Protection Tests', () => {
         test('should handle empty sort parameter', async () => {
             const response = await request(app)
                 .get('/api/admin/buildings')
-                .set('Authorization', authToken ? `Bearer ${authToken}` : '')
+                .set('Authorization', 'Bearer mock-token')
                 .query({ 
                     sort: '', 
                     order: 'ASC' 
@@ -225,7 +239,7 @@ describe('SQL Injection Protection Tests', () => {
         test('should handle null order parameter', async () => {
             const response = await request(app)
                 .get('/api/admin/buildings')
-                .set('Authorization', authToken ? `Bearer ${authToken}` : '')
+                .set('Authorization', 'Bearer mock-token')
                 .query({ 
                     sort: 'building_id', 
                     order: null 
@@ -240,7 +254,7 @@ describe('SQL Injection Protection Tests', () => {
             
             const response = await request(app)
                 .get('/api/admin/buildings')
-                .set('Authorization', authToken ? `Bearer ${authToken}` : '')
+                .set('Authorization', 'Bearer mock-token')
                 .query({ 
                     search: longSearch 
                 });

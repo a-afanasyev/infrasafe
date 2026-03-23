@@ -16,18 +16,16 @@ class SimpleRateLimiter {
         this.store = new Map();
 
         // Очистка устаревших записей каждую минуту
-        setInterval(() => {
+        this.cleanupInterval = setInterval(() => {
             this.cleanup();
         }, 60000);
+        this.cleanupInterval.unref();
 
         logger.info(`Rate limiter инициализирован: ${this.max} запросов в ${this.windowMs}ms`);
     }
 
     defaultKeyGenerator(req) {
-        // Используем IP адрес и User-Agent для идентификации
-        const ip = req.ip || req.connection.remoteAddress || req.socket.remoteAddress;
-        const userAgent = req.get('User-Agent') || 'unknown';
-        return `${ip}:${userAgent.substring(0, 50)}`;
+        return req.ip || req.connection.remoteAddress || req.socket.remoteAddress || 'unknown';
     }
 
     cleanup() {
@@ -138,6 +136,14 @@ class SimpleRateLimiter {
         this.store.clear();
         logger.info(`Rate limiter сброшен: очищено ${oldSize} записей`);
     }
+
+    // Остановка интервала очистки для предотвращения утечки таймеров
+    destroy() {
+        if (this.cleanupInterval) {
+            clearInterval(this.cleanupInterval);
+            this.cleanupInterval = null;
+        }
+    }
 }
 
 // Slow down middleware - замедляет запросы при превышении лимитов
@@ -153,9 +159,10 @@ class SimpleSlowDown {
         this.store = new Map();
 
         // Очистка каждую минуту
-        setInterval(() => {
+        this.cleanupInterval = setInterval(() => {
             this.cleanup();
         }, 60000);
+        this.cleanupInterval.unref();
 
         logger.info(`Slow down инициализирован: замедление после ${this.delayAfter} запросов`);
     }
@@ -226,6 +233,14 @@ class SimpleSlowDown {
             next();
         };
     }
+
+    // Остановка интервала очистки для предотвращения утечки таймеров
+    destroy() {
+        if (this.cleanupInterval) {
+            clearInterval(this.cleanupInterval);
+            this.cleanupInterval = null;
+        }
+    }
 }
 
 // Предустановленные конфигурации для разных типов API
@@ -250,7 +265,7 @@ const analyticsSlowDown = new SimpleSlowDown({
 // Строгие ограничения для административных операций
 const adminLimiter = new SimpleRateLimiter({
     windowMs: 60 * 1000, // 1 минута
-    max: 100, // максимум 100 операций в минуту (увеличено для тестирования)
+    max: 20, // максимум 20 операций в минуту
     message: 'Слишком много административных операций. Попробуйте позже.',
     keyGenerator: (req) => {
         // Для админских операций учитываем и IP, и пользователя
@@ -258,6 +273,31 @@ const adminLimiter = new SimpleRateLimiter({
         const userId = req.user ? req.user.user_id : 'anonymous';
         return `admin:${ip}:${userId}`;
     }
+});
+
+// Ограничения для auth-маршрутов
+const authLimiter = new SimpleRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: 'Слишком много попыток входа. Попробуйте через 15 минут.',
+    keyGenerator: (req) => `auth:login:${req.ip || req.connection.remoteAddress}`
+});
+
+const registerLimiter = new SimpleRateLimiter({
+    windowMs: 60 * 60 * 1000,
+    max: 5,
+    message: 'Слишком много регистраций. Попробуйте через час.',
+    keyGenerator: (req) => `auth:register:${req.ip || req.connection.remoteAddress}`
+});
+
+// Ограничения для телеметрии (публичный эндпоинт)
+const telemetryLimiter = new SimpleRateLimiter({
+    windowMs: 60 * 1000, // 1 минута
+    max: 120, // максимум 120 запросов в минуту
+    message: 'Слишком много запросов телеметрии. Попробуйте позже.',
+    keyGenerator: (req) => `telemetry:${req.ip || req.connection.remoteAddress}`,
+    standardHeaders: true,
+    legacyHeaders: false
 });
 
 // Ограничения для CRUD операций
@@ -282,6 +322,10 @@ const applyCrudRateLimit = [
     crudLimiter.middleware()
 ];
 
+const applyTelemetryRateLimit = [
+    telemetryLimiter.middleware()
+];
+
 // Функция для получения статистики всех rate limiter'ов
 function getAllRateLimitStats() {
     return {
@@ -292,7 +336,10 @@ function getAllRateLimitStats() {
             delay_after: analyticsSlowDown.delayAfter
         },
         admin: adminLimiter.getStats(),
-        crud: crudLimiter.getStats()
+        crud: crudLimiter.getStats(),
+        telemetry: telemetryLimiter.getStats(),
+        auth: authLimiter.getStats(),
+        register: registerLimiter.getStats()
     };
 }
 
@@ -302,7 +349,22 @@ function resetAllRateLimits() {
     analyticsSlowDown.store.clear();
     adminLimiter.reset();
     crudLimiter.reset();
+    telemetryLimiter.reset();
+    authLimiter.reset();
+    registerLimiter.reset();
     logger.info('Все rate limiter\'ы сброшены');
+}
+
+// Остановка всех таймеров очистки (для graceful shutdown и тестов)
+function destroyAllLimiters() {
+    analyticsLimiter.destroy();
+    analyticsSlowDown.destroy();
+    adminLimiter.destroy();
+    crudLimiter.destroy();
+    telemetryLimiter.destroy();
+    authLimiter.destroy();
+    registerLimiter.destroy();
+    logger.info('Все rate limiter таймеры остановлены');
 }
 
 module.exports = {
@@ -311,10 +373,15 @@ module.exports = {
     applyAnalyticsRateLimit,
     applyAdminRateLimit,
     applyCrudRateLimit,
+    applyTelemetryRateLimit,
     getAllRateLimitStats,
     resetAllRateLimits,
+    destroyAllLimiters,
     analyticsLimiter,
     adminLimiter,
     crudLimiter,
+    telemetryLimiter,
+    authLimiter,
+    registerLimiter,
     rateLimitStrict: adminLimiter.middleware()
 };

@@ -87,5 +87,5 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = RateLimiter;
 }
 
-console.log('✅ RateLimiter утилита загружена успешно');
+
 

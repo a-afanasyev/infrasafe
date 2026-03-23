@@ -7,7 +7,7 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "lint": "eslint src/",
-    "test": "jest",
+    "test": "jest --forceExit",
     "test:unit": "jest tests/jest/unit",
     "test:integration": "jest tests/jest/integration",
     "test:security": "jest tests/jest/security",
@@ -54,7 +54,8 @@
     "pg": "^8.11.3",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.0",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
     "axios": "^1.11.0",

@@ -27,7 +27,7 @@ class AnalyticsController {
             logger.error('Ошибка получения загрузки трансформатора:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -73,7 +73,7 @@ class AnalyticsController {
             logger.error('Ошибка получения аналитики всех трансформаторов:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -97,7 +97,7 @@ class AnalyticsController {
             logger.error('Ошибка получения перегруженных трансформаторов:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -142,7 +142,7 @@ class AnalyticsController {
             logger.error('Ошибка геопространственного поиска:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -177,7 +177,7 @@ class AnalyticsController {
             logger.error('Ошибка поиска ближайших зданий:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -197,7 +197,7 @@ class AnalyticsController {
             logger.error('Ошибка получения аналитики по зонам:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -228,7 +228,7 @@ class AnalyticsController {
             logger.error('Ошибка получения прогноза нагрузки:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -247,7 +247,7 @@ class AnalyticsController {
             logger.error('Ошибка получения статистики трансформаторов:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -267,7 +267,7 @@ class AnalyticsController {
             logger.error('Ошибка обновления аналитики:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -286,7 +286,7 @@ class AnalyticsController {
             logger.error('Ошибка инвалидации кэшей:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -309,7 +309,7 @@ class AnalyticsController {
             logger.error('Ошибка получения состояния системы:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -328,7 +328,7 @@ class AnalyticsController {
             logger.error('Ошибка сброса Circuit Breaker\'ов:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -357,7 +357,7 @@ class AnalyticsController {
             logger.error('Ошибка обновления порогов:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -395,7 +395,7 @@ class AnalyticsController {
             logger.error('Ошибка создания трансформатора:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -428,7 +428,7 @@ class AnalyticsController {
             logger.error('Ошибка обновления трансформатора:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -459,7 +459,7 @@ class AnalyticsController {
             logger.error('Ошибка удаления трансформатора:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }

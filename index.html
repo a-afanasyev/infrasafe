@@ -2,36 +2,24 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="InfraSafe - Система мониторинга инфраструктуры и безопасности">
     <meta name="keywords" content="InfraSafe, monitoring, infrastructure, safety, map, visualization, HabitatITIQ">
     <meta name="author" content="InfraSafe Team">
     <meta name="theme-color" content="#F4F7FA">
     
-    <!-- ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Content Security Policy для защиты от XSS -->
-    <!-- Примечание: frame-ancestors не работает в meta теге, настраивается через Nginx заголовки -->
-    <meta http-equiv="Content-Security-Policy" content="
-        default-src 'self';
-        script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;
-        style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-        font-src 'self' https://fonts.gstatic.com;
-        img-src 'self' data: https:;
-        connect-src 'self' https://*;
-        base-uri 'self';
-        form-action 'self';
-    ">
-
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="public/images/favicon.svg">
 
     <!-- Стили -->
     <!-- Добавляем версию в ссылке на CSS, чтобы браузер подтянул обновлённые стили без кеша -->
-    <link rel="stylesheet" href="css/style.css?v=20251124">
+    <link rel="stylesheet" href="css/style.css?v=20260323">
     <link rel="stylesheet" href="public/css/map-layers.css">
     <link rel="stylesheet" href="public/libs/leaflet/leaflet.css" />
     <link rel="stylesheet" href="public/libs/leaflet/leaflet-fixes.css" />
     <link rel="stylesheet" href="public/libs/leaflet-markercluster/MarkerCluster.css" />
     <link rel="stylesheet" href="public/libs/leaflet-markercluster/MarkerCluster.Default.css" />
+    <link rel="stylesheet" href="css/map-components.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <title>InfraSafe - Система мониторинга</title>
@@ -68,6 +56,15 @@
                     <li><a href="https://www.aisolutions.uz/aboutus" target="_blank">Контакты</a></li>
                 </ul>
             </nav>
+            <!-- Кнопка входа / выхода на карте -->
+            <button class="map-auth-btn" id="map-auth-btn" aria-label="Войти">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+                    <polyline points="10 17 15 12 10 7"></polyline>
+                    <line x1="15" y1="12" x2="3" y2="12"></line>
+                </svg>
+                <span id="map-auth-btn-text">Войти</span>
+            </button>
             <!-- Переключатель темы -->
             <button class="theme-toggle" id="theme-toggle" aria-label="Переключить тему">
                 <svg id="theme-icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
@@ -100,6 +97,27 @@
                     <line x1="6" y1="6" x2="18" y2="18"></line>
                 </svg>
             </button>
+        </div>
+    </div>
+
+    <!-- Модальное окно логина на карте -->
+    <div id="map-login-modal" class="map-login-modal" style="display:none;">
+        <div class="map-login-backdrop"></div>
+        <div class="map-login-form">
+            <button class="map-login-close" id="map-login-close" type="button" aria-label="Закрыть">&times;</button>
+            <h3>Вход в систему</h3>
+            <form id="map-login-form">
+                <div class="map-login-field">
+                    <label for="map-login-username">Логин</label>
+                    <input type="text" id="map-login-username" required autocomplete="username" placeholder="admin">
+                </div>
+                <div class="map-login-field">
+                    <label for="map-login-password">Пароль</label>
+                    <input type="password" id="map-login-password" required autocomplete="current-password" placeholder="••••••••">
+                </div>
+                <div id="map-login-error" class="map-login-error" style="display:none;"></div>
+                <button type="submit" class="map-login-submit" id="map-login-submit">Войти</button>
+            </form>
         </div>
     </div>
 
@@ -171,7 +189,7 @@
                     <img src="public/images/infrasafe-small-logo.svg" alt="InfraSafe" id="footer-logo">
                 </div>
                 <div class="footer-info">
-                    <p>© 2025 InfraSafe</p>
+                    <p>© 2026 InfraSafe</p>
                     <p>Версия: 1.0.1</p>
                     <p><a href="https://www.infrasafe.uz" target="_blank">www.infrasafe.uz</a></p>
                 </div>

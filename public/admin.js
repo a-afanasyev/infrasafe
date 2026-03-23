@@ -1,5 +1,3 @@
-console.log('🚀 НОВАЯ ВЕРСИЯ ФАЙЛА ЗАГРУЖЕНА - v=1749768508');
-
 document.addEventListener("DOMContentLoaded", function () {
     const backendURL = "/api";
 
@@ -12,7 +10,8 @@ document.addEventListener("DOMContentLoaded", function () {
         'water-lines': { page: 1, limit: 10, total: 0 },
         metrics: { page: 1, limit: 10, total: 0 },
         waterSources: { page: 1, limit: 10, total: 0 },
-        heatSources: { page: 1, limit: 10, total: 0 }
+        heatSources: { page: 1, limit: 10, total: 0 },
+        alerts: { page: 1, limit: 10, total: 0 }
     };
 
     // Флаги для отслеживания загрузки данных
@@ -24,7 +23,8 @@ document.addEventListener("DOMContentLoaded", function () {
         'water-lines': false,
         metrics: false,
         waterSources: false,
-        heatSources: false
+        heatSources: false,
+        alerts: false
     };
 
     // Состояние фильтров
@@ -36,7 +36,8 @@ document.addEventListener("DOMContentLoaded", function () {
         'water-lines': {},
         metrics: {},
         waterSources: {},
-        heatSources: {}
+        heatSources: {},
+        alerts: {}
     };
 
     // Состояние сортировки
@@ -46,7 +47,8 @@ document.addEventListener("DOMContentLoaded", function () {
         transformers: { column: 'transformer_id', direction: 'asc' },
         lines: { column: 'line_id', direction: 'asc' },
         'water-lines': { column: 'line_id', direction: 'asc' },
-        metrics: { column: 'metric_id', direction: 'desc' }
+        metrics: { column: 'metric_id', direction: 'desc' },
+        alerts: { column: 'created_at', direction: 'desc' }
     };
 
     // Выбранные элементы для batch операций
@@ -58,8 +60,75 @@ document.addEventListener("DOMContentLoaded", function () {
         'water-lines': new Set(),
         metrics: new Set(),
         waterSources: new Set(),
-        heatSources: new Set()
+        heatSources: new Set(),
+        alerts: new Set()
     };
+
+    // Entity cache for displaying names instead of IDs
+    const entityCache = {
+        buildings: {},
+        controllers: {},
+        transformers: {}
+    };
+
+    async function loadEntityCache() {
+        const fetches = [
+            fetch('/api/buildings?limit=200').then(r => r.json()).then(d => d.data || []).catch(() => []),
+            fetch('/api/controllers?limit=200').then(r => r.json()).then(d => d.data || []).catch(() => []),
+            fetch('/api/transformers?limit=200').then(r => r.json()).then(d => d.data || []).catch(() => [])
+        ];
+        const [buildings, controllers, transformers] = await Promise.all(fetches);
+        buildings.forEach(b => { entityCache.buildings[b.building_id] = b.name; });
+        controllers.forEach(c => { entityCache.controllers[c.controller_id] = c.serial_number; });
+        transformers.forEach(t => { entityCache.transformers[t.transformer_id] = t.name; });
+    }
+
+    // ===============================================
+    // MODAL UTILITIES
+    // ===============================================
+
+    function openModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (!modal) return;
+
+        modal.style.display = 'flex';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+
+        // Focus first input
+        const firstInput = modal.querySelector('input, select, textarea');
+        if (firstInput) setTimeout(() => firstInput.focus(), 50);
+
+        // Close on Escape
+        const escHandler = (e) => {
+            if (e.key === 'Escape') closeModal(modalId);
+        };
+        document.addEventListener('keydown', escHandler);
+        modal._escHandler = escHandler;
+
+        // Close on overlay click (not content click)
+        const clickHandler = (e) => {
+            if (e.target === modal) closeModal(modalId);
+        };
+        modal.addEventListener('click', clickHandler);
+        modal._clickHandler = clickHandler;
+    }
+
+    function closeModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (!modal) return;
+
+        modal.style.display = 'none';
+
+        if (modal._escHandler) {
+            document.removeEventListener('keydown', modal._escHandler);
+            delete modal._escHandler;
+        }
+        if (modal._clickHandler) {
+            modal.removeEventListener('click', modal._clickHandler);
+            delete modal._clickHandler;
+        }
+    }
 
     // ===============================================
     // УТИЛИТЫ И ОБЩИЕ ФУНКЦИИ
@@ -152,56 +221,72 @@ document.addEventListener("DOMContentLoaded", function () {
         return noDataRow;
     }
 
-    // БЕЗОПАСНАЯ функция для создания строки таблицы buildings (ИСПРАВЛЕНИЕ XSS)
-    function createSecureBuildingRow(building, rowType) {
-        const row = document.createElement('tr');
-        row.className = `building-row-${rowType}`;
-        
-        if (rowType === 1) {
-            // Строка 1: Основная информация
+    // ===============================================
+    // GENERIC TABLE RENDERER
+    // ===============================================
+
+    function renderEntityTable({ tableId, entityType, data, columns, actions, idKey, emptyMessage }) {
+        const table = document.getElementById(tableId);
+        if (!table) return;
+        const oldTbody = table.querySelector('tbody');
+        const newTbody = document.createElement('tbody');
+
+        if (!data || data.length === 0) {
+            // +2 accounts for checkbox column + actions column
+            const colSpan = String(columns.length + (actions ? 2 : 1));
+            newTbody.appendChild(showNoDataMessage(newTbody, colSpan, emptyMessage));
+            table.replaceChild(newTbody, oldTbody);
+            updateCheckboxHandlers(entityType);
+            return;
+        }
+
+        data.forEach(item => {
+            const tr = document.createElement('tr');
+
+            // Checkbox cell
+            const checkTd = document.createElement('td');
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.className = 'item-checkbox';
-            checkbox.setAttribute('data-id', building.building_id);
-            
-            const editBtn = document.createElement('button');
-            editBtn.className = 'btn-sm';
-            editBtn.textContent = 'Изменить';
-            // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-            editBtn.addEventListener('click', () => editBuilding(building.building_id));
+            checkbox.dataset.id = item[idKey];
+            checkTd.appendChild(checkbox);
+            tr.appendChild(checkTd);
 
-            const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'btn-sm btn-danger';
-            deleteBtn.textContent = 'Удалить';
-            // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-            deleteBtn.addEventListener('click', () => deleteBuilding(building.building_id));
-            
-            const buttonCell = document.createElement('td');
-            buttonCell.setAttribute('rowspan', '3');
-            buttonCell.appendChild(editBtn);
-            buttonCell.appendChild(document.createElement('br'));
-            buttonCell.appendChild(deleteBtn);
-            
-            row.appendChild(createSecureTableCell(checkbox, {rowspan: 3}));
-            row.appendChild(createSecureTableCell(safeValue(building.building_id), {rowspan: 3}));
-            row.appendChild(createSecureTableCell(safeValue(building.name), {rowspan: 3}));
-            row.appendChild(createSecureTableCell(safeValue(building.address)));
-            row.appendChild(createSecureTableCell(safeValue(building.town)));
-            row.appendChild(createSecureTableCell(safeValue(building.region)));
-            row.appendChild(createSecureTableCell(formatNumber(building.latitude, 6)));
-            row.appendChild(createSecureTableCell(formatNumber(building.longitude, 6)));
-            row.appendChild(buttonCell);
-            
-        } else if (rowType === 2) {
-            // Строка 2: Инфраструктура
-            row.appendChild(createSecureTableCell(safeValue(building.management_company)));
-            row.appendChild(createSecureTableCell(building.hot_water ? "Да" : "Нет"));
-            row.appendChild(createSecureTableCell(safeValue(building.primary_transformer_name)));
-            row.appendChild(createSecureTableCell(safeValue(building.backup_transformer_name)));
-            row.appendChild(createSecureTableCell(safeValue(building.primary_line_name)));
-        }
-        
-        return row;
+            // Data cells from column config
+            columns.forEach(col => {
+                const td = document.createElement('td');
+                if (col.render) {
+                    const rendered = col.render(item[col.key], item);
+                    if (rendered instanceof HTMLElement) {
+                        td.appendChild(rendered);
+                    } else {
+                        td.textContent = rendered;
+                    }
+                } else {
+                    td.textContent = item[col.key] ?? '—';
+                }
+                tr.appendChild(td);
+            });
+
+            // Action cells
+            if (actions && actions.length > 0) {
+                const actionTd = document.createElement('td');
+                actions.forEach(action => {
+                    if (action.condition && !action.condition(item)) return;
+                    const btn = document.createElement('button');
+                    btn.className = action.className || 'btn-sm';
+                    btn.textContent = action.label;
+                    btn.addEventListener('click', () => action.handler(item));
+                    actionTd.appendChild(btn);
+                });
+                tr.appendChild(actionTd);
+            }
+
+            newTbody.appendChild(tr);
+        });
+
+        table.replaceChild(newTbody, oldTbody);
+        updateCheckboxHandlers(entityType);
     }
 
     // Функция для форматирования чисел
@@ -215,6 +300,25 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!dateStr) return 'N/A';
         const date = new Date(dateStr);
         return date.toLocaleString('ru-RU');
+    }
+
+    function formatHeartbeat(timestamp) {
+        if (!timestamp) return '—';
+        const diff = Date.now() - new Date(timestamp).getTime();
+        const minutes = Math.floor(diff / 60000);
+        if (minutes < 1) return 'Только что';
+        if (minutes < 60) return minutes + ' мин назад';
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return hours + ' ч назад';
+        return Math.floor(hours / 24) + ' д назад';
+    }
+
+    function getHeartbeatColor(timestamp) {
+        if (!timestamp) return 'grey';
+        const minutes = (Date.now() - new Date(timestamp).getTime()) / 60000;
+        if (minutes < 5) return 'green';
+        if (minutes < 30) return 'yellow';
+        return 'red';
     }
 
     // ===============================================
@@ -235,9 +339,10 @@ document.addEventListener("DOMContentLoaded", function () {
             section.classList.remove('active');
         });
 
-        // Убираем активный класс с кнопок
+        // Убираем активный класс с кнопок и обновляем aria-selected
         document.querySelectorAll('.nav-btn').forEach(btn => {
             btn.classList.remove('active');
+            btn.setAttribute('aria-selected', 'false');
         });
 
         // Показываем нужную секцию
@@ -250,6 +355,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const targetBtn = document.querySelector(`[data-section="${sectionName}"]`);
         if (targetBtn) {
             targetBtn.classList.add('active');
+            targetBtn.setAttribute('aria-selected', 'true');
         }
 
         // Загружаем данные для секции
@@ -257,16 +363,13 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function loadSectionData(sectionName) {
-        console.log('loadSectionData called with:', sectionName);
         switch(sectionName) {
             case 'buildings':
                 if (!dataLoaded.buildings) loadBuildings();
                 // Перезагружаем данные формы при каждом переходе в секцию зданий
-                console.log('Reloading form data for buildings section...');
                 loadFormData();
                 break;
             case 'controllers':
-                console.log('Calling loadControllers...');
                 if (!dataLoaded.controllers) loadControllers();
                 break;
             case 'transformers':
@@ -276,11 +379,9 @@ document.addEventListener("DOMContentLoaded", function () {
                 if (!dataLoaded.lines) loadLines();
                 break;
             case 'water-lines':
-                console.log('Calling loadWaterLines...');
                 if (!dataLoaded['water-lines']) loadWaterLines();
                 break;
             case 'metrics':
-                console.log('Calling loadMetrics...');
                 if (!dataLoaded.metrics) loadMetrics();
                 // Загружаем контроллеры для формы метрик
                 loadControllersForMetrics();
@@ -291,6 +392,9 @@ document.addEventListener("DOMContentLoaded", function () {
             case 'heat-sources':
                 if (!dataLoaded.heatSources) loadHeatSources();
                 break;
+            case 'alerts':
+                if (!dataLoaded.alerts) loadAlerts();
+                break;
         }
     }
 
@@ -299,11 +403,10 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     async function loadControllers() {
-        console.log('✅ loadControllers function called successfully');
         if (dataLoaded.controllers) return;
 
         // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
-        showLoadingMessage("#controllers-table tbody", "8");
+        showLoadingMessage("#controllers-table tbody", "9");
 
         try {
             const data = await loadData('/api/admin/controllers', 'controllers');
@@ -313,74 +416,46 @@ document.addEventListener("DOMContentLoaded", function () {
         } catch (error) {
             console.error("Error loading controllers:", error);
             // ИСПРАВЛЕНИЕ XSS: Безопасное отображение ошибки
-            showErrorMessage("#controllers-table tbody", "8");
+            showErrorMessage("#controllers-table tbody", "9");
         }
     }
 
     function renderControllersTable(data) {
-        const tableBody = document.querySelector("#controllers-table tbody");
-        const newTableBody = document.createElement('tbody');
-
-        if (data && data.length > 0) {
-            data.forEach((controller) => {
-                const row = document.createElement("tr");
-                const statusClass = controller.status === 'online' ? 'status-online' :
-                                  controller.status === 'offline' ? 'status-offline' : 'status-maintenance';
-
-                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.className = 'item-checkbox';
-                checkbox.setAttribute('data-id', controller.controller_id);
-                
-                const statusSpan = document.createElement('span');
-                statusSpan.className = `status-badge ${statusClass}`;
-                statusSpan.textContent = getStatusLabel(controller.status);
-                
-                const editBtn = document.createElement('button');
-                editBtn.className = 'btn-sm';
-                editBtn.textContent = 'Изменить';
-                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-                editBtn.addEventListener('click', () => editController(controller.controller_id));
-
-                const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'btn-sm btn-danger';
-                deleteBtn.textContent = 'Удалить';
-                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-                deleteBtn.addEventListener('click', () => deleteController(controller.controller_id));
-                
-                const buttonCell = document.createElement('td');
-                buttonCell.appendChild(editBtn);
-                buttonCell.appendChild(deleteBtn);
-                
-                const statusCell = document.createElement('td');
-                statusCell.appendChild(statusSpan);
-                
-                row.appendChild(createSecureTableCell(checkbox));
-                row.appendChild(createSecureTableCell(safeValue(controller.controller_id)));
-                row.appendChild(createSecureTableCell(safeValue(controller.serial_number)));
-                row.appendChild(createSecureTableCell(safeValue(controller.vendor)));
-                row.appendChild(createSecureTableCell(safeValue(controller.model)));
-                row.appendChild(createSecureTableCell(safeValue(controller.building_id)));
-                row.appendChild(statusCell);
-                row.appendChild(buttonCell);
-                newTableBody.appendChild(row);
-            });
-        } else {
-            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
-            const noDataRow = document.createElement('tr');
-            const noDataCell = document.createElement('td');
-            noDataCell.setAttribute('colspan', '8');
-            noDataCell.style.textAlign = 'center';
-            noDataCell.textContent = 'Нет данных';
-            noDataRow.appendChild(noDataCell);
-            newTableBody.appendChild(noDataRow);
-        }
-
-        const table = document.querySelector("#controllers-table");
-        table.replaceChild(newTableBody, tableBody);
-
-        updateCheckboxHandlers('controllers');
+        renderEntityTable({
+            tableId: 'controllers-table',
+            entityType: 'controllers',
+            idKey: 'controller_id',
+            data,
+            columns: [
+                { key: 'controller_id', label: 'ID' },
+                { key: 'serial_number', label: 'Серийный номер' },
+                { key: 'vendor', label: 'Производитель' },
+                { key: 'model', label: 'Модель' },
+                { key: 'building_id', label: 'Здание', render: (val) => entityCache.buildings[val] || val },
+                { key: 'status', label: 'Статус', render: (val) => {
+                    const statusClass = val === 'online' ? 'status-online' :
+                                        val === 'offline' ? 'status-offline' : 'status-maintenance';
+                    const span = document.createElement('span');
+                    span.className = `status-badge ${statusClass}`;
+                    span.textContent = getStatusLabel(val);
+                    return span;
+                }},
+                { key: 'last_heartbeat', label: 'Пульс', render: (val) => {
+                    const container = document.createElement('span');
+                    container.className = 'heartbeat-indicator';
+                    const dot = document.createElement('span');
+                    dot.className = 'heartbeat-dot ' + getHeartbeatColor(val);
+                    container.appendChild(dot);
+                    const text = document.createTextNode(formatHeartbeat(val));
+                    container.appendChild(text);
+                    return container;
+                }}
+            ],
+            actions: [
+                { label: 'Изменить', className: 'btn-sm', handler: (item) => editController(item.controller_id) },
+                { label: 'Удалить', className: 'btn-sm btn-danger', handler: (item) => deleteController(item.controller_id) }
+            ]
+        });
     }
 
     // ===============================================
@@ -388,7 +463,6 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     async function loadMetrics() {
-        console.log('✅ loadMetrics function called successfully');
         if (dataLoaded.metrics) return;
 
         // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
@@ -407,64 +481,33 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function renderMetricsTable(data) {
-        const tableBody = document.querySelector("#metrics-table tbody");
-        const newTableBody = document.createElement('tbody');
-
-        if (data && data.length > 0) {
-            data.forEach((metric) => {
-                const row = document.createElement("tr");
-                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.className = 'item-checkbox';
-                checkbox.setAttribute('data-id', metric.metric_id);
-                
-                const leakSensorSpan = document.createElement('span');
-                leakSensorSpan.className = metric.leak_sensor ? 'alert-badge' : 'ok-badge';
-                leakSensorSpan.textContent = metric.leak_sensor ? 'Есть' : 'Нет';
-                
-                const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'btn-sm btn-danger';
-                deleteBtn.textContent = 'Удалить';
-                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-                deleteBtn.addEventListener('click', () => deleteMetric(metric.metric_id));
-                
-                const leakSensorCell = document.createElement('td');
-                leakSensorCell.appendChild(leakSensorSpan);
-                
-                const buttonCell = document.createElement('td');
-                buttonCell.appendChild(deleteBtn);
-                
-                row.appendChild(createSecureTableCell(checkbox));
-                row.appendChild(createSecureTableCell(safeValue(metric.metric_id)));
-                row.appendChild(createSecureTableCell(safeValue(metric.controller_id)));
-                row.appendChild(createSecureTableCell(formatDate(metric.timestamp)));
-                row.appendChild(createSecureTableCell(formatNumber(metric.electricity_ph1, 1)));
-                row.appendChild(createSecureTableCell(formatNumber(metric.electricity_ph2, 1)));
-                row.appendChild(createSecureTableCell(formatNumber(metric.electricity_ph3, 1)));
-                row.appendChild(createSecureTableCell(formatNumber(metric.cold_water_pressure, 2)));
-                row.appendChild(createSecureTableCell(formatNumber(metric.hot_water_in_temp, 1)));
-                row.appendChild(createSecureTableCell(formatNumber(metric.air_temp, 1)));
-                row.appendChild(createSecureTableCell(formatNumber(metric.humidity, 1)));
-                row.appendChild(leakSensorCell);
-                row.appendChild(buttonCell);
-                newTableBody.appendChild(row);
-            });
-        } else {
-            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
-            const noDataRow = document.createElement('tr');
-            const noDataCell = document.createElement('td');
-            noDataCell.setAttribute('colspan', '13');
-            noDataCell.style.textAlign = 'center';
-            noDataCell.textContent = 'Нет данных';
-            noDataRow.appendChild(noDataCell);
-            newTableBody.appendChild(noDataRow);
-        }
-
-        const table = document.querySelector("#metrics-table");
-        table.replaceChild(newTableBody, tableBody);
-
-        updateCheckboxHandlers('metrics');
+        renderEntityTable({
+            tableId: 'metrics-table',
+            entityType: 'metrics',
+            idKey: 'metric_id',
+            data,
+            columns: [
+                { key: 'metric_id', label: 'ID' },
+                { key: 'controller_id', label: 'Контроллер', render: (val) => entityCache.controllers[val] || val },
+                { key: 'timestamp', label: 'Время', render: (v) => formatDate(v) },
+                { key: 'electricity_ph1', label: 'Эл. Ф1', render: (v) => formatNumber(v, 1) },
+                { key: 'electricity_ph2', label: 'Эл. Ф2', render: (v) => formatNumber(v, 1) },
+                { key: 'electricity_ph3', label: 'Эл. Ф3', render: (v) => formatNumber(v, 1) },
+                { key: 'cold_water_pressure', label: 'Давл. ХВС', render: (v) => formatNumber(v, 2) },
+                { key: 'hot_water_in_temp', label: 'Темп. ГВС', render: (v) => formatNumber(v, 1) },
+                { key: 'air_temp', label: 'Темп. возд.', render: (v) => formatNumber(v, 1) },
+                { key: 'humidity', label: 'Влажн.', render: (v) => formatNumber(v, 1) },
+                { key: 'leak_sensor', label: 'Утечка', render: (val) => {
+                    const span = document.createElement('span');
+                    span.className = val ? 'alert-badge' : 'ok-badge';
+                    span.textContent = val ? 'Есть' : 'Нет';
+                    return span;
+                }}
+            ],
+            actions: [
+                { label: 'Удалить', className: 'btn-sm btn-danger', handler: (item) => deleteMetric(item.metric_id) }
+            ]
+        });
     }
 
     // ===============================================
@@ -472,7 +515,6 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     async function loadWaterLines() {
-        console.log('✅ loadWaterLines function called successfully');
         if (dataLoaded['water-lines']) return;
 
         // ИСПРАВЛЕНИЕ XSS: Безопасное отображение загрузки
@@ -491,95 +533,40 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function renderWaterLinesTable(data) {
-        const tableBody = document.querySelector("#water-lines-table tbody");
-        const newTableBody = document.createElement('tbody');
-
-        if (data && data.length > 0) {
-            data.forEach((waterLine) => {
-                const row = document.createElement("tr");
-                const statusClass = waterLine.status === 'active' ? 'status-online' :
-                                  waterLine.status === 'inactive' ? 'status-offline' : 'status-maintenance';
-
-                const connectedBuildings = waterLine.connected_buildings && waterLine.connected_buildings.length > 0
-                    ? waterLine.connected_buildings.join(', ')
-                    : 'Нет подключений';
-
-                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                // Checkbox
-                const checkboxCell = document.createElement('td');
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.className = 'item-checkbox';
-                checkbox.dataset.id = waterLine.line_id;
-                checkboxCell.appendChild(checkbox);
-                row.appendChild(checkboxCell);
-
-                // ID
-                row.appendChild(createSecureTableCell(safeValue(waterLine.line_id)));
-
-                // Name
-                row.appendChild(createSecureTableCell(safeValue(waterLine.name)));
-
-                // Description
-                row.appendChild(createSecureTableCell(safeValue(waterLine.description)));
-
-                // Diameter
-                row.appendChild(createSecureTableCell(safeValue(waterLine.diameter_mm)));
-
-                // Material
-                row.appendChild(createSecureTableCell(safeValue(waterLine.material)));
-
-                // Pressure
-                row.appendChild(createSecureTableCell(formatNumber(waterLine.pressure_bar, 1)));
-
-                // Installation date
-                row.appendChild(createSecureTableCell(formatDate(waterLine.installation_date)));
-
-                // Status badge
-                const statusCell = document.createElement('td');
-                const statusBadge = document.createElement('span');
-                statusBadge.className = `status-badge ${statusClass}`;
-                statusBadge.textContent = getWaterLineStatusLabel(waterLine.status);
-                statusCell.appendChild(statusBadge);
-                row.appendChild(statusCell);
-
-                // Connected buildings
-                const buildingsText = connectedBuildings.length > 50
-                    ? connectedBuildings.substring(0, 50) + '...'
-                    : connectedBuildings;
-                const buildingsCell = document.createElement('td');
-                buildingsCell.title = connectedBuildings;
-                buildingsCell.textContent = buildingsText;
-                row.appendChild(buildingsCell);
-
-                // Actions
-                const actionsCell = document.createElement('td');
-                const editBtn = document.createElement('button');
-                editBtn.className = 'btn-sm';
-                editBtn.textContent = 'Изменить';
-                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-                editBtn.addEventListener('click', () => editWaterLine(waterLine.line_id));
-                actionsCell.appendChild(editBtn);
-
-                const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'btn-sm btn-danger';
-                deleteBtn.textContent = 'Удалить';
-                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-                deleteBtn.addEventListener('click', () => deleteWaterLine(waterLine.line_id));
-                actionsCell.appendChild(deleteBtn);
-                row.appendChild(actionsCell);
-
-                newTableBody.appendChild(row);
-            });
-        } else {
-            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
-            newTableBody.appendChild(showNoDataMessage(newTableBody, "7"));
-        }
-
-        const table = document.querySelector("#water-lines-table");
-        table.replaceChild(newTableBody, tableBody);
-
-        updateCheckboxHandlers('water-lines');
+        renderEntityTable({
+            tableId: 'water-lines-table',
+            entityType: 'water-lines',
+            idKey: 'line_id',
+            data,
+            columns: [
+                { key: 'line_id', label: 'ID' },
+                { key: 'name', label: 'Название' },
+                { key: 'description', label: 'Описание' },
+                { key: 'diameter_mm', label: 'Диаметр, мм' },
+                { key: 'material', label: 'Материал' },
+                { key: 'pressure_bar', label: 'Давление, бар', render: (v) => formatNumber(v, 1) },
+                { key: 'installation_date', label: 'Дата установки', render: (v) => formatDate(v) },
+                { key: 'status', label: 'Статус', render: (val) => {
+                    const statusClass = val === 'active' ? 'status-online' :
+                                        val === 'inactive' ? 'status-offline' : 'status-maintenance';
+                    const span = document.createElement('span');
+                    span.className = `status-badge ${statusClass}`;
+                    span.textContent = getWaterLineStatusLabel(val);
+                    return span;
+                }},
+                { key: 'connected_buildings', label: 'Здания', render: (val) => {
+                    const fullText = val && val.length > 0 ? val.join(', ') : 'Нет подключений';
+                    const span = document.createElement('span');
+                    span.textContent = fullText.length > 50 ? fullText.substring(0, 50) + '...' : fullText;
+                    span.title = fullText;
+                    return span;
+                }}
+            ],
+            actions: [
+                { label: 'Изменить', className: 'btn-sm', handler: (item) => editWaterLine(item.line_id) },
+                { label: 'Удалить', className: 'btn-sm btn-danger', handler: (item) => deleteWaterLine(item.line_id) }
+            ]
+        });
     }
 
     function getWaterLineStatusLabel(status) {
@@ -675,7 +662,6 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             const url = `${endpoint}?${params.toString()}`;
-            console.log(`Загрузка данных с ${url}`);
 
             const response = await fetch(url);
             if (!response.ok) {
@@ -727,72 +713,92 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (data && data.length > 0) {
             data.forEach((building) => {
-                // Строка 1: Основная информация
-                const row1 = document.createElement("tr");
-                row1.className = "building-row-1";
-                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
+                // Main row — core fields only
+                const mainRow = document.createElement('tr');
+                mainRow.className = 'building-main-row';
+                mainRow.dataset.buildingId = building.building_id;
+
+                // Checkbox cell
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
                 checkbox.className = 'item-checkbox';
                 checkbox.setAttribute('data-id', building.building_id);
-                
+                mainRow.appendChild(createSecureTableCell(checkbox));
+
+                // Text cells — all use textContent (XSS-safe)
+                mainRow.appendChild(createSecureTableCell(safeValue(building.building_id)));
+                mainRow.appendChild(createSecureTableCell(safeValue(building.name)));
+                mainRow.appendChild(createSecureTableCell(safeValue(building.address)));
+                mainRow.appendChild(createSecureTableCell(safeValue(building.town)));
+                mainRow.appendChild(createSecureTableCell(safeValue(building.region)));
+                mainRow.appendChild(createSecureTableCell(safeValue(building.management_company)));
+
+                // Actions cell
+                const actionsCell = document.createElement('td');
+
+                const expandBtn = document.createElement('button');
+                expandBtn.className = 'btn-expand';
+                expandBtn.textContent = '\u25B6';
+                expandBtn.title = 'Подробности';
+                actionsCell.appendChild(expandBtn);
+
                 const editBtn = document.createElement('button');
                 editBtn.className = 'btn-sm';
                 editBtn.textContent = 'Изменить';
-                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
                 editBtn.addEventListener('click', () => editBuilding(building.building_id));
+                actionsCell.appendChild(editBtn);
 
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'btn-sm btn-danger';
                 deleteBtn.textContent = 'Удалить';
-                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
                 deleteBtn.addEventListener('click', () => deleteBuilding(building.building_id));
-                
-                const buttonCell = document.createElement('td');
-                buttonCell.setAttribute('rowspan', '3');
-                buttonCell.appendChild(editBtn);
-                buttonCell.appendChild(document.createElement('br'));
-                buttonCell.appendChild(deleteBtn);
-                
-                row1.appendChild(createSecureTableCell(checkbox, {rowspan: 3}));
-                row1.appendChild(createSecureTableCell(safeValue(building.building_id), {rowspan: 3}));
-                row1.appendChild(createSecureTableCell(safeValue(building.name), {rowspan: 3}));
-                row1.appendChild(createSecureTableCell(safeValue(building.address)));
-                row1.appendChild(createSecureTableCell(safeValue(building.town)));
-                row1.appendChild(createSecureTableCell(safeValue(building.region)));
-                row1.appendChild(createSecureTableCell(formatNumber(building.latitude, 6)));
-                row1.appendChild(createSecureTableCell(formatNumber(building.longitude, 6)));
-                row1.appendChild(buttonCell);
+                actionsCell.appendChild(deleteBtn);
 
-                // Строка 2: Инфраструктура
-                const row2 = document.createElement("tr");
-                row2.className = "building-row-2";
-                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                row2.appendChild(createSecureTableCell(safeValue(building.management_company)));
-                row2.appendChild(createSecureTableCell(building.hot_water ? "Да" : "Нет"));
-                row2.appendChild(createSecureTableCell(safeValue(building.primary_transformer_name)));
-                row2.appendChild(createSecureTableCell(safeValue(building.backup_transformer_name)));
-                row2.appendChild(createSecureTableCell(safeValue(building.primary_line_name)));
+                mainRow.appendChild(actionsCell);
+                newTableBody.appendChild(mainRow);
 
-                // Строка 3: Водоснабжение
-                const row3 = document.createElement("tr");
-                row3.className = "building-row-3 building-group";
-                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                row3.appendChild(createSecureTableCell(safeValue(building.backup_line_name)));
-                row3.appendChild(createSecureTableCell(safeValue(building.cold_water_line_name)));
-                row3.appendChild(createSecureTableCell(safeValue(building.hot_water_line_name)));
-                row3.appendChild(createSecureTableCell(safeValue(building.cold_water_supplier_name)));
-                row3.appendChild(createSecureTableCell(safeValue(building.hot_water_supplier_name)));
+                // Detail row (hidden by default)
+                const detailRow = document.createElement('tr');
+                detailRow.className = 'building-detail-row';
+                detailRow.style.display = 'none';
+                detailRow.dataset.detailFor = building.building_id;
 
-                newTableBody.appendChild(row1);
-                newTableBody.appendChild(row2);
-                newTableBody.appendChild(row3);
+                const detailCell = document.createElement('td');
+                detailCell.colSpan = 8;
+
+                const detailGrid = document.createElement('div');
+                detailGrid.className = 'detail-grid';
+
+                const details = [
+                    ['Координаты', formatNumber(building.latitude, 6) + ', ' + formatNumber(building.longitude, 6)],
+                    ['Горячая вода', building.hot_water ? 'Да' : 'Нет'],
+                    ['Осн. трансформатор', safeValue(building.primary_transformer_name, '\u2014')],
+                    ['Рез. трансформатор', safeValue(building.backup_transformer_name, '\u2014')],
+                    ['Осн. линия', safeValue(building.primary_line_name, '\u2014')],
+                    ['Рез. линия', safeValue(building.backup_line_name, '\u2014')],
+                    ['Линия ХВС', safeValue(building.cold_water_line_name, '\u2014')],
+                    ['Линия ГВС', safeValue(building.hot_water_line_name, '\u2014')],
+                    ['Поставщик ХВС', safeValue(building.cold_water_supplier_name, '\u2014')],
+                    ['Поставщик ГВС', safeValue(building.hot_water_supplier_name, '\u2014')]
+                ];
+
+                details.forEach(([label, value]) => {
+                    const div = document.createElement('div');
+                    const strong = document.createElement('strong');
+                    strong.textContent = label + ': ';
+                    div.appendChild(strong);
+                    div.appendChild(document.createTextNode(value));
+                    detailGrid.appendChild(div);
+                });
+
+                detailCell.appendChild(detailGrid);
+                detailRow.appendChild(detailCell);
+                newTableBody.appendChild(detailRow);
             });
         } else {
-            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
             const noDataRow = document.createElement('tr');
             const noDataCell = document.createElement('td');
-            noDataCell.setAttribute('colspan', '9');
+            noDataCell.setAttribute('colspan', '8');
             noDataCell.style.textAlign = 'center';
             noDataCell.textContent = 'Нет данных';
             noDataRow.appendChild(noDataCell);
@@ -829,63 +835,30 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function renderTransformersTable(data) {
-        const tableBody = document.querySelector("#transformers-table tbody");
-        const newTableBody = document.createElement('tbody');
-
-        if (data && data.length > 0) {
-            data.forEach((transformer) => {
-                const row = document.createElement("tr");
-                const primaryBuildings = Array.isArray(transformer.primary_buildings)
-                    ? transformer.primary_buildings.filter(b => b !== null).join(', ')
-                    : '';
-                const backupBuildings = Array.isArray(transformer.backup_buildings)
-                    ? transformer.backup_buildings.filter(b => b !== null).join(', ')
-                    : '';
-
-                const buildingsText = [];
-                if (primaryBuildings) buildingsText.push(`Основные: ${primaryBuildings}`);
-                if (backupBuildings) buildingsText.push(`Резервные: ${backupBuildings}`);
-
-                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.className = 'item-checkbox';
-                checkbox.setAttribute('data-id', transformer.transformer_id);
-                
-                const editBtn = document.createElement('button');
-                editBtn.className = 'btn-sm';
-                editBtn.textContent = 'Изменить';
-                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-                editBtn.addEventListener('click', () => editTransformer(transformer.transformer_id));
-
-                const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'btn-sm btn-danger';
-                deleteBtn.textContent = 'Удалить';
-                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-                deleteBtn.addEventListener('click', () => deleteTransformer(transformer.transformer_id));
-                
-                const buttonCell = document.createElement('td');
-                buttonCell.appendChild(editBtn);
-                buttonCell.appendChild(deleteBtn);
-                
-                row.appendChild(createSecureTableCell(checkbox));
-                row.appendChild(createSecureTableCell(safeValue(transformer.transformer_id)));
-                row.appendChild(createSecureTableCell(safeValue(transformer.name)));
-                row.appendChild(createSecureTableCell(formatNumber(transformer.power_kva, 1)));
-                row.appendChild(createSecureTableCell(formatNumber(transformer.voltage_kv, 1)));
-                row.appendChild(createSecureTableCell(buildingsText.join(', ') || 'Нет подключенных зданий'));
-                row.appendChild(buttonCell);
-                newTableBody.appendChild(row);
-            });
-        } else {
-            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
-            newTableBody.appendChild(showNoDataMessage(newTableBody, "7"));
-        }
-
-        const table = document.querySelector("#transformers-table");
-        table.replaceChild(newTableBody, tableBody);
-
-        updateCheckboxHandlers('transformers');
+        renderEntityTable({
+            tableId: 'transformers-table',
+            entityType: 'transformers',
+            idKey: 'transformer_id',
+            data,
+            columns: [
+                { key: 'transformer_id', label: 'ID' },
+                { key: 'name', label: 'Название' },
+                { key: 'power_kva', label: 'Мощность, кВА', render: (v) => formatNumber(v, 1) },
+                { key: 'voltage_kv', label: 'Напряжение, кВ', render: (v) => formatNumber(v, 1) },
+                { key: 'primary_buildings', label: 'Здания', render: (val, item) => {
+                    const primary = Array.isArray(item.primary_buildings) ? item.primary_buildings.filter(b => b !== null).join(', ') : '';
+                    const backup = Array.isArray(item.backup_buildings) ? item.backup_buildings.filter(b => b !== null).join(', ') : '';
+                    const parts = [];
+                    if (primary) parts.push('Основные: ' + primary);
+                    if (backup) parts.push('Резервные: ' + backup);
+                    return parts.join(', ') || 'Нет подключенных зданий';
+                }}
+            ],
+            actions: [
+                { label: 'Изменить', className: 'btn-sm', handler: (item) => editTransformer(item.transformer_id) },
+                { label: 'Удалить', className: 'btn-sm btn-danger', handler: (item) => deleteTransformer(item.transformer_id) }
+            ]
+        });
     }
 
     // ===============================================
@@ -911,66 +884,23 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function renderLinesTable(data) {
-        const tableBody = document.querySelector("#lines-table tbody");
-        const newTableBody = document.createElement('tbody');
-
-        if (data && data.length > 0) {
-            data.forEach((line) => {
-                const row = document.createElement("tr");
-
-                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                // Checkbox
-                const checkboxCell = document.createElement('td');
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.className = 'item-checkbox';
-                checkbox.dataset.id = line.line_id;
-                checkboxCell.appendChild(checkbox);
-                row.appendChild(checkboxCell);
-
-                // ID
-                row.appendChild(createSecureTableCell(safeValue(line.line_id)));
-
-                // Name
-                row.appendChild(createSecureTableCell(safeValue(line.name)));
-
-                // Voltage
-                row.appendChild(createSecureTableCell(formatNumber(line.voltage_kv, 1)));
-
-                // Length
-                row.appendChild(createSecureTableCell(formatNumber(line.length_km, 3)));
-
-                // Transformer ID
-                row.appendChild(createSecureTableCell(safeValue(line.transformer_id)));
-
-                // Actions
-                const actionsCell = document.createElement('td');
-                const editBtn = document.createElement('button');
-                editBtn.className = 'btn-sm';
-                editBtn.textContent = 'Изменить';
-                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-                editBtn.addEventListener('click', () => editLine(line.line_id));
-                actionsCell.appendChild(editBtn);
-
-                const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'btn-sm btn-danger';
-                deleteBtn.textContent = 'Удалить';
-                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-                deleteBtn.addEventListener('click', () => deleteLine(line.line_id));
-                actionsCell.appendChild(deleteBtn);
-                row.appendChild(actionsCell);
-
-                newTableBody.appendChild(row);
-            });
-        } else {
-            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
-            newTableBody.appendChild(showNoDataMessage(newTableBody, "7"));
-        }
-
-        const table = document.querySelector("#lines-table");
-        table.replaceChild(newTableBody, tableBody);
-
-        updateCheckboxHandlers('lines');
+        renderEntityTable({
+            tableId: 'lines-table',
+            entityType: 'lines',
+            idKey: 'line_id',
+            data,
+            columns: [
+                { key: 'line_id', label: 'ID' },
+                { key: 'name', label: 'Название' },
+                { key: 'voltage_kv', label: 'Напряжение, кВ', render: (v) => formatNumber(v, 1) },
+                { key: 'length_km', label: 'Длина, км', render: (v) => formatNumber(v, 3) },
+                { key: 'transformer_id', label: 'Трансформатор', render: (val) => entityCache.transformers[val] || val }
+            ],
+            actions: [
+                { label: 'Изменить', className: 'btn-sm', handler: (item) => editLine(item.line_id) },
+                { label: 'Удалить', className: 'btn-sm btn-danger', handler: (item) => deleteLine(item.line_id) }
+            ]
+        });
     }
 
     // ===============================================
@@ -996,72 +926,25 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function renderWaterSourcesTable(data) {
-        const tableBody = document.querySelector("#water-sources-table tbody");
-        const newTableBody = document.createElement('tbody');
-
-        if (data && data.length > 0) {
-            data.forEach((source) => {
-                const row = document.createElement("tr");
-
-                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                // Checkbox
-                const checkboxCell = document.createElement('td');
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.className = 'item-checkbox';
-                checkbox.dataset.id = source.id;
-                checkboxCell.appendChild(checkbox);
-                row.appendChild(checkboxCell);
-
-                // ID
-                row.appendChild(createSecureTableCell(safeValue(source.id)));
-
-                // Name
-                row.appendChild(createSecureTableCell(safeValue(source.name)));
-
-                // Address
-                row.appendChild(createSecureTableCell(safeValue(source.address)));
-
-                // Source Type
-                row.appendChild(createSecureTableCell(getSourceTypeLabel(source.source_type, 'water')));
-
-                // Capacity
-                row.appendChild(createSecureTableCell(formatNumber(source.capacity_m3_per_hour, 1)));
-
-                // Operating Pressure
-                row.appendChild(createSecureTableCell(formatNumber(source.operating_pressure_bar, 1)));
-
-                // Status
-                row.appendChild(createSecureTableCell(getStatusLabel(source.status)));
-
-                // Actions
-                const actionsCell = document.createElement('td');
-                const editBtn = document.createElement('button');
-                editBtn.className = 'btn-sm';
-                editBtn.textContent = 'Изменить';
-                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-                editBtn.addEventListener('click', () => editWaterSource(source.id));
-                actionsCell.appendChild(editBtn);
-
-                const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'btn-sm btn-danger';
-                deleteBtn.textContent = 'Удалить';
-                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-                deleteBtn.addEventListener('click', () => deleteWaterSource(source.id));
-                actionsCell.appendChild(deleteBtn);
-                row.appendChild(actionsCell);
-
-                newTableBody.appendChild(row);
-            });
-        } else {
-            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
-            newTableBody.appendChild(showNoDataMessage(newTableBody, "9"));
-        }
-
-        const table = document.querySelector("#water-sources-table");
-        table.replaceChild(newTableBody, tableBody);
-
-        updateCheckboxHandlers('waterSources');
+        renderEntityTable({
+            tableId: 'water-sources-table',
+            entityType: 'waterSources',
+            idKey: 'id',
+            data,
+            columns: [
+                { key: 'id', label: 'ID' },
+                { key: 'name', label: 'Название' },
+                { key: 'address', label: 'Адрес' },
+                { key: 'source_type', label: 'Тип', render: (val) => getSourceTypeLabel(val, 'water') },
+                { key: 'capacity_m3_per_hour', label: 'Мощность, м³/ч', render: (v) => formatNumber(v, 1) },
+                { key: 'operating_pressure_bar', label: 'Давление, бар', render: (v) => formatNumber(v, 1) },
+                { key: 'status', label: 'Статус', render: (val) => getStatusLabel(val) }
+            ],
+            actions: [
+                { label: 'Изменить', className: 'btn-sm', handler: (item) => editWaterSource(item.id) },
+                { label: 'Удалить', className: 'btn-sm btn-danger', handler: (item) => deleteWaterSource(item.id) }
+            ]
+        });
     }
 
     // ===============================================
@@ -1087,73 +970,151 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function renderHeatSourcesTable(data) {
-        const tableBody = document.querySelector("#heat-sources-table tbody");
-        const newTableBody = document.createElement('tbody');
-
-        if (data && data.length > 0) {
-            data.forEach((source) => {
-                const row = document.createElement("tr");
-
-                // ИСПРАВЛЕНИЕ XSS: Замена innerHTML на безопасные DOM методы
-                // Checkbox
-                const checkboxCell = document.createElement('td');
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.className = 'item-checkbox';
-                checkbox.dataset.id = source.id;
-                checkboxCell.appendChild(checkbox);
-                row.appendChild(checkboxCell);
-
-                // ID
-                row.appendChild(createSecureTableCell(safeValue(source.id)));
-
-                // Name
-                row.appendChild(createSecureTableCell(safeValue(source.name)));
-
-                // Address
-                row.appendChild(createSecureTableCell(safeValue(source.address)));
-
-                // Source Type
-                row.appendChild(createSecureTableCell(getSourceTypeLabel(source.source_type, 'heat')));
-
-                // Capacity
-                row.appendChild(createSecureTableCell(formatNumber(source.capacity_mw, 1)));
-
-                // Fuel Type
-                row.appendChild(createSecureTableCell(safeValue(source.fuel_type)));
-
-                // Status
-                row.appendChild(createSecureTableCell(getStatusLabel(source.status)));
-
-                // Actions
-                const actionsCell = document.createElement('td');
-                const editBtn = document.createElement('button');
-                editBtn.className = 'btn-sm';
-                editBtn.textContent = 'Изменить';
-                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-                editBtn.addEventListener('click', () => editHeatSource(source.id));
-                actionsCell.appendChild(editBtn);
-
-                const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'btn-sm btn-danger';
-                deleteBtn.textContent = 'Удалить';
-                // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-                deleteBtn.addEventListener('click', () => deleteHeatSource(source.id));
-                actionsCell.appendChild(deleteBtn);
-                row.appendChild(actionsCell);
-
-                newTableBody.appendChild(row);
-            });
-        } else {
-            // ИСПРАВЛЕНИЕ XSS: Безопасное отображение "Нет данных"
-            newTableBody.appendChild(showNoDataMessage(newTableBody, "9"));
-        }
-
-        const table = document.querySelector("#heat-sources-table");
-        table.replaceChild(newTableBody, tableBody);
-
-        updateCheckboxHandlers('heatSources');
+        renderEntityTable({
+            tableId: 'heat-sources-table',
+            entityType: 'heatSources',
+            idKey: 'id',
+            data,
+            columns: [
+                { key: 'id', label: 'ID' },
+                { key: 'name', label: 'Название' },
+                { key: 'address', label: 'Адрес' },
+                { key: 'source_type', label: 'Тип', render: (val) => getSourceTypeLabel(val, 'heat') },
+                { key: 'capacity_mw', label: 'Мощность, МВт', render: (v) => formatNumber(v, 1) },
+                { key: 'fuel_type', label: 'Тип топлива' },
+                { key: 'status', label: 'Статус', render: (val) => getStatusLabel(val) }
+            ],
+            actions: [
+                { label: 'Изменить', className: 'btn-sm', handler: (item) => editHeatSource(item.id) },
+                { label: 'Удалить', className: 'btn-sm btn-danger', handler: (item) => deleteHeatSource(item.id) }
+            ]
+        });
     }
+
+    // ===============================================
+    // ЗАГРУЗКА ТРЕВОГ
+    // ===============================================
+
+    async function loadAlerts() {
+        if (dataLoaded.alerts) return;
+        showLoadingMessage("#alerts-table tbody", "9");
+
+        try {
+            const data = await loadData('/api/alerts', 'alerts');
+            renderAlertsTable(data);
+            updatePagination('alerts');
+            dataLoaded.alerts = true;
+        } catch (error) {
+            console.error("Error loading alerts:", error);
+            showErrorMessage("#alerts-table tbody", "9");
+        }
+    }
+
+    function getAlertStatusLabel(status) {
+        const labels = {
+            'active': 'Активная',
+            'acknowledged': 'Подтверждена',
+            'resolved': 'Закрыта'
+        };
+        return labels[status] || status;
+    }
+
+    function getInfraTypeLabel(type) {
+        const labels = {
+            'transformer': 'Трансформатор',
+            'controller': 'Контроллер',
+            'water_source': 'Источник воды',
+            'heat_source': 'Источник тепла'
+        };
+        return labels[type] || type;
+    }
+
+    function renderAlertsTable(data) {
+        renderEntityTable({
+            tableId: 'alerts-table',
+            entityType: 'alerts',
+            idKey: 'alert_id',
+            data,
+            columns: [
+                { key: 'alert_id', label: 'ID' },
+                { key: 'infrastructure_type', label: 'Тип', render: (val) => getInfraTypeLabel(val) },
+                { key: 'severity', label: 'Важность', render: (val) => {
+                    const span = document.createElement('span');
+                    span.className = 'severity-badge severity-' + (val || '').toLowerCase();
+                    span.textContent = val;
+                    return span;
+                }},
+                { key: 'message', label: 'Сообщение' },
+                { key: 'infrastructure_id', label: 'Объект' },
+                { key: 'status', label: 'Статус', render: (val) => {
+                    const span = document.createElement('span');
+                    span.className = 'alert-status-badge alert-status-' + val;
+                    span.textContent = getAlertStatusLabel(val);
+                    return span;
+                }},
+                { key: 'created_at', label: 'Создан', render: (val) => formatDate(val) }
+            ],
+            actions: [
+                {
+                    label: 'Подтвердить',
+                    className: 'btn-sm',
+                    condition: (item) => item.status === 'active',
+                    handler: (item) => acknowledgeAlert(item.alert_id)
+                },
+                {
+                    label: 'Закрыть',
+                    className: 'btn-sm btn-danger',
+                    condition: (item) => item.status !== 'resolved',
+                    handler: (item) => resolveAlert(item.alert_id)
+                }
+            ]
+        });
+    }
+
+    async function acknowledgeAlert(alertId) {
+        if (!confirm('Подтвердить тревогу?')) return;
+        try {
+            const response = await fetch('/api/alerts/' + alertId + '/acknowledge', { method: 'PATCH' });
+            if (!response.ok) throw new Error('Ошибка подтверждения');
+            showToast('Тревога подтверждена', 'success');
+            dataLoaded.alerts = false;
+            loadAlerts();
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    async function resolveAlert(alertId) {
+        if (!confirm('Закрыть тревогу?')) return;
+        try {
+            const response = await fetch('/api/alerts/' + alertId + '/resolve', { method: 'PATCH' });
+            if (!response.ok) throw new Error('Ошибка закрытия');
+            showToast('Тревога закрыта', 'success');
+            dataLoaded.alerts = false;
+            loadAlerts();
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    // Alert filter handlers
+    ['alert-filter-severity', 'alert-filter-status', 'alert-filter-infra'].forEach(filterId => {
+        const el = document.getElementById(filterId);
+        if (el) {
+            el.addEventListener('change', function() {
+                filters.alerts = {};
+                const severity = document.getElementById('alert-filter-severity').value;
+                const status = document.getElementById('alert-filter-status').value;
+                const infra = document.getElementById('alert-filter-infra').value;
+                if (severity) filters.alerts.severity = severity;
+                if (status) filters.alerts.status = status;
+                if (infra) filters.alerts.infrastructure_type = infra;
+                pagination.alerts.page = 1;
+                dataLoaded.alerts = false;
+                loadAlerts();
+            });
+        }
+    });
 
     // ===============================================
     // УТИЛИТЫ ДЛЯ ФОРМАТИРОВАНИЯ
@@ -1182,7 +1143,9 @@ document.addEventListener("DOMContentLoaded", function () {
         const statusLabels = {
             'active': 'Активный',
             'inactive': 'Неактивный',
-            'maintenance': 'На обслуживании'
+            'maintenance': 'На обслуживании',
+            'online': 'В сети',
+            'offline': 'Не в сети'
         };
         return statusLabels[status] || status;
     }
@@ -1199,8 +1162,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 const checkboxes = document.querySelectorAll(`#${section}-section .item-checkbox`);
                 const allChecked = Array.from(checkboxes).every(cb => cb.checked);
                 
-                console.log(`🔘 Выбрать все в секции ${section}: текущее состояние all checked = ${allChecked}`);
-                
                 // Если все выбраны - снимаем выбор, иначе выбираем все
                 checkboxes.forEach(checkbox => {
                     checkbox.checked = !allChecked;
@@ -1215,15 +1176,13 @@ document.addEventListener("DOMContentLoaded", function () {
                 // Обновляем текст кнопки
                 this.textContent = allChecked ? 'Выбрать все' : 'Снять выбор';
                 updateBatchButtons(section);
-                
-                console.log(`✅ Выбрано элементов: ${selectedItems[section].size}`);
             });
             selectAllBtn.dataset.handlerSet = 'true';
         }
         
         // Обработчик для чекбокса "выбрать все" (если есть в заголовке таблицы)
         const selectAllCheckbox = document.getElementById(`${section}-select-all-checkbox`);
-        if (selectAllCheckbox) {
+        if (selectAllCheckbox && !selectAllCheckbox.dataset.handlerSet) {
             selectAllCheckbox.addEventListener('change', function() {
                 const checkboxes = document.querySelectorAll(`#${section}-section .item-checkbox`);
                 checkboxes.forEach(checkbox => {
@@ -1237,6 +1196,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 });
                 updateBatchButtons(section);
             });
+            selectAllCheckbox.dataset.handlerSet = 'true';
         }
 
         // Обработчики для отдельных чекбоксов
@@ -1327,8 +1287,6 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
         
-        console.log(`🔥 Массовое удаление ${selectedCount} элементов из секции ${section}`);
-        
         let deleted = 0;
         let errors = [];
         
@@ -1366,7 +1324,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 
                 if (response.ok) {
                     deleted++;
-                    console.log(`  ✅ Удалён ${section} #${id}`);
                 } else {
                     const errorData = await response.json();
                     const errorMsg = errorData.error || errorData.message || 'Ошибка удаления';
@@ -1380,8 +1337,6 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         
         // Показываем результат
-        console.log(`✅ Завершено: Удалено ${deleted}/${selectedCount}`);
-        
         if (errors.length > 0) {
             showToast(`Удалено: ${deleted}/${selectedCount}. Ошибок: ${errors.length}`, 'warning');
             console.warn('Ошибки при массовом удалении:', errors);
@@ -1419,8 +1374,6 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
         
-        console.log(`🔄 Массовое изменение статуса ${selectedCount} элементов из секции ${section}`);
-        
         let updated = 0;
         let errors = [];
         
@@ -1453,7 +1406,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 
                 if (response.ok) {
                     updated++;
-                    console.log(`  ✅ Обновлён статус ${section} #${id} на ${newStatus}`);
                 } else {
                     const errorData = await response.json();
                     const errorMsg = errorData.error || errorData.message || 'Ошибка обновления';
@@ -1467,8 +1419,6 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         
         // Показываем результат
-        console.log(`✅ Завершено: Обновлено ${updated}/${selectedCount}`);
-        
         if (errors.length > 0) {
             showToast(`Обновлено: ${updated}/${selectedCount}. Ошибок: ${errors.length}`, 'warning');
             console.warn('Ошибки при массовом изменении статуса:', errors);
@@ -1493,16 +1443,20 @@ document.addEventListener("DOMContentLoaded", function () {
         const prevBtn = document.getElementById(`${section}-prev-page`);
         const nextBtn = document.getElementById(`${section}-next-page`);
 
+        const currentPage = pagination[section].page;
+        const total = pagination[section].total || 0;
+        const totalPages = Math.max(1, Math.ceil(total / pagination[section].limit));
+
         if (pageInfo) {
-            const currentPage = pagination[section].page;
-            const totalPages = Math.ceil(pagination[section].total / pagination[section].limit);
             pageInfo.textContent = `Страница ${currentPage} из ${totalPages}`;
         }
 
+        // Clone buttons to remove all old event listeners (prevents leak)
         if (prevBtn) {
-            prevBtn.disabled = pagination[section].page <= 1;
-            // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-            prevBtn.addEventListener('click', () => {
+            const newPrev = prevBtn.cloneNode(true);
+            prevBtn.replaceWith(newPrev);
+            newPrev.disabled = currentPage <= 1;
+            newPrev.addEventListener('click', () => {
                 if (pagination[section].page > 1) {
                     pagination[section].page--;
                     dataLoaded[section] = false;
@@ -1512,12 +1466,12 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         if (nextBtn) {
-            const totalPages = Math.ceil(pagination[section].total / pagination[section].limit);
-            nextBtn.disabled = pagination[section].page >= totalPages;
-            // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
-            nextBtn.addEventListener('click', () => {
-                const totalPages = Math.ceil(pagination[section].total / pagination[section].limit);
-                if (pagination[section].page < totalPages) {
+            const newNext = nextBtn.cloneNode(true);
+            nextBtn.replaceWith(newNext);
+            newNext.disabled = currentPage >= totalPages;
+            newNext.addEventListener('click', () => {
+                const tp = Math.max(1, Math.ceil((pagination[section].total || 0) / pagination[section].limit));
+                if (pagination[section].page < tp) {
                     pagination[section].page++;
                     dataLoaded[section] = false;
                     loadSectionData(section);
@@ -1530,8 +1484,32 @@ document.addEventListener("DOMContentLoaded", function () {
     // ИНИЦИАЛИЗАЦИЯ
     // ===============================================
 
+    // Delegated click handler for expand buttons — registered ONCE
+    document.getElementById('buildings-table').addEventListener('click', (e) => {
+        const expandBtn = e.target.closest('.btn-expand');
+        if (!expandBtn) return;
+
+        const mainRow = expandBtn.closest('tr');
+        const buildingId = mainRow.dataset.buildingId;
+        const detailRow = document.querySelector('tr[data-detail-for="' + buildingId + '"]');
+
+        if (detailRow) {
+            const isVisible = detailRow.style.display !== 'none';
+            detailRow.style.display = isVisible ? 'none' : 'table-row';
+            expandBtn.textContent = isVisible ? '\u25B6' : '\u25BC';
+        }
+    });
+
     // Загружаем данные для активной секции при старте
-    loadSectionData('buildings');
+    // Ждём готовности auth — иначе запрос уйдёт без JWT и вернёт 401
+    if (window.adminAuth && window.adminAuth.isAuthenticated) {
+        loadEntityCache().then(() => loadSectionData('buildings'));
+    } else {
+        window.addEventListener('admin-auth-ready', async () => {
+            await loadEntityCache();
+            loadSectionData('buildings');
+        }, { once: true });
+    }
 
     // Показываем таблицы после загрузки
     document.querySelectorAll('.table-container').forEach(container => {
@@ -1540,7 +1518,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Глобальные функции для кнопок (будут доступны из HTML)
     window.editBuilding = async function(id) {
-        console.log('🏠 editBuilding вызвана для ID:', id);
         try {
             const response = await fetch(`/api/buildings/${id}`, {
                 headers: {
@@ -1584,7 +1561,7 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             // Показываем модальное окно
-            document.getElementById('edit-building-modal').style.display = 'flex';
+            openModal('edit-building-modal');
 
         } catch (error) {
             console.error('Error loading building:', error);
@@ -1593,8 +1570,6 @@ document.addEventListener("DOMContentLoaded", function () {
     };
 
     window.deleteBuilding = async function(id) {
-        console.log('🗑️ deleteBuilding вызвана для ID:', id);
-        
         try {
             // Сначала пробуем удалить без каскада
             const response = await fetch(`/api/buildings/${id}`, {
@@ -1622,7 +1597,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     
                     if (confirm(message)) {
                         // Пользователь согласился на каскадное удаление
-                        await deleteBuildingCascade(id, errorData.controllers);
+                        await deleteBuildingCascade(id);
                     }
                     return;
                 }
@@ -1639,119 +1614,32 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     };
 
-    // Каскадное удаление здания с контроллерами
-    async function deleteBuildingCascade(buildingId, controllers) {
-        console.log('🔥 Каскадное удаление здания', buildingId, 'с', controllers.length, 'контроллерами');
-        
+    // Каскадное удаление здания с контроллерами (один запрос к серверу)
+    async function deleteBuildingCascade(buildingId) {
         try {
-            let deletedControllers = 0;
-            let deletedMetrics = 0;
-            let errors = [];
-
-            // Для каждого контроллера: удаляем метрики, затем контроллер
-            for (const controller of controllers) {
-                try {
-                    console.log(`🔄 Обработка контроллера #${controller.controller_id}...`);
-                    
-                    // Шаг 1: Получаем метрики контроллера
-                    const metricsResponse = await fetch(`/api/metrics?controller_id=${controller.controller_id}&limit=10000`, {
-                        headers: {
-                            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-                        }
-                    });
-                    
-                    if (metricsResponse.ok) {
-                        const metricsData = await metricsResponse.json();
-                        const metrics = metricsData.data || [];
-                        
-                        console.log(`  📊 Найдено метрик: ${metrics.length}`);
-                        
-                        // Шаг 2: Удаляем все метрики контроллера
-                        if (metrics.length > 0) {
-                            for (const metric of metrics) {
-                                try {
-                                    const deleteMetricResponse = await fetch(`/api/metrics/${metric.metric_id}`, {
-                                        method: 'DELETE',
-                                        headers: {
-                                            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-                                        }
-                                    });
-                                    
-                                    if (deleteMetricResponse.ok) {
-                                        deletedMetrics++;
-                                    }
-                                } catch (metricError) {
-                                    console.warn(`  ⚠️ Не удалось удалить метрику ${metric.metric_id}:`, metricError);
-                                }
-                            }
-                            console.log(`  ✅ Удалено метрик: ${deletedMetrics} из ${metrics.length}`);
-                        }
-                    }
-                    
-                    // Шаг 3: Теперь удаляем контроллер (уже без метрик)
-                    const controllerResponse = await fetch(`/api/controllers/${controller.controller_id}`, {
-                        method: 'DELETE',
-                        headers: {
-                            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-                        }
-                    });
-
-                    if (controllerResponse.ok) {
-                        deletedControllers++;
-                        console.log(`  ✅ Контроллер ${controller.controller_id} удален`);
-                    } else {
-                        const errorData = await controllerResponse.json();
-                        const errorMsg = `Контроллер #${controller.controller_id}: ${errorData.error || 'Ошибка удаления'}`;
-                        errors.push(errorMsg);
-                        console.error(`  ❌ ${errorMsg}`);
-                    }
-                } catch (error) {
-                    const errorMsg = `Контроллер #${controller.controller_id}: ${error.message}`;
-                    errors.push(errorMsg);
-                    console.error(`  ❌ ${errorMsg}`);
-                }
-            }
-
-            // Шаг 4: Теперь удаляем здание
-            console.log('🏢 Удаление здания...');
-            const buildingResponse = await fetch(`/api/buildings/${buildingId}`, {
+            const response = await fetch(`/api/buildings/${buildingId}?cascade=true`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 }
             });
 
-            if (!buildingResponse.ok) {
-                const errorData = await buildingResponse.json();
-                throw new Error(errorData.error || 'Ошибка удаления здания после удаления контроллеров');
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || errorData.message || 'Ошибка каскадного удаления здания');
             }
 
-            // Показываем результат
-            console.log(`✅ Завершено: Контроллеров ${deletedControllers}/${controllers.length}, Метрик ${deletedMetrics}`);
-            
-            if (errors.length > 0) {
-                showToast(`Здание удалено. Контроллеров: ${deletedControllers}/${controllers.length}. Метрик: ${deletedMetrics}. Ошибки: ${errors.length}`, 'warning');
-                console.warn('Ошибки при удалении:', errors);
-            } else {
-                showToast(`✅ Здание, ${deletedControllers} контроллер(ов) и ${deletedMetrics} метрик успешно удалены`, 'success');
-            }
+            showToast('Здание и все связанные данные успешно удалены', 'success');
 
             // Обновляем список зданий
             dataLoaded.buildings = false;
             loadBuildings();
 
         } catch (error) {
-            console.error('❌ Error in cascade delete:', error);
+            console.error('Error in cascade delete:', error);
             showToast(error.message || 'Ошибка каскадного удаления', 'error');
         }
     }
-    window.editController = function(id) { /* реализация */ };
-    window.deleteController = function(id) { /* реализация */ };
-    window.deleteMetric = function(id) { /* реализация */ };
-    window.editTransformer = function(id) { /* реализация */ };
-    window.deleteTransformer = function(id) { /* реализация */ };
-    window.editLine = function(id) { /* реализация */ };
-    window.deleteLine = function(id) { /* реализация */ };
 
     // ===============================================
     // ФУНКЦИИ РЕДАКТИРОВАНИЯ КОНТРОЛЛЕРОВ
@@ -1773,9 +1661,9 @@ document.addEventListener("DOMContentLoaded", function () {
                     { name: 'model', label: 'Модель', type: 'text' },
                     { name: 'building_id', label: 'ID здания', type: 'number', required: true },
                     { name: 'status', label: 'Статус', type: 'select', options: [
-                        { value: 'online', text: 'Online' },
-                        { value: 'offline', text: 'Offline' },
-                        { value: 'maintenance', text: 'Maintenance' }
+                        { value: 'online', text: 'В сети' },
+                        { value: 'offline', text: 'Не в сети' },
+                        { value: 'maintenance', text: 'На обслуживании' }
                     ]}
                 ],
                 onSave: async (data) => {
@@ -1788,6 +1676,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     if (!updateResponse.ok) throw new Error('Ошибка обновления контроллера');
 
                     showToast('Контроллер успешно обновлен', 'success');
+                    loadEntityCache();
                     dataLoaded.controllers = false;
                     loadControllers();
                 }
@@ -1924,7 +1813,7 @@ document.addEventListener("DOMContentLoaded", function () {
             document.getElementById('edit-transformer-longitude').value = transformer.longitude || '';
 
             // Показываем модальное окно
-            document.getElementById('edit-transformer-modal').style.display = 'flex';
+            openModal('edit-transformer-modal');
         } catch (error) {
             console.error('Error loading transformer:', error);
             showToast('Ошибка загрузки данных трансформатора', 'error');
@@ -1961,10 +1850,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
             const lineResponse = await response.json();
             const line = lineResponse.data || lineResponse;
-
-            console.log('📋 Загружены данные линии для редактирования:', line);
-            console.log('📍 main_path:', line.main_path);
-            console.log('🌿 branches:', line.branches);
 
             // Открываем универсальный редактор линий с картой
             const editor = new InfrastructureLineEditor({
@@ -2034,7 +1919,7 @@ document.addEventListener("DOMContentLoaded", function () {
             document.getElementById('edit-water-source-status').value = source.status || 'active';
 
             // Показываем модальное окно
-            document.getElementById('edit-water-source-modal').style.display = 'flex';
+            openModal('edit-water-source-modal');
         } catch (error) {
             console.error('Error loading water source:', error);
             showToast('Ошибка загрузки данных источника воды', 'error');
@@ -2085,7 +1970,7 @@ document.addEventListener("DOMContentLoaded", function () {
             document.getElementById('edit-heat-source-status').value = source.status || 'active';
 
             // Показываем модальное окно
-            document.getElementById('edit-heat-source-modal').style.display = 'flex';
+            openModal('edit-heat-source-modal');
         } catch (error) {
             console.error('Error loading heat source:', error);
             showToast('Ошибка загрузки данных источника тепла', 'error');
@@ -2138,7 +2023,8 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!response.ok) throw new Error('Ошибка обновления трансформатора');
 
             showToast('Трансформатор успешно обновлен', 'success');
-            document.getElementById('edit-transformer-modal').style.display = 'none';
+            loadEntityCache();
+            closeModal('edit-transformer-modal');
             dataLoaded.transformers = false;
             loadTransformers();
         } catch (error) {
@@ -2169,7 +2055,7 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!response.ok) throw new Error('Ошибка обновления линии');
 
             showToast('Линия успешно обновлена', 'success');
-            document.getElementById('edit-line-modal').style.display = 'none';
+            closeModal('edit-line-modal');
             dataLoaded.lines = false;
             loadLines();
         } catch (error) {
@@ -2206,7 +2092,7 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!response.ok) throw new Error('Ошибка обновления источника воды');
 
             showToast('Источник воды успешно обновлен', 'success');
-            document.getElementById('edit-water-source-modal').style.display = 'none';
+            closeModal('edit-water-source-modal');
             dataLoaded.waterSources = false;
             loadWaterSources();
         } catch (error) {
@@ -2243,7 +2129,7 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!response.ok) throw new Error('Ошибка обновления источника тепла');
 
             showToast('Источник тепла успешно обновлен', 'success');
-            document.getElementById('edit-heat-source-modal').style.display = 'none';
+            closeModal('edit-heat-source-modal');
             dataLoaded.heatSources = false;
             loadHeatSources();
         } catch (error) {
@@ -2254,19 +2140,19 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Обработчики кнопок отмены
     document.getElementById('cancel-edit-transformer').addEventListener('click', function() {
-        document.getElementById('edit-transformer-modal').style.display = 'none';
+        closeModal('edit-transformer-modal');
     });
 
     document.getElementById('cancel-edit-line').addEventListener('click', function() {
-        document.getElementById('edit-line-modal').style.display = 'none';
+        closeModal('edit-line-modal');
     });
 
     document.getElementById('cancel-edit-water-source').addEventListener('click', function() {
-        document.getElementById('edit-water-source-modal').style.display = 'none';
+        closeModal('edit-water-source-modal');
     });
 
     document.getElementById('cancel-edit-heat-source').addEventListener('click', function() {
-        document.getElementById('edit-heat-source-modal').style.display = 'none';
+        closeModal('edit-heat-source-modal');
     });
 
     // ===============================================
@@ -2289,18 +2175,6 @@ document.addEventListener("DOMContentLoaded", function () {
             const linesData = linesResponse.data || linesResponse;
             const waterLinesData = waterLinesResponse.data || waterLinesResponse;
             const waterSuppliersData = waterSuppliersResponse.data || waterSuppliersResponse;
-
-            console.log('Transformers data:', transformersData);
-            console.log('Lines data:', linesData);
-            console.log('Water lines data:', waterLinesData);
-            console.log('Water suppliers data:', waterSuppliersData);
-
-            // ОТЛАДКА: Проверяем каждого поставщика
-            if (Array.isArray(waterSuppliersData)) {
-                waterSuppliersData.forEach((supplier, index) => {
-                    console.log(`Supplier ${index}:`, supplier.name, 'type:', supplier.type);
-                });
-            }
 
             // Заполняем dropdown трансформаторов (форма создания)
             fillDropdown('building-primary-transformer', transformersData, 'transformer_id', 'name');
@@ -2333,30 +2207,10 @@ document.addEventListener("DOMContentLoaded", function () {
             fillDropdown('edit-building-hot-water-line', hotWaterLines, 'line_id', 'name');
 
             // Разделяем поставщиков на ХВС и ГВС
-            console.log('🔍 ОТЛАДКА: waterSuppliersData before filtering:', waterSuppliersData);
-            console.log('🔍 ОТЛАДКА: Is waterSuppliersData array?', Array.isArray(waterSuppliersData));
-
-            // Дополнительная проверка структуры данных
-            if (Array.isArray(waterSuppliersData)) {
-                console.log('🔍 ОТЛАДКА: Количество поставщиков:', waterSuppliersData.length);
-                waterSuppliersData.forEach((supplier, index) => {
-                    console.log(`🔍 ОТЛАДКА: Supplier ${index}:`, supplier.name, 'type:', supplier.type, 'typeof:', typeof supplier.type);
-                });
-            }
-
             const coldSuppliers = Array.isArray(waterSuppliersData) ?
-                waterSuppliersData.filter(s => {
-                    console.log('🔍 ОТЛАДКА: Checking supplier:', s.name, 'type:', s.type, 'is cold_water?', s.type === 'cold_water');
-                    return s.type === 'cold_water';
-                }) : [];
+                waterSuppliersData.filter(s => s.type === 'cold_water') : [];
             const hotSuppliers = Array.isArray(waterSuppliersData) ?
-                waterSuppliersData.filter(s => {
-                    console.log('🔍 ОТЛАДКА: Checking supplier:', s.name, 'type:', s.type, 'is hot_water?', s.type === 'hot_water');
-                    return s.type === 'hot_water';
-                }) : [];
-
-            console.log('🔍 ОТЛАДКА: Cold suppliers result:', coldSuppliers);
-            console.log('🔍 ОТЛАДКА: Hot suppliers result:', hotSuppliers);
+                waterSuppliersData.filter(s => s.type === 'hot_water') : [];
 
             // Заполняем dropdown поставщиков (форма создания)
             fillDropdown('building-cold-water-supplier', coldSuppliers, 'supplier_id', 'name');
@@ -2377,7 +2231,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Функция заполнения dropdown
     function fillDropdown(elementId, data, valueField, textField) {
-        console.log(`fillDropdown called for ${elementId}:`, {data, valueField, textField});
 
         const dropdown = document.getElementById(elementId);
         if (!dropdown) {
@@ -2400,19 +2253,16 @@ document.addEventListener("DOMContentLoaded", function () {
 
         // Добавляем данные
         data.forEach((item, index) => {
-            console.log(`Processing item ${index} for ${elementId}:`, item);
             if (item && item[valueField] !== undefined && item[textField]) {
                 const option = document.createElement('option');
                 option.value = item[valueField];
                 option.textContent = item[textField];
                 dropdown.appendChild(option);
-                console.log(`Added option: ${item[textField]} (${item[valueField]})`);
             } else {
                 console.warn(`Skipped item ${index} for ${elementId}:`, item, `valueField: ${valueField}, textField: ${textField}`);
             }
         });
 
-        console.log(`Заполнен dropdown ${elementId} с ${data.length} элементами`);
     }
 
     // Настройка связанных выпадающих списков
@@ -2680,6 +2530,7 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             showToast('Здание успешно добавлено', 'success');
+            loadEntityCache();
 
             // Очищаем форму
             document.getElementById('add-building-form').reset();
@@ -2725,6 +2576,7 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             showToast('Контроллер успешно добавлен', 'success');
+            loadEntityCache();
 
             // Очищаем форму
             document.getElementById('add-controller-form').reset();
@@ -2871,6 +2723,7 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             showToast('Трансформатор успешно добавлен', 'success');
+            loadEntityCache();
 
             // Очищаем форму
             document.getElementById('add-transformer-form').reset();
@@ -2890,13 +2743,10 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     function openUniversalModal(type, data, config) {
-        console.log('🔧 openUniversalModal вызвана:', { type, data, config });
         const modal = document.getElementById('universal-modal');
         const title = document.getElementById('universal-modal-title');
         const formFields = document.getElementById('universal-form-fields');
         const form = document.getElementById('universal-form');
-
-        console.log('📋 Найденные элементы:', { modal, title, formFields, form });
 
         // Устанавливаем заголовок
         title.textContent = config.title;
@@ -3014,11 +2864,11 @@ document.addEventListener("DOMContentLoaded", function () {
         document.getElementById('universal-cancel').addEventListener('click', closeUniversalModal);
 
         // Показываем модальное окно
-        modal.style.display = 'flex';
+        openModal('universal-modal');
     }
 
     function closeUniversalModal() {
-        document.getElementById('universal-modal').style.display = 'none';
+        closeModal('universal-modal');
     }
 
     // Создаем универсальное модальное окно
@@ -3044,9 +2894,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     // Создаем универсальное модальное окно при загрузке
-    console.log('🚀 Создаем универсальное модальное окно...');
     createUniversalModal();
-    console.log('✅ Универсальное модальное окно создано');
 
     // Добавляем стили для статусов контроллеров
     const statusStyles = `
@@ -3153,7 +3001,8 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!response.ok) throw new Error('Ошибка обновления здания');
 
             showToast('Здание успешно обновлено', 'success');
-            document.getElementById('edit-building-modal').style.display = 'none';
+            loadEntityCache();
+            closeModal('edit-building-modal');
             dataLoaded.buildings = false;
             loadBuildings();
 
@@ -3165,7 +3014,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Обработчик кнопки отмены редактирования здания
     document.getElementById('cancel-edit-building').addEventListener('click', () => {
-        document.getElementById('edit-building-modal').style.display = 'none';
+        closeModal('edit-building-modal');
     });
 
     // Обработчики для включения поставщиков при выборе линий (форма редактирования)
@@ -3240,7 +3089,33 @@ document.addEventListener("DOMContentLoaded", function () {
         editor.show();
     });
 
+    // === CSP-compliant onclick replacements (moved from inline onclick in admin.html) ===
+
+    // Add-transformer "Указать на карте" (was inline onclick in admin.html)
+    document.getElementById('btn-transformer-coord-picker')?.addEventListener('click', function() {
+        const currentLat = parseFloat(document.getElementById('transformer-latitude').value) || null;
+        const currentLng = parseFloat(document.getElementById('transformer-longitude').value) || null;
+        openCoordinateEditor('transformer', null, currentLat, currentLng, null, (lat, lng) => {
+            document.getElementById('transformer-latitude').value = lat;
+            document.getElementById('transformer-longitude').value = lng;
+        });
+    });
+
+    // Metrics form "Сброс" (was inline onclick in admin.html)
+    document.getElementById('btn-metrics-reset')?.addEventListener('click', function() {
+        resetMetricsForm();
+    });
+
+    // Edit-transformer "Указать на карте" (was inline onclick in admin.html)
+    document.getElementById('btn-edit-transformer-coord-picker')?.addEventListener('click', function() {
+        const currentLat = parseFloat(document.getElementById('edit-transformer-latitude').value) || null;
+        const currentLng = parseFloat(document.getElementById('edit-transformer-longitude').value) || null;
+        openCoordinateEditor('transformer', document.getElementById('edit-transformer-id').value, currentLat, currentLng, null, (lat, lng) => {
+            document.getElementById('edit-transformer-latitude').value = lat;
+            document.getElementById('edit-transformer-longitude').value = lng;
+        });
+    });
+
     // Загружаем данные для форм после инициализации всех функций
-    console.log('🔄 Вызываем loadFormData() в конце инициализации');
     loadFormData();
 });

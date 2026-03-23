@@ -38,14 +38,12 @@ function initThemeToggle() {
                 localStorage.setItem('theme', 'light');
                 themeIconSun.style.display = 'none';
                 themeIconMoon.style.display = 'block';
-                console.log('🌞 Theme switched to light');
             } else {
                 // Переключаем на темную тему
                 htmlElement.classList.add('dark');
                 localStorage.setItem('theme', 'dark');
                 themeIconSun.style.display = 'block';
                 themeIconMoon.style.display = 'none';
-                console.log('🌙 Theme switched to dark');
             }
         });
     }
@@ -98,11 +96,8 @@ function initTestDataBanner() {
             localStorage.setItem('testDataBannerHidden', 'true');
             // Обновляем позиционирование других элементов
             updateLayoutForBanner(false);
-            console.log('🔔 Баннер "Тестовые данные" скрыт');
         }
     });
-    
-    console.log('✅ Баннер тестовых данных инициализирован');
 }
 
 /**
@@ -170,7 +165,6 @@ document.addEventListener('click', function(e) {
             banner.classList.add('hidden');
             localStorage.setItem('testDataBannerHidden', 'true');
             updateLayoutForBanner(false);
-            console.log('🔔 Баннер "Тестовые данные" скрыт (через делегирование)');
         }
     }
 });
@@ -370,8 +364,6 @@ document.addEventListener('DOMContentLoaded', async function () {
          * Настраивает обработчики событий для toggle кнопки и вкладок
          */
         init() {
-            console.log('🔧 Initializing IndustrialPushPanel...');
-            
             // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Проверяем наличие панели перед инициализацией
             if (!this.panel) {
                 console.error('❌ IndustrialPushPanel: панель не найдена в DOM, инициализация невозможна');
@@ -418,7 +410,6 @@ document.addEventListener('DOMContentLoaded', async function () {
             this.loadTabContent(this.currentTab);
             
             this.initialized = true;
-            console.log('✅ IndustrialPushPanel initialized successfully');
         }
         
         /**
@@ -440,13 +431,11 @@ document.addEventListener('DOMContentLoaded', async function () {
                 this.panel.classList.add('expanded');
                 // Принудительно устанавливаем transform для гарантии отображения
                 this.panel.style.transform = 'translateX(0)';
-                console.log('📂 Panel expanded');
             } else {
                 this.panel.classList.remove('expanded');
                 this.panel.classList.add('collapsed');
                 // Принудительно устанавливаем transform для гарантии скрытия
                 this.panel.style.transform = 'translateX(-100%)';
-                console.log('📁 Panel collapsed');
             }
         }
         
@@ -455,8 +444,6 @@ document.addEventListener('DOMContentLoaded', async function () {
          * @param {string} tabName - Имя вкладки (layers, status)
          */
         switchTab(tabName) {
-            console.log(`🔀 Switching to tab: ${tabName}`);
-            
             // Обновляем активные вкладки
             this.tabs.forEach(tab => {
                 const isActive = tab.dataset.tab === tabName;
@@ -480,8 +467,6 @@ document.addEventListener('DOMContentLoaded', async function () {
          * @param {string} tabName - Имя вкладки
          */
         loadTabContent(tabName) {
-            console.log(`📦 Loading content for tab: ${tabName}`);
-            
             switch(tabName) {
                 case 'layers':
                     this.loadLayersContent();
@@ -534,8 +519,6 @@ document.addEventListener('DOMContentLoaded', async function () {
             layersContent.appendChild(baseSection);
             layersContent.appendChild(overlaySection);
             
-            console.log('✅ Layers content structure created');
-            
             // Попытка интегрироваться с MapLayersControl если он уже инициализирован
             // Если нет - элементы будут заполнены вручную
             // Используем setTimeout для обеспечения полной инициализации MapLayersControl
@@ -552,8 +535,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                             // Очищаем списки перед заполнением
                             baseList.innerHTML = '';
                             overlayList.innerHTML = '';
-                            
-                            console.log('🔄 Populating layers with Industrial panel elements');
                             
                             // Базовые слои
                             Object.keys(mapLayersControl.baseLayers).forEach(name => {
@@ -613,7 +594,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                                 overlayList.appendChild(item);
                             });
                             
-                            console.log('✅ Layers populated successfully');
                         }
                     };
                     
@@ -645,14 +625,11 @@ document.addEventListener('DOMContentLoaded', async function () {
                     // Увеличиваем задержку чтобы дать время загрузиться данным
                     setTimeout(() => {
                         if (mapLayersControl.layerCounts && mapLayersControl.layerCounts.size > 0) {
-                            console.log('🔄 Refreshing layer counts from cache:', Array.from(mapLayersControl.layerCounts.entries()));
                             mapLayersControl.refreshLayerCounts();
                         } else {
-                            console.log('⚠️ No layer counts in cache yet, waiting for data to load...');
                             // Если счетчики еще не загружены, ждем еще немного и проверяем снова
                             setTimeout(() => {
                                 if (mapLayersControl.layerCounts && mapLayersControl.layerCounts.size > 0) {
-                                    console.log('🔄 Refreshing layer counts after delay:', Array.from(mapLayersControl.layerCounts.entries()));
                                     mapLayersControl.refreshLayerCounts();
                                 }
                             }, 1000);
@@ -765,7 +742,6 @@ document.addEventListener('DOMContentLoaded', async function () {
             });
             
             statusContent.appendChild(statusSection);
-            console.log('✅ Status content structure created');
             
             // Обновляем статусы после создания структуры
             this.updateStatusGroups();
@@ -1022,7 +998,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                 if (window.mapLayersControl && typeof window.mapLayersControl.applyFilters === 'function') {
                     window.mapLayersControl.applyFilters();
                 }
-                console.log('🔍 Filters applied');
             });
             
             const resetBtn = document.createElement('button');
@@ -1038,7 +1013,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                 loadInput.value = '100';
                 loadValue.textContent = '100%';
                 waterSelect.value = '';
-                console.log('🔁 Filters reset');
             });
             
             buttonsContainer.appendChild(applyBtn);
@@ -1046,7 +1020,6 @@ document.addEventListener('DOMContentLoaded', async function () {
             filtersSection.appendChild(buttonsContainer);
             
             filtersContent.appendChild(filtersSection);
-            console.log('✅ Filters content loaded');
         }
         
         /**
@@ -1081,276 +1054,6 @@ document.addEventListener('DOMContentLoaded', async function () {
     
     // Создаем экземпляр промышленной панели управления
     let industrialPanel;
-
-    // Добавляем необходимые CSS-стили для сворачиваемости сайдбара
-    const sidebarStyles = document.createElement('style');
-    sidebarStyles.textContent = `
-        #sidebar h3 {
-            cursor: pointer;
-            position: relative;
-            padding-right: 20px;
-            user-select: none;
-        }
-
-        /* Добавляем стили для мигающего текста */
-        @keyframes blink-red {
-            0% { color: #ff0000; }
-            50% { color: #ff6666; }
-            100% { color: #ff0000; }
-        }
-
-        .blinking-text-red {
-            animation: blink-red 1.5s infinite;
-            font-weight: bold;
-        }
-
-        #sidebar h3:after {
-            content: "▼";
-            position: absolute;
-            right: 5px;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 0.8em;
-            transition: transform 0.3s;
-        }
-
-        #sidebar h3.collapsed:after {
-            transform: translateY(-50%) rotate(-90deg);
-        }
-
-        #sidebar .status-items.collapsed {
-            display: none !important;
-        }
-
-        .blinking-leak-header {
-            animation: blink-animation 1s infinite;
-            color: #1976d2;
-        }
-
-        @keyframes blink-animation {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
-        }
-
-        /* Стили для кластеров маркеров */
-        .marker-cluster-custom {
-            text-align: center;
-            border-radius: 50%;
-            font-weight: bold;
-        }
-
-        .marker-cluster-custom div {
-            width: 100%;
-            height: 100%;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .marker-cluster-leak div {
-            animation: cluster-blink-animation 1.5s infinite;
-        }
-
-        @keyframes cluster-blink-animation {
-            0% { opacity: 1; }
-            50% { opacity: 0.6; }
-            100% { opacity: 1; }
-        }
-
-        /* Стили для кнопки обновления (перемещены в основной CSS файл) */
-
-        /* Стили для Toast уведомлений */
-        .toast-container {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 10000;
-            max-width: 300px;
-        }
-
-        .toast {
-            margin-bottom: 10px;
-            padding: 12px 16px 12px 45px;
-            border-radius: 5px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            font-size: 14px;
-            font-weight: 500;
-            color: white;
-            animation: toast-slide-in 0.3s ease-out;
-            cursor: pointer;
-            transition: opacity 0.3s ease;
-            position: relative;
-            display: flex;
-            align-items: center;
-        }
-
-        .toast::before {
-            content: '';
-            position: absolute;
-            left: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 18px;
-            height: 18px;
-            background-size: contain;
-            background-repeat: no-repeat;
-            background-position: center;
-        }
-
-        .toast-info::before {
-            content: 'ℹ️';
-            font-size: 14px;
-        }
-
-        .toast-success::before {
-            content: '✅';
-            font-size: 16px;
-        }
-
-        .toast-warning::before {
-            content: '⚠️';
-            font-size: 16px;
-        }
-
-        .toast-error::before {
-            content: '❌';
-            font-size: 16px;
-        }
-
-        .toast:hover {
-            opacity: 0.9;
-        }
-
-        .toast-info {
-            background-color: #2196F3;
-        }
-
-        .toast-success {
-            background-color: #4CAF50;
-        }
-
-        .toast-warning {
-            background-color: #FF9800;
-        }
-
-        .toast-error {
-            background-color: #F44336;
-        }
-
-        @keyframes toast-slide-in {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        @keyframes toast-slide-out {
-            from {
-                transform: translateX(0);
-                opacity: 1;
-            }
-            to {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-        }
-
-        .toast.removing {
-            animation: toast-slide-out 0.3s ease-in forwards;
-        }
-
-        /* Skeleton Loading Styles */
-        .skeleton {
-            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-            background-size: 200% 100%;
-            animation: skeleton-loading 1.5s infinite;
-        }
-
-        @keyframes skeleton-loading {
-            0% {
-                background-position: 200% 0;
-            }
-            100% {
-                background-position: -200% 0;
-            }
-        }
-
-        .skeleton-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .skeleton-table td {
-            padding: 12px 8px;
-            border-bottom: 1px solid #eee;
-        }
-
-        .skeleton-row {
-            height: 16px;
-            border-radius: 4px;
-        }
-
-        .skeleton-row.wide {
-            width: 80%;
-        }
-
-        .skeleton-row.medium {
-            width: 60%;
-        }
-
-        .skeleton-row.narrow {
-            width: 40%;
-        }
-
-        .skeleton-map {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-            background-size: 200% 100%;
-            animation: skeleton-loading 1.5s infinite;
-            z-index: 999;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            color: #666;
-        }
-
-        .skeleton-map::before {
-            content: '🗺️';
-            font-size: 48px;
-            margin-bottom: 16px;
-            opacity: 0.7;
-        }
-
-        .skeleton-map::after {
-            content: 'Загрузка карты...';
-            font-weight: 500;
-        }
-
-        .skeleton-dots {
-            display: inline-block;
-            animation: skeleton-dots 1.5s infinite;
-        }
-
-        @keyframes skeleton-dots {
-            0%, 20% { content: '.'; }
-            40% { content: '..'; }
-            60% { content: '...'; }
-            80%, 100% { content: ''; }
-        }
-    `;
-    document.head.appendChild(sidebarStyles);
 
     // Toast Manager для отображения уведомлений
     class ToastManager {
@@ -1572,7 +1275,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         }).setView([41.32, 69.25], 13);
         // Делаем map доступной глобально для других частей кода
         window.map = map;
-        console.log('✅ Map initialized');
     } catch (error) {
         console.error('❌ Error initializing map:', error);
         showToast('Ошибка инициализации карты: ' + error.message, 'error');
@@ -1585,7 +1287,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         try {
             window.USE_INDUSTRIAL_PANEL = true; // Флаг для предотвращения создания визуальной панели
             window.mapLayersControl = new MapLayersControl(map);
-            console.log('✅ MapLayersControl initialized (for IndustrialPanel)');
         } catch (error) {
             console.error('❌ Error initializing MapLayersControl:', error);
             // Fallback: если MapLayersControl не работает, создаем базовый слой вручную
@@ -1630,8 +1331,6 @@ document.addEventListener('DOMContentLoaded', async function () {
     // Инициализация промышленной панели управления
     industrialPanel = new IndustrialPushPanel();
     window.industrialPanel = industrialPanel;
-    console.log('✅ IndustrialPushPanel initialized');
-
     // Создаем кнопку переключения панели как Leaflet control внутри карты (сверху слева)
     if (map) {
         const panelToggleControl = L.control({ position: 'topleft' });
@@ -1664,10 +1363,8 @@ document.addEventListener('DOMContentLoaded', async function () {
             button.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                console.log('Toggle button clicked');
                 // Вызываем toggle напрямую через промышленную панель
                 if (window.industrialPanel && typeof window.industrialPanel.toggle === 'function') {
-                    console.log('Calling industrialPanel.toggle()');
                     window.industrialPanel.toggle();
                     // Обновляем иконку в зависимости от состояния панели
                     setTimeout(() => {
@@ -2016,8 +1713,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                 throw new Error('Некорректный формат данных от сервера');
             }
             
-            console.log(`✅ Загружено зданий: ${data.length}`);
-
             // Обновляем название УК на карте
             if (data.length > 0) {
                 // Собираем все уникальные названия УК
@@ -2055,100 +1750,95 @@ document.addEventListener('DOMContentLoaded', async function () {
                 item.latitude = parseFloat(item.latitude);
                 item.longitude = parseFloat(item.longitude);
 
-                // Determine electricity status
+                // Проверяем, есть ли метрики (авторизованный vs анонимный доступ)
+                const hasMetrics = item.electricity_ph1 !== undefined && item.electricity_ph1 !== null;
 
-                //Determine phase 1 status
-                const isPhase1Ok = item.electricity_ph1 > 200 && item.electricity_ph1 < 240;
-                const electricityImage1 = isPhase1Ok
-                    ? 'data/images/Electricity_Green.png'
-                    : 'data/images/Electricity_Red.png';
+                // Переменные для статуса (инициализируем значениями по умолчанию)
+                let isPhase1Ok = false, isPhase2Ok = false, isPhase3Ok = false;
+                let isElectricityOK = false, isColdWaterOK = false, isHotWaterOK = true;
+                let hasLeak = false;
+                let electricityImage = 'data/images/Electricity_Red.png';
+                let electricityImage1 = electricityImage, electricityImage2 = electricityImage, electricityImage3 = electricityImage;
+                let coldWaterImage = 'data/images/Water_No_Blue.png';
+                let hotWaterImage = 'data/images/Water_Red.png';
+                let leakSensorImage = 'data/images/Leak_Green.png';
+                let status;
 
-                //Determine phase 2 status
-                const isPhase2Ok = item.electricity_ph2 > 200 && item.electricity_ph2 < 240;
-                const electricityImage2 = isPhase2Ok
-                    ? 'data/images/Electricity_Green.png'
-                    : 'data/images/Electricity_Red.png';
+                if (hasMetrics) {
+                    // Авторизованный пользователь — полные данные
+                    // Determine electricity status
+                    isPhase1Ok = item.electricity_ph1 > 200 && item.electricity_ph1 < 240;
+                    electricityImage1 = isPhase1Ok ? 'data/images/Electricity_Green.png' : 'data/images/Electricity_Red.png';
+                    isPhase2Ok = item.electricity_ph2 > 200 && item.electricity_ph2 < 240;
+                    electricityImage2 = isPhase2Ok ? 'data/images/Electricity_Green.png' : 'data/images/Electricity_Red.png';
+                    isPhase3Ok = item.electricity_ph3 > 200 && item.electricity_ph3 < 240;
+                    electricityImage3 = isPhase3Ok ? 'data/images/Electricity_Green.png' : 'data/images/Electricity_Red.png';
+                    isElectricityOK = isPhase1Ok && isPhase2Ok && isPhase3Ok;
+                    electricityImage = isElectricityOK ? 'data/images/Electricity_Green.png' : 'data/images/Electricity_Red.png';
 
-                //Determine phase 3 status
-                const isPhase3Ok = item.electricity_ph3 > 200 && item.electricity_ph3 < 240;
-                const electricityImage3 = isPhase3Ok
-                    ? 'data/images/Electricity_Green.png'
-                    : 'data/images/Electricity_Red.png';
+                    // Determine cold water status
+                    isColdWaterOK = item.cold_water_pressure && item.cold_water_pressure > 1;
+                    coldWaterImage = isColdWaterOK ? 'data/images/Water_Blue.png' : 'data/images/Water_No_Blue.png';
 
-                const isElectricityOK = isPhase1Ok && isPhase2Ok && isPhase3Ok;
-                const electricityImage = isElectricityOK
-                    ? 'data/images/Electricity_Green.png'
-                    : 'data/images/Electricity_Red.png';
-
-                // Determine cold water status
-                const isColdWaterOK = item.cold_water_pressure && item.cold_water_pressure > 1;
-                const coldWaterImage = isColdWaterOK
-                    ? 'data/images/Water_Blue.png'
-                    : 'data/images/Water_No_Blue.png';
-
-                // Determine hot water status
-                // Если здание не подключено к ГВС (hot_water === false или NULL), то это не ошибка
-                // Если подключено к ГВС (hot_water === true), то проверяем наличие и корректность данных
-                const isHotWaterOK = item.hot_water !== true ||
+                    // Determine hot water status
+                    isHotWaterOK = item.hot_water !== true ||
                                    (item.hot_water === true &&
                                     item.hot_water_in_pressure && item.hot_water_out_pressure &&
                                     item.hot_water_in_pressure >= 1 && item.hot_water_out_pressure >= 1);
-                const hotWaterImage = (item.hot_water === false) 
-                    ? 'data/images/Water_Red.png'  // Серая иконка для неподключенных зданий
-                    : (isHotWaterOK ? 'data/images/Water_Red.png' : 'data/images/Water_No_Red.png');
+                    hotWaterImage = (item.hot_water === false)
+                        ? 'data/images/Water_Red.png'
+                        : (isHotWaterOK ? 'data/images/Water_Red.png' : 'data/images/Water_No_Red.png');
 
-                // Определяем статус датчика протечки
-                const hasLeak = item.leak_sensor === true;
-                const leakSensorImage = hasLeak
-                    ? 'data/images/leak1.png'
-                    : 'data/images/Leak_Green.png';
+                    // Определяем статус датчика протечки
+                    hasLeak = item.leak_sensor === true;
+                    leakSensorImage = hasLeak ? 'data/images/leak1.png' : 'data/images/Leak_Green.png';
 
-                // Увеличиваем счетчик зданий с протечкой
-                if (hasLeak) {
-                    leakBuildingsCount++;
-                }
+                    // Увеличиваем счетчик зданий с протечкой
+                    if (hasLeak) {
+                        leakBuildingsCount++;
+                    }
 
-                // Determine marker color based on status
-                let status;
-                if (hasLeak) {
-                    status = 'leak'; // Новый статус для зданий с протечкой
-                } else if (isElectricityOK && isColdWaterOK && isHotWaterOK) {
-                    status = 'ok';
-                } else if (item.controller_id && (
-                    // Проверяем полное отсутствие основных систем
-                    ((!item.electricity_ph1 || item.electricity_ph1 <= 0) &&
-                     (!item.electricity_ph2 || item.electricity_ph2 <= 0) &&
-                     (!item.electricity_ph3 || item.electricity_ph3 <= 0)) || // Нет электричества
-                    (!item.cold_water_pressure || item.cold_water_pressure <= 0) || // Нет холодной воды
-                    // Проверяем ГВС только если здание должно иметь ГВС
-                    (item.hot_water &&
-                     (!item.hot_water_in_pressure || item.hot_water_in_pressure <= 0) &&
-                     (!item.hot_water_out_pressure || item.hot_water_out_pressure <= 0)) // Нет горячей воды
-                )) {
-                    status = 'critical';
-                } else if (item.controller_id && (
-                    // Проверяем частичное нарушение работы систем
-                    (item.electricity_ph1 > 0 || item.electricity_ph2 > 0 || item.electricity_ph3 > 0) && // Есть хотя бы одна фаза
-                    (item.cold_water_pressure && item.cold_water_pressure > 0) && // Есть холодная вода
-                    // ГВС: либо здание не требует ГВС, либо ГВС есть
-                    (!item.hot_water ||
-                     (item.hot_water_in_pressure && item.hot_water_in_pressure > 0) ||
-                     (item.hot_water_out_pressure && item.hot_water_out_pressure > 0))
-                )) {
-                    status = 'warning';
+                    // Determine marker color based on status
+                    if (hasLeak) {
+                        status = 'leak';
+                    } else if (isElectricityOK && isColdWaterOK && isHotWaterOK) {
+                        status = 'ok';
+                    } else if (item.controller_id && (
+                        ((!item.electricity_ph1 || item.electricity_ph1 <= 0) &&
+                         (!item.electricity_ph2 || item.electricity_ph2 <= 0) &&
+                         (!item.electricity_ph3 || item.electricity_ph3 <= 0)) ||
+                        (!item.cold_water_pressure || item.cold_water_pressure <= 0) ||
+                        (item.hot_water &&
+                         (!item.hot_water_in_pressure || item.hot_water_in_pressure <= 0) &&
+                         (!item.hot_water_out_pressure || item.hot_water_out_pressure <= 0))
+                    )) {
+                        status = 'critical';
+                    } else if (item.controller_id && (
+                        (item.electricity_ph1 > 0 || item.electricity_ph2 > 0 || item.electricity_ph3 > 0) &&
+                        (item.cold_water_pressure && item.cold_water_pressure > 0) &&
+                        (!item.hot_water ||
+                         (item.hot_water_in_pressure && item.hot_water_in_pressure > 0) ||
+                         (item.hot_water_out_pressure && item.hot_water_out_pressure > 0))
+                    )) {
+                        status = 'warning';
+                    } else {
+                        status = 'no';
+                    }
                 } else {
-                    status = 'no';
+                    // Анонимный пользователь — только наличие оборудования
+                    status = item.has_controller ? 'public' : 'no';
                 }
 
                 const circleOptions = {
-                    radius: status === 'leak' ? 10 : 8, // Более крупный размер для маркеров с протечкой
-                    weight: status === 'leak' ? 2 : 1, // Более толстая рамка для маркеров с протечкой
-                    color: status === 'leak' ? '#1e88e5' : 'white', // Ярко-синяя рамка для маркеров с протечкой
+                    radius: status === 'leak' ? 10 : 8,
+                    weight: status === 'leak' ? 2 : 1,
+                    color: status === 'leak' ? '#1e88e5' : 'white',
                     fillColor: status === 'ok' ? 'green' :
                                 status === 'warning' ? 'orange' :
-                                status === 'leak' ? '#2196f3' : // Более яркий синий цвет для маркеров протечки
-                                status === 'critical' ? 'red' : 'gray',
-                    fillOpacity: status === 'leak' ? 0.8 : 1, // Немного прозрачнее для эффекта мигания
+                                status === 'leak' ? '#2196f3' :
+                                status === 'critical' ? 'red' :
+                                status === 'public' ? '#607d8b' : 'gray',
+                    fillOpacity: status === 'leak' ? 0.8 : 1,
                 };
 
 
@@ -2181,9 +1871,18 @@ document.addEventListener('DOMContentLoaded', async function () {
                     if (value === null || value === undefined) return escapeHTML(defaultValue);
                     return escapeHTML(String(value) + suffix);
                 };
-                
+
                 // Create a popup with building details
-                if(status === 'no'){
+                if (status === 'public') {
+                    // Анонимный доступ — минимальная информация
+                    popupContent = `
+                    <div>
+                        <strong>${escapeHTML(item.building_name || '')}</strong><br>
+                        <span style="color: #607d8b;">${escapeHTML(item.address || '')}</span><br>
+                        <span style="color: #90a4ae; font-size: 0.85em;">Оборудование установлено</span>
+                    </div>`;
+                }
+                else if(status === 'no'){
                     popupContent = `
                     <div>
                         <strong>${escapeHTML(item.building_name || '')}</strong><br></br>
@@ -2314,7 +2013,11 @@ document.addEventListener('DOMContentLoaded', async function () {
                                 const totalPowerRow = document.getElementById(`total-power-row-${item.building_id}`);
                                 
                                 if (totalPower && totalPowerRow) {
-                                    totalPower.innerHTML = `<strong>Общая мощность:</strong> ${data.total_power_kw} кВт`;
+                                    totalPower.textContent = '';
+                                    const strongPower = document.createElement('strong');
+                                    strongPower.textContent = 'Общая мощность:';
+                                    totalPower.appendChild(strongPower);
+                                    totalPower.appendChild(document.createTextNode(` ${parseFloat(data.total_power_kw) || 0} кВт`));
                                     totalPowerRow.style.display = '';
                                 }
                             }
@@ -2371,6 +2074,140 @@ document.addEventListener('DOMContentLoaded', async function () {
             return false;
         }
     }
+
+    // ============================================================
+    // АВТОРИЗАЦИЯ НА КАРТЕ (кнопка + модальное окно)
+    // ============================================================
+
+    function updateAuthButton() {
+        const btn = document.getElementById('map-auth-btn');
+        const btnText = document.getElementById('map-auth-btn-text');
+        if (!btn || !btnText) return;
+
+        const token = localStorage.getItem('admin_token');
+        if (token) {
+            btn.classList.add('authenticated');
+            btnText.textContent = 'Выйти';
+            btn.setAttribute('aria-label', 'Выйти');
+        } else {
+            btn.classList.remove('authenticated');
+            btnText.textContent = 'Войти';
+            btn.setAttribute('aria-label', 'Войти');
+        }
+    }
+
+    function showLoginModal() {
+        const modal = document.getElementById('map-login-modal');
+        if (modal) {
+            modal.style.display = 'flex';
+            const usernameInput = document.getElementById('map-login-username');
+            if (usernameInput) usernameInput.focus();
+        }
+    }
+
+    function hideLoginModal() {
+        const modal = document.getElementById('map-login-modal');
+        if (modal) {
+            modal.style.display = 'none';
+            const errorEl = document.getElementById('map-login-error');
+            if (errorEl) errorEl.style.display = 'none';
+        }
+    }
+
+    // Кнопка "Войти"/"Выйти" в header
+    const authBtn = document.getElementById('map-auth-btn');
+    if (authBtn) {
+        authBtn.addEventListener('click', async () => {
+            const token = localStorage.getItem('admin_token');
+            if (token) {
+                // Выход — отзываем токен на сервере
+                try {
+                    await fetch(`${window.BACKEND_URL}/auth/logout`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                } catch (e) { /* продолжаем logout в любом случае */ }
+                localStorage.removeItem('admin_token');
+                apiClient.setToken(null);
+                updateAuthButton();
+                // Перезагружаем карту (анонимные данные)
+                loadData();
+                // Скрываем слои инфраструктуры
+                if (window.mapLayersControl) {
+                    window.mapLayersControl.handleAuthChange(false);
+                }
+                showToast('Вы вышли из системы', 'info');
+            } else {
+                showLoginModal();
+            }
+        });
+    }
+
+    // Закрытие модального окна
+    const loginClose = document.getElementById('map-login-close');
+    if (loginClose) {
+        loginClose.addEventListener('click', hideLoginModal);
+    }
+    const loginBackdrop = document.querySelector('.map-login-backdrop');
+    if (loginBackdrop) {
+        loginBackdrop.addEventListener('click', hideLoginModal);
+    }
+
+    // Обработка формы логина
+    const loginForm = document.getElementById('map-login-form');
+    if (loginForm) {
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('map-login-username').value;
+            const password = document.getElementById('map-login-password').value;
+            const submitBtn = document.getElementById('map-login-submit');
+            const errorEl = document.getElementById('map-login-error');
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Вход...';
+            if (errorEl) errorEl.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await response.json();
+
+                if (response.ok && (data.accessToken || data.token)) {
+                    const token = data.accessToken || data.token;
+                    apiClient.setToken(token);
+                    hideLoginModal();
+                    updateAuthButton();
+                    // Перезагружаем карту (полные данные)
+                    await loadData();
+                    // Показываем слои инфраструктуры
+                    if (window.mapLayersControl) {
+                        window.mapLayersControl.handleAuthChange(true);
+                    }
+                    showToast('Вы вошли в систему', 'success');
+                } else {
+                    const msg = data.message || data.error || 'Неверные учетные данные';
+                    if (errorEl) {
+                        errorEl.textContent = msg;
+                        errorEl.style.display = 'block';
+                    }
+                }
+            } catch (err) {
+                if (errorEl) {
+                    errorEl.textContent = 'Ошибка подключения к серверу';
+                    errorEl.style.display = 'block';
+                }
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Войти';
+            }
+        });
+    }
+
+    // Инициализация состояния кнопки
+    updateAuthButton();
 
     // Загрузка данных при инициализации
     await loadData();

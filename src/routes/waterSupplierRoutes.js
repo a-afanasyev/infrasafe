@@ -1,6 +1,7 @@
 const express = require('express');
 const WaterSupplier = require('../models/WaterSupplier');
 const { createError } = require('../utils/helpers');
+const { applyCrudRateLimit } = require('../middleware/rateLimiter');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -48,7 +49,7 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // POST /api/water-suppliers - Создать нового поставщика воды
-router.post('/', async (req, res, next) => {
+router.post('/', applyCrudRateLimit, async (req, res, next) => {
     try {
         const waterSupplier = await WaterSupplier.create(req.body);
         res.status(201).json(waterSupplier);
@@ -64,7 +65,7 @@ router.post('/', async (req, res, next) => {
 });
 
 // PUT /api/water-suppliers/:id - Обновить поставщика воды
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', applyCrudRateLimit, async (req, res, next) => {
     try {
         const waterSupplier = await WaterSupplier.update(req.params.id, req.body);
         if (!waterSupplier) {
@@ -84,7 +85,7 @@ router.put('/:id', async (req, res, next) => {
 });
 
 // DELETE /api/water-suppliers/:id - Удалить поставщика воды
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', applyCrudRateLimit, async (req, res, next) => {
     try {
         const result = await WaterSupplier.delete(req.params.id);
         if (!result) {

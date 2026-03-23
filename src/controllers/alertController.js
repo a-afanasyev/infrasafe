@@ -6,27 +6,56 @@ class AlertController {
     // Получение всех активных алертов
     static async getActiveAlerts(req, res) {
         try {
-            const { severity, infrastructure_type, limit } = req.query;
+            const { severity, infrastructure_type, limit, status, page, sort, order } = req.query;
+
+            // Whitelist validation for enum params
+            const validStatuses = ['active', 'acknowledged', 'resolved'];
+            if (status && !validStatuses.includes(status)) {
+                return res.status(400).json({ success: false, message: 'Недопустимый статус' });
+            }
+            const validSeverities = ['INFO', 'WARNING', 'CRITICAL'];
+            if (severity && !validSeverities.includes(severity.toUpperCase())) {
+                return res.status(400).json({ success: false, message: 'Недопустимый уровень важности' });
+            }
+            const validInfraTypes = ['transformer', 'controller', 'water_source', 'heat_source'];
+            if (infrastructure_type && !validInfraTypes.includes(infrastructure_type.toLowerCase())) {
+                return res.status(400).json({ success: false, message: 'Недопустимый тип инфраструктуры' });
+            }
 
             const filters = {};
+            if (status) filters.status = status;
             if (severity) filters.severity = severity.toUpperCase();
             if (infrastructure_type) filters.infrastructure_type = infrastructure_type.toLowerCase();
-            if (limit) filters.limit = parseInt(limit);
 
-            const alerts = await alertService.getActiveAlerts(filters);
+            const pageNum = Math.max(parseInt(page) || 1, 1);
+            const pageSize = limit ? Math.min(parseInt(limit) || 10, 200) : 10;
+            const validSortColumns = ['created_at', 'severity', 'status', 'infrastructure_type'];
+            const sortCol = validSortColumns.includes(sort) ? sort : 'created_at';
+            const sortDir = order === 'asc' ? 'ASC' : 'DESC';
+
+            const result = await alertService.getActiveAlerts(filters, {
+                page: pageNum,
+                limit: pageSize,
+                sort: sortCol,
+                order: sortDir
+            });
 
             res.json({
                 success: true,
-                data: alerts,
-                count: alerts.length,
-                filters: filters
+                data: result.data,
+                pagination: {
+                    page: pageNum,
+                    limit: pageSize,
+                    total: result.total
+                },
+                filters
             });
 
         } catch (error) {
             logger.error('Ошибка получения активных алертов:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -54,9 +83,15 @@ class AlertController {
 
         } catch (error) {
             logger.error('Ошибка подтверждения алерта:', error);
+            if (error.message && error.message.includes('не найден')) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Алерт не найден или уже обработан'
+                });
+            }
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -84,9 +119,15 @@ class AlertController {
 
         } catch (error) {
             logger.error('Ошибка закрытия алерта:', error);
+            if (error.message && error.message.includes('не найден')) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Алерт не найден или уже обработан'
+                });
+            }
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -143,7 +184,7 @@ class AlertController {
             logger.error('Ошибка создания алерта:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -180,7 +221,7 @@ class AlertController {
             logger.error('Ошибка проверки трансформатора:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -200,7 +241,7 @@ class AlertController {
             logger.error('Ошибка массовой проверки трансформаторов:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -229,7 +270,7 @@ class AlertController {
             logger.error('Ошибка получения статистики алертов:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -248,7 +289,7 @@ class AlertController {
             logger.error('Ошибка получения порогов алертов:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -297,7 +338,7 @@ class AlertController {
             logger.error('Ошибка обновления порогов алертов:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }
@@ -316,7 +357,7 @@ class AlertController {
             logger.error('Ошибка получения статуса системы алертов:', error);
             res.status(500).json({
                 success: false,
-                message: error.message
+                message: 'Внутренняя ошибка сервера'
             });
         }
     }

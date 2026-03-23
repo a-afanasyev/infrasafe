@@ -29,6 +29,7 @@ class AdminAuth {
                 this.hideLoginForm();
                 this.showAdminPanel();
                 this.setupAuthHeaders();
+                window.dispatchEvent(new CustomEvent('admin-auth-ready'));
             } else {
                 this.logout();
             }
@@ -56,6 +57,7 @@ class AdminAuth {
                 this.hideLoginForm();
                 this.showAdminPanel();
                 this.setupAuthHeaders();
+                window.dispatchEvent(new CustomEvent('admin-auth-ready'));
                 return true;
             } else {
                 const errorData = await response.json();
@@ -72,8 +74,16 @@ class AdminAuth {
         this.token = null;
         this.isAuthenticated = false;
         localStorage.removeItem('admin_token');
+        this.restoreFetch();
         this.showLoginForm();
         this.hideAdminPanel();
+    }
+
+    restoreFetch() {
+        if (window._originalFetch) {
+            window.fetch = window._originalFetch;
+        }
+        this.fetchIntercepted = false;
     }
 
     setupAuthHeaders() {

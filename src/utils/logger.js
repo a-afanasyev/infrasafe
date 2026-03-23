@@ -1,5 +1,6 @@
 const winston = require('winston');
 const path = require('path');
+require('winston-daily-rotate-file');
 
 // Определение форматов логирования
 const formats = winston.format.combine(
@@ -8,6 +9,8 @@ const formats = winston.format.combine(
     winston.format.splat(),
     winston.format.json()
 );
+
+const logsDir = path.join(__dirname, '../../logs');
 
 // Создание логгера
 const logger = winston.createLogger({
@@ -24,26 +27,22 @@ const logger = winston.createLogger({
                 )
             )
         }),
-        // Запись всех логов в файл
-        new winston.transports.File({
-            filename: path.join(__dirname, '../../logs/combined.log')
+        // Запись всех логов в файл с ротацией
+        new winston.transports.DailyRotateFile({
+            filename: path.join(logsDir, 'combined-%DATE%.log'),
+            datePattern: 'YYYY-MM-DD',
+            maxSize: '20m',
+            maxFiles: '14d'
         }),
-        // Запись только ошибок в отдельный файл
-        new winston.transports.File({
-            filename: path.join(__dirname, '../../logs/error.log'),
-            level: 'error'
+        // Запись только ошибок в отдельный файл с ротацией
+        new winston.transports.DailyRotateFile({
+            filename: path.join(logsDir, 'error-%DATE%.log'),
+            datePattern: 'YYYY-MM-DD',
+            level: 'error',
+            maxSize: '20m',
+            maxFiles: '14d'
         })
     ]
 });
-
-// Если не production, добавим дополнительное форматирование для консоли
-if (process.env.NODE_ENV !== 'production') {
-    logger.add(new winston.transports.Console({
-        format: winston.format.combine(
-            winston.format.colorize(),
-            winston.format.simple()
-        )
-    }));
-}
 
 module.exports = logger;

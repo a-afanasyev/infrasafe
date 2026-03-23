@@ -1,6 +1,6 @@
 const express = require('express');
 const buildingController = require('../controllers/buildingController');
-const { authenticateJWT } = require('../middleware/auth');
+const { applyCrudRateLimit } = require('../middleware/rateLimiter');
 const { validateBuildingCreate } = require('../middleware/validators');
 const router = express.Router();
 
@@ -10,7 +10,8 @@ const router = express.Router();
  *   get:
  *     summary: Получить список всех зданий
  *     description: Возвращает список всех зданий с пагинацией
- *     security: [] # Без авторизации
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: page
@@ -49,7 +50,8 @@ router.get('/', buildingController.getAllBuildings);
  *   get:
  *     summary: Поиск зданий в радиусе
  *     description: Находит здания в заданном радиусе от указанных координат
- *     security: [] # Без авторизации
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: latitude
@@ -121,7 +123,8 @@ router.get('/search', buildingController.findBuildingsInRadius);
  *   get:
  *     summary: Статистика зданий
  *     description: Возвращает аналитику по зданиям (по городам и управляющим компаниям)
- *     security: [] # Без авторизации
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: Статистика зданий
@@ -167,7 +170,8 @@ router.get('/statistics', buildingController.getBuildingsStatistics);
  *   get:
  *     summary: Получить здание по ID
  *     description: Возвращает одно здание по его ID
- *     security: [] # Без авторизации
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -221,7 +225,7 @@ router.get('/:id', buildingController.getBuildingById);
  *       403:
  *         description: Недействительный токен
  */
-router.post('/', authenticateJWT, validateBuildingCreate, buildingController.createBuilding);
+router.post('/', applyCrudRateLimit, validateBuildingCreate, buildingController.createBuilding);
 
 /**
  * @swagger
@@ -265,7 +269,7 @@ router.post('/', authenticateJWT, validateBuildingCreate, buildingController.cre
  *       403:
  *         description: Недействительный токен
  */
-router.put('/:id', authenticateJWT, validateBuildingCreate, buildingController.updateBuilding);
+router.put('/:id', applyCrudRateLimit, validateBuildingCreate, buildingController.updateBuilding);
 
 /**
  * @swagger
@@ -294,6 +298,6 @@ router.put('/:id', authenticateJWT, validateBuildingCreate, buildingController.u
  *       403:
  *         description: Недействительный токен
  */
-router.delete('/:id', authenticateJWT, buildingController.deleteBuilding);
+router.delete('/:id', applyCrudRateLimit, buildingController.deleteBuilding);
 
 module.exports = router;

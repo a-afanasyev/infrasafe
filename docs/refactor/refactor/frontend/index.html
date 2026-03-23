@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="InfraSafe - Система мониторинга инфраструктуры и безопасности">
+    <meta name="theme-color" content="#03232D">
+
+    <title>InfraSafe - Система мониторинга</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="../../../../public/images/favicon.svg">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="../../../../public/libs/leaflet/leaflet.css" />
+    <link rel="stylesheet" href="../../../../public/libs/leaflet/leaflet-fixes.css" />
+    <link rel="stylesheet" href="../../../../public/libs/leaflet-markercluster/MarkerCluster.css" />
+    <link rel="stylesheet" href="../../../../public/libs/leaflet-markercluster/MarkerCluster.Default.css" />
+
+    <!-- App styles -->
+    <link rel="stylesheet" href="styles.css">
+
+    <script>
+        window.BACKEND_URL = "/api";
+    </script>
+</head>
+<body>
+
+    <!-- Scan-line overlay for CRT effect -->
+    <div class="scanlines" aria-hidden="true"></div>
+
+    <!-- Top bar -->
+    <header class="topbar">
+        <div class="topbar__brand">
+            <img class="topbar__logo-img" src="../../../../public/images/infrasafe-logo.png" alt="InfraSafe Logo">
+            <div class="topbar__title">
+                <span class="topbar__name">INFRASAFE</span>
+                <span class="topbar__sub">INFRASTRUCTURE MONITORING SYSTEM</span>
+            </div>
+        </div>
+
+        <div class="topbar__status" id="connection-status">
+            <span class="status-dot status-dot--connecting"></span>
+            <span class="status-label">Подключение...</span>
+        </div>
+
+        <nav class="topbar__nav">
+            <a href="../../../../about.html" class="topbar__link">О системе</a>
+            <a href="../../../../documentation.html" class="topbar__link">Документация</a>
+            <button class="topbar__theme-btn" id="theme-toggle" aria-label="Переключить тему">
+                <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+            </button>
+        </nav>
+    </header>
+
+    <!-- Main layout -->
+    <main class="layout">
+
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <button class="sidebar__toggle" id="sidebar-toggle" aria-label="Переключить панель">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15 18 9 12 15 6"/>
+                </svg>
+            </button>
+
+            <!-- Tabs -->
+            <div class="sidebar__tabs">
+                <button class="sidebar__tab active" data-tab="layers">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                    <span>Слои</span>
+                </button>
+                <button class="sidebar__tab" data-tab="status">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                    <span>Статусы</span>
+                </button>
+                <button class="sidebar__tab" data-tab="filters">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                    <span>Фильтры</span>
+                </button>
+            </div>
+
+            <!-- Tab: Layers -->
+            <div class="sidebar__panel active" data-panel="layers">
+                <div class="panel-section">
+                    <h3 class="panel-section__title">Базовые слои</h3>
+                    <div class="layer-group" id="base-layers">
+                        <label class="layer-item">
+                            <input type="radio" name="base-layer" value="map" checked>
+                            <span class="layer-item__radio"></span>
+                            <span class="layer-item__icon">&#x1F5FA;</span>
+                            <span class="layer-item__label">Карта</span>
+                        </label>
+                        <label class="layer-item">
+                            <input type="radio" name="base-layer" value="satellite">
+                            <span class="layer-item__radio"></span>
+                            <span class="layer-item__icon">&#x1F6F0;</span>
+                            <span class="layer-item__label">Спутник</span>
+                        </label>
+                        <label class="layer-item">
+                            <input type="radio" name="base-layer" value="terrain">
+                            <span class="layer-item__radio"></span>
+                            <span class="layer-item__icon">&#x1F3D4;</span>
+                            <span class="layer-item__label">Рельеф</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h3 class="panel-section__title">Объекты инфраструктуры</h3>
+                    <div class="layer-group" id="overlay-layers">
+                        <label class="layer-item" data-layer="buildings">
+                            <input type="checkbox" value="buildings">
+                            <span class="layer-item__check"></span>
+                            <span class="layer-item__icon">&#x1F3E2;</span>
+                            <span class="layer-item__label">Здания</span>
+                            <span class="layer-item__count" data-count="buildings">-</span>
+                        </label>
+                        <label class="layer-item" data-layer="transformers">
+                            <input type="checkbox" value="transformers">
+                            <span class="layer-item__check"></span>
+                            <span class="layer-item__icon">&#x26A1;</span>
+                            <span class="layer-item__label">Трансформаторы</span>
+                            <span class="layer-item__count" data-count="transformers">-</span>
+                        </label>
+                        <label class="layer-item" data-layer="power-lines">
+                            <input type="checkbox" value="power-lines">
+                            <span class="layer-item__check"></span>
+                            <span class="layer-item__icon">&#x1F50C;</span>
+                            <span class="layer-item__label">Линии электропередач</span>
+                            <span class="layer-item__count" data-count="power-lines">-</span>
+                        </label>
+                        <label class="layer-item" data-layer="water-sources">
+                            <input type="checkbox" value="water-sources">
+                            <span class="layer-item__check"></span>
+                            <span class="layer-item__icon">&#x1F4A7;</span>
+                            <span class="layer-item__label">Источники воды</span>
+                            <span class="layer-item__count" data-count="water-sources">-</span>
+                        </label>
+                        <label class="layer-item" data-layer="water-lines">
+                            <input type="checkbox" value="water-lines">
+                            <span class="layer-item__check"></span>
+                            <span class="layer-item__icon">&#x1F6B0;</span>
+                            <span class="layer-item__label">Линии водоснабжения</span>
+                            <span class="layer-item__count" data-count="water-lines">-</span>
+                        </label>
+                        <label class="layer-item" data-layer="heat-sources">
+                            <input type="checkbox" value="heat-sources">
+                            <span class="layer-item__check"></span>
+                            <span class="layer-item__icon">&#x1F525;</span>
+                            <span class="layer-item__label">Источники тепла</span>
+                            <span class="layer-item__count" data-count="heat-sources">-</span>
+                        </label>
+                        <label class="layer-item" data-layer="controllers">
+                            <input type="checkbox" value="controllers">
+                            <span class="layer-item__check"></span>
+                            <span class="layer-item__icon">&#x1F4CA;</span>
+                            <span class="layer-item__label">Контроллеры</span>
+                            <span class="layer-item__count" data-count="controllers">-</span>
+                        </label>
+                        <label class="layer-item" data-layer="alerts">
+                            <input type="checkbox" value="alerts">
+                            <span class="layer-item__check"></span>
+                            <span class="layer-item__icon">&#x26A0;</span>
+                            <span class="layer-item__label">Алерты</span>
+                            <span class="layer-item__count" data-count="alerts">-</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: Status -->
+            <div class="sidebar__panel" data-panel="status">
+                <div class="panel-section" id="status-panel-content">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+            <!-- Tab: Filters -->
+            <div class="sidebar__panel" data-panel="filters">
+                <div class="panel-section">
+                    <h3 class="panel-section__title">Фильтр по статусу</h3>
+                    <div class="filter-chips" id="status-filter">
+                        <button class="filter-chip active" data-status="all">Все</button>
+                        <button class="filter-chip" data-status="ok">Норма</button>
+                        <button class="filter-chip" data-status="warning">Предупреждение</button>
+                        <button class="filter-chip" data-status="leak">Протечка</button>
+                        <button class="filter-chip" data-status="critical">Авария</button>
+                        <button class="filter-chip" data-status="no">Нет контроллера</button>
+                    </div>
+                </div>
+                <div class="panel-section">
+                    <h3 class="panel-section__title">Нагрузка трансформаторов</h3>
+                    <div class="range-filter">
+                        <input type="range" id="load-filter" min="0" max="100" value="100">
+                        <div class="range-filter__labels">
+                            <span>0%</span>
+                            <span id="load-filter-value">100%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="panel-section">
+                    <div class="filter-actions">
+                        <button class="btn btn--accent" id="apply-filters">Применить</button>
+                        <button class="btn btn--ghost" id="reset-filters">Сбросить</button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Map area -->
+        <div class="map-area">
+            <!-- Update control -->
+            <div class="update-control" id="update-control">
+                <div class="update-control__header" id="update-toggle">
+                    <span class="update-control__dot"></span>
+                    <span class="update-control__time" id="update-time">--:--</span>
+                    <svg class="update-control__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+                <div class="update-control__body" id="update-body">
+                    <button class="btn btn--accent btn--sm" id="refresh-btn">Обновить сейчас</button>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="auto-update" checked>
+                        <span class="toggle-switch"></span>
+                        <span>Автообновление</span>
+                    </label>
+                    <div class="interval-select">
+                        <span>Интервал:</span>
+                        <select id="update-interval">
+                            <option value="30000">30 сек</option>
+                            <option value="60000" selected>1 мин</option>
+                            <option value="300000">5 мин</option>
+                            <option value="600000">10 мин</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats bar -->
+            <div class="stats-bar" id="stats-bar">
+                <div class="stat-badge stat-badge--ok">
+                    <span class="stat-badge__dot"></span>
+                    <span class="stat-badge__val" id="stat-ok">0</span>
+                    <span class="stat-badge__label">норма</span>
+                </div>
+                <div class="stat-badge stat-badge--warning">
+                    <span class="stat-badge__dot"></span>
+                    <span class="stat-badge__val" id="stat-warning">0</span>
+                    <span class="stat-badge__label">внимание</span>
+                </div>
+                <div class="stat-badge stat-badge--leak">
+                    <span class="stat-badge__dot"></span>
+                    <span class="stat-badge__val" id="stat-leak">0</span>
+                    <span class="stat-badge__label">протечка</span>
+                </div>
+                <div class="stat-badge stat-badge--critical">
+                    <span class="stat-badge__dot"></span>
+                    <span class="stat-badge__val" id="stat-critical">0</span>
+                    <span class="stat-badge__label">авария</span>
+                </div>
+                <div class="stat-badge stat-badge--no">
+                    <span class="stat-badge__dot"></span>
+                    <span class="stat-badge__val" id="stat-no">0</span>
+                    <span class="stat-badge__label">нет данных</span>
+                </div>
+            </div>
+
+            <!-- Map container -->
+            <div id="map"></div>
+        </div>
+    </main>
+
+    <!-- Toast container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- Scripts -->
+    <script src="../../../../public/libs/leaflet/leaflet.js"></script>
+    <script src="../../../../public/libs/leaflet-markercluster/leaflet.markercluster.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

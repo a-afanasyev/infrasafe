@@ -1,396 +1,297 @@
 # InfraSafe - Система мониторинга инфраструктуры
 
-> ⚠️ **СТАТУС РАЗРАБОТКИ:** Проект в активной разработке. Готовность к production: **85%**  
-> 📄 **ЛИЦЕНЗИЯ:** Apache License 2.0 (см. файл LICENSE)  
-> 🔐 **БЕЗОПАСНОСТЬ:** ⚠️ Требуется настройка .env файла. Приложение не запустится без установленных секретов.  
-> 📋 Подробности: см. [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md)
+> **ЛИЦЕНЗИЯ:** Apache License 2.0 (см. файл [LICENSE](LICENSE))
+> **БЕЗОПАСНОСТЬ:** Требуется настройка `.env` файла перед production-деплоем.
 
-**Infrasafe** — это цифровая платформа мониторинга и управления многоквартирными домами на базе облачной платформы нового поколения, предназначенная для непрерывного мониторинга состояния инженерных систем жилых зданий, с возможностью масштабируемого расширения за счёт дополнительных цифровых сервисов.
+**InfraSafe** — цифровая платформа мониторинга и управления многоквартирными домами, предназначенная для непрерывного мониторинга состояния инженерных систем жилых зданий с возможностью масштабируемого расширения за счёт дополнительных цифровых сервисов.
 
-В основе каждого узла системы — интеллектуальный контроллер на базе промышленного ПК, способный работать с различными типами датчиков и интерфейсов. Контроллер собирает данные с объектов, обрабатывает их локально и передаёт в централизованное резервированное облако по защищённым каналам связи (Ethernet, мобильная сеть, VPN).
+В основе каждого узла системы — интеллектуальный контроллер на базе промышленного ПК, способный работать с различными типами датчиков и интерфейсов. Контроллер собирает данные с объектов, обрабатывает их локально и передаёт в централизованное облако по защищённым каналам связи (Ethernet, мобильная сеть, VPN).
 
 ## Технологический стек
 
 ### Бэкенд
-*   **Платформа:** Node.js 20+ (с использованием Express.js)
-*   **База данных:** PostgreSQL 15+
-*   **Авторизация:** JWT (JSON Web Tokens)
-*   **API документация:** Swagger/OpenAPI 3.0
-*   **Контейнеризация:** Docker & Docker Compose
-*   **Веб-сервер:** Nginx (для продакшена)
+- **Платформа:** Node.js 20+ / Express.js
+- **База данных:** PostgreSQL 15+ с PostGIS
+- **Авторизация:** JWT (access + refresh tokens, blacklist, account locking)
+- **API документация:** Swagger/OpenAPI 3.0
+- **Логирование:** Winston + daily-rotate-file
+- **Контейнеризация:** Docker & Docker Compose
 
 ### Фронтенд
-*   **Основа:** HTML5, CSS3, JavaScript (ES6+)
-*   **Карты:** Leaflet.js с поддержкой кластеризации маркеров
-*   **UI:** Адаптивный дизайн, Bootstrap-совместимые компоненты
-*   **Визуализация:** Chart.js для графиков и аналитики
+- **Основа:** HTML5, CSS3, JavaScript (ES6+) — без фреймворков
+- **Карты:** Leaflet.js с кластеризацией маркеров и множеством слоёв
+- **Визуализация:** Chart.js для графиков и аналитики
+- **Безопасность:** DOMPurify для защиты от XSS
 
 ### DevOps & Инфраструктура
-*   **Оркестрация:** Docker Compose
-*   **Reverse Proxy:** Nginx
-*   **База данных:** PostgreSQL с миграциями
-*   **Тестирование:** Автоматизированные тесты API (bash/curl)
-*   **Документация:** Markdown, Swagger UI
+- **Оркестрация:** Docker Compose (dev, prod, unified, generator)
+- **Reverse Proxy:** Nginx
+- **Тестирование:** Jest (175 тестов, 16 test suites)
+- **Линтинг:** ESLint
 
 ## Структура проекта
 
 ```
-├── .git/                          # Системные файлы Git
-├── .vscode/                       # Настройки VS Code
-├── src/                          # Исходный код бэкенда
-│   ├── config/                   # Конфигурация приложения
-│   │   ├── app.js               # Основные настройки
-│   │   └── database.js          # Настройки подключения к БД
-│   ├── controllers/             # Контроллеры API
-│   │   ├── authController.js    # Авторизация и пользователи
-│   │   ├── buildingController.js # Управление зданиями
-│   │   ├── controllerController.js # Управление контроллерами
-│   │   ├── metricController.js  # Обработка метрик
-│   │   └── buildingMetricsController.js # Данные для карты
-│   ├── middleware/              # Промежуточное ПО
-│   │   ├── auth.js             # JWT аутентификация
-│   │   ├── errorHandler.js     # Обработка ошибок
-│   │   └── validators.js       # Валидация данных
-│   ├── models/                 # Модели данных
-│   │   ├── Building.js         # Модель зданий
-│   │   ├── Controller.js       # Модель контроллеров
-│   │   ├── Metric.js          # Модель метрик
-│   │   ├── Alert.js           # Модель оповещений
-│   │   └── AlertType.js       # Типы оповещений
-│   ├── routes/                # API маршруты
-│   │   ├── index.js           # Главный роутер
-│   │   ├── authRoutes.js      # Маршруты авторизации
-│   │   ├── buildingRoutes.js  # CRUD операции зданий
-│   │   ├── controllerRoutes.js # CRUD операции контроллеров
-│   │   ├── metricRoutes.js    # Обработка метрик
-│   │   └── buildingMetricsRoutes.js # Данные для карты
-│   ├── utils/                 # Утилиты
-│   │   ├── helpers.js         # Вспомогательные функции
-│   │   └── logger.js          # Система логирования
-│   ├── index.js              # Точка входа
-│   └── server.js             # Настройка Express сервера
-├── database/                  # База данных
-│   ├── migrations/           # Миграции БД
-│   │   └── 003_create_users_table.sql
-│   └── database.sql          # Схема базы данных
-├── public/                   # Статические ресурсы
-│   ├── admin.js             # Скрипт админ-панели
-│   ├── script.js            # Основной скрипт карты
-│   └── script_minimal.js    # Минимальная версия скрипта
-├── css/                     # Стили CSS
-│   └── style.css           # Основные стили
-├── data/                   # Данные приложения (GeoJSON, конфигурации)
-├── logs/                   # Логи приложения
-├── frontend-demo/          # Демо фронтенд на Svelte (экспериментальный)
-├── test_api.sh            # Полное тестирование API
-├── test_api_quick.sh      # Быстрое тестирование API
-├── setup.sh               # Скрипт настройки проекта
-├── docker-compose.unified.yml  # Единая Docker композиция (рекомендуется)
-├── docker-compose.dev.yml      # Docker композиция для разработки
-├── docker-compose.prod.yml     # Docker композиция для production
-├── docker-compose.generator.yml # Docker композиция для генератора метрик
-├── Dockerfile.unified           # Multi-stage Dockerfile (unified)
-├── Dockerfile.dev               # Dockerfile для разработки
-├── Dockerfile.prod              # Dockerfile для production
-├── Dockerfile.frontend.dev      # Dockerfile фронтенда для разработки
-├── Dockerfile.frontend-only     # Dockerfile фронтенда для production
-├── nginx.conf            # Конфигурация Nginx
-├── package.json          # Зависимости Node.js
-├── swagger_init_debug.js # Swagger документация
-├── test_data_insert.sql  # Тестовые данные
-├── index.html           # Главная страница (карта)
-├── admin.html           # Административная панель
-├── about.html           # Страница "О системе"
-├── contacts.html        # Страница "Контакты"
-├── documentation.html   # Страница "Документация"
-└── README.md           # Этот файл
+├── src/                              # Бэкенд (трёхслойная архитектура)
+│   ├── config/
+│   │   └── database.js               # Подключение к PostgreSQL
+│   ├── controllers/                   # HTTP-обработка, валидация, ответы
+│   │   ├── admin/                     # Админ-контроллеры (9 модулей + index)
+│   │   │   ├── index.js               # Barrel-экспорт
+│   │   │   ├── adminBuildingController.js
+│   │   │   ├── adminControllerController.js
+│   │   │   ├── adminMetricController.js
+│   │   │   ├── adminTransformerController.js
+│   │   │   ├── adminLineController.js
+│   │   │   ├── adminWaterLineController.js
+│   │   │   ├── adminColdWaterSourceController.js
+│   │   │   ├── adminHeatSourceController.js
+│   │   │   └── adminGeneralController.js
+│   │   ├── authController.js          # Авторизация
+│   │   ├── buildingController.js      # Здания
+│   │   ├── controllerController.js    # Контроллеры IoT
+│   │   ├── metricController.js        # Метрики
+│   │   ├── alertController.js         # Алерты
+│   │   ├── analyticsController.js     # Аналитика
+│   │   ├── buildingMetricsController.js # Данные для карты
+│   │   ├── powerAnalyticsController.js  # Анализ электросетей
+│   │   ├── transformerController.js   # Трансформаторы
+│   │   ├── lineController.js          # Линии электропередач
+│   │   ├── coldWaterSourceController.js # Источники холодной воды
+│   │   └── heatSourceController.js    # Источники тепла
+│   ├── services/                      # Бизнес-логика
+│   │   ├── adminService.js            # Общие batch-операции
+│   │   ├── alertService.js            # Алерты с cooldown
+│   │   ├── analyticsService.js        # Аналитика с Circuit Breaker
+│   │   ├── authService.js             # JWT, refresh, blacklist
+│   │   ├── buildingService.js         # Бизнес-логика зданий
+│   │   ├── buildingMetricsService.js  # Агрегация для карты
+│   │   ├── cacheService.js            # Кэширование (in-memory, Redis-ready)
+│   │   ├── controllerService.js       # IoT-контроллеры
+│   │   ├── metricService.js           # Метрики
+│   │   └── powerAnalyticsService.js   # Анализ электросетей
+│   ├── models/                        # SQL-запросы через pg Pool (без ORM)
+│   │   ├── Building.js, Controller.js, Metric.js
+│   │   ├── Alert.js, AlertType.js
+│   │   ├── PowerTransformer.js, Transformer.js, Line.js
+│   │   ├── ColdWaterSource.js, HeatSource.js
+│   │   ├── WaterLine.js, WaterSupplier.js
+│   ├── middleware/
+│   │   ├── auth.js                    # JWT: authenticateJWT, isAdmin, optionalAuth
+│   │   ├── correlationId.js           # x-correlation-id для трейсинга
+│   │   ├── errorHandler.js            # Централизованная обработка ошибок
+│   │   ├── rateLimiter.js             # Rate limiting
+│   │   └── validators.js              # Валидация входных данных
+│   ├── routes/                        # API-маршруты (16 файлов)
+│   │   ├── index.js                   # Главный роутер с default-deny JWT
+│   │   ├── authRoutes.js              # /api/auth/*
+│   │   ├── buildingRoutes.js          # /api/buildings/*
+│   │   ├── controllerRoutes.js        # /api/controllers/*
+│   │   ├── metricRoutes.js            # /api/metrics/*
+│   │   ├── alertRoutes.js             # /api/alerts/*
+│   │   ├── analyticsRoutes.js         # /api/analytics/*
+│   │   ├── adminRoutes.js             # /api/admin/*
+│   │   ├── buildingMetricsRoutes.js   # /api/buildings-metrics
+│   │   ├── powerAnalyticsRoutes.js    # /api/power-analytics/*
+│   │   ├── transformerRoutes.js       # /api/transformers/*
+│   │   ├── lineRoutes.js              # /api/lines/*
+│   │   ├── waterLineRoutes.js         # /api/water-lines/*
+│   │   ├── waterSourceRoutes.js       # /api/cold-water-sources/*
+│   │   ├── heatSourceRoutes.js        # /api/heat-sources/*
+│   │   └── waterSupplierRoutes.js     # /api/water-suppliers/*
+│   ├── utils/
+│   │   ├── apiResponse.js             # Стандартизированные ответы API
+│   │   ├── circuitBreaker.js          # Circuit Breaker паттерн
+│   │   ├── queryValidation.js         # Whitelist для sort/order (SQL injection)
+│   │   ├── helpers.js                 # Вспомогательные функции
+│   │   └── logger.js                  # Winston логирование
+│   └── server.js                      # Точка входа, graceful shutdown, health check
+├── public/                            # Статические ресурсы фронтенда
+│   ├── admin.js                       # Админ-панель
+│   ├── script.js                      # Интерфейс карты
+│   ├── admin-auth.js                  # Авторизация в админке
+│   ├── admin-coordinate-editor.js     # Редактор координат
+│   ├── map-layers-control.js          # Управление слоями карты
+│   ├── infrastructure-line-editor.js  # Редактор инфраструктурных линий
+│   └── utils/                         # Клиентские утилиты
+│       ├── domSecurity.js             # DOMPurify обёртка (XSS-защита)
+│       ├── rateLimiter.js             # Rate limiter для API-вызовов
+│       ├── safeJsonParser.js          # Безопасный JSON-парсер
+│       ├── csrf.js                    # CSRF-защита
+│       └── powerUtils.js             # Утилиты электросетей
+├── database/
+│   ├── init/
+│   │   ├── 01_init_database.sql       # Схема БД (PostGIS, все таблицы)
+│   │   └── 02_seed_data.sql           # Тестовые данные (17 зданий, Ташкент)
+│   └── migrations/                    # Миграции 003-010
+├── generator/                         # Сервис генерации метрик (отдельный package.json)
+├── tests/
+│   ├── jest/
+│   │   ├── unit/                      # Unit-тесты (10 файлов)
+│   │   ├── integration/               # Интеграционные тесты
+│   │   └── security/                  # Тесты безопасности (SQL injection, XSS)
+│   └── orchestrator/                  # Unified test runner (bash)
+├── docker-compose.dev.yml             # Docker для разработки
+├── docker-compose.prod.yml            # Docker для production
+├── docker-compose.unified.yml         # Единое развертывание
+├── docker-compose.generator.yml       # Генератор метрик
+├── index.html                         # Главная страница (карта)
+├── admin.html                         # Административная панель
+├── about.html, contacts.html          # Информационные страницы
+├── documentation.html                 # Страница документации
+├── nginx.conf                         # Конфигурация Nginx
+├── CLAUDE.md                          # Контекст для Claude Code
+└── package.json                       # v1.0.1, Apache-2.0
 ```
 
 ## Установка и запуск
 
 ### Предварительные требования
 
-*   **Docker** (версия >= 20.10)
-*   **Docker Compose** (версия >= 2.0)
-*   **Git** для клонирования репозитория
+- **Docker** >= 20.10
+- **Docker Compose** >= 2.0
+- **Git**
 
-### Быстрый старт с Docker
+### Быстрый старт
 
-1.  **Клонировать репозиторий:**
-    ```bash
-    git clone https://github.com/a-afanasyev/infrasafe.git
-    cd infrasafe
-    ```
+```bash
+# Клонировать
+git clone https://github.com/a-afanasyev/infrasafe.git
+cd infrasafe
 
-2.  **Запустить проект:**
-    ```bash
-    # Рекомендуемый способ - единое развертывание
-    docker compose -f docker-compose.unified.yml up --build -d
+# Для разработки
+docker compose -f docker-compose.dev.yml up --build -d
 
-    # Или для разработки
-    docker compose -f docker-compose.dev.yml up --build -d
-
-    # Или для production
-    docker compose -f docker-compose.prod.yml up --build -d
-    ```
-
-3.  **Проверить статус контейнеров:**
-    ```bash
-    docker-compose ps
-    ```
-
-4.  **Инициализация базы данных (выполняется автоматически):**
-    ```bash
-    # Просмотр логов инициализации
-    docker-compose logs postgres
-    ```
+# Или единое развертывание
+docker compose -f docker-compose.unified.yml up --build -d
+```
 
 ### Доступ к приложению
 
-После запуска Docker Compose приложение будет доступно по следующим адресам:
+| Сервис | URL |
+|--------|-----|
+| Карта (карта мониторинга) | http://localhost:8080 |
+| Админ-панель | http://localhost:8080/admin.html |
+| Swagger UI | http://localhost:8080/api-docs |
+| API | http://localhost:8080/api/ |
+| Health Check | http://localhost:3000/health |
 
-*   **Основной интерфейс:** `http://localhost:8080`
-*   **Административная панель:** `http://localhost:8080/admin.html`
-*   **API документация (Swagger):** `http://localhost:8080/api-docs`
-*   **API endpoints:** `http://localhost:8080/api/`
-
-### Тестирование API
-
-Проект включает автоматизированные тесты API:
-
-```bash
-# Быстрое тестирование основных функций (~10 секунд)
-./test_api_quick.sh
-
-# Полное тестирование всех endpoints (~2-3 минуты)
-./test_api.sh
-```
-
-### ⚠️ ВАЖНОЕ ПРЕДУПРЕЖДЕНИЕ О БЕЗОПАСНОСТИ
-
-**🔴 ТЕСТОВЫЕ УЧЕТНЫЕ ДАННЫЕ ДОЛЖНЫ БЫТЬ ИЗМЕНЕНЫ ПЕРЕД PRODUCTION ДЕПЛОЕМ!**
-
-Эти учетные данные предназначены **ТОЛЬКО ДЛЯ РАЗРАБОТКИ И ТЕСТИРОВАНИЯ**:
-
-*   **Администратор (для разработки):**
-    *   Логин: `admin`
-    *   Пароль: `admin123`
-
-**Для production окружения:**
-
-1. **Создайте `.env` файл** (НЕ коммитьте в Git!)
-2. **Сгенерируйте надежные пароли:**
-   ```bash
-   # Генерация случайного пароля (32 символа)
-   openssl rand -base64 32
-   
-   # Генерация JWT секретов (64 символа)
-   openssl rand -base64 64
-   ```
-3. **Обновите все пароли в `.env`:**
-   - `DB_PASSWORD` - пароль базы данных
-   - `JWT_SECRET` - секрет для JWT токенов
-   - `JWT_REFRESH_SECRET` - секрет для refresh токенов
-   - Пароль администратора через админ-панель
-
-**❌ НЕ ИСПОЛЬЗУЙТЕ в production:**
-- admin / admin123
-- postgres / postgres
-- testuser / TestPass123
-- dev-secret-key-change-in-production
-
-### Управление Docker сервисами
+### Тестирование
 
 ```bash
-# Остановка сервисов (для unified)
-docker compose -f docker-compose.unified.yml down
-
-# Остановка с удалением данных
-docker compose -f docker-compose.unified.yml down -v
-
-# Просмотр логов
-docker compose -f docker-compose.unified.yml logs -f app     # Логи бэкенда
-docker compose -f docker-compose.unified.yml logs -f frontend # Логи фронтенда
-docker compose -f docker-compose.unified.yml logs -f postgres # Логи базы данных
-
-# Перезапуск отдельного сервиса
-docker compose -f docker-compose.unified.yml restart app
-
-# Проверка статуса
-docker compose -f docker-compose.unified.yml ps
+npm test                  # Все 175 тестов (16 suites)
+npm run test:unit         # Unit-тесты
+npm run test:integration  # Интеграционные тесты
+npm run test:security     # Тесты безопасности
+npm run test:coverage     # С отчётом покрытия
 ```
 
-## Ключевые функции платформы:
+### Тестовые учётные данные (только для разработки)
 
-### ⚡ Контроль электроснабжения:
-*   Мониторинг напряжения и токов на вводе и (опционально по подъездам)
-*   Историческое хранение данных, выявление перекосов и перегрузок
-*   Возможность балансировки нагрузки и повышения надёжности сети
+- **Администратор:** admin / admin123
+- **Тестовый пользователь:** testuser / TestPass123
 
-### 💧 Мониторинг водоснабжения:
-*   Холодная вода: давление, температура, (опционально — качество воды)
-*   Горячая вода и отопление: подача/обратка, температурный баланс
-*   Возможность подключения калориметров для расчёта потреблённого тепла
+**Для production:** создайте `.env` с надёжными паролями:
 
-### 🌡 Безопасность и окружающая среда:
-*   Контроль утечек воды в подвале
-*   (опционально)Температура, влажность, загазованность (CH₄, CO), загрязнение воздуха (PM2.5)
-*   Настройка оповещений для экстренных служб
+```bash
+openssl rand -base64 32    # DB_PASSWORD
+openssl rand -base64 64    # JWT_SECRET, JWT_REFRESH_SECRET
+```
 
-### 📊 Интеллектуальная аналитика: ✅ **85% РЕАЛИЗОВАНО**
+## Ключевые функции
 
-#### Анализ нагрузки электросетей:
-*   **✅ Материализованные представления** для мониторинга загрузки трансформаторов в реальном времени
-*   **✅ Автоматическое выявление перегрузок** и дисбаланса фаз (85% и 95% пороги)
-*   **✅ Многоуровневое кэширование** критических данных с Redis и in-memory кэшем
-*   **✅ Circuit Breaker паттерн** для отказоустойчивости аналитических запросов
+### Контроль электроснабжения
+- Мониторинг напряжения и токов на вводе
+- Анализ загрузки трансформаторов (материализованные представления)
+- Выявление перекосов фаз и перегрузок (пороги 85% / 95%)
 
-#### Система алертов и уведомлений:
-*   **✅ InfrastructureAlertService** - полная система управления алертами
-*   **✅ Автоматические проверки** трансформаторов с настраиваемыми порогами
-*   **✅ Cooldown система** (15 мин между одинаковыми алертами)
-*   **✅ Жизненный цикл алертов**: создание → подтверждение → закрытие
-*   **⚠️ WebSocket уведомления** - в разработке для real-time алертов
+### Мониторинг водоснабжения
+- Холодная вода: давление, температура
+- Горячая вода и отопление: подача/обратка, температурный баланс
 
-#### Предиктивная аналитика:
-*   **✅ Анализ исторических данных** для прогнозирования аварийных ситуаций
-*   **✅ Прогнозирование пиковых нагрузок** на основе данных трансформаторов
-*   **⚠️ Машинное обучение** - планируется для выявления аномальных паттернов
+### Система алертов
+- Автоматические проверки с настраиваемыми порогами
+- Cooldown-система (15 мин между одинаковыми алертами)
+- Жизненный цикл: создание -> подтверждение -> закрытие
 
-#### Оптимизация ресурсов:
-*   **✅ Анализ энергоэффективности** зданий через аналитические представления
-*   **✅ Рекомендации по балансировке нагрузки** между трансформаторами
-*   **⚠️ Оптимизация расписания обслуживания** - планируется
-
-## Возможная расширяемость платформы — дополнительные модули:
-
-*   📹 Цифровой видеодомофон — управление доступом и видеосвязь через контроллер
-*   🧠 Распознавание лиц и поиск — интеграция с МВД и службами правопорядка
-*   🔒 Видеонаблюдение — контроль за общим имуществом, лифтами, подъездами
-*   📢 Цифровая доска объявлений — коммуникация УК с жильцами, встроенная реклама
-*   ❤️ Помощь пожилым и одиноким жителям — передача тревожных сигналов в социальные службы
-
-## InfraSafe — это:
-
-*   Полная цифровизация жилого фонда без дорогостоящей реконструкции
-*   Централизованный мониторинг за инженерной инфраструктурой района или города
-*   Возможность интеграции с госслужбами, управляющими компаниями и другими платформами через открытое API
-*   Масштабируемое решение от 1 дома до мегаполиса
+### Интеллектуальная аналитика
+- 25+ аналитических эндпоинтов с Circuit Breaker
+- Многоуровневое кэширование (in-memory, Redis-ready)
+- Анализ энергоэффективности и прогнозирование нагрузок
 
 ## Архитектура
 
-### Микросервисная архитектура
-*   **Frontend (Nginx):** Веб-сервер и статические файлы
-*   **Backend API (Node.js):** REST API с JWT авторизацией
-*   **Database (PostgreSQL):** Хранение данных и аналитика
-*   **Reverse Proxy (Nginx):** Маршрутизация запросов
+### Трёхслойная архитектура бэкенда
+
+```
+Nginx (8080) -> /api/* -> Express (3000) -> Routes -> Controllers -> Services -> Models -> PostgreSQL
+```
+
+### Безопасность
+- **Default-deny JWT** — все маршруты защищены по умолчанию, публичные маршруты заданы явным allowlist
+- **Rate limiting** — защита от brute-force и DDoS
+- **SQL injection prevention** — whitelist-валидация для sort/order + параметризованные запросы
+- **XSS protection** — DOMPurify на фронтенде, Helmet CSP на бэкенде
+- **Correlation ID** — трейсинг запросов через `x-correlation-id`
 
 ### API Endpoints
-*   `/api/auth/*` - Авторизация и управление пользователями
-*   `/api/buildings/*` - CRUD операции со зданиями
-*   `/api/controllers/*` - Управление контроллерами
-*   `/api/metrics/*` - Обработка метрик и телеметрии
-*   `/api/buildings-metrics` - Данные для интерактивной карты
-*   **✅ `/api/analytics/*`** - Аналитика трансформаторов и инфраструктуры (25+ эндпоинтов)
-*   **✅ `/api/alerts/*`** - Система алертов и уведомлений (10+ эндпоинтов)
+
+Все эндпоинты монтируются под `/api`:
+
+| Маршрут | Описание |
+|---------|----------|
+| `/auth/*` | Авторизация (login, register, refresh, logout) |
+| `/buildings/*` | CRUD зданий |
+| `/controllers/*` | IoT-контроллеры |
+| `/metrics/*` | Метрики и телеметрия |
+| `/alerts/*` | Алерты и уведомления |
+| `/analytics/*` | Аналитика (25+ эндпоинтов) |
+| `/admin/*` | Массовые админ-операции |
+| `/buildings-metrics` | Данные для интерактивной карты |
+| `/power-analytics/*` | Анализ электросетей |
+| `/transformers/*` | Силовые трансформаторы |
+| `/lines/*` | Линии электропередач |
+| `/cold-water-sources/*` | Источники холодной воды |
+| `/heat-sources/*` | Источники тепла |
+| `/water-lines/*` | Водопроводные линии |
+| `/water-suppliers/*` | Поставщики воды |
+
+## Docker-сервисы
+
+| Сервис | Описание | Порт |
+|--------|----------|------|
+| frontend | Nginx (статика + API proxy) | 8080 (dev: 8088) |
+| app | Node.js Express | 3000 |
+| postgres | PostgreSQL 15 + PostGIS | 5435 (host) -> 5432 (container) |
 
 ## Документация
 
-*   **API Documentation:** `/api-docs` (Swagger UI)
-*   **Руководство по тестированию:** `API_TESTING.md`
-*   **Docker деплой:** `DOCKER_DEPLOYMENT.md`
-*   **Исправления:** `BUGFIX_SUMMARY.md`
+- **API:** Swagger UI на `/api-docs`
+- **Авторизация:** [docs/API_AUTH_MATRIX.md](docs/API_AUTH_MATRIX.md)
+- **Аналитика электросетей:** [docs/POWER-ANALYTICS-API.md](docs/POWER-ANALYTICS-API.md)
+- **Docker (разработка):** [docs/DEVELOPMENT_DOCKER_GUIDE.md](docs/DEVELOPMENT_DOCKER_GUIDE.md)
+- **Генератор метрик:** [docs/GENERATOR.md](docs/GENERATOR.md)
+- **Индекс документации:** [docs/INDEX.md](docs/INDEX.md)
 
-## 🏛️ Для государственного сектора и коммерческих организаций
+## Лицензия
 
-InfraSafe распространяется под лицензией **Apache License 2.0**, что обеспечивает:
+**Apache License 2.0** — см. файл [LICENSE](LICENSE)
 
-### Преимущества для организаций:
+Подробнее о правах и ограничениях: [LICENSE-GUIDE.md](LICENSE-GUIDE.md)
 
-✅ **Свободное коммерческое использование** без ограничений  
-✅ **Полный доступ к исходному коду** для аудита безопасности  
-✅ **Патентная защита** для всех пользователей  
-✅ **Техническая независимость** от поставщика  
-✅ **Прозрачность** для госконтрактов и тендеров  
+| Библиотека | Лицензия | Совместимость |
+|------------|----------|---------------|
+| Leaflet.js | BSD 2-Clause | Совместима |
+| Express.js | MIT | Совместима |
+| PostgreSQL | PostgreSQL License | Совместима |
+| Node.js | MIT | Совместима |
 
-### Коммерческие услуги
+## Вклад в проект
 
-Предоставляем профессиональные услуги внедрения и поддержки:
-
-#### 🔧 Внедрение и интеграция
-- Установка на серверах заказчика (on-premise)
-- Настройка под специфические требования
-- Интеграция с существующими информационными системами
-- Миграция данных из legacy систем
-
-#### 🎓 Обучение персонала
-- Администрирование системы (40 часов)
-- Работа с аналитическими модулями (24 часа)
-- Настройка и мониторинг контроллеров (16 часов)
-
-#### 🛠️ Техническая поддержка
-- Консультации по эксплуатации 24/7
-- Исправление критических ошибок (SLA < 4 часа)
-- Регулярные обновления безопасности
-- Мониторинг производительности
-
-#### 🔌 Кастомизация
-- Разработка специфичных модулей
-- Создание пользовательских отчетов
-- Брендирование интерфейса
-- Адаптация под местные стандарты
-
-#### ☁️ SaaS / Облачный хостинг
-- Управляемая инфраструктура
-- Автоматическое резервное копирование
-- Масштабирование под нагрузку
-- Гарантированная доступность 99.9%
-
-### 📧 Контакты для коммерческих запросов
-
-Для получения коммерческого предложения по внедрению InfraSafe в вашей организации, пожалуйста, свяжитесь с нами.
-
----
-
-## 📜 Лицензия
-
-**Apache License 2.0** - см. файл [LICENSE](LICENSE)
-
-### Используемые библиотеки и их лицензии:
-
-| Библиотека | Версия | Лицензия | Совместимость |
-|------------|--------|----------|---------------|
-| **Leaflet.js** | 1.9.x | BSD 2-Clause | ✅ Совместима |
-| **Express.js** | 4.18.x | MIT | ✅ Совместима |
-| **PostgreSQL** | 15+ | PostgreSQL License | ✅ Совместима |
-| **Node.js** | 20+ | MIT | ✅ Совместима |
-
-Полный список зависимостей и атрибуции см. в файлах [package.json](package.json) и [NOTICE](NOTICE)
-
----
-
-## 🤝 Вклад в проект
-
-Мы приветствуем вклад в развитие InfraSafe! 
-
-При внесении изменений:
 1. Форкните репозиторий
-2. Создайте feature ветку (`git checkout -b feature/amazing-feature`)
+2. Создайте feature-ветку (`git checkout -b feature/amazing-feature`)
 3. Закоммитьте изменения (`git commit -m 'Add amazing feature'`)
 4. Запушьте в ветку (`git push origin feature/amazing-feature`)
 5. Откройте Pull Request
 
-**Важно:** Все вклады должны соответствовать Apache License 2.0
-
----
-
-## ⚖️ Правовая информация
-
-### Отказ от гарантий
-Программное обеспечение предоставляется "КАК ЕСТЬ", без каких-либо гарантий, явных или подразумеваемых. См. [LICENSE](LICENSE) для полных условий.
-
-### Товарные знаки
-"InfraSafe" является товарным знаком проекта. Использование названия в коммерческих целях требует явного разрешения, за исключением случаев, описанных в лицензии Apache 2.0.
-
-### Патенты
-Apache License 2.0 предоставляет явную патентную лицензию всем пользователям. Подача патентного иска против проекта или его пользователей приводит к автоматическому прекращению прав на использование программного обеспечения.
+Все вклады должны соответствовать Apache License 2.0.

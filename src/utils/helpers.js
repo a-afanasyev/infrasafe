@@ -39,8 +39,8 @@ const calculateBuildingStatus = (metrics) => {
         electricity_ph1,
         electricity_ph2,
         electricity_ph3,
-        cold_water_pr,
-        hot_water_pr
+        cold_water_pressure,
+        hot_water_in_pressure
     } = metrics;
 
     // Проверка критического состояния
@@ -52,7 +52,7 @@ const calculateBuildingStatus = (metrics) => {
     const isPhase1Ok = electricity_ph1 >= 210 && electricity_ph1 <= 230;
     const isPhase2Ok = electricity_ph2 >= 210 && electricity_ph2 <= 230;
     const isPhase3Ok = electricity_ph3 >= 210 && electricity_ph3 <= 230;
-    const isWaterPressureOk = cold_water_pr > 0 && hot_water_pr > 0;
+    const isWaterPressureOk = cold_water_pressure > 0 && hot_water_in_pressure > 0;
 
     if (!isPhase1Ok || !isPhase2Ok || !isPhase3Ok || !isWaterPressureOk) {
         return 'warning';

@@ -17,13 +17,10 @@ const API_BASE = window.BACKEND_URL || '/api';
  * Инициализация при загрузке страницы
  */
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('🚀 Инициализация аналитики...');
     try {
-        console.log('📞 Вызываем loadBuildings()...');
         await loadBuildings();
-        console.log('✅ loadBuildings() завершена');
     } catch (error) {
-        console.error('❌ Ошибка инициализации:', error);
+        console.error('Ошибка инициализации:', error);
         showLoading(false);
     }
 });
@@ -32,38 +29,27 @@ document.addEventListener('DOMContentLoaded', async () => {
  * Загрузить список зданий
  */
 async function loadBuildings() {
-    console.log('📥 Начинаем загрузку зданий...');
     try {
-        console.log('🔄 Показываем индикатор загрузки...');
         showLoading(true);
-        
-        console.log('🌐 Отправляем запрос к API:', `${API_BASE}/buildings-metrics`);
+
         const response = await fetch(`${API_BASE}/buildings-metrics`);
-        console.log('📡 Запрос выполнен, статус:', response.ok);
         if (!response.ok) throw new Error('Ошибка загрузки зданий');
-        
+
         const result = await response.json();
-        console.log('📦 Данные получены, парсим...');
         const selector = document.getElementById('building-selector');
-        console.log('🎯 Selector найден:', !!selector);
-        
+
+        // Safe: static HTML string with no user input
         selector.innerHTML = '<option value="">Выберите здание...</option>';
-        console.log('🧹 Очистили список зданий');
-        
+
         // API может вернуть {data: [...]} или просто [...]
         const data = result.data || result;
-        console.log('📊 Данных получено:', Array.isArray(data) ? data.length : 'не массив!');
-        
-        // Проверяем что data - это массив
+
         if (!Array.isArray(data)) {
-            console.error('API вернул некорректный формат данных:', data);
             throw new Error('Некорректный формат данных от API');
         }
-        
-        // Фильтруем только здания с контроллерами
+
         const buildingsWithControllers = data.filter(b => b.controller_id);
-        console.log('🏢 Зданий с контроллерами:', buildingsWithControllers.length);
-        
+
         buildingsWithControllers.forEach(building => {
             const option = document.createElement('option');
             option.value = building.building_id;
@@ -71,11 +57,9 @@ async function loadBuildings() {
             option.dataset.building = JSON.stringify(building);
             selector.appendChild(option);
         });
-        
-        console.log('🔚 Заканчиваем loadBuildings, скрываем индикатор...');
+
         showLoading(false);
-        console.log('✅ Индикатор загрузки скрыт!');
-        
+
     } catch (error) {
         console.error('Ошибка загрузки зданий:', error);
         showLoading(false);
@@ -159,39 +143,23 @@ async function loadMetricsData() {
         );
         
         if (!response.ok) {
-            // Если endpoint не существует, используем mock данные
-            console.warn('Endpoint не найден, используем mock данные');
-            metricsData = generateMockData(currentPeriod);
-            console.log('✅ Mock данные сгенерированы (no ok response)');
-        } else {
-            const data = await response.json();
-            metricsData = data.data || data;
-            console.log('✅ Получены реальные данные из API');
+            showMetricsError('Данные метрик временно недоступны.');
+            showLoading(false);
+            return;
         }
-        
+
+        const data = await response.json();
+        metricsData = data.data || data;
+
         document.getElementById('last-update').textContent = new Date().toLocaleString('ru-RU');
-        
-        // Создаем все графики
-        console.log('📊 Создаем графики...');
+
         createAllCharts();
-        console.log('✅ Графики созданы');
-        
-        console.log('📊 Убираем индикатор загрузки...');
         showLoading(false);
-        console.log('✅ Индикатор загрузки убран');
-        
+
     } catch (error) {
         console.error('Ошибка загрузки метрик:', error);
-        
-        // Используем mock данные при ошибке
-        console.warn('Генерируем mock данные после ошибки');
-        metricsData = generateMockData(currentPeriod);
-        console.log('✅ Mock данные сгенерированы, создаем графики...');
-        createAllCharts();
-        console.log('✅ Графики созданы, убираем индикатор загрузки');
-        
+        showMetricsError('Данные метрик временно недоступны.');
         showLoading(false);
-        console.log('✅ Индикатор загрузки убран');
     }
 }
 
@@ -784,6 +752,23 @@ function switchTab(tabName) {
  * Показать/скрыть индикатор загрузки
  */
 /**
+ * Показать ошибку загрузки метрик
+ */
+function showMetricsError(message) {
+    const chartsContainer = document.querySelector('.charts-grid');
+    if (chartsContainer) {
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'metrics-error';
+        errorDiv.style.cssText = 'grid-column: 1/-1; text-align: center; padding: 2rem; color: #ef4444; font-size: 1.1rem;';
+        errorDiv.textContent = message;
+        // Remove previous error if any
+        const prev = chartsContainer.querySelector('.metrics-error');
+        if (prev) prev.remove();
+        chartsContainer.prepend(errorDiv);
+    }
+}
+
+/**
  * Показать/скрыть индикатор загрузки
  */
 function showLoading(show) {
@@ -820,36 +805,3 @@ function calculatePower(voltage, amperage) {
     return (v * a * 0.95) / 1000;
 }
 
-/**
- * Генерация mock данных для демонстрации
- * (удалите эту функцию когда будет готов backend endpoint)
- */
-function generateMockData(period) {
-    const now = new Date();
-    const points = period === '1h' ? 60 : period === '6h' ? 72 : period === '24h' ? 96 : 168;
-    const interval = period === '1h' ? 60000 : period === '6h' ? 300000 : period === '24h' ? 900000 : 3600000;
-    
-    const data = [];
-    for (let i = points; i >= 0; i--) {
-        const timestamp = new Date(now - (i * interval));
-        data.push({
-            timestamp: timestamp.toISOString(),
-            electricity_ph1: 220 + Math.random() * 10 - 5,
-            electricity_ph2: 220 + Math.random() * 10 - 5,
-            electricity_ph3: 220 + Math.random() * 10 - 5,
-            amperage_ph1: 5 + Math.random() * 3,
-            amperage_ph2: 5 + Math.random() * 3,
-            amperage_ph3: 5 + Math.random() * 3,
-            cold_water_pressure: 2.5 + Math.random() * 0.5,
-            cold_water_temp: 12 + Math.random() * 2,
-            hot_water_in_pressure: 3 + Math.random() * 0.5,
-            hot_water_in_temp: 55 + Math.random() * 5,
-            hot_water_out_pressure: 2.8 + Math.random() * 0.3,
-            hot_water_out_temp: 45 + Math.random() * 5,
-            ambient_temp: 20 + Math.random() * 5,
-            humidity: 50 + Math.random() * 10,
-            leak_sensor: Math.random() > 0.95 ? 1 : 0
-        });
-    }
-    return data;
-}

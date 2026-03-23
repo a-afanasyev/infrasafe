@@ -1,5 +1,6 @@
 const express = require('express');
 const buildingMetricsController = require('../controllers/buildingMetricsController');
+const { optionalAuth } = require('../middleware/auth');
 const router = express.Router();
 
 /**
@@ -35,7 +36,7 @@ const router = express.Router();
  *                     type: string
  *                   management_company:
  *                     type: string
- *                   hot_water:
+ *                   has_hot_water:
  *                     type: boolean
  *                   controller_id:
  *                     type: integer
@@ -71,6 +72,6 @@ const router = express.Router();
  *                   leak_sensor:
  *                     type: boolean
  */
-router.get('/', buildingMetricsController.getBuildingsWithMetrics);
+router.get('/', optionalAuth, buildingMetricsController.getBuildingsWithMetrics);
 
 module.exports = router;

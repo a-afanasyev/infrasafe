@@ -1,6 +1,7 @@
 const express = require('express');
 const WaterLine = require('../models/WaterLine');
 const { createError } = require('../utils/helpers');
+const { applyCrudRateLimit } = require('../middleware/rateLimiter');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -39,7 +40,7 @@ router.get('/:id', async (req, res, next) => {
     }
 });
 
-// GET /api/water-lines/:id/supplier - Получить поставщика для водной линии
+// GET /api/water-lines/:id/supplier - Получить поставщиков для водной линии (через связанные здания)
 router.get('/:id/supplier', async (req, res, next) => {
     try {
         const waterLine = await WaterLine.findById(req.params.id);
@@ -47,19 +48,13 @@ router.get('/:id/supplier', async (req, res, next) => {
             return next(createError('Водная линия не найдена', 404));
         }
 
-        if (!waterLine.supplier_id) {
-            return res.json({ supplier: null, message: 'К линии не привязан поставщик' });
-        }
-
-        const WaterSupplier = require('../models/WaterSupplier');
-        const supplier = await WaterSupplier.findById(waterLine.supplier_id);
+        const suppliers = await WaterLine.findSuppliersForLine(req.params.id);
 
         res.json({
-            supplier: supplier,
+            suppliers,
             line: {
                 id: waterLine.line_id,
-                name: waterLine.name,
-                type: waterLine.line_type
+                name: waterLine.name
             }
         });
     } catch (error) {
@@ -74,7 +69,7 @@ router.get('/:id/supplier', async (req, res, next) => {
 });
 
 // POST /api/water-lines - Создать новую водную линию
-router.post('/', async (req, res, next) => {
+router.post('/', applyCrudRateLimit, async (req, res, next) => {
     try {
         const waterLine = await WaterLine.create(req.body);
         res.status(201).json(waterLine);
@@ -90,7 +85,7 @@ router.post('/', async (req, res, next) => {
 });
 
 // PUT /api/water-lines/:id - Обновить водную линию
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', applyCrudRateLimit, async (req, res, next) => {
     try {
         const waterLine = await WaterLine.update(req.params.id, req.body);
         if (!waterLine) {
@@ -110,7 +105,7 @@ router.put('/:id', async (req, res, next) => {
 });
 
 // DELETE /api/water-lines/:id - Удалить водную линию
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', applyCrudRateLimit, async (req, res, next) => {
     try {
         const result = await WaterLine.delete(req.params.id);
         if (!result) {

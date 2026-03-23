@@ -363,28 +363,55 @@ class InfrastructureAlertService {
     }
 
     // Получение активных алертов
-    async getActiveAlerts(filters = {}) {
+    async getActiveAlerts(filters = {}, pagination = {}) {
         await this.ensureInitialized();
 
-        const query = `
+        const { page = 1, limit = 10, sort = 'created_at', order = 'desc' } = pagination;
+        const offset = (page - 1) * limit;
+
+        const conditions = [];
+        const values = [];
+        let paramIdx = 1;
+
+        conditions.push(`ia.status = $${paramIdx++}`);
+        values.push(filters.status || 'active');
+
+        if (filters.severity) {
+            conditions.push(`ia.severity = $${paramIdx++}`);
+            values.push(filters.severity);
+        }
+        if (filters.infrastructure_type) {
+            conditions.push(`ia.infrastructure_type = $${paramIdx++}`);
+            values.push(filters.infrastructure_type);
+        }
+
+        const whereClause = conditions.join(' AND ');
+
+        const validSortColumns = ['created_at', 'severity', 'status', 'infrastructure_type'];
+        const sortColumn = validSortColumns.includes(sort) ? sort : 'created_at';
+        const sortOrder = String(order).toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+        const countQuery = `
+            SELECT COUNT(*) as total
+            FROM infrastructure_alerts ia
+            WHERE ${whereClause}
+        `;
+        const countResult = await db.query(countQuery, values);
+        const total = parseInt(countResult.rows[0].total);
+
+        const dataQuery = `
             SELECT ia.*, u1.username as acknowledged_by_name, u2.username as resolved_by_name
             FROM infrastructure_alerts ia
             LEFT JOIN users u1 ON ia.acknowledged_by = u1.user_id
             LEFT JOIN users u2 ON ia.resolved_by = u2.user_id
-            WHERE ia.status = $1
-            ${filters.severity ? 'AND ia.severity = $2' : ''}
-            ${filters.infrastructure_type ? `AND ia.infrastructure_type = $${filters.severity ? 3 : 2}` : ''}
-            ORDER BY ia.created_at DESC
-            LIMIT $${filters.severity ? (filters.infrastructure_type ? 4 : 3) : (filters.infrastructure_type ? 3 : 2)}
+            WHERE ${whereClause}
+            ORDER BY ia.${sortColumn} ${sortOrder}
+            LIMIT $${paramIdx++} OFFSET $${paramIdx++}
         `;
+        values.push(limit, offset);
 
-        const values = ['active'];
-        if (filters.severity) values.push(filters.severity);
-        if (filters.infrastructure_type) values.push(filters.infrastructure_type);
-        values.push(filters.limit || 100);
-
-        const result = await db.query(query, values);
-        return result.rows;
+        const result = await db.query(dataQuery, values);
+        return { data: result.rows, total };
     }
 
     // Массовая проверка всех трансформаторов
@@ -426,6 +453,8 @@ class InfrastructureAlertService {
     async getAlertStatistics(days = 7) {
         await this.ensureInitialized();
 
+        const safeDays = Math.max(1, Math.min(365, parseInt(days, 10) || 7));
+
         const query = `
             SELECT
                 severity,
@@ -434,15 +463,15 @@ class InfrastructureAlertService {
                 COUNT(*) as count,
                 DATE(created_at) as date
             FROM infrastructure_alerts
-            WHERE created_at >= NOW() - INTERVAL '${days} days'
+            WHERE created_at >= NOW() - INTERVAL '1 day' * $1
             GROUP BY severity, infrastructure_type, status, DATE(created_at)
             ORDER BY date DESC, severity, infrastructure_type
         `;
 
-        const result = await db.query(query);
+        const result = await db.query(query, [safeDays]);
 
         return {
-            period_days: days,
+            period_days: safeDays,
             statistics: result.rows,
             active_alerts_count: this.activeAlerts.size
         };

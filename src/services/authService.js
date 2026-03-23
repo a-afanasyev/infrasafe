@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
@@ -11,17 +12,33 @@ class AuthService {
             throw new Error('JWT_SECRET environment variable is not defined');
         }
         this.jwtSecret = process.env.JWT_SECRET;
+        if (!process.env.JWT_REFRESH_SECRET) {
+            throw new Error('JWT_REFRESH_SECRET environment variable is required');
+        }
+        this.jwtRefreshSecret = process.env.JWT_REFRESH_SECRET;
         this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
         this.refreshTokenExpiresIn = '7d';
         this.cachePrefix = 'auth';
         this.maxLoginAttempts = 5;
         this.lockoutDuration = 15 * 60 * 1000; // 15 минут
+
+        // Periodic cleanup of expired blacklisted tokens (every hour)
+        this.cleanupIntervalId = setInterval(() => {
+            this.cleanupExpiredTokens().catch(err => {
+                logger.error(`Ошибка периодической очистки токенов: ${err.message}`);
+            });
+        }, 60 * 60 * 1000);
+        // Allow the process to exit even if the interval is active
+        if (this.cleanupIntervalId && this.cleanupIntervalId.unref) {
+            this.cleanupIntervalId.unref();
+        }
     }
 
     // Регистрация нового пользователя
     async registerUser(userData) {
         try {
-            const { username, email, password, role = 'user' } = userData;
+            const { username, email, password } = userData;
+            const role = 'user';
 
             // Валидация входных данных
             this.validateUserData({ username, email, password });
@@ -135,7 +152,7 @@ class AuthService {
 
             const refreshToken = jwt.sign(
                 { user_id: user.user_id, type: 'refresh' },
-                this.jwtSecret,
+                this.jwtRefreshSecret,
                 {
                     expiresIn: this.refreshTokenExpiresIn,
                     issuer: 'infrasafe-api',
@@ -198,7 +215,7 @@ class AuthService {
     // Обновление токена
     async refreshToken(refreshToken) {
         try {
-            const decoded = jwt.verify(refreshToken, this.jwtSecret);
+            const decoded = jwt.verify(refreshToken, this.jwtRefreshSecret);
 
             if (decoded.type !== 'refresh') {
                 const error = new Error('Недействительный refresh токен');
@@ -212,6 +229,9 @@ class AuthService {
                 error.code = 'USER_NOT_FOUND';
                 throw error;
             }
+
+            // Blacklist the consumed refresh token to prevent reuse
+            await this.blacklistToken(refreshToken);
 
             // Генерируем новые токены
             const tokens = this.generateTokens(user);
@@ -246,8 +266,16 @@ class AuthService {
                 throw error;
             }
 
+            // Fetch password_hash separately (not cached by findUserById for security)
+            const hashResult = await db.query('SELECT password_hash FROM users WHERE user_id = $1', [userId]);
+            if (hashResult.rows.length === 0) {
+                const error = new Error('Пользователь не найден');
+                error.code = 'USER_NOT_FOUND';
+                throw error;
+            }
+
             // Проверяем текущий пароль
-            const isCurrentPasswordValid = await this.verifyPassword(currentPassword, user.password_hash);
+            const isCurrentPasswordValid = await this.verifyPassword(currentPassword, hashResult.rows[0].password_hash);
             if (!isCurrentPasswordValid) {
                 const error = new Error('Неверный текущий пароль');
                 error.code = 'INVALID_CURRENT_PASSWORD';
@@ -291,16 +319,17 @@ class AuthService {
         try {
             const cacheKey = `${this.cachePrefix}:user:${userId}`;
 
-            const cached = await cacheService.get(cacheKey, { ttl: 300000 }); // 5 минут
+            const cached = await cacheService.get(cacheKey, { ttl: 300 }); // 5 минут
             if (cached) {
                 return cached;
             }
 
-            const query = 'SELECT * FROM users WHERE user_id = $1';
+            const query = 'SELECT user_id, username, email, role, is_active, account_locked_until, created_at, updated_at FROM users WHERE user_id = $1';
             const result = await db.query(query, [userId]);
 
             if (result.rows.length > 0) {
-                const user = result.rows[0];
+                // Destructure to exclude password_hash from cached/returned object
+                const { password_hash, ...user } = result.rows[0];
                 await cacheService.set(cacheKey, user, { ttl: 300 });
                 return user;
             }
@@ -424,8 +453,22 @@ class AuthService {
             const ttl = Math.max(0, (expiry - Date.now()) / 1000); // TTL в секундах
 
             if (ttl > 0) {
-                const cacheKey = `${this.cachePrefix}:blacklist:${token}`;
+                // L1 cache (in-memory) for fast lookups
+                const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+                const cacheKey = `${this.cachePrefix}:blacklist:${tokenHash}`;
                 await cacheService.set(cacheKey, true, { ttl });
+
+                // L2 persistent storage (database) survives restarts
+                try {
+                    const expiresAt = new Date(expiry);
+                    await db.query(
+                        'INSERT INTO token_blacklist (token_hash, expires_at) VALUES ($1, $2) ON CONFLICT (token_hash) DO NOTHING',
+                        [tokenHash, expiresAt]
+                    );
+                } catch (dbError) {
+                    logger.error(`Ошибка сохранения токена в БД: ${dbError.message}`);
+                    // Cache-based blacklist still works as fallback
+                }
             }
         } catch (error) {
             logger.error(`Ошибка добавления токена в черный список: ${error.message}`);
@@ -435,11 +478,53 @@ class AuthService {
     // Проверка, находится ли токен в черном списке
     async isTokenBlacklisted(token) {
         try {
-            const cacheKey = `${this.cachePrefix}:blacklist:${token}`;
-            return await cacheService.get(cacheKey) !== null;
+            const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+            const cacheKey = `${this.cachePrefix}:blacklist:${tokenHash}`;
+
+            // L1: Check in-memory cache first (fast path)
+            const cached = await cacheService.get(cacheKey);
+            if (cached !== null) {
+                return true;
+            }
+
+            // L2: Check database on cache miss
+            try {
+                const result = await db.query(
+                    'SELECT 1 FROM token_blacklist WHERE token_hash = $1 AND expires_at > NOW()',
+                    [tokenHash]
+                );
+                if (result.rows.length > 0) {
+                    // Populate L1 cache for future lookups
+                    const decoded = jwt.decode(token);
+                    if (decoded && decoded.exp) {
+                        const ttl = Math.max(0, (decoded.exp * 1000 - Date.now()) / 1000);
+                        if (ttl > 0) {
+                            await cacheService.set(cacheKey, true, { ttl });
+                        }
+                    }
+                    return true;
+                }
+            } catch (dbError) {
+                logger.error(`Ошибка проверки черного списка в БД: ${dbError.message}`);
+                // If DB is unavailable, rely on cache result (already checked above)
+            }
+
+            return false;
         } catch (error) {
             logger.error(`Ошибка проверки черного списка токенов: ${error.message}`);
             return false;
+        }
+    }
+
+    // Очистка просроченных токенов из черного списка
+    async cleanupExpiredTokens() {
+        try {
+            const result = await db.query('DELETE FROM token_blacklist WHERE expires_at < NOW()');
+            if (result.rowCount > 0) {
+                logger.info(`Очищено ${result.rowCount} просроченных токенов из черного списка`);
+            }
+        } catch (error) {
+            logger.error(`Ошибка очистки просроченных токенов: ${error.message}`);
         }
     }
 }

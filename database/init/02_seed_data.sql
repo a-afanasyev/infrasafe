@@ -165,7 +165,7 @@ INSERT INTO public.controllers (controller_id, serial_number, vendor, model, bui
 -- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-INSERT INTO public.users (user_id, username, email, password_hash, full_name, role, is_active, created_at, updated_at, last_login) VALUES (55, 'admin', 'admin@infrasafe.com', '$2b$12$qTytJ.AoOkeVeV4tDhwMZuYAmAEphccDaudFkVsMBhcfrWvmP5Q1W', NULL, 'admin', true, '2025-10-31 11:16:19.469741+00', '2025-10-31 11:16:35.514444+00', '2025-11-15 10:00:00.303315+00');
+INSERT INTO public.users (user_id, username, email, password_hash, full_name, role, is_active, created_at, updated_at, last_login) VALUES (55, 'admin', 'admin@infrasafe.com', '$2b$12$vSY6.Py5CkugrpdOE2Cj.OwUIcqB75gQ2MDMxm/NRGKd3R5LApKKe', NULL, 'admin', true, '2025-10-31 11:16:19.469741+00', '2025-10-31 11:16:35.514444+00', '2025-11-15 10:00:00.303315+00');
 
 
 --

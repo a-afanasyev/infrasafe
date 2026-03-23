@@ -1,6 +1,7 @@
 const express = require('express');
 const controllerController = require('../controllers/controllerController');
-const { authenticateJWT } = require('../middleware/auth');
+const { applyCrudRateLimit } = require('../middleware/rateLimiter');
+const { isAdmin } = require('../middleware/auth');
 const { validateControllerCreate, validateIdParam } = require('../middleware/validators');
 const router = express.Router();
 
@@ -10,7 +11,8 @@ const router = express.Router();
  *   get:
  *     summary: Получить список всех контроллеров
  *     description: Возвращает список всех контроллеров с пагинацией
- *     security: [] # Без авторизации
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: page
@@ -78,7 +80,7 @@ router.get('/', controllerController.getAllControllers);
  *       403:
  *         description: Недействительный токен
  */
-router.post('/update-status-by-activity', authenticateJWT, controllerController.updateControllersStatusByActivity);
+router.post('/update-status-by-activity', applyCrudRateLimit, isAdmin, controllerController.updateControllersStatusByActivity);
 
 /**
  * @swagger
@@ -86,7 +88,8 @@ router.post('/update-status-by-activity', authenticateJWT, controllerController.
  *   get:
  *     summary: Статистика контроллеров
  *     description: Возвращает аналитику по контроллерам (по статусам и зданиям)
- *     security: [] # Без авторизации
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: Статистика контроллеров
@@ -134,7 +137,8 @@ router.get('/statistics', controllerController.getControllersStatistics);
  *   get:
  *     summary: Получить контроллер по ID
  *     description: Возвращает один контроллер по его ID
- *     security: [] # Без авторизации
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -243,7 +247,7 @@ router.get('/:id/metrics', controllerController.getControllerMetrics);
  *       403:
  *         description: Недействительный токен
  */
-router.post('/', authenticateJWT, validateControllerCreate, controllerController.createController);
+router.post('/', applyCrudRateLimit, validateControllerCreate, controllerController.createController);
 
 /**
  * @swagger
@@ -281,7 +285,7 @@ router.post('/', authenticateJWT, validateControllerCreate, controllerController
  *       400:
  *         description: Ошибка валидации данных
  */
-router.put('/:id', authenticateJWT, validateIdParam, validateControllerCreate, controllerController.updateController);
+router.put('/:id', applyCrudRateLimit, validateIdParam, validateControllerCreate, controllerController.updateController);
 
 /**
  * @swagger
@@ -316,7 +320,7 @@ router.put('/:id', authenticateJWT, validateIdParam, validateControllerCreate, c
  *       400:
  *         description: Неверное значение статуса
  */
-router.patch('/:id/status', authenticateJWT, validateIdParam, controllerController.updateControllerStatus);
+router.patch('/:id/status', applyCrudRateLimit, validateIdParam, controllerController.updateControllerStatus);
 
 /**
  * @swagger
@@ -339,6 +343,6 @@ router.patch('/:id/status', authenticateJWT, validateIdParam, controllerControll
  *       400:
  *         description: Невозможно удалить контроллер с привязанными метриками
  */
-router.delete('/:id', authenticateJWT, validateIdParam, controllerController.deleteController);
+router.delete('/:id', applyCrudRateLimit, validateIdParam, controllerController.deleteController);
 
 module.exports = router;

@@ -15,7 +15,7 @@ class BuildingService {
             const cacheKey = `${this.cachePrefix}:list:${page}:${limit}:${sort}:${order}`;
 
             // Проверяем кэш
-            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
+            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL });
             if (cached) {
                 logger.debug(`Buildings list получен из кэша: ${cacheKey}`);
                 return cached;
@@ -35,37 +35,30 @@ class BuildingService {
         }
     }
 
-    // Получить здание по ID с контроллерами
+    // Получить здание по ID с контроллерами (один запрос с JOIN)
     async getBuildingById(id) {
         try {
             const cacheKey = `${this.cachePrefix}:${id}:with_controllers`;
 
             // Проверяем кэш
-            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
+            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL });
             if (cached) {
                 logger.debug(`Building ${id} получен из кэша`);
                 return cached;
             }
 
-            // Получаем здание
-            const building = await Building.findById(id);
-            if (!building) {
+            // Один запрос с LEFT JOIN + json_agg (устраняет N+1)
+            const result = await Building.findByIdWithControllers(id);
+            if (!result) {
                 logger.warn(`Здание с ID ${id} не найдено`);
                 return null;
             }
 
-            // Получаем контроллеры для здания
-            const controllers = await Controller.findByBuildingId(id);
-
-            const result = {
-                ...building,
-                controllers
-            };
-
             // Сохраняем в кэш
             await cacheService.set(cacheKey, result, { ttl: this.defaultCacheTTL });
 
-            logger.info(`Получено здание ${id} с ${controllers.length} контроллерами`);
+            const controllerCount = Array.isArray(result.controllers) ? result.controllers.length : 0;
+            logger.info(`Получено здание ${id} с ${controllerCount} контроллерами`);
             return result;
         } catch (error) {
             logger.error(`Ошибка получения здания ${id}: ${error.message}`);
@@ -149,6 +142,27 @@ class BuildingService {
         }
     }
 
+    // Каскадное удаление здания с контроллерами, метриками и алертами
+    async deleteBuildingCascade(id) {
+        try {
+            const result = await Building.deleteCascade(id);
+
+            if (!result) {
+                logger.warn(`Здание с ID ${id} не найдено для каскадного удаления`);
+                return null;
+            }
+
+            // Инвалидируем кэш
+            await this.invalidateBuildingCache(id);
+
+            logger.info(`Каскадно удалено здание ${id}`);
+            return result;
+        } catch (error) {
+            logger.error(`Ошибка каскадного удаления здания ${id}: ${error.message}`);
+            throw error;
+        }
+    }
+
     // Поиск зданий по радиусу от координат
     async findBuildingsInRadius(latitude, longitude, radiusMeters = 1000) {
         try {
@@ -157,7 +171,7 @@ class BuildingService {
             const cacheKey = `${this.cachePrefix}:geo:${latitude}:${longitude}:${radiusMeters}`;
 
             // Проверяем кэш
-            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
+            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL });
             if (cached) {
                 logger.debug(`Buildings in radius получены из кэша`);
                 return cached;
@@ -201,7 +215,7 @@ class BuildingService {
             const cacheKey = `${this.cachePrefix}:statistics`;
 
             // Проверяем кэш
-            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL * 1000 });
+            const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL });
             if (cached) {
                 return cached;
             }

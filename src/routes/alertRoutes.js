@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const alertController = require('../controllers/alertController');
-const { authenticateJWT, isAdmin } = require('../middleware/auth');
+const { isAdmin } = require('../middleware/auth');
 const { applyAnalyticsRateLimit, applyAdminRateLimit, applyCrudRateLimit } = require('../middleware/rateLimiter');
 
 /**
@@ -23,7 +23,7 @@ const { applyAnalyticsRateLimit, applyAdminRateLimit, applyCrudRateLimit } = req
  *           description: ID инфраструктурного объекта
  *         infrastructure_type:
  *           type: string
- *           enum: [transformer, water_source, heat_source]
+ *           enum: [transformer, controller, water_source, heat_source]
  *           description: Тип инфраструктурного объекта
  *         severity:
  *           type: string
@@ -73,7 +73,7 @@ const { applyAnalyticsRateLimit, applyAdminRateLimit, applyCrudRateLimit } = req
  *           description: ID инфраструктурного объекта
  *         infrastructure_type:
  *           type: string
- *           enum: [transformer, water_source, heat_source]
+ *           enum: [transformer, controller, water_source, heat_source]
  *           description: Тип инфраструктурного объекта
  *         severity:
  *           type: string
@@ -241,7 +241,7 @@ router.get('/status', applyAnalyticsRateLimit, alertController.getSystemStatus);
  *                     - $ref: '#/components/schemas/Alert'
  *                     - type: "null"
  */
-router.post('/check/transformer/:transformerId', authenticateJWT, applyAdminRateLimit, alertController.checkTransformer);
+router.post('/check/transformer/:transformerId', applyAdminRateLimit, isAdmin, alertController.checkTransformer);
 
 /**
  * @swagger
@@ -275,7 +275,7 @@ router.post('/check/transformer/:transformerId', authenticateJWT, applyAdminRate
  *                       items:
  *                         $ref: '#/components/schemas/Alert'
  */
-router.post('/check/all-transformers', authenticateJWT, applyAdminRateLimit, alertController.checkAllTransformers);
+router.post('/check/all-transformers', applyAdminRateLimit, isAdmin, alertController.checkAllTransformers);
 
 // === УПРАВЛЕНИЕ АЛЕРТАМИ ===
 
@@ -308,7 +308,7 @@ router.post('/check/all-transformers', authenticateJWT, applyAdminRateLimit, ale
  *                 data:
  *                   $ref: '#/components/schemas/Alert'
  */
-router.post('/', authenticateJWT, applyCrudRateLimit, alertController.createAlert);
+router.post('/', applyCrudRateLimit, alertController.createAlert);
 
 /**
  * @swagger
@@ -340,7 +340,7 @@ router.post('/', authenticateJWT, applyCrudRateLimit, alertController.createAler
  *                 data:
  *                   $ref: '#/components/schemas/Alert'
  */
-router.patch('/:alertId/acknowledge', authenticateJWT, applyCrudRateLimit, alertController.acknowledgeAlert);
+router.patch('/:alertId/acknowledge', applyCrudRateLimit, isAdmin, alertController.acknowledgeAlert);
 
 /**
  * @swagger
@@ -372,7 +372,7 @@ router.patch('/:alertId/acknowledge', authenticateJWT, applyCrudRateLimit, alert
  *                 data:
  *                   $ref: '#/components/schemas/Alert'
  */
-router.patch('/:alertId/resolve', authenticateJWT, applyCrudRateLimit, alertController.resolveAlert);
+router.patch('/:alertId/resolve', applyCrudRateLimit, isAdmin, alertController.resolveAlert);
 
 // === НАСТРОЙКИ АЛЕРТОВ ===
 
@@ -442,6 +442,6 @@ router.patch('/:alertId/resolve', authenticateJWT, applyCrudRateLimit, alertCont
  *         description: Пороги успешно обновлены
  */
 router.get('/thresholds', applyAnalyticsRateLimit, alertController.getThresholds);
-router.put('/thresholds', authenticateJWT, isAdmin, applyAdminRateLimit, alertController.updateThresholds);
+router.put('/thresholds', isAdmin, applyAdminRateLimit, alertController.updateThresholds);
 
 module.exports = router;

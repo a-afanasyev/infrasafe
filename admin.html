@@ -1,794 +1,40 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Database Admin Panel</title>
+    <title>InfraSafe - Администрирование</title>
     <link rel="icon" type="image/svg+xml" href="public/images/favicon.svg">
     <!-- Скрипт подключается в конце body -->
-    <style>
-        /* Стили для предотвращения мерцания */
-        html {
-            scroll-behavior: smooth;
-        }
-
-        * {
-            box-sizing: border-box;
-        }
-
-        /* Базовые стили для страницы */
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f5f5f5;
-            /* Предотвращаем скачки при появлении полосы прокрутки */
-            overflow-y: scroll;
-            /* Предотвращаем мерцание при загрузке шрифтов */
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-        }
-
-        h1, h2 {
-            color: #333;
-        }
-
-        /* Предотвращаем мерцание при загрузке таблиц */
-        .table-wrapper {
-            position: relative;
-            min-height: 200px;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 20px;
-            background-color: white;
-            /* Предотвращаем изменение размеров таблицы при загрузке данных */
-            table-layout: fixed;
-            /* Добавляем тень для лучшего визуального разделения */
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-            /* Предотвращаем мерцание при рендеринге */
-            backface-visibility: hidden;
-            transform: translateZ(0);
-            -webkit-transform: translateZ(0);
-        }
-
-        th, td {
-            padding: 10px;
-            text-align: left;
-            border: 1px solid #ddd;
-            /* Предотвращаем перенос текста, чтобы избежать изменения высоты строк */
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        th {
-            background-color: #4CAF50;
-            color: white;
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
-
-        tr:nth-child(even) {
-            background-color: #f2f2f2;
-        }
-
-        form {
-            background-color: white;
-            padding: 20px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            /* Добавляем тень для лучшего визуального разделения */
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
-
-        input, select {
-            padding: 8px;
-            margin-right: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-
-        button {
-            padding: 8px 15px;
-            background-color: #4CAF50;
-            color: black;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background-color: #45a049;
-        }
-
-        button:disabled {
-            background-color: #cccccc;
-            color: #666666;
-            cursor: not-allowed;
-        }
-
-        .pagination {
-            display: flex;
-            justify-content: center;
-            margin-top: 10px;
-            margin-bottom: 20px;
-        }
-
-        .pagination button {
-            margin: 0 5px;
-        }
-
-        .pagination span {
-            padding: 8px 15px;
-            background-color: #f2f2f2;
-            border-radius: 4px;
-        }
-
-        /* Стили для модальных окон редактирования */
-        .edit-form-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            /* Добавляем плавное появление и исчезновение */
-            opacity: 1;
-            transition: opacity 0.3s ease-in-out;
-            /* Предотвращаем мерцание при рендеринге */
-            will-change: opacity;
-            transform: translateZ(0);
-            -webkit-transform: translateZ(0);
-        }
-
-        .edit-form-overlay[style*="display: none"] {
-            opacity: 0;
-            pointer-events: none;
-        }
-
-        .edit-form {
-            background-color: white;
-            padding: 20px;
-            border-radius: 5px;
-            width: 80%;
-            max-width: 500px;
-            max-height: 90vh;
-            overflow-y: auto;
-            /* Добавляем плавное появление */
-            transform: translateY(0);
-            transition: transform 0.3s ease-in-out;
-            /* Предотвращаем мерцание при рендеринге */
-            will-change: transform;
-            backface-visibility: hidden;
-        }
-
-        .edit-form-overlay[style*="display: none"] .edit-form {
-            transform: translateY(-20px);
-        }
-
-        .edit-form h3 {
-            margin-top: 0;
-        }
-
-        .edit-form form {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .edit-form input, .edit-form select {
-            margin-bottom: 10px;
-            padding: 8px;
-        }
-
-        .form-buttons {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 10px;
-        }
-
-        /* Стили для индикатора загрузки */
-        .loading-row td {
-            text-align: center;
-            padding: 20px;
-            font-style: italic;
-            color: #666;
-        }
-
-        .table-container {
-            position: relative;
-            min-height: 100px;
-            /* Предотвращаем изменение размеров контейнера при загрузке данных */
-            overflow: hidden;
-            /* Добавляем плавное появление */
-            transition: opacity 0.3s ease-in-out;
-            /* Устанавливаем начальную прозрачность */
-            opacity: 0;
-            /* Добавляем отступ снизу */
-            margin-bottom: 30px;
-            /* Предотвращаем мерцание при рендеринге */
-            will-change: opacity;
-            transform: translateZ(0);
-            -webkit-transform: translateZ(0);
-        }
-
-        /* Стили для сообщений об ошибках */
-        .error-message {
-            color: #d32f2f;
-            background-color: #ffebee;
-            padding: 10px;
-            border-radius: 4px;
-            margin-bottom: 10px;
-            border-left: 4px solid #d32f2f;
-        }
-
-        /* Навигационное меню */
-        .admin-nav {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            padding: 10px;
-            background-color: white;
-            border-radius: 5px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
-
-        .nav-btn {
-            padding: 10px 20px;
-            background-color: #f5f5f5;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .nav-btn.active {
-            background-color: #4CAF50;
-            color: black;
-            border-color: #4CAF50;
-        }
-
-        .nav-btn:hover:not(.active) {
-            background-color: #e8e8e8;
-        }
-
-        /* Глобальный поиск */
-        .global-search {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            padding: 15px;
-            background-color: white;
-            border-radius: 5px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
-
-        .global-search input {
-            flex: 1;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 16px;
-        }
-
-        /* Секции админки */
-        .admin-section {
-            display: none;
-            margin-bottom: 30px;
-        }
-
-        .admin-section.active {
-            display: block;
-        }
-
-        /* Панель фильтров */
-        .filters-panel {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-            padding: 15px;
-            background-color: #f9f9f9;
-            border-radius: 5px;
-            flex-wrap: wrap;
-        }
-
-        .filters-panel input,
-        .filters-panel select {
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            min-width: 150px;
-        }
-
-        /* Batch операции */
-        .batch-operations {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-            padding: 10px;
-            background-color: #fff3cd;
-            border-radius: 5px;
-            border: 1px solid #ffeaa7;
-            flex-wrap: wrap;
-        }
-
-        .batch-operations button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        /* Стили для улучшенной формы метрик */
-        .metrics-form {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-
-        .form-section {
-            margin-bottom: 24px;
-            padding: 16px;
-            background: white;
-            border-radius: 8px;
-            border-left: 4px solid #007bff;
-        }
-
-        .form-section h3 {
-            margin: 0 0 16px 0;
-            color: #333;
-            font-size: 1.2rem;
-        }
-
-        .form-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
-            margin-bottom: 16px;
-        }
-
-        .form-group {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .form-group label {
-            margin-bottom: 6px;
-            font-weight: 600;
-            color: #555;
-            font-size: 0.9rem;
-        }
-
-        .form-group input,
-        .form-group select {
-            padding: 10px;
-            border: 2px solid #ddd;
-            border-radius: 6px;
-            font-size: 1rem;
-            transition: border-color 0.3s;
-        }
-
-        .form-group input:focus,
-        .form-group select:focus {
-            outline: none;
-            border-color: #007bff;
-        }
-
-        .checkbox-group {
-            flex-direction: row !important;
-            align-items: center;
-        }
-
-        .checkbox-label {
-            display: flex;
-            align-items: center;
-            cursor: pointer;
-            font-weight: 600;
-            color: #555;
-        }
-
-        .checkbox-label input[type="checkbox"] {
-            margin-right: 8px;
-            transform: scale(1.2);
-        }
-
-        .form-actions {
-            display: flex;
-            gap: 12px;
-            justify-content: center;
-            margin-top: 24px;
-        }
-
-        .btn-primary {
-            background: #28a745;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-
-        .btn-primary:hover {
-            background: #218838;
-        }
-
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-
-        .btn-secondary:hover {
-            background: #5a6268;
-        }
-
-        /* Сортируемые заголовки */
-        .sortable {
-            cursor: pointer;
-            user-select: none;
-            position: relative;
-        }
-
-        .sortable:hover {
-            background-color: #45a049;
-        }
-
-        /* Чекбоксы в таблицах */
-        table input[type="checkbox"] {
-            margin: 0;
-            transform: scale(1.2);
-        }
-
-        /* Toast уведомления */
-        #toast-container {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 10000;
-        }
-
-        .toast {
-            background-color: #4CAF50;
-            color: white;
-            padding: 15px 20px;
-            border-radius: 5px;
-            margin-bottom: 10px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-            animation: slideIn 0.3s ease-out;
-            max-width: 300px;
-            word-wrap: break-word;
-        }
-
-        .toast.error {
-            background-color: #f44336;
-        }
-
-        .toast.warning {
-            background-color: #ff9800;
-        }
-
-        .toast.info {
-            background-color: #2196F3;
-        }
-
-        @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        /* Стили для многострочной таблицы зданий */
-        .multi-row-table {
-            border-collapse: collapse;
-        }
-
-        .multi-row-table th {
-            background-color: #4CAF50;
-            color: white;
-            padding: 8px;
-            text-align: center;
-            font-weight: bold;
-            border: 1px solid #ddd;
-        }
-
-        .multi-row-table .header-basic {
-            background-color: #4CAF50;
-        }
-
-        .multi-row-table .header-infra {
-            background-color: #45a049;
-        }
-
-        .multi-row-table .header-water {
-            background-color: #3d8b40;
-        }
-
-        /* Группировка строк одного здания */
-        .building-group {
-            border-bottom: 3px solid #2196F3;
-        }
-
-        .building-row-1 {
-            background-color: #f9f9f9;
-        }
-
-        .building-row-2 {
-            background-color: #f0f8ff;
-        }
-
-        .building-row-3 {
-            background-color: #e6f3ff;
-        }
-
-        .building-row-1 td,
-        .building-row-2 td,
-        .building-row-3 td {
-            padding: 6px;
-            border: 1px solid #ddd;
-            vertical-align: middle;
-        }
-
-        /* Основные колонки с увеличенной шириной */
-        .multi-row-table th:nth-child(2) { /* ID */
-            width: 60px;
-        }
-
-        .multi-row-table th:nth-child(3) { /* Название */
-            width: 150px;
-        }
-
-        .multi-row-table th:nth-child(9) { /* Действия */
-            width: 150px;
-        }
-
-        /* Стили для горизонтальной формы добавления */
-        .horizontal-form {
-            max-width: 1200px;
-            margin: 20px 0;
-            padding: 25px;
-            background-color: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            border: 1px solid #e0e0e0;
-        }
-
-        .form-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 30px;
-            margin-bottom: 25px;
-        }
-
-        .form-column {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .form-group {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .form-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-        }
-
-        .form-group label {
-            font-weight: 600;
-            color: #333;
-            font-size: 14px;
-            margin-bottom: 0;
-        }
-
-        .horizontal-form input,
-        .horizontal-form select {
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
-            font-size: 14px;
-            transition: border-color 0.3s ease;
-            background-color: #fafafa;
-        }
-
-        .horizontal-form input:focus,
-        .horizontal-form select:focus {
-            outline: none;
-            border-color: #4CAF50;
-            background-color: white;
-            box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
-        }
-
-        .horizontal-form input:required {
-            border-left: 4px solid #4CAF50;
-        }
-
-        .form-section-header {
-            font-weight: bold;
-            font-size: 16px;
-            color: #4CAF50;
-            padding: 10px 15px;
-            background-color: #f0f8f0;
-            border-radius: 6px;
-            border-left: 4px solid #4CAF50;
-            margin-bottom: 10px;
-        }
-
-        .checkbox-group {
-            margin-top: 10px;
-        }
-
-        .checkbox-label {
-            display: flex !important;
-            align-items: center;
-            font-weight: 500 !important;
-            color: #555;
-            cursor: pointer;
-            padding: 8px 0;
-        }
-
-        .checkbox-label input[type="checkbox"] {
-            margin-right: 10px;
-            margin-bottom: 0;
-            width: 18px;
-            height: 18px;
-            accent-color: #4CAF50;
-        }
-
-        .form-submit {
-            text-align: center;
-            border-top: 2px solid #f0f0f0;
-            padding-top: 25px;
-        }
-
-        .horizontal-form button[type="submit"] {
-            padding: 15px 40px;
-            background: linear-gradient(135deg, #4CAF50, #45a049);
-            color: black;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
-            min-width: 200px;
-        }
-
-        .horizontal-form button[type="submit"]:hover {
-            background: linear-gradient(135deg, #45a049, #3d8b40);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(76, 175, 80, 0.4);
-        }
-
-        .horizontal-form button[type="submit"]:active {
-            transform: translateY(0);
-        }
-
-        /* Адаптивность для мобильных устройств */
-        @media (max-width: 768px) {
-            .form-grid {
-                grid-template-columns: 1fr;
-                gap: 20px;
-            }
-
-            .form-row {
-                grid-template-columns: 1fr;
-            }
-
-            .horizontal-form {
-                margin: 10px;
-                padding: 20px;
-            }
-        }
-
-        /* Улучшенные стили для форм */
-        form {
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            border: 1px solid #e1e5e9;
-        }
-
-        /* Адаптивность */
-        @media (max-width: 768px) {
-            .admin-nav {
-                flex-direction: column;
-            }
-
-            .filters-panel,
-            .batch-operations {
-                flex-direction: column;
-            }
-
-            .global-search {
-                flex-direction: column;
-            }
-
-            table {
-                font-size: 12px;
-            }
-
-            th, td {
-                padding: 5px;
-            }
-        }
-
-        /* Кастомный маркер трансформатора */
-        .transformer-marker {
-            width: 8px !important;
-            height: 8px !important;
-            background-color: #8B4513; /* Коричневый цвет */
-            border: 1px solid #5D2E0F; /* Темно-коричневая рамка */
-            border-radius: 1px; /* Небольшое скругление углов */
-            margin-left: -4px !important; /* Центрируем по горизонтали */
-            margin-top: -4px !important; /* Центрируем по вертикали */
-            cursor: move;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); /* Тень для объема */
-            position: relative;
-            transition: all 0.2s ease;
-        }
-
-        /* Внутренний квадрат для дополнительного стиля */
-        .transformer-marker::before {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 3px;
-            height: 3px;
-            background-color: #D2691E; /* Светло-коричневый центр */
-            border-radius: 0px;
-        }
-
-        /* Убираем стандартные стили Leaflet для кастомного маркера */
-        .transformer-marker-icon {
-            background: transparent !important;
-            border: none !important;
-        }
-    </style>
+    <link rel="stylesheet" href="public/css/admin.css">
 </head>
 <body>
     <div class="admin-header">
         <h1>🏢 InfraSafe - Администрирование</h1>
     </div>
 
+    <div class="admin-container" style="display: none;">
     <!-- Навигационное меню -->
-    <nav class="admin-nav">
-        <button class="nav-btn active" data-section="buildings">Здания</button>
-        <button class="nav-btn" data-section="controllers">Контроллеры</button>
-        <button class="nav-btn" data-section="transformers">Трансформаторы</button>
-        <button class="nav-btn" data-section="lines">Линии</button>
-        <button class="nav-btn" data-section="water-lines">Линии ХВС/ГВС</button>
-        <button class="nav-btn" data-section="water-sources">Источники воды</button>
-        <button class="nav-btn" data-section="heat-sources">Источники тепла</button>
-        <button class="nav-btn" data-section="metrics">Метрики</button>
+    <nav class="admin-nav" role="tablist" aria-label="Разделы администрирования">
+        <!-- Основные объекты -->
+        <button class="nav-btn active" data-section="buildings" role="tab" aria-selected="true" aria-controls="buildings-section">Здания</button>
+        <button class="nav-btn" data-section="controllers" role="tab" aria-selected="false" aria-controls="controllers-section">Контроллеры</button>
+        <button class="nav-btn" data-section="metrics" role="tab" aria-selected="false" aria-controls="metrics-section">Метрики</button>
+
+        <span class="nav-separator" aria-hidden="true">|</span>
+
+        <!-- Электроинфраструктура -->
+        <button class="nav-btn" data-section="transformers" role="tab" aria-selected="false" aria-controls="transformers-section">Трансформаторы</button>
+        <button class="nav-btn" data-section="lines" role="tab" aria-selected="false" aria-controls="lines-section">Линии</button>
+
+        <span class="nav-separator" aria-hidden="true">|</span>
+
+        <!-- Водоснабжение и теплоснабжение -->
+        <button class="nav-btn" data-section="water-lines" role="tab" aria-selected="false" aria-controls="water-lines-section">Линии ХВС/ГВС</button>
+        <button class="nav-btn" data-section="water-sources" role="tab" aria-selected="false" aria-controls="water-sources-section">Источники воды</button>
+        <button class="nav-btn" data-section="heat-sources" role="tab" aria-selected="false" aria-controls="heat-sources-section">Источники тепла</button>
+        <span class="nav-separator">|</span>
+        <button class="nav-btn" id="alerts-tab" data-section="alerts" role="tab" aria-selected="false" aria-controls="alerts-section">🚨 Тревоги</button>
     </nav>
 
     <!-- Глобальный поиск -->
@@ -799,7 +45,7 @@
     </div>
 
     <!-- Buildings Section -->
-    <section id="buildings-section" class="admin-section active">
+    <section id="buildings-section" class="admin-section active" role="tabpanel" aria-label="Здания">
     <h2>Здания</h2>
 
     <!-- Фильтры для зданий -->
@@ -823,39 +69,24 @@
     </div>
 
     <!-- Buildings Table -->
-    <h2>Buildings</h2>
+    <h2>Таблица зданий</h2>
     <div class="table-container">
-        <table id="buildings-table" border="1" class="multi-row-table">
+        <table id="buildings-table" border="1">
             <thead>
-                <tr class="header-basic">
-                    <th rowspan="3"><input type="checkbox" id="buildings-select-all-checkbox"></th>
-                    <th rowspan="3" class="sortable" data-column="building_id">ID ↕</th>
-                    <th rowspan="3" class="sortable" data-column="name">Название ↕</th>
+                <tr>
+                    <th><input type="checkbox" id="buildings-select-all-checkbox" aria-label="Выбрать все здания"></th>
+                    <th class="sortable" data-column="building_id">ID ↕</th>
+                    <th class="sortable" data-column="name">Название ↕</th>
                     <th class="sortable" data-column="address">Адрес ↕</th>
                     <th class="sortable" data-column="town">Город ↕</th>
                     <th class="sortable" data-column="region">Регион ↕</th>
-                    <th>Широта</th>
-                    <th>Долгота</th>
-                    <th rowspan="3">Действия</th>
-                </tr>
-                <tr class="header-infra">
                     <th class="sortable" data-column="management_company">УК ↕</th>
-                    <th>Горячая вода</th>
-                    <th>Основной трансформатор</th>
-                    <th>Резервный трансформатор</th>
-                    <th>Основная линия</th>
-                </tr>
-                <tr class="header-water">
-                    <th>Резервная линия</th>
-                    <th>Линия ХВС</th>
-                    <th>Линия ГВС</th>
-                    <th>Поставщик ХВС</th>
-                    <th>Поставщик ГВС</th>
+                    <th>Действия</th>
                 </tr>
             </thead>
             <tbody>
                 <tr>
-                    <td colspan="9" style="text-align: center;">Загрузка данных...</td>
+                    <td colspan="8" style="text-align: center;">Загрузка данных...</td>
                 </tr>
             </tbody>
         </table>
@@ -988,7 +219,7 @@
     </section>
 
     <!-- Controllers Section -->
-    <section id="controllers-section" class="admin-section">
+    <section id="controllers-section" class="admin-section" role="tabpanel" aria-label="Контроллеры">
     <h2>Контроллеры</h2>
 
     <!-- Фильтры для контроллеров -->
@@ -999,9 +230,9 @@
         </select>
         <select id="controllers-status-filter">
             <option value="">Все статусы</option>
-            <option value="online">Online</option>
-            <option value="offline">Offline</option>
-            <option value="maintenance">Maintenance</option>
+            <option value="online">В сети</option>
+            <option value="offline">Не в сети</option>
+            <option value="maintenance">Обслуживание</option>
         </select>
         <button id="controllers-apply-filters">Применить</button>
         <button id="controllers-clear-filters">Очистить</button>
@@ -1013,32 +244,33 @@
         <button id="controllers-bulk-delete" disabled>Удалить выбранные</button>
         <button id="controllers-bulk-status" disabled>Изменить статус</button>
         <select id="controllers-bulk-status-select" disabled>
-            <option value="online">Online</option>
-            <option value="offline">Offline</option>
-            <option value="maintenance">Maintenance</option>
+            <option value="online">В сети</option>
+            <option value="offline">Не в сети</option>
+            <option value="maintenance">Обслуживание</option>
         </select>
         <button id="controllers-export">Экспорт в CSV</button>
     </div>
 
     <!-- Controllers Table -->
-    <h2>Controllers</h2>
+    <h2>Таблица контроллеров</h2>
     <div class="table-container">
         <table id="controllers-table" border="1">
             <thead>
                 <tr>
-                    <th><input type="checkbox" id="controllers-select-all-checkbox"></th>
+                    <th><input type="checkbox" id="controllers-select-all-checkbox" aria-label="Выбрать все контроллеры"></th>
                     <th class="sortable" data-column="controller_id">ID ↕</th>
                     <th class="sortable" data-column="serial_number">Серийный номер ↕</th>
                     <th class="sortable" data-column="vendor">Производитель ↕</th>
                     <th class="sortable" data-column="model">Модель ↕</th>
                     <th class="sortable" data-column="building_id">ID здания ↕</th>
                     <th class="sortable" data-column="status">Статус ↕</th>
+                    <th>Пульс</th>
                     <th>Действия</th>
                 </tr>
             </thead>
             <tbody>
                 <tr>
-                    <td colspan="7" style="text-align: center;">Загрузка данных...</td>
+                    <td colspan="8" style="text-align: center;">Загрузка данных...</td>
                 </tr>
             </tbody>
         </table>
@@ -1050,23 +282,42 @@
     </div>
 
     <!-- Form to Add New Controller -->
-    <h2>Add New Controller</h2>
-    <form id="add-controller-form">
-        <input type="text" id="controller-serial" placeholder="Serial Number" required>
-        <input type="text" id="controller-vendor" placeholder="Vendor">
-        <input type="text" id="controller-model" placeholder="Model">
-        <input type="number" id="controller-building-id" placeholder="Building ID" required>
-        <select id="controller-status">
-            <option value="online">Online</option>
-            <option value="offline">Offline</option>
-            <option value="maintenance">Maintenance</option>
-        </select>
-        <button type="submit">Add Controller</button>
-    </form>
+    <h2>Добавить контроллер</h2>
+    <div class="form-wrapper">
+        <form id="add-controller-form" class="horizontal-form">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="controller-serial">Серийный номер *</label>
+                    <input type="text" id="controller-serial" placeholder="Серийный номер" required>
+                </div>
+                <div class="form-group">
+                    <label for="controller-vendor">Производитель</label>
+                    <input type="text" id="controller-vendor" placeholder="Производитель">
+                </div>
+                <div class="form-group">
+                    <label for="controller-model">Модель</label>
+                    <input type="text" id="controller-model" placeholder="Модель">
+                </div>
+                <div class="form-group">
+                    <label for="controller-building-id">ID здания *</label>
+                    <input type="number" id="controller-building-id" placeholder="ID здания" required>
+                </div>
+                <div class="form-group">
+                    <label for="controller-status">Статус</label>
+                    <select id="controller-status">
+                        <option value="online">В сети</option>
+                        <option value="offline">Не в сети</option>
+                        <option value="maintenance">Обслуживание</option>
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="submit-btn">Добавить контроллер</button>
+        </form>
+    </div>
     </section>
 
     <!-- Transformers Section -->
-    <section id="transformers-section" class="admin-section">
+    <section id="transformers-section" class="admin-section" role="tabpanel" aria-label="Трансформаторы">
     <h2>Трансформаторы</h2>
 
     <!-- Фильтры для трансформаторов -->
@@ -1096,7 +347,7 @@
         <table id="transformers-table" border="1">
             <thead>
                 <tr>
-                    <th><input type="checkbox" id="transformers-select-all-checkbox"></th>
+                    <th><input type="checkbox" id="transformers-select-all-checkbox" aria-label="Выбрать все трансформаторы"></th>
                     <th class="sortable" data-column="transformer_id">ID ↕</th>
                     <th class="sortable" data-column="name">Название ↕</th>
                     <th class="sortable" data-column="power_kva">Мощность (кВА) ↕</th>
@@ -1155,13 +406,7 @@
                 </div>
                 
                 <div class="form-group">
-                    <button type="button" class="btn-secondary" onclick="
-                        const currentLat = parseFloat(document.getElementById('transformer-latitude').value) || null;
-                        const currentLng = parseFloat(document.getElementById('transformer-longitude').value) || null;
-                        openCoordinateEditor('transformer', null, currentLat, currentLng, null, (lat, lng) => {
-                            document.getElementById('transformer-latitude').value = lat;
-                            document.getElementById('transformer-longitude').value = lng;
-                        })">
+                    <button type="button" class="btn-secondary" id="btn-transformer-coord-picker">
                         📍 Указать на карте
                     </button>
                 </div>
@@ -1175,7 +420,7 @@
     </section>
 
     <!-- Lines Section -->
-    <section id="lines-section" class="admin-section">
+    <section id="lines-section" class="admin-section" role="tabpanel" aria-label="Линии">
     <h2>Линии электропередач</h2>
 
     <!-- Фильтры для линий -->
@@ -1207,7 +452,7 @@
         <table id="lines-table" border="1">
             <thead>
                 <tr>
-                    <th><input type="checkbox" id="lines-select-all-checkbox"></th>
+                    <th><input type="checkbox" id="lines-select-all-checkbox" aria-label="Выбрать все линии"></th>
                     <th class="sortable" data-column="line_id">ID ↕</th>
                     <th class="sortable" data-column="name">Название ↕</th>
                     <th class="sortable" data-column="voltage_kv">Напряжение (кВ) ↕</th>
@@ -1241,7 +486,7 @@
     </section>
 
     <!-- Water Lines Section -->
-    <section id="water-lines-section" class="admin-section">
+    <section id="water-lines-section" class="admin-section" role="tabpanel" aria-label="Линии ХВС/ГВС">
     <h2>Линии водоснабжения (ХВС/ГВС)</h2>
 
     <!-- Фильтры для линий водоснабжения -->
@@ -1290,7 +535,7 @@
         <table id="water-lines-table" border="1">
             <thead>
                 <tr>
-                    <th><input type="checkbox" id="water-lines-select-all-checkbox"></th>
+                    <th><input type="checkbox" id="water-lines-select-all-checkbox" aria-label="Выбрать все линии водоснабжения"></th>
                     <th class="sortable" data-column="line_id">ID ↕</th>
                     <th class="sortable" data-column="name">Название ↕</th>
                     <th class="sortable" data-column="description">Описание ↕</th>
@@ -1378,7 +623,7 @@
     </section>
 
     <!-- Water Sources Section -->
-    <section id="water-sources-section" class="admin-section">
+    <section id="water-sources-section" class="admin-section" role="tabpanel" aria-label="Источники воды">
     <h2>Источники холодной воды</h2>
 
     <!-- Фильтры для источников воды -->
@@ -1412,7 +657,7 @@
         <table id="water-sources-table" border="1">
             <thead>
                 <tr>
-                    <th><input type="checkbox" id="water-sources-select-all-checkbox"></th>
+                    <th><input type="checkbox" id="water-sources-select-all-checkbox" aria-label="Выбрать все источники воды"></th>
                     <th class="sortable" data-column="id">ID ↕</th>
                     <th class="sortable" data-column="name">Название ↕</th>
                     <th class="sortable" data-column="address">Адрес ↕</th>
@@ -1438,33 +683,66 @@
 
     <!-- Form to Add New Water Source -->
     <h2>Добавить источник воды</h2>
-    <form id="add-water-source-form">
-        <input type="text" id="water-source-id" placeholder="ID источника" required>
-        <input type="text" id="water-source-name" placeholder="Название" required>
-        <input type="text" id="water-source-address" placeholder="Адрес" required>
-        <input type="number" step="0.000001" id="water-source-latitude" placeholder="Широта" required>
-        <input type="number" step="0.000001" id="water-source-longitude" placeholder="Долгота" required>
-        <select id="water-source-type" required>
-            <option value="">Выберите тип</option>
-            <option value="pumping_station">Насосная станция</option>
-            <option value="well">Скважина</option>
-            <option value="reservoir">Резервуар</option>
-        </select>
-        <input type="number" step="0.1" id="water-source-capacity" placeholder="Производительность (м³/ч)">
-        <input type="number" step="0.1" id="water-source-pressure" placeholder="Рабочее давление (бар)">
-        <input type="text" id="water-source-contact" placeholder="Контакт для обслуживания">
-        <textarea id="water-source-notes" placeholder="Примечания"></textarea>
-        <select id="water-source-status">
-            <option value="active">Активный</option>
-            <option value="inactive">Неактивный</option>
-            <option value="maintenance">На обслуживании</option>
-        </select>
-        <button type="submit">Добавить источник воды</button>
-    </form>
+    <div class="form-wrapper">
+        <form id="add-water-source-form" class="horizontal-form">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="water-source-name">Название *</label>
+                    <input type="text" id="water-source-name" placeholder="Название" required>
+                </div>
+                <div class="form-group">
+                    <label for="water-source-address">Адрес *</label>
+                    <input type="text" id="water-source-address" placeholder="Адрес" required>
+                </div>
+                <div class="form-group">
+                    <label for="water-source-latitude">Широта *</label>
+                    <input type="number" step="0.000001" id="water-source-latitude" placeholder="Широта" required min="-90" max="90">
+                </div>
+                <div class="form-group">
+                    <label for="water-source-longitude">Долгота *</label>
+                    <input type="number" step="0.000001" id="water-source-longitude" placeholder="Долгота" required min="-180" max="180">
+                </div>
+                <div class="form-group">
+                    <label for="water-source-type">Тип *</label>
+                    <select id="water-source-type" required>
+                        <option value="">Выберите тип</option>
+                        <option value="pumping_station">Насосная станция</option>
+                        <option value="well">Скважина</option>
+                        <option value="reservoir">Резервуар</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="water-source-capacity">Производительность (м³/ч)</label>
+                    <input type="number" step="0.1" id="water-source-capacity" placeholder="Производительность">
+                </div>
+                <div class="form-group">
+                    <label for="water-source-pressure">Рабочее давление (бар)</label>
+                    <input type="number" step="0.1" id="water-source-pressure" placeholder="Давление">
+                </div>
+                <div class="form-group">
+                    <label for="water-source-status">Статус</label>
+                    <select id="water-source-status">
+                        <option value="active">Активный</option>
+                        <option value="inactive">Неактивный</option>
+                        <option value="maintenance">На обслуживании</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="water-source-contact">Контакт для обслуживания</label>
+                    <input type="text" id="water-source-contact" placeholder="Контакт">
+                </div>
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label for="water-source-notes">Примечания</label>
+                    <textarea id="water-source-notes" placeholder="Примечания"></textarea>
+                </div>
+            </div>
+            <button type="submit" class="submit-btn">Добавить источник воды</button>
+        </form>
+    </div>
     </section>
 
     <!-- Heat Sources Section -->
-    <section id="heat-sources-section" class="admin-section">
+    <section id="heat-sources-section" class="admin-section" role="tabpanel" aria-label="Источники тепла">
     <h2>Источники тепла</h2>
 
     <!-- Фильтры для источников тепла -->
@@ -1498,7 +776,7 @@
         <table id="heat-sources-table" border="1">
             <thead>
                 <tr>
-                    <th><input type="checkbox" id="heat-sources-select-all-checkbox"></th>
+                    <th><input type="checkbox" id="heat-sources-select-all-checkbox" aria-label="Выбрать все источники тепла"></th>
                     <th class="sortable" data-column="id">ID ↕</th>
                     <th class="sortable" data-column="name">Название ↕</th>
                     <th class="sortable" data-column="address">Адрес ↕</th>
@@ -1524,33 +802,66 @@
 
     <!-- Form to Add New Heat Source -->
     <h2>Добавить источник тепла</h2>
-    <form id="add-heat-source-form">
-        <input type="text" id="heat-source-id" placeholder="ID источника" required>
-        <input type="text" id="heat-source-name" placeholder="Название" required>
-        <input type="text" id="heat-source-address" placeholder="Адрес" required>
-        <input type="number" step="0.000001" id="heat-source-latitude" placeholder="Широта" required>
-        <input type="number" step="0.000001" id="heat-source-longitude" placeholder="Долгота" required>
-        <select id="heat-source-type" required>
-            <option value="">Выберите тип</option>
-            <option value="boiler_house">Котельная</option>
-            <option value="heat_plant">Тепловая станция</option>
-            <option value="chp">ТЭЦ</option>
-        </select>
-        <input type="number" step="0.1" id="heat-source-capacity" placeholder="Тепловая мощность (МВт)">
-        <input type="text" id="heat-source-fuel" placeholder="Тип топлива">
-        <input type="text" id="heat-source-contact" placeholder="Контакт для обслуживания">
-        <textarea id="heat-source-notes" placeholder="Примечания"></textarea>
-        <select id="heat-source-status">
-            <option value="active">Активный</option>
-            <option value="inactive">Неактивный</option>
-            <option value="maintenance">На обслуживании</option>
-        </select>
-        <button type="submit">Добавить источник тепла</button>
-    </form>
+    <div class="form-wrapper">
+        <form id="add-heat-source-form" class="horizontal-form">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="heat-source-name">Название *</label>
+                    <input type="text" id="heat-source-name" placeholder="Название" required>
+                </div>
+                <div class="form-group">
+                    <label for="heat-source-address">Адрес *</label>
+                    <input type="text" id="heat-source-address" placeholder="Адрес" required>
+                </div>
+                <div class="form-group">
+                    <label for="heat-source-latitude">Широта *</label>
+                    <input type="number" step="0.000001" id="heat-source-latitude" placeholder="Широта" required min="-90" max="90">
+                </div>
+                <div class="form-group">
+                    <label for="heat-source-longitude">Долгота *</label>
+                    <input type="number" step="0.000001" id="heat-source-longitude" placeholder="Долгота" required min="-180" max="180">
+                </div>
+                <div class="form-group">
+                    <label for="heat-source-type">Тип *</label>
+                    <select id="heat-source-type" required>
+                        <option value="">Выберите тип</option>
+                        <option value="boiler_house">Котельная</option>
+                        <option value="heat_plant">Тепловая станция</option>
+                        <option value="chp">ТЭЦ</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="heat-source-capacity">Тепловая мощность (МВт)</label>
+                    <input type="number" step="0.1" id="heat-source-capacity" placeholder="Мощность">
+                </div>
+                <div class="form-group">
+                    <label for="heat-source-fuel">Тип топлива</label>
+                    <input type="text" id="heat-source-fuel" placeholder="Тип топлива">
+                </div>
+                <div class="form-group">
+                    <label for="heat-source-status">Статус</label>
+                    <select id="heat-source-status">
+                        <option value="active">Активный</option>
+                        <option value="inactive">Неактивный</option>
+                        <option value="maintenance">На обслуживании</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="heat-source-contact">Контакт для обслуживания</label>
+                    <input type="text" id="heat-source-contact" placeholder="Контакт">
+                </div>
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label for="heat-source-notes">Примечания</label>
+                    <textarea id="heat-source-notes" placeholder="Примечания"></textarea>
+                </div>
+            </div>
+            <button type="submit" class="submit-btn">Добавить источник тепла</button>
+        </form>
+    </div>
     </section>
 
     <!-- Metrics Section -->
-    <section id="metrics-section" class="admin-section">
+    <section id="metrics-section" class="admin-section" role="tabpanel" aria-label="Метрики">
     <h2>Метрики</h2>
 
     <!-- Фильтры для метрик -->
@@ -1570,12 +881,12 @@
     </div>
 
     <!-- Metrics Table -->
-    <h2>Latest Metrics</h2>
+    <h2>Последние метрики</h2>
     <div class="table-container">
         <table id="metrics-table" border="1">
             <thead>
                 <tr>
-                    <th><input type="checkbox" id="metrics-select-all-checkbox"></th>
+                    <th><input type="checkbox" id="metrics-select-all-checkbox" aria-label="Выбрать все метрики"></th>
                     <th class="sortable" data-column="metric_id">ID ↕</th>
                     <th class="sortable" data-column="controller_id">ID контроллера ↕</th>
                     <th class="sortable" data-column="timestamp">Время ↕</th>
@@ -1605,7 +916,7 @@
 
     <!-- Form to Add Test Metric -->
     <h2>🏭 Создание тестовых метрик</h2>
-    <form id="add-metric-form" class="metrics-form">
+    <form id="add-metric-form" class="metrics-form horizontal-form">
         <div class="form-section">
             <h3>📊 Основные параметры</h3>
             <div class="form-group">
@@ -1705,13 +1016,13 @@
 
         <div class="form-actions">
             <button type="submit" class="btn-primary">✅ Создать метрику</button>
-            <button type="button" class="btn-secondary" onclick="resetMetricsForm()">🔄 Сброс</button>
+            <button type="button" class="btn-secondary" id="btn-metrics-reset">🔄 Сброс</button>
         </div>
     </form>
     </section>
 
     <!-- Toast уведомления -->
-    <div id="toast-container"></div>
+    <div id="toast-container" aria-live="polite" role="status"></div>
 
     <!-- Модальные окна редактирования (скрыты по умолчанию) -->
     <!-- Модальное окно редактирования здания -->
@@ -1841,7 +1152,7 @@
     </div>
 
     <!-- Модальное окно редактирования контроллера -->
-    <div id="edit-controller-modal" class="edit-form-overlay" style="display: none;">
+    <div id="edit-controller-modal" class="edit-form-overlay" style="display: none;" aria-label="Редактировать контроллер">
         <div class="edit-form">
             <h3>Редактировать контроллер</h3>
             <form id="edit-controller-form">
@@ -1851,9 +1162,9 @@
                 <input type="text" id="edit-controller-model" placeholder="Модель">
                 <input type="number" id="edit-controller-building-id" placeholder="ID здания" required>
                 <select id="edit-controller-status">
-                    <option value="online">Online</option>
-                    <option value="offline">Offline</option>
-                    <option value="maintenance">Maintenance</option>
+                    <option value="online">В сети</option>
+                    <option value="offline">Не в сети</option>
+                    <option value="maintenance">Обслуживание</option>
                 </select>
                 <div class="form-buttons">
                     <button type="submit">Сохранить</button>
@@ -1898,13 +1209,7 @@
                 </div>
                 
                 <div class="form-group">
-                    <button type="button" class="btn-secondary" onclick="
-                        const currentLat = parseFloat(document.getElementById('edit-transformer-latitude').value) || null;
-                        const currentLng = parseFloat(document.getElementById('edit-transformer-longitude').value) || null;
-                        openCoordinateEditor('transformer', document.getElementById('edit-transformer-id').value, currentLat, currentLng, null, (lat, lng) => {
-                            document.getElementById('edit-transformer-latitude').value = lat;
-                            document.getElementById('edit-transformer-longitude').value = lng;
-                        })">
+                    <button type="button" class="btn-secondary" id="btn-edit-transformer-coord-picker">
                         📍 Указать на карте
                     </button>
                 </div>
@@ -1918,7 +1223,7 @@
     </div>
 
     <!-- Модальное окно редактирования линии -->
-    <div id="edit-line-modal" class="edit-form-overlay" style="display: none;">
+    <div id="edit-line-modal" class="edit-form-overlay" style="display: none;" aria-label="Редактировать линию">
         <div class="edit-form">
             <h3>Редактировать линию</h3>
             <form id="edit-line-form">
@@ -1936,7 +1241,7 @@
     </div>
 
     <!-- Модальное окно редактирования источника воды -->
-    <div id="edit-water-source-modal" class="edit-form-overlay" style="display: none;">
+    <div id="edit-water-source-modal" class="edit-form-overlay" style="display: none;" aria-label="Редактировать источник воды">
         <div class="edit-form">
             <h3>Редактировать источник воды</h3>
             <form id="edit-water-source-form">
@@ -1968,7 +1273,7 @@
     </div>
 
     <!-- Модальное окно редактирования источника тепла -->
-    <div id="edit-heat-source-modal" class="edit-form-overlay" style="display: none;">
+    <div id="edit-heat-source-modal" class="edit-form-overlay" style="display: none;" aria-label="Редактировать источник тепла">
         <div class="edit-form">
             <h3>Редактировать источник тепла</h3>
             <form id="edit-heat-source-form">
@@ -1998,6 +1303,67 @@
             </form>
         </div>
     </div>
+
+    <!-- Тревоги -->
+    <section id="alerts-section" class="admin-section" role="tabpanel" aria-labelledby="alerts-tab">
+        <h2>🚨 Тревоги</h2>
+
+        <div class="filters-panel">
+            <div class="filter-group">
+                <label for="alert-filter-severity">Важность:</label>
+                <select id="alert-filter-severity">
+                    <option value="">Все</option>
+                    <option value="INFO">INFO</option>
+                    <option value="WARNING">WARNING</option>
+                    <option value="CRITICAL">CRITICAL</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="alert-filter-status">Статус:</label>
+                <select id="alert-filter-status">
+                    <option value="">Все</option>
+                    <option value="active">Активные</option>
+                    <option value="acknowledged">Подтверждённые</option>
+                    <option value="resolved">Закрытые</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="alert-filter-infra">Тип:</label>
+                <select id="alert-filter-infra">
+                    <option value="">Все</option>
+                    <option value="transformer">Трансформатор</option>
+                    <option value="controller">Контроллер</option>
+                    <option value="water_source">Источник воды</option>
+                    <option value="heat_source">Источник тепла</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table id="alerts-table">
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="alerts-select-all-checkbox" aria-label="Выбрать все тревоги"></th>
+                        <th>ID</th>
+                        <th>Тип</th>
+                        <th>Важность</th>
+                        <th>Сообщение</th>
+                        <th>Объект</th>
+                        <th>Статус</th>
+                        <th>Создан</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td colspan="9" style="text-align: center;">Нет данных</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination" id="alerts-pagination"></div>
+    </section>
+
+    </div><!-- /.admin-container -->
 
     <!-- Подключение DOMPurify для защиты от XSS -->
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.7/dist/purify.min.js"></script>
