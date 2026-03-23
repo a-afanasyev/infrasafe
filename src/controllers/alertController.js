@@ -26,13 +26,12 @@ class AlertController {
             if (status) filters.status = status;
             if (severity) filters.severity = severity.toUpperCase();
             if (infrastructure_type) filters.infrastructure_type = infrastructure_type.toLowerCase();
-            if (limit) filters.limit = Math.min(parseInt(limit) || 10, 200);
 
             const pageNum = Math.max(parseInt(page) || 1, 1);
-            const pageSize = filters.limit || 10;
+            const pageSize = limit ? Math.min(parseInt(limit) || 10, 200) : 10;
             const validSortColumns = ['created_at', 'severity', 'status', 'infrastructure_type'];
             const sortCol = validSortColumns.includes(sort) ? sort : 'created_at';
-            const sortDir = order === 'asc' ? 'asc' : 'desc';
+            const sortDir = order === 'asc' ? 'ASC' : 'DESC';
 
             const result = await alertService.getActiveAlerts(filters, {
                 page: pageNum,

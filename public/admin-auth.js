@@ -74,8 +74,16 @@ class AdminAuth {
         this.token = null;
         this.isAuthenticated = false;
         localStorage.removeItem('admin_token');
+        this.restoreFetch();
         this.showLoginForm();
         this.hideAdminPanel();
+    }
+
+    restoreFetch() {
+        if (window._originalFetch) {
+            window.fetch = window._originalFetch;
+        }
+        this.fetchIntercepted = false;
     }
 
     setupAuthHeaders() {

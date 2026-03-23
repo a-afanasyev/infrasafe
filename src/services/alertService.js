@@ -389,7 +389,7 @@ class InfrastructureAlertService {
 
         const validSortColumns = ['created_at', 'severity', 'status', 'infrastructure_type'];
         const sortColumn = validSortColumns.includes(sort) ? sort : 'created_at';
-        const sortOrder = order === 'asc' ? 'ASC' : 'DESC';
+        const sortOrder = String(order).toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
         const countQuery = `
             SELECT COUNT(*) as total

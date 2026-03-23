@@ -61,7 +61,7 @@ const authenticateJWT = async (req, res, next) => {
                 }
 
                 // Проверка заблокированного аккаунта
-                if (user.is_locked) {
+                if (user.account_locked_until && new Date(user.account_locked_until) > new Date()) {
                     return res.status(401).json({
                         success: false,
                         message: 'Account is locked'
@@ -157,7 +157,7 @@ const authenticateRefresh = async (req, res, next) => {
                 }
 
                 // Проверка заблокированного аккаунта
-                if (user.is_locked) {
+                if (user.account_locked_until && new Date(user.account_locked_until) > new Date()) {
                     return res.status(401).json({
                         success: false,
                         message: 'Account is locked'
@@ -228,7 +228,7 @@ const optionalAuth = async (req, res, next) => {
 
             try {
                 const user = await authService.findUserById(decoded.user_id);
-                if (user && !user.is_locked) {
+                if (user && !(user.account_locked_until && new Date(user.account_locked_until) > new Date())) {
                     req.user = {
                         user_id: user.user_id,
                         id: user.user_id, // Для обратной совместимости

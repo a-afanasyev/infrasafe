@@ -72,6 +72,6 @@ describe('AlertController.getActiveAlerts', () => {
         req.query = { limit: '500' };
         await alertController.getActiveAlerts(req, res);
         const callArgs = alertService.getActiveAlerts.mock.calls[0];
-        expect(callArgs[0].limit).toBe(200);
+        expect(callArgs[1].limit).toBe(200);
     });
 });

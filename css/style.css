@@ -496,6 +496,13 @@ button.btn-secondary:hover {
   border: 1px solid var(--border); /* Тонкая граница вокруг кнопок навигации */
 }
 
+.main-nav a.active {
+  color: var(--accent);
+  font-weight: 600;
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 2px;
+}
+
 .main-nav a:hover {
   background-color: var(--accent);
   color: var(--accent-foreground);
@@ -1780,6 +1787,7 @@ a:focus {
 
 /* Стили для контентных страниц */
 body.content-page {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   overflow-y: auto;
   overflow-x: hidden;
 }

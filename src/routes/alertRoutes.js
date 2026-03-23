@@ -23,7 +23,7 @@ const { applyAnalyticsRateLimit, applyAdminRateLimit, applyCrudRateLimit } = req
  *           description: ID инфраструктурного объекта
  *         infrastructure_type:
  *           type: string
- *           enum: [transformer, water_source, heat_source]
+ *           enum: [transformer, controller, water_source, heat_source]
  *           description: Тип инфраструктурного объекта
  *         severity:
  *           type: string
@@ -73,7 +73,7 @@ const { applyAnalyticsRateLimit, applyAdminRateLimit, applyCrudRateLimit } = req
  *           description: ID инфраструктурного объекта
  *         infrastructure_type:
  *           type: string
- *           enum: [transformer, water_source, heat_source]
+ *           enum: [transformer, controller, water_source, heat_source]
  *           description: Тип инфраструктурного объекта
  *         severity:
  *           type: string

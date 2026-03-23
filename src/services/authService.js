@@ -324,7 +324,7 @@ class AuthService {
                 return cached;
             }
 
-            const query = 'SELECT user_id, username, email, role, is_active, is_locked, created_at, updated_at FROM users WHERE user_id = $1';
+            const query = 'SELECT user_id, username, email, role, is_active, account_locked_until, created_at, updated_at FROM users WHERE user_id = $1';
             const result = await db.query(query, [userId]);
 
             if (result.rows.length > 0) {
