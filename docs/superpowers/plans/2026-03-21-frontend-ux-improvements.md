@@ -1,5 +1,7 @@
 # Frontend UX Improvements Implementation Plan
 
+> **Status: COMPLETED (2026-03-23)** — All 9 tasks implemented and verified.
+
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Fix critical accessibility, consistency, and UX issues across all InfraSafe frontend pages based on UI/UX audit findings.
@@ -45,7 +47,7 @@
 - Modify: `contacts.html:5`
 - Modify: `documentation.html:5`
 
-- [ ] **Step 1: Fix index.html viewport**
+- [x] **Step 1: Fix index.html viewport**
 
 In `index.html` line 5, replace:
 ```html
@@ -56,23 +58,23 @@ with:
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 ```
 
-- [ ] **Step 2: Fix about.html viewport**
+- [x] **Step 2: Fix about.html viewport**
 
 Same change in `about.html` line 5.
 
-- [ ] **Step 3: Fix contacts.html viewport**
+- [x] **Step 3: Fix contacts.html viewport**
 
 Same change in `contacts.html` line 5.
 
-- [ ] **Step 4: Fix documentation.html viewport**
+- [x] **Step 4: Fix documentation.html viewport**
 
 Same change in `documentation.html` line 5.
 
-- [ ] **Step 5: Verify pages still render correctly**
+- [x] **Step 5: Verify pages still render correctly**
 
 Open each page in browser, verify pinch-zoom works on mobile/responsive mode. Map on `index.html` should still work (Leaflet handles its own zoom via `scrollWheelZoom`).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add index.html about.html contacts.html documentation.html
@@ -91,7 +93,7 @@ git commit -m "fix(a11y): remove user-scalable=no from all pages (WCAG 1.4.4)"
 - Modify: `documentation.html:17-21`
 - Modify: `css/style.css`
 
-- [ ] **Step 1: In about.html — remove Leaflet CSS and replace Roboto with Inter**
+- [x] **Step 1: In about.html — remove Leaflet CSS and replace Roboto with Inter**
 
 Delete these 4 lines:
 ```html
@@ -110,11 +112,11 @@ with:
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 ```
 
-- [ ] **Step 2: Same changes in contacts.html**
+- [x] **Step 2: Same changes in contacts.html**
 
-- [ ] **Step 3: Same changes in documentation.html**
+- [x] **Step 3: Same changes in documentation.html**
 
-- [ ] **Step 4: Ensure CSS font-family for content pages**
+- [x] **Step 4: Ensure CSS font-family for content pages**
 
 In `css/style.css`, verify `.content-page` body has Inter. If not, add:
 ```css
@@ -123,11 +125,11 @@ body.content-page {
 }
 ```
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Open about.html, contacts.html, documentation.html — should look identical visually (no map elements on these pages). Font should match index.html (Inter).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add about.html contacts.html documentation.html css/style.css
@@ -141,7 +143,7 @@ git commit -m "fix(ui): remove unused Leaflet CSS from content pages, unify font
 **Files:**
 - Modify: `contacts.html:44-66`
 
-- [ ] **Step 1: Replace placeholder content**
+- [x] **Step 1: Replace placeholder content**
 
 Replace the content section in `contacts.html` lines 44-66 with:
 ```html
@@ -156,9 +158,9 @@ Replace the content section in `contacts.html` lines 44-66 with:
     </div>
 ```
 
-- [ ] **Step 2: Verify the page renders with real content**
+- [x] **Step 2: Verify the page renders with real content**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add contacts.html
@@ -174,11 +176,11 @@ git commit -m "fix(content): replace placeholder data on contacts page"
 **Files:**
 - Modify: `public/admin.js:1466-1501`
 
-- [ ] **Step 1: Understand the bug**
+- [x] **Step 1: Understand the bug**
 
 `updatePagination()` is called on every data load. It adds `addEventListener('click', ...)` to prev/next buttons each time — duplicate handlers accumulate, causing multiple API requests per click.
 
-- [ ] **Step 2: Fix by cloning nodes to remove old handlers**
+- [x] **Step 2: Fix by cloning nodes to remove old handlers**
 
 Replace the pagination handler code in `public/admin.js` lines 1477-1501. Before adding listeners, clone the buttons to strip old handlers:
 
@@ -214,11 +216,11 @@ Replace the pagination handler code in `public/admin.js` lines 1477-1501. Before
 
 Note: `cloneNode` is pragmatic here — not ideal (AbortController or one-time init would be cleaner), but avoids restructuring the 3160-line monolith.
 
-- [ ] **Step 3: Verify pagination works**
+- [x] **Step 3: Verify pagination works**
 
 Open admin panel, navigate through pages of buildings — should make exactly one API request per click (check Network tab in DevTools).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add public/admin.js
@@ -234,15 +236,15 @@ git commit -m "fix(admin): prevent pagination handler accumulation on repeated d
 - Modify: `public/script.js:1058-1326`
 - Modify: `index.html` (add CSS link)
 
-- [ ] **Step 1: Create css/map-components.css**
+- [x] **Step 1: Create css/map-components.css**
 
 Copy the CSS content from `public/script.js` lines 1060-1325 (everything inside `sidebarStyles.textContent = \`...\``) into a new file `css/map-components.css`.
 
-- [ ] **Step 2: Remove the CSS injection block from script.js**
+- [x] **Step 2: Remove the CSS injection block from script.js**
 
 Remove lines 1058-1326 in `public/script.js` (from `const sidebarStyles = document.createElement('style');` through `document.head.appendChild(sidebarStyles);`).
 
-- [ ] **Step 3: Link the new CSS file in index.html**
+- [x] **Step 3: Link the new CSS file in index.html**
 
 Add after `MarkerCluster.Default.css` link (line 21 in `index.html`), BEFORE the Google Fonts link:
 ```html
@@ -251,11 +253,11 @@ Add after `MarkerCluster.Default.css` link (line 21 in `index.html`), BEFORE the
 
 This ensures map-components.css loads after Leaflet CSS and can override cluster styles if needed.
 
-- [ ] **Step 4: Verify map page works**
+- [x] **Step 4: Verify map page works**
 
 Open `index.html`, verify: toast notifications appear correctly, skeleton loader shows during load, cluster markers render, sidebar collapses work.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add css/map-components.css public/script.js index.html
@@ -273,7 +275,7 @@ git commit -m "refactor(css): extract 265 lines of injected CSS from script.js t
 
 **Note:** `contacts.html` is NOT in the nav. The "Контакты" link points to an external URL (`https://www.aisolutions.uz/aboutus`), not to `contacts.html`. So only `about.html` and `documentation.html` get active states. The `contacts.html` page exists but is not linked from the main nav — it's effectively orphaned or accessible only via direct URL.
 
-- [ ] **Step 1: Add active nav CSS**
+- [x] **Step 1: Add active nav CSS**
 
 Add to `css/style.css`:
 ```css
@@ -287,22 +289,22 @@ Add to `css/style.css`:
 
 Note: `--accent` is defined as `#00BFA5` in `:root` — no fallback needed since the variable is always defined.
 
-- [ ] **Step 2: Add active class in about.html**
+- [x] **Step 2: Add active class in about.html**
 
 In the `<nav>` section, add `class="active"` to the "О системе" link:
 ```html
 <li><a href="about.html" class="active">О системе</a></li>
 ```
 
-- [ ] **Step 3: Add active class in documentation.html**
+- [x] **Step 3: Add active class in documentation.html**
 
 Add `class="active"` to the "Документация" link.
 
-- [ ] **Step 4: Verify active state is visible**
+- [x] **Step 4: Verify active state is visible**
 
 Navigate between pages, verify the current page is highlighted in the nav.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add css/style.css about.html documentation.html
@@ -319,7 +321,7 @@ git commit -m "feat(nav): add active state highlighting for current page"
 - Modify: `contacts.html:75`
 - Modify: `documentation.html:57`
 
-- [ ] **Step 1: Replace hardcoded year in all footers**
+- [x] **Step 1: Replace hardcoded year in all footers**
 
 In each file, replace:
 ```html
@@ -332,11 +334,11 @@ with:
 
 Simple text replacement — year changes once per year, over-engineering with JS is unnecessary for 4 files per architect recommendation.
 
-- [ ] **Step 2: Verify footer shows 2026**
+- [x] **Step 2: Verify footer shows 2026**
 
 Open any page, check footer.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add index.html about.html contacts.html documentation.html
@@ -353,22 +355,22 @@ git commit -m "fix(ui): update footer copyright year to 2026"
 
 Note: `admin-auth.js` also injects ~120 lines of CSS via `addLoginStyles()` (lines 242-366). This is intentionally NOT extracted here — login styles must be available before admin.css loads (they render before auth). This can be a separate future task.
 
-- [ ] **Step 1: Create css/admin.css**
+- [x] **Step 1: Create css/admin.css**
 
 Extract the entire `<style>...</style>` block from `admin.html` (lines 9 through the closing `</style>` tag) into a new file `css/admin.css`.
 
-- [ ] **Step 2: Replace inline style with link**
+- [x] **Step 2: Replace inline style with link**
 
 In `admin.html`, remove the `<style>...</style>` block and add:
 ```html
 <link rel="stylesheet" href="css/admin.css">
 ```
 
-- [ ] **Step 3: Fix lang attribute**
+- [x] **Step 3: Fix lang attribute**
 
 Change `admin.html` line 2 from `<html lang="en">` to `<html lang="ru">`.
 
-- [ ] **Step 4: Add Inter font**
+- [x] **Step 4: Add Inter font**
 
 Add in `admin.html` `<head>`:
 ```html
@@ -383,11 +385,11 @@ body {
 }
 ```
 
-- [ ] **Step 5: Verify admin panel looks the same**
+- [x] **Step 5: Verify admin panel looks the same**
 
 Open admin.html, verify all tables, forms, tabs, pagination render correctly.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add css/admin.css admin.html
@@ -415,7 +417,7 @@ git commit -m "refactor(admin): extract inline CSS to admin.css, fix lang=ru, un
 
 Transaction must explicitly delete: alerts → metrics → controllers → building (leaf-first order).
 
-- [ ] **Step 1: Write failing test for cascade delete**
+- [x] **Step 1: Write failing test for cascade delete**
 
 Create `tests/jest/unit/buildingService.test.js`:
 
@@ -478,14 +480,14 @@ describe('BuildingService.deleteCascade', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 npm run test:unit -- --testPathPattern=buildingService
 ```
 Expected: FAIL — `buildingService.deleteCascade is not a function`
 
-- [ ] **Step 3: Implement deleteCascade in Building model**
+- [x] **Step 3: Implement deleteCascade in Building model**
 
 Add to `src/models/Building.js`:
 
@@ -528,7 +530,7 @@ static async deleteCascade(buildingId) {
 }
 ```
 
-- [ ] **Step 4: Add service method with cache invalidation**
+- [x] **Step 4: Add service method with cache invalidation**
 
 In `src/services/buildingService.js`, add:
 ```javascript
@@ -541,7 +543,7 @@ async deleteCascade(id) {
 }
 ```
 
-- [ ] **Step 5: Update controller to handle cascade query param**
+- [x] **Step 5: Update controller to handle cascade query param**
 
 In `src/controllers/buildingController.js`, update the delete handler. When `req.query.cascade === 'true'`, call `buildingService.deleteCascade(id)` instead of the standard delete. Validate that `id` is a valid integer (use existing param validation or `parseInt`).
 
@@ -551,14 +553,14 @@ In `src/controllers/buildingController.js`, update the delete handler. When `req
 
 Verify the current 400 response format by reading `buildingService.deleteBuilding()` — if it throws with controllers attached, the controller needs to catch and format properly.
 
-- [ ] **Step 6: Run test to verify it passes**
+- [x] **Step 6: Run test to verify it passes**
 
 ```bash
 npm run test:unit -- --testPathPattern=buildingService
 ```
 Expected: PASS (2 tests)
 
-- [ ] **Step 7: Simplify frontend deleteBuildingCascade**
+- [x] **Step 7: Simplify frontend deleteBuildingCascade**
 
 Replace `public/admin.js` lines 1615-1708 with:
 ```javascript
@@ -586,14 +588,14 @@ async function deleteBuildingCascade(buildingId, controllers) {
 }
 ```
 
-- [ ] **Step 8: Run all tests**
+- [x] **Step 8: Run all tests**
 
 ```bash
 npm test
 ```
 Expected: all 177+ tests pass (175 existing + 2 new)
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/models/Building.js src/services/buildingService.js src/controllers/buildingController.js public/admin.js tests/jest/unit/buildingService.test.js

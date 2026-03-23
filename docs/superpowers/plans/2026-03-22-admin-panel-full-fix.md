@@ -1,5 +1,7 @@
 # Admin Panel Full Fix Implementation Plan
 
+> **Status: COMPLETED (2026-03-23)** — All 14 tasks implemented and verified.
+
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Fix all P0 bugs, P1 UX issues, and implement partial P2 improvements (CSS extraction + generic table renderer) for the InfraSafe admin panel.
@@ -35,7 +37,7 @@ Foundation task — many subsequent tasks add CSS classes to this file.
 - Create: `public/css/admin.css`
 - Modify: `admin.html:9-765` (replace inline `<style>` block with `<link>`)
 
-- [ ] **Step 1: Create `public/css/admin.css` with CSS variables + extracted styles**
+- [x] **Step 1: Create `public/css/admin.css` with CSS variables + extracted styles**
 
 Copy the entire content of admin.html lines 10-763 (inside the `<style>` tags) into a new file `public/css/admin.css`. Prepend CSS variables at `:root`:
 
@@ -62,7 +64,7 @@ Then do a find-replace pass through the CSS content: replace all hardcoded `#4CA
 
 Do NOT replace colors in very specific contexts (like status badges that have semantic colors, or gradient values) — use judgment. The goal is that `--color-primary` etc. become the single source of truth for the green/blue/red/orange palette.
 
-- [ ] **Step 2: Replace `<style>` block in admin.html with `<link>`**
+- [x] **Step 2: Replace `<style>` block in admin.html with `<link>`**
 
 In `admin.html`, replace lines 9-764 (the entire `<style>...</style>` block) with:
 
@@ -72,17 +74,17 @@ In `admin.html`, replace lines 9-764 (the entire `<style>...</style>` block) wit
 
 This uses a relative path consistent with existing conventions (line 7: `href="public/images/favicon.svg"`).
 
-- [ ] **Step 3: Verify admin panel renders correctly**
+- [x] **Step 3: Verify admin panel renders correctly**
 
 Run: `npm run dev` (or docker compose), open `http://localhost:8080/admin.html` in browser.
 Expected: Panel looks identical to before — no visual changes.
 
-- [ ] **Step 4: Run existing tests**
+- [x] **Step 4: Run existing tests**
 
 Run: `npm test`
 Expected: All 175+ tests pass (CSS extraction is frontend-only, no backend test impact).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add public/css/admin.css admin.html
@@ -96,7 +98,7 @@ git commit -m "refactor: extract admin.html inline CSS to public/css/admin.css w
 **Files:**
 - Modify: `public/css/admin.css`
 
-- [ ] **Step 1: Add `btn-sm` and `btn-danger` classes**
+- [x] **Step 1: Add `btn-sm` and `btn-danger` classes**
 
 Append to `public/css/admin.css`:
 
@@ -125,24 +127,24 @@ Append to `public/css/admin.css`:
 }
 ```
 
-- [ ] **Step 2: Fix button contrast (P1 item 2.2)**
+- [x] **Step 2: Fix button contrast (P1 item 2.2)**
 
 Find all CSS rules that apply to primary green buttons (`.btn-primary`, `.add-btn`, submit buttons) where `background` uses `var(--color-primary)` (was `#4CAF50`). Ensure `color: white` (not black or inherit). Check: white text on #4CAF50 = contrast ratio ~3.9:1 (just under AA for normal text). For WCAG AA compliance, darken the green to `#388E3C` (`--color-primary: #388E3C`) which gives 5.5:1, OR keep `#4CAF50` with `font-weight: bold` and large text (AA-Large compliant at 3:1).
 
 Decision: Keep `#4CAF50` but ensure all button text is `color: white` and `font-weight: 600` — this satisfies AA-Large (buttons are typically 14px+ bold).
 
-- [ ] **Step 3: Fix toast/logout overlap (P1 item 2.3)**
+- [x] **Step 3: Fix toast/logout overlap (P1 item 2.3)**
 
 Find `#toast-container` in admin.css. Change `top: 20px` to `top: 70px`. (Logout button is at `top: 20px` from admin-auth.js injected styles — do not touch that.)
 
-- [ ] **Step 4: Verify button styling and toast position**
+- [x] **Step 4: Verify button styling and toast position**
 
 Open admin panel, navigate to any table section. Expected:
 - Edit buttons: grey background with border
 - Delete buttons: red background with white text
 - Toast messages appear below logout button (no overlap)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add public/css/admin.css
@@ -163,7 +165,7 @@ git commit -m "fix: add btn-sm/btn-danger CSS classes, fix button contrast and t
 - Modify: `public/admin.js:1781-1783` (universal modal status labels — P1 item 2.1)
 - Modify: `public/admin-coordinate-editor.js:337` (localStorage key)
 
-- [ ] **Step 1: Remove 3 inline onclick in admin.html**
+- [x] **Step 1: Remove 3 inline onclick in admin.html**
 
 Note: `getStatusLabel` is inside a DOMContentLoaded closure in admin.js and cannot be unit-tested without extracting it. Status label localization is verified via browser testing (Step 10).
 
@@ -176,7 +178,7 @@ Replace `onclick="resetMetricsForm()"` with `id="btn-metrics-reset"` and remove 
 **Line 1970** (edit-transformer modal "Указать на карте" button):
 Replace `onclick="openCoordinateEditor('transformer', ...)"` with `id="btn-edit-transformer-coord-picker"` and remove the onclick attribute.
 
-- [ ] **Step 2: Add addEventListener replacements in admin.js**
+- [x] **Step 2: Add addEventListener replacements in admin.js**
 
 Add near the end of the DOMContentLoaded handler (after existing init code, before the closing `})`):
 
@@ -211,7 +213,7 @@ document.getElementById('btn-edit-transformer-coord-picker')?.addEventListener('
 
 Signature: `openCoordinateEditor(objectType, objectId, latitude, longitude, objectName, onSave)` — see `admin-coordinate-editor.js:418`.
 
-- [ ] **Step 3: Add 4 aria-labels to edit modals in admin.html**
+- [x] **Step 3: Add 4 aria-labels to edit modals in admin.html**
 
 Find these 4 modals by their id and add `aria-label` attribute:
 
@@ -222,7 +224,7 @@ Find these 4 modals by their id and add `aria-label` attribute:
 <div id="edit-controller-modal" ... aria-label="Редактировать контроллер">
 ```
 
-- [ ] **Step 4: Fix localStorage key in coordinate-editor**
+- [x] **Step 4: Fix localStorage key in coordinate-editor**
 
 In `public/admin-coordinate-editor.js` line 337, change:
 ```js
@@ -233,7 +235,7 @@ to:
 'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
 ```
 
-- [ ] **Step 5: Remove dead code stubs in admin.js**
+- [x] **Step 5: Remove dead code stubs in admin.js**
 
 Delete lines 1753-1759:
 ```js
@@ -248,7 +250,7 @@ window.deleteLine = function(id) { /* реализация */ };
 
 These are immediately overwritten by real implementations starting at line 1765 (`window.editController = async function(id) { ... }`).
 
-- [ ] **Step 6: Fix header checkbox listener leak in admin.js**
+- [x] **Step 6: Fix header checkbox listener leak in admin.js**
 
 In `updateCheckboxHandlers()` (line 1228), wrap the `selectAllCheckbox` handler with a guard:
 
@@ -269,7 +271,7 @@ And add after the closing `});` of the addEventListener (before the closing `}` 
     selectAllCheckbox.dataset.handlerSet = 'true';
 ```
 
-- [ ] **Step 7: Fix colspan in showNoDataMessage calls**
+- [x] **Step 7: Fix colspan in showNoDataMessage calls**
 
 In `admin.js`:
 - Line 563: `showNoDataMessage(newTableBody, "7")` → `showNoDataMessage(newTableBody, "11")` (water-lines has 11 columns)
@@ -278,7 +280,7 @@ In `admin.js`:
 - Line 1064: Verify colspan matches the water-sources table column count (check thead)
 - Line 1155: Verify colspan matches the heat-sources table column count (check thead)
 
-- [ ] **Step 8: Localize status labels (P1 item 2.1)**
+- [x] **Step 8: Localize status labels (P1 item 2.1)**
 
 In `admin.js` line 1187, update `getStatusLabel`:
 ```js
@@ -301,12 +303,12 @@ In universal modal controller config (line 1781), localize:
 { value: 'maintenance', text: 'На обслуживании' }
 ```
 
-- [ ] **Step 9: Run all tests**
+- [x] **Step 9: Run all tests**
 
 Run: `npm test`
 Expected: All 175+ tests pass.
 
-- [ ] **Step 10: Verify in browser**
+- [x] **Step 10: Verify in browser**
 
 Open admin panel:
 - Verify no inline onclick in source (View Source, search "onclick")
@@ -316,7 +318,7 @@ Open admin panel:
 - Verify controller status shows "В сети" / "Не в сети" instead of "Online" / "Offline"
 - Verify delete buttons are red, edit buttons are grey
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add admin.html public/admin.js public/admin-coordinate-editor.js
@@ -333,7 +335,7 @@ git commit -m "fix: remove inline onclick, add aria-labels, fix localStorage key
 - Modify: `src/routes/alertRoutes.js:343,375`
 - Create: `tests/jest/unit/alertController.test.js` (or update if exists)
 
-- [ ] **Step 1: Write failing test for alert controller whitelist validation**
+- [x] **Step 1: Write failing test for alert controller whitelist validation**
 
 File: `tests/jest/unit/alertController.test.js`
 
@@ -397,12 +399,12 @@ describe('AlertController.getActiveAlerts', () => {
 
 Note: The mock pattern mirrors how `alertService` is used — it's a singleton instance (not a class constructor). `jest.mock` at top level intercepts the require before `alertController` loads it.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx jest tests/jest/unit/alertController.test.js -v`
 Expected: FAIL — current controller doesn't validate status, doesn't return `pagination` shape.
 
-- [ ] **Step 3: Update alertController.getActiveAlerts**
+- [x] **Step 3: Update alertController.getActiveAlerts**
 
 In `src/controllers/alertController.js`, replace the `getActiveAlerts` method (lines 7-31):
 
@@ -465,7 +467,7 @@ static async getActiveAlerts(req, res) {
 }
 ```
 
-- [ ] **Step 4: Update alertService.getActiveAlerts with pagination**
+- [x] **Step 4: Update alertService.getActiveAlerts with pagination**
 
 In `src/services/alertService.js`, replace lines 366-388:
 
@@ -527,7 +529,7 @@ async getActiveAlerts(filters = {}, pagination = {}) {
 }
 ```
 
-- [ ] **Step 5: Add isAdmin to PATCH routes in alertRoutes.js**
+- [x] **Step 5: Add isAdmin to PATCH routes in alertRoutes.js**
 
 In `src/routes/alertRoutes.js`:
 
@@ -551,7 +553,7 @@ router.patch('/:alertId/resolve', applyCrudRateLimit, isAdmin, alertController.r
 
 Verify `isAdmin` is already imported at the top of the file (it should be — it's used for other routes).
 
-- [ ] **Step 6: Add getActiveAlerts tests to alertService.test.js**
+- [x] **Step 6: Add getActiveAlerts tests to alertService.test.js**
 
 The existing `tests/jest/unit/alertService.test.js` covers `getAlertStatistics` but NOT `getActiveAlerts`. The service signature changes from `getActiveAlerts(filters)` to `getActiveAlerts(filters, pagination)` with a new return shape `{ data, total }`. Add a new describe block:
 
@@ -614,7 +616,7 @@ describe('getActiveAlerts', () => {
 });
 ```
 
-- [ ] **Step 7: Run tests**
+- [x] **Step 7: Run tests**
 
 Run: `npx jest tests/jest/unit/alertController.test.js tests/jest/unit/alertService.test.js -v`
 Expected: PASS
@@ -622,7 +624,7 @@ Expected: PASS
 Run: `npm test`
 Expected: All tests pass (including existing alert tests).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/controllers/alertController.js src/services/alertService.js src/routes/alertRoutes.js tests/jest/unit/alertController.test.js tests/jest/unit/alertService.test.js
@@ -636,7 +638,7 @@ git commit -m "fix: add alert pagination, whitelist validation, isAdmin on ackno
 **Files:**
 - Modify: `public/admin.js` — add `renderEntityTable()` function
 
-- [ ] **Step 1: Add renderEntityTable function**
+- [x] **Step 1: Add renderEntityTable function**
 
 Add in `admin.js` after the `showNoDataMessage` function (after line 198), before the navigation section:
 
@@ -710,12 +712,12 @@ function renderEntityTable({ tableId, entityType, data, columns, actions, idKey,
 }
 ```
 
-- [ ] **Step 2: Run all tests**
+- [x] **Step 2: Run all tests**
 
 Run: `npm test`
 Expected: All tests pass (additive change — no existing code modified yet).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add public/admin.js
@@ -729,7 +731,7 @@ git commit -m "feat: add generic renderEntityTable function"
 **Files:**
 - Modify: `public/admin.js` — replace `renderControllersTable` (lines 309-373) with config + `renderEntityTable` call
 
-- [ ] **Step 1: Replace renderControllersTable**
+- [x] **Step 1: Replace renderControllersTable**
 
 Replace the function `renderControllersTable(data)` (lines 309-373) with:
 
@@ -763,11 +765,11 @@ function renderControllersTable(data) {
 }
 ```
 
-- [ ] **Step 2: Verify controllers table in browser**
+- [x] **Step 2: Verify controllers table in browser**
 
 Open admin panel → Controllers tab. Expected: table renders identically to before — same columns, same buttons, checkboxes work.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add public/admin.js
@@ -781,7 +783,7 @@ git commit -m "refactor: replace renderControllersTable with generic renderer"
 **Files:**
 - Modify: `public/admin.js` — replace `renderMetricsTable` (lines 397-478)
 
-- [ ] **Step 1: Replace renderMetricsTable**
+- [x] **Step 1: Replace renderMetricsTable**
 
 Read the current `renderMetricsTable` function to note all columns and their formatting (formatNumber, formatDate, etc.). Replace with config-based `renderEntityTable` call, preserving all column render functions.
 
@@ -817,11 +819,11 @@ function renderMetricsTable(data) {
 
 Note: Check the exact columns in the current implementation — the column list above is approximate. Read the actual function and match exactly.
 
-- [ ] **Step 2: Verify metrics table in browser**
+- [x] **Step 2: Verify metrics table in browser**
 
 Open admin panel → Metrics tab. Expected: table renders identically.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add public/admin.js
@@ -835,27 +837,27 @@ git commit -m "refactor: replace renderMetricsTable with generic renderer"
 **Files:**
 - Modify: `public/admin.js` — replace renderWaterLinesTable (480-570), renderTransformersTable (837-918), renderLinesTable (919-1003), renderWaterSourcesTable (1004-1094), renderHeatSourcesTable (1095-1159)
 
-- [ ] **Step 1: Replace renderWaterLinesTable**
+- [x] **Step 1: Replace renderWaterLinesTable**
 
 Read current implementation. Key: uses `getWaterLineStatusLabel()` (not `getStatusLabel()`!) for feminine Russian forms. Config must use this function for status column. Has 11 columns (checkbox + 9 data + actions). Replace with `renderEntityTable` call matching exact columns.
 
-- [ ] **Step 2: Replace renderTransformersTable**
+- [x] **Step 2: Replace renderTransformersTable**
 
 Read current implementation. Replace with config-based call. Verify column count matches thead.
 
-- [ ] **Step 3: Replace renderLinesTable**
+- [x] **Step 3: Replace renderLinesTable**
 
 Read current implementation. Replace with config-based call.
 
-- [ ] **Step 4: Replace renderWaterSourcesTable**
+- [x] **Step 4: Replace renderWaterSourcesTable**
 
 Read current implementation. Replace with config-based call.
 
-- [ ] **Step 5: Replace renderHeatSourcesTable**
+- [x] **Step 5: Replace renderHeatSourcesTable**
 
 Read current implementation. Replace with config-based call.
 
-- [ ] **Step 6: Verify all tables in browser**
+- [x] **Step 6: Verify all tables in browser**
 
 Open admin panel → check each tab: Controllers, Metrics, Water-lines, Transformers, Lines, Water-sources, Heat-sources. Each should render identically to before. Test:
 - Data displays correctly
@@ -864,12 +866,12 @@ Open admin panel → check each tab: Controllers, Metrics, Water-lines, Transfor
 - Empty state shows "Нет данных" with correct colspan
 - Pagination works
 
-- [ ] **Step 7: Run all tests**
+- [x] **Step 7: Run all tests**
 
 Run: `npm test`
 Expected: All tests pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add public/admin.js
@@ -883,7 +885,7 @@ git commit -m "refactor: replace 5 remaining render functions with generic table
 **Files:**
 - Modify: `public/admin.js` — add entityCache, loadEntityCache, update column configs
 
-- [ ] **Step 1: Add entityCache and loadEntityCache**
+- [x] **Step 1: Add entityCache and loadEntityCache**
 
 At the top of admin.js (after the `selectedItems` object, around line 60), add:
 
@@ -908,7 +910,7 @@ async function loadEntityCache() {
 }
 ```
 
-- [ ] **Step 2: Call loadEntityCache before first data load**
+- [x] **Step 2: Call loadEntityCache before first data load**
 
 In the `admin-auth-ready` handler (line 1550), add `loadEntityCache()` before `loadSectionData('buildings')`:
 
@@ -926,7 +928,7 @@ if (window.adminAuth && window.adminAuth.isAuthenticated) {
 }
 ```
 
-- [ ] **Step 3: Update column configs to use entityCache**
+- [x] **Step 3: Update column configs to use entityCache**
 
 In `renderControllersTable` config, change the `building_id` column:
 ```js
@@ -943,7 +945,7 @@ In `renderLinesTable` config, change the `transformer_id` column (if it has one)
 { key: 'transformer_id', label: 'Трансформатор', render: (val) => entityCache.transformers[val] || val }
 ```
 
-- [ ] **Step 4: Add cache invalidation after entity CRUD**
+- [x] **Step 4: Add cache invalidation after entity CRUD**
 
 Find the POST/PUT success handlers for buildings, controllers, and transformers. After each successful create/update, add `loadEntityCache()` call. Search for patterns like:
 - `showToast('Здание добавлено'` or `showToast('Здание обновлено'`
@@ -951,14 +953,14 @@ Find the POST/PUT success handlers for buildings, controllers, and transformers.
 
 Add `loadEntityCache();` after each such toast.
 
-- [ ] **Step 5: Verify in browser**
+- [x] **Step 5: Verify in browser**
 
 Open admin panel:
 - Controllers tab: building_id column shows building name instead of numeric ID
 - Metrics tab: controller_id column shows serial number instead of numeric ID
 - Create a new building, then check controllers tab — new building name appears
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add public/admin.js
@@ -973,7 +975,7 @@ git commit -m "feat: add entity cache for displaying names instead of IDs"
 - Modify: `public/admin.js` — add formatHeartbeat, heartbeat column config
 - Modify: `public/css/admin.css` — add heartbeat indicator styles
 
-- [ ] **Step 1: Add heartbeat CSS**
+- [x] **Step 1: Add heartbeat CSS**
 
 Append to `public/css/admin.css`:
 
@@ -996,7 +998,7 @@ Append to `public/css/admin.css`:
 .heartbeat-dot.grey { background: var(--color-muted); }
 ```
 
-- [ ] **Step 2: Add formatHeartbeat function in admin.js**
+- [x] **Step 2: Add formatHeartbeat function in admin.js**
 
 Add after the `formatDate` function (around line 211):
 
@@ -1021,7 +1023,7 @@ function getHeartbeatColor(timestamp) {
 }
 ```
 
-- [ ] **Step 3: Add heartbeat column to controllers config**
+- [x] **Step 3: Add heartbeat column to controllers config**
 
 In the `renderControllersTable` config, add after the status column:
 
@@ -1040,11 +1042,11 @@ In the `renderControllersTable` config, add after the status column:
 
 Also update the controllers table `<thead>` in admin.html to add a "Пульс" column header (after "Статус").
 
-- [ ] **Step 4: Verify in browser**
+- [x] **Step 4: Verify in browser**
 
 Open admin panel → Controllers. Expected: new "Пульс" column with colored dot and relative time. If no heartbeat data exists yet, shows "—" with grey dot.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add public/admin.js public/css/admin.css admin.html
@@ -1058,7 +1060,7 @@ git commit -m "feat: add controller heartbeat display with color indicators"
 **Files:**
 - Modify: `admin.html` — add alerts nav tab + section + table + filters
 
-- [ ] **Step 1: Add alerts nav tab**
+- [x] **Step 1: Add alerts nav tab**
 
 In `admin.html`, find the nav tabs section (look for `role="tablist"`). After the heat-sources tab button, add a separator and the alerts tab:
 
@@ -1067,7 +1069,7 @@ In `admin.html`, find the nav tabs section (look for `role="tablist"`). After th
 <button class="nav-btn" id="alerts-tab" data-section="alerts" role="tab" aria-selected="false" aria-controls="alerts-section">🚨 Тревоги</button>
 ```
 
-- [ ] **Step 2: Add alerts section with filters and table**
+- [x] **Step 2: Add alerts section with filters and table**
 
 After the last section (heat-sources-section), add:
 
@@ -1132,7 +1134,7 @@ After the last section (heat-sources-section), add:
 </section>
 ```
 
-- [ ] **Step 3: Add severity badge CSS**
+- [x] **Step 3: Add severity badge CSS**
 
 Append to `public/css/admin.css`. Note: badge colors below are intentionally hardcoded — they are semantic colors specific to alert severity/status visualization, not part of the global color palette. Adding them to `:root` variables would create unused variables in non-alert contexts.
 
@@ -1178,7 +1180,7 @@ Append to `public/css/admin.css`. Note: badge colors below are intentionally har
 }
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add admin.html public/css/admin.css
@@ -1192,7 +1194,7 @@ git commit -m "feat: add alerts section HTML, filters, table, and severity badge
 **Files:**
 - Modify: `public/admin.js` — add alerts state, loadAlerts, renderAlertsTable, filter handlers, acknowledge/resolve actions
 
-- [ ] **Step 1: Add 'alerts' to all state objects**
+- [x] **Step 1: Add 'alerts' to all state objects**
 
 In `admin.js`, add `alerts` key to each state object:
 
@@ -1213,7 +1215,7 @@ alerts: { column: 'created_at', direction: 'desc' }
 alerts: new Set()
 ```
 
-- [ ] **Step 2: Add alerts case to loadSectionData**
+- [x] **Step 2: Add alerts case to loadSectionData**
 
 In `loadSectionData` switch statement (line 254), add:
 
@@ -1223,7 +1225,7 @@ case 'alerts':
     break;
 ```
 
-- [ ] **Step 3: Add loadAlerts function**
+- [x] **Step 3: Add loadAlerts function**
 
 Add after the other load functions:
 
@@ -1244,7 +1246,7 @@ async function loadAlerts() {
 }
 ```
 
-- [ ] **Step 4: Add renderAlertsTable using generic renderer**
+- [x] **Step 4: Add renderAlertsTable using generic renderer**
 
 ```js
 function getAlertStatusLabel(status) {
@@ -1309,7 +1311,7 @@ function renderAlertsTable(data) {
 }
 ```
 
-- [ ] **Step 5: Add acknowledge and resolve functions**
+- [x] **Step 5: Add acknowledge and resolve functions**
 
 ```js
 async function acknowledgeAlert(alertId) {
@@ -1339,7 +1341,7 @@ async function resolveAlert(alertId) {
 }
 ```
 
-- [ ] **Step 6: Wire up alert filter change handlers**
+- [x] **Step 6: Wire up alert filter change handlers**
 
 Add after the alerts load/render functions:
 
@@ -1364,12 +1366,12 @@ Add after the alerts load/render functions:
 });
 ```
 
-- [ ] **Step 7: Run all tests**
+- [x] **Step 7: Run all tests**
 
 Run: `npm test`
 Expected: All tests pass.
 
-- [ ] **Step 8: Verify alerts tab in browser**
+- [x] **Step 8: Verify alerts tab in browser**
 
 Open admin panel → Тревоги tab. Expected:
 - Table loads with alert data (or empty state if no alerts)
@@ -1379,7 +1381,7 @@ Open admin panel → Тревоги tab. Expected:
 - Severity badges have correct colors (INFO=blue, WARNING=orange, CRITICAL=red)
 - Pagination works
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add public/admin.js
@@ -1394,11 +1396,11 @@ git commit -m "feat: add alerts tab with filters, severity badges, acknowledge/r
 - Modify: `public/css/admin.css` — align metrics form styling with horizontal-form class
 - Modify: `admin.html` — add `horizontal-form` wrapper class to metrics form if missing
 
-- [ ] **Step 1: Check current metrics form structure**
+- [x] **Step 1: Check current metrics form structure**
 
 Read the metrics form section in admin.html. The form uses `form-section` + `form-row` for 3-column phase grouping. The fix is visual alignment only — add `horizontal-form` wrapper class and ensure CSS variables are used for padding/margins/borders.
 
-- [ ] **Step 2: Add/update CSS for metrics form alignment**
+- [x] **Step 2: Add/update CSS for metrics form alignment**
 
 In `public/css/admin.css`, ensure `.form-section` and `.form-row` within `.horizontal-form` have consistent spacing:
 
@@ -1421,11 +1423,11 @@ In `public/css/admin.css`, ensure `.form-section` and `.form-row` within `.horiz
 }
 ```
 
-- [ ] **Step 3: Verify in browser**
+- [x] **Step 3: Verify in browser**
 
 Open admin panel → Metrics tab → add metrics form. Expected: form has consistent borders, spacing, colors matching other entity forms.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add public/css/admin.css admin.html
@@ -1439,35 +1441,35 @@ git commit -m "fix: align metrics form visual style with horizontal-form pattern
 **Files:**
 - All modified files
 
-- [ ] **Step 1: Run full test suite**
+- [x] **Step 1: Run full test suite**
 
 Run: `npm test`
 Expected: All tests pass (175+ existing + new alert tests).
 
-- [ ] **Step 2: Run lint**
+- [x] **Step 2: Run lint**
 
 Run: `npm run lint`
 Expected: No new lint errors.
 
-- [ ] **Step 3: Full browser verification checklist**
+- [x] **Step 3: Full browser verification checklist**
 
 Open admin panel and verify each item:
-- [ ] No inline onclick in HTML source (View Source → search "onclick")
-- [ ] Edit modals have aria-label (Inspect element on 4 modals)
-- [ ] "Указать на карте" buttons work in add/edit transformer
-- [ ] "Сброс" button works in metrics form
-- [ ] Delete buttons are red, edit buttons are grey (btn-sm/btn-danger working)
-- [ ] Controller status shows Russian labels ("В сети", "Не в сети", "На обслуживании")
-- [ ] Toast notifications don't overlap logout button
-- [ ] All 8 entity tables render correctly with data
-- [ ] Pagination works on all tables
-- [ ] Batch operations (select all, delete selected) work
-- [ ] Alerts tab: filters, severity badges, acknowledge/resolve
-- [ ] Controller heartbeat column with color indicators
-- [ ] Entity names shown instead of IDs (controllers→building name, metrics→serial number)
-- [ ] No console errors
+- [x] No inline onclick in HTML source (View Source → search "onclick")
+- [x] Edit modals have aria-label (Inspect element on 4 modals)
+- [x] "Указать на карте" buttons work in add/edit transformer
+- [x] "Сброс" button works in metrics form
+- [x] Delete buttons are red, edit buttons are grey (btn-sm/btn-danger working)
+- [x] Controller status shows Russian labels ("В сети", "Не в сети", "На обслуживании")
+- [x] Toast notifications don't overlap logout button
+- [x] All 8 entity tables render correctly with data
+- [x] Pagination works on all tables
+- [x] Batch operations (select all, delete selected) work
+- [x] Alerts tab: filters, severity badges, acknowledge/resolve
+- [x] Controller heartbeat column with color indicators
+- [x] Entity names shown instead of IDs (controllers→building name, metrics→serial number)
+- [x] No console errors
 
-- [ ] **Step 4: Commit any remaining fixes**
+- [x] **Step 4: Commit any remaining fixes**
 
 ```bash
 git add -A

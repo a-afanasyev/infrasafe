@@ -1,5 +1,7 @@
 # QA Bugfix Implementation Plan
 
+> **Status: COMPLETED (2026-03-23)** — All 10 tasks implemented and verified. 195 tests passing.
+
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Fix all P0-P2 bugs found during the QA code review and security audit of InfraSafe.
@@ -39,7 +41,7 @@
 **Files:**
 - Modify: `package.json`, `package-lock.json`
 
-- [ ] **Step 1: Run npm audit fix (non-breaking)**
+- [x] **Step 1: Run npm audit fix (non-breaking)**
 
 ```bash
 npm audit fix
@@ -47,7 +49,7 @@ npm audit fix
 
 This fixes 11 of 16 vulnerabilities automatically (axios, dompurify, flatted, jws, ajv, js-yaml, lodash, minimatch, qs, validator, express-validator).
 
-- [ ] **Step 2: Verify tests still pass**
+- [x] **Step 2: Verify tests still pass**
 
 ```bash
 npm test
@@ -55,7 +57,7 @@ npm test
 
 Expected: 175 passed, 16 suites
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add package.json package-lock.json
@@ -70,7 +72,7 @@ git commit -m "fix(deps): npm audit fix — resolve 11 vulnerabilities"
 - Modify: `src/services/authService.js:319-325`
 - Create: `tests/jest/unit/authService.test.js`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Create `tests/jest/unit/authService.test.js`:
 
@@ -128,7 +130,7 @@ describe('AuthService.findUserById', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 npm run test:unit -- --testPathPattern=authService
@@ -136,7 +138,7 @@ npm run test:unit -- --testPathPattern=authService
 
 Expected: FAIL — `cachedUser` still has `password_hash`
 
-- [ ] **Step 3: Fix authService.findUserById**
+- [x] **Step 3: Fix authService.findUserById**
 
 In `src/services/authService.js`, replace lines 319-325:
 
@@ -153,7 +155,7 @@ In `src/services/authService.js`, replace lines 319-325:
 
 This replaces `SELECT *` with explicit columns, excluding `password_hash`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 ```bash
 npm run test:unit -- --testPathPattern=authService
@@ -161,7 +163,7 @@ npm run test:unit -- --testPathPattern=authService
 
 Expected: PASS
 
-- [ ] **Step 5: Run all tests**
+- [x] **Step 5: Run all tests**
 
 ```bash
 npm test
@@ -169,7 +171,7 @@ npm test
 
 Expected: 176+ passed
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/services/authService.js tests/jest/unit/authService.test.js
@@ -184,7 +186,7 @@ git commit -m "fix(security): exclude password_hash from user cache — SELECT e
 - Modify: `src/services/powerAnalyticsService.js:70-74,159-163`
 - Modify: `tests/jest/unit/powerAnalyticsService.test.js`
 
-- [ ] **Step 1: Update test to verify correct SQL**
+- [x] **Step 1: Update test to verify correct SQL**
 
 In `tests/jest/unit/powerAnalyticsService.test.js`, add a test that checks the query uses WHERE, not HAVING:
 
@@ -208,7 +210,7 @@ test('getBuildingPower should use WHERE not HAVING', async () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 npm run test:unit -- --testPathPattern=powerAnalytics
@@ -216,7 +218,7 @@ npm run test:unit -- --testPathPattern=powerAnalytics
 
 Expected: FAIL — query contains HAVING
 
-- [ ] **Step 3: Fix getBuildingPower**
+- [x] **Step 3: Fix getBuildingPower**
 
 In `src/services/powerAnalyticsService.js`, replace lines 70-74:
 
@@ -236,7 +238,7 @@ const getBuildingPower = async (buildingId) => {
     const result = await db.query(wrappedQuery, [buildingId]);
 ```
 
-- [ ] **Step 4: Fix getTransformerPower**
+- [x] **Step 4: Fix getTransformerPower**
 
 Same pattern for lines 159-163:
 
@@ -246,7 +248,7 @@ const getTransformerPower = async (transformerId) => {
     const result = await db.query(wrappedQuery, [transformerId]);
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 ```bash
 npm run test:unit -- --testPathPattern=powerAnalytics
@@ -254,13 +256,13 @@ npm run test:unit -- --testPathPattern=powerAnalytics
 
 Expected: PASS
 
-- [ ] **Step 6: Run all tests**
+- [x] **Step 6: Run all tests**
 
 ```bash
 npm test
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/services/powerAnalyticsService.js tests/jest/unit/powerAnalyticsService.test.js
@@ -275,7 +277,7 @@ git commit -m "fix(sql): replace HAVING with WHERE subquery in power analytics �
 - Modify: `src/controllers/analyticsController.js` — 16 occurrences of `error.message`
 - Modify: `src/controllers/alertController.js` — 10 occurrences, plus fix 500→404
 
-- [ ] **Step 1: Fix analyticsController — replace all error.message with generic message**
+- [x] **Step 1: Fix analyticsController — replace all error.message with generic message**
 
 In `src/controllers/analyticsController.js`, find all catch blocks like:
 
@@ -303,7 +305,7 @@ Replace each with:
 
 Apply to all 16 occurrences. Use replace-all for the pattern `message: error.message` within this file.
 
-- [ ] **Step 2: Fix alertController — replace error.message AND fix 500→404**
+- [x] **Step 2: Fix alertController — replace error.message AND fix 500→404**
 
 In `src/controllers/alertController.js`, update each catch block. For `acknowledgeAlert` (line 55) and `resolveAlert` (line 85), add 404 handling:
 
@@ -325,7 +327,7 @@ In `src/controllers/alertController.js`, update each catch block. For `acknowled
 
 For all other catch blocks in alertController, replace `message: error.message` with `message: 'Внутренняя ошибка сервера'`.
 
-- [ ] **Step 3: Run all tests**
+- [x] **Step 3: Run all tests**
 
 ```bash
 npm test
@@ -333,7 +335,7 @@ npm test
 
 Expected: 176+ passed (security tests may check for error format — verify)
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/controllers/analyticsController.js src/controllers/alertController.js
@@ -347,7 +349,7 @@ git commit -m "fix(security): stop leaking error.message in analytics/alert cont
 **Files:**
 - Modify: `docker-compose.dev.yml:73-74`
 
-- [ ] **Step 1: Replace hardcoded secrets with env var references**
+- [x] **Step 1: Replace hardcoded secrets with env var references**
 
 In `docker-compose.dev.yml`, replace lines 73-74:
 
@@ -358,7 +360,7 @@ In `docker-compose.dev.yml`, replace lines 73-74:
 
 This uses env vars with fallback to dev values. The hardcoded strings remain as defaults for local dev, but production will use real secrets via environment.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add docker-compose.dev.yml
@@ -381,7 +383,7 @@ git commit -m "fix(security): use env var references for JWT secrets in docker-c
 
 **Blast radius:** 6 services, ~23 `get()` calls total. ALL must be updated atomically.
 
-- [ ] **Step 1: Fix cacheService.get() to accept seconds, like set()**
+- [x] **Step 1: Fix cacheService.get() to accept seconds, like set()**
 
 In `src/services/cacheService.js`, change line 171:
 
@@ -392,7 +394,7 @@ In `src/services/cacheService.js`, change line 171:
 
 Line 176 stays the same — it compares against `cached.ttl` (already in ms) or `ttl` (now also in ms).
 
-- [ ] **Step 2: Update ALL get() callers — every service file**
+- [x] **Step 2: Update ALL get() callers — every service file**
 
 **`src/services/authService.js`** line 314:
 ```javascript
@@ -412,14 +414,14 @@ const cached = await cacheService.get(cacheKey, { ttl: 300 }); // 5 min in secon
 
 **`src/services/metricService.js`** — replace all `{ ttl: this.defaultCacheTTL * 1000 }` with `{ ttl: this.defaultCacheTTL }` (4 occurrences) and `{ ttl: this.realtimeCacheTTL * 1000 }` with `{ ttl: this.realtimeCacheTTL }` (line 79).
 
-- [ ] **Step 3: Verify no get() callers still pass milliseconds**
+- [x] **Step 3: Verify no get() callers still pass milliseconds**
 
 ```bash
 grep -rn 'cacheService.get.*ttl.*000' src/services/
 # Expected: zero results
 ```
 
-- [ ] **Step 4: Run all tests**
+- [x] **Step 4: Run all tests**
 
 ```bash
 npm test
@@ -427,7 +429,7 @@ npm test
 
 Expected: all pass
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/services/cacheService.js src/services/authService.js src/services/analyticsService.js src/services/buildingService.js src/services/controllerService.js src/services/metricService.js
@@ -441,7 +443,7 @@ git commit -m "fix: standardize cacheService TTL contract — all get()/set() va
 **Files:**
 - Modify: `src/services/adminService.js:1`
 
-- [ ] **Step 1: Rename pool to db**
+- [x] **Step 1: Rename pool to db**
 
 In `src/services/adminService.js`, replace line 1:
 
@@ -451,13 +453,13 @@ const db = require('../config/database');
 
 Replace `pool.query` with `db.query` on lines 18 and 34.
 
-- [ ] **Step 2: Run all tests**
+- [x] **Step 2: Run all tests**
 
 ```bash
 npm test
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/services/adminService.js
@@ -473,11 +475,11 @@ git commit -m "fix: rename pool→db in adminService to match project convention
 
 **Note:** This may not be a real bug. The current wrapper holds a reference to `this` (the AdminAuth instance), and the token is updated on the same object. A re-login calls `setupAuthHeaders()` which checks `this.fetchIntercepted` and skips if already wrapped. The wrapper reads `this.token` dynamically, so it should pick up the new token. **Reproduce first before fixing.**
 
-- [ ] **Step 1: Reproduce the bug**
+- [x] **Step 1: Reproduce the bug**
 
 Open admin panel → login → logout → login again. Check Network tab: do API requests include the correct `Authorization: Bearer <new-token>` header? If yes, this is not a bug — skip the fix and close this task.
 
-- [ ] **Step 2: If confirmed — fix logout() to restore original fetch**
+- [x] **Step 2: If confirmed — fix logout() to restore original fetch**
 
 In `public/admin-auth.js`, replace the `logout()` method (lines 71-77):
 
@@ -496,11 +498,11 @@ In `public/admin-auth.js`, replace the `logout()` method (lines 71-77):
     }
 ```
 
-- [ ] **Step 2: Verify manually**
+- [x] **Step 2: Verify manually**
 
 Open admin panel, login, logout, login again. Check that API requests include Authorization header after re-login.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add public/admin-auth.js
@@ -514,7 +516,7 @@ git commit -m "fix(admin): restore original fetch on logout, prevent stale inter
 **Files:**
 - Modify: `src/server.js:131-144`
 
-- [ ] **Step 1: Fix gracefulShutdown**
+- [x] **Step 1: Fix gracefulShutdown**
 
 Replace `src/server.js` lines 131-144:
 
@@ -542,13 +544,13 @@ const gracefulShutdown = async (signal) => {
 };
 ```
 
-- [ ] **Step 2: Run all tests**
+- [x] **Step 2: Run all tests**
 
 ```bash
 npm test
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/server.js
@@ -574,7 +576,7 @@ Removing `'unsafe-inline'` will break the frontend. These files inject inline st
 
 CSP styleSrc hardening should be a **separate plan** after frontend CSS extraction tasks (frontend plan Tasks 5, 8) are complete and remaining inline styles are audited.
 
-- [ ] **Step 1: Use custom morgan format to strip query strings**
+- [x] **Step 1: Use custom morgan format to strip query strings**
 
 Replace line 51 in `src/server.js`:
 
@@ -585,13 +587,13 @@ app.use(morgan(':method :safepath :status :response-time ms', { stream: { write:
 
 This replaces `combined` format which logs full URL with query strings (potential token leakage via `?token=...`) plus Referer and User-Agent.
 
-- [ ] **Step 2: Run all tests**
+- [x] **Step 2: Run all tests**
 
 ```bash
 npm test
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/server.js
