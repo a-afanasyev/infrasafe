@@ -1,0 +1,264 @@
+#sidebar h3 {
+    cursor: pointer;
+    position: relative;
+    padding-right: 20px;
+    user-select: none;
+}
+
+/* Добавляем стили для мигающего текста */
+@keyframes blink-red {
+    0% { color: #ff0000; }
+    50% { color: #ff6666; }
+    100% { color: #ff0000; }
+}
+
+.blinking-text-red {
+    animation: blink-red 1.5s infinite;
+    font-weight: bold;
+}
+
+#sidebar h3:after {
+    content: "▼";
+    position: absolute;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.8em;
+    transition: transform 0.3s;
+}
+
+#sidebar h3.collapsed:after {
+    transform: translateY(-50%) rotate(-90deg);
+}
+
+#sidebar .status-items.collapsed {
+    display: none !important;
+}
+
+.blinking-leak-header {
+    animation: blink-animation 1s infinite;
+    color: #1976d2;
+}
+
+@keyframes blink-animation {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+/* Стили для кластеров маркеров */
+.marker-cluster-custom {
+    text-align: center;
+    border-radius: 50%;
+    font-weight: bold;
+}
+
+.marker-cluster-custom div {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.marker-cluster-leak div {
+    animation: cluster-blink-animation 1.5s infinite;
+}
+
+@keyframes cluster-blink-animation {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
+}
+
+/* Стили для кнопки обновления (перемещены в основной CSS файл) */
+
+/* Стили для Toast уведомлений */
+.toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+    max-width: 300px;
+}
+
+.toast {
+    margin-bottom: 10px;
+    padding: 12px 16px 12px 45px;
+    border-radius: 5px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    font-size: 14px;
+    font-weight: 500;
+    color: white;
+    animation: toast-slide-in 0.3s ease-out;
+    cursor: pointer;
+    transition: opacity 0.3s ease;
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.toast::before {
+    content: '';
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+.toast-info::before {
+    content: 'ℹ️';
+    font-size: 14px;
+}
+
+.toast-success::before {
+    content: '✅';
+    font-size: 16px;
+}
+
+.toast-warning::before {
+    content: '⚠️';
+    font-size: 16px;
+}
+
+.toast-error::before {
+    content: '❌';
+    font-size: 16px;
+}
+
+.toast:hover {
+    opacity: 0.9;
+}
+
+.toast-info {
+    background-color: #2196F3;
+}
+
+.toast-success {
+    background-color: #4CAF50;
+}
+
+.toast-warning {
+    background-color: #FF9800;
+}
+
+.toast-error {
+    background-color: #F44336;
+}
+
+@keyframes toast-slide-in {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes toast-slide-out {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+.toast.removing {
+    animation: toast-slide-out 0.3s ease-in forwards;
+}
+
+/* Skeleton Loading Styles */
+.skeleton {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+}
+
+@keyframes skeleton-loading {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+.skeleton-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.skeleton-table td {
+    padding: 12px 8px;
+    border-bottom: 1px solid #eee;
+}
+
+.skeleton-row {
+    height: 16px;
+    border-radius: 4px;
+}
+
+.skeleton-row.wide {
+    width: 80%;
+}
+
+.skeleton-row.medium {
+    width: 60%;
+}
+
+.skeleton-row.narrow {
+    width: 40%;
+}
+
+.skeleton-map {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+    z-index: 999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: #666;
+}
+
+.skeleton-map::before {
+    content: '🗺️';
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.7;
+}
+
+.skeleton-map::after {
+    content: 'Загрузка карты...';
+    font-weight: 500;
+}
+
+.skeleton-dots {
+    display: inline-block;
+    animation: skeleton-dots 1.5s infinite;
+}
+
+@keyframes skeleton-dots {
+    0%, 20% { content: '.'; }
+    40% { content: '..'; }
+    60% { content: '...'; }
+    80%, 100% { content: ''; }
+}
