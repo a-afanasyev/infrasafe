@@ -64,15 +64,21 @@ const updateBuilding = async (req, res, next) => {
 const deleteBuilding = async (req, res, next) => {
     try {
         const { id } = req.params;
+        const cascade = req.query.cascade === 'true';
 
-        const result = await buildingService.deleteBuilding(id);
+        let result;
+        if (cascade) {
+            result = await buildingService.deleteBuildingCascade(id);
+        } else {
+            result = await buildingService.deleteBuilding(id);
+        }
 
         if (!result) {
             return sendNotFound(res, 'Building not found');
         }
 
         return res.status(200).json({
-            message: 'Building deleted successfully',
+            message: cascade ? 'Building and all related data deleted successfully' : 'Building deleted successfully',
             deleted: result
         });
     } catch (error) {

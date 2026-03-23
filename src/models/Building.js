@@ -249,6 +249,73 @@ class Building {
             throw createError(`Failed to delete building: ${error.message}`, 500);
         }
     }
+
+    /**
+     * Каскадное удаление здания с контроллерами, метриками и алертами в транзакции
+     * Порядок: alerts → metrics → controllers → building
+     * @param {number} buildingId - ID здания
+     * @returns {Object|null} Удалённое здание или null
+     */
+    static async deleteCascade(buildingId) {
+        const id = parseInt(buildingId, 10);
+        if (isNaN(id)) {
+            throw createError('Invalid building ID', 400);
+        }
+
+        const client = await db.getPool().connect();
+        try {
+            await client.query('BEGIN');
+
+            // 1. Delete legacy alerts referencing metrics of this building's controllers
+            await client.query(
+                `DELETE FROM alerts WHERE metric_id IN (
+                    SELECT metric_id FROM metrics WHERE controller_id IN (
+                        SELECT controller_id FROM controllers WHERE building_id = $1
+                    )
+                )`,
+                [id]
+            );
+
+            // 2. Delete infrastructure_alerts for this building's controllers
+            await client.query(
+                `DELETE FROM infrastructure_alerts
+                 WHERE infrastructure_type = 'controller'
+                   AND infrastructure_id IN (
+                       SELECT controller_id::text FROM controllers WHERE building_id = $1
+                   )`,
+                [id]
+            );
+
+            // 3. Delete metrics for all controllers in this building
+            await client.query(
+                'DELETE FROM metrics WHERE controller_id IN (SELECT controller_id FROM controllers WHERE building_id = $1)',
+                [id]
+            );
+
+            // 4. Delete controllers
+            await client.query('DELETE FROM controllers WHERE building_id = $1', [id]);
+
+            // 5. Delete the building itself
+            const result = await client.query(
+                'DELETE FROM buildings WHERE building_id = $1 RETURNING *',
+                [id]
+            );
+
+            await client.query('COMMIT');
+
+            if (result.rows.length) {
+                logger.info(`Cascade-deleted building ${id} with all related data`);
+            }
+
+            return result.rows.length ? result.rows[0] : null;
+        } catch (error) {
+            await client.query('ROLLBACK');
+            logger.error(`Error in Building.deleteCascade: ${error.message}`);
+            throw createError(`Failed to cascade-delete building: ${error.message}`, 500);
+        } finally {
+            client.release();
+        }
+    }
 }
 
 module.exports = Building;

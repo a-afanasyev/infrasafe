@@ -1597,7 +1597,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     
                     if (confirm(message)) {
                         // Пользователь согласился на каскадное удаление
-                        await deleteBuildingCascade(id, errorData.controllers);
+                        await deleteBuildingCascade(id);
                     }
                     return;
                 }
@@ -1614,98 +1614,29 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     };
 
-    // Каскадное удаление здания с контроллерами
-    async function deleteBuildingCascade(buildingId, controllers) {
+    // Каскадное удаление здания с контроллерами (один запрос к серверу)
+    async function deleteBuildingCascade(buildingId) {
         try {
-            let deletedControllers = 0;
-            let deletedMetrics = 0;
-            let errors = [];
-
-            // Для каждого контроллера: удаляем метрики, затем контроллер
-            for (const controller of controllers) {
-                try {
-                    // Шаг 1: Получаем метрики контроллера
-                    const metricsResponse = await fetch(`/api/metrics?controller_id=${controller.controller_id}&limit=10000`, {
-                        headers: {
-                            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-                        }
-                    });
-                    
-                    if (metricsResponse.ok) {
-                        const metricsData = await metricsResponse.json();
-                        const metrics = metricsData.data || [];
-                        
-                        // Шаг 2: Удаляем все метрики контроллера
-                        if (metrics.length > 0) {
-                            for (const metric of metrics) {
-                                try {
-                                    const deleteMetricResponse = await fetch(`/api/metrics/${metric.metric_id}`, {
-                                        method: 'DELETE',
-                                        headers: {
-                                            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-                                        }
-                                    });
-                                    
-                                    if (deleteMetricResponse.ok) {
-                                        deletedMetrics++;
-                                    }
-                                } catch (metricError) {
-                                    console.warn(`  ⚠️ Не удалось удалить метрику ${metric.metric_id}:`, metricError);
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Шаг 3: Теперь удаляем контроллер (уже без метрик)
-                    const controllerResponse = await fetch(`/api/controllers/${controller.controller_id}`, {
-                        method: 'DELETE',
-                        headers: {
-                            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-                        }
-                    });
-
-                    if (controllerResponse.ok) {
-                        deletedControllers++;
-                    } else {
-                        const errorData = await controllerResponse.json();
-                        const errorMsg = `Контроллер #${controller.controller_id}: ${errorData.error || 'Ошибка удаления'}`;
-                        errors.push(errorMsg);
-                        console.error(`  ❌ ${errorMsg}`);
-                    }
-                } catch (error) {
-                    const errorMsg = `Контроллер #${controller.controller_id}: ${error.message}`;
-                    errors.push(errorMsg);
-                    console.error(`  ❌ ${errorMsg}`);
-                }
-            }
-
-            // Шаг 4: Теперь удаляем здание
-            const buildingResponse = await fetch(`/api/buildings/${buildingId}`, {
+            const response = await fetch(`/api/buildings/${buildingId}?cascade=true`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 }
             });
 
-            if (!buildingResponse.ok) {
-                const errorData = await buildingResponse.json();
-                throw new Error(errorData.error || 'Ошибка удаления здания после удаления контроллеров');
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || errorData.message || 'Ошибка каскадного удаления здания');
             }
 
-            // Показываем результат
-            if (errors.length > 0) {
-                showToast(`Здание удалено. Контроллеров: ${deletedControllers}/${controllers.length}. Метрик: ${deletedMetrics}. Ошибки: ${errors.length}`, 'warning');
-                console.warn('Ошибки при удалении:', errors);
-            } else {
-                showToast(`✅ Здание, ${deletedControllers} контроллер(ов) и ${deletedMetrics} метрик успешно удалены`, 'success');
-            }
+            showToast('Здание и все связанные данные успешно удалены', 'success');
 
             // Обновляем список зданий
             dataLoaded.buildings = false;
             loadBuildings();
 
         } catch (error) {
-            console.error('❌ Error in cascade delete:', error);
+            console.error('Error in cascade delete:', error);
             showToast(error.message || 'Ошибка каскадного удаления', 'error');
         }
     }

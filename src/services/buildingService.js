@@ -142,6 +142,27 @@ class BuildingService {
         }
     }
 
+    // Каскадное удаление здания с контроллерами, метриками и алертами
+    async deleteBuildingCascade(id) {
+        try {
+            const result = await Building.deleteCascade(id);
+
+            if (!result) {
+                logger.warn(`Здание с ID ${id} не найдено для каскадного удаления`);
+                return null;
+            }
+
+            // Инвалидируем кэш
+            await this.invalidateBuildingCache(id);
+
+            logger.info(`Каскадно удалено здание ${id}`);
+            return result;
+        } catch (error) {
+            logger.error(`Ошибка каскадного удаления здания ${id}: ${error.message}`);
+            throw error;
+        }
+    }
+
     // Поиск зданий по радиусу от координат
     async findBuildingsInRadius(latitude, longitude, radiusMeters = 1000) {
         try {
