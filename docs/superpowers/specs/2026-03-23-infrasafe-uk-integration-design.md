@@ -205,12 +205,12 @@ POST /webhooks/infrasafe/alert
 
 | infrastructure_type | Query path | Notes |
 | --- | --- | --- |
-| `transformer` | `SELECT building_id FROM buildings WHERE primary_transformer_id = :id OR backup_transformer_id = :id` | `primary_transformer_id` and `backup_transformer_id` are INTEGER FKs in `buildings` table. **Important:** `infrastructure_id` in the alert references `power_transformers.id` (varchar), but `buildings.primary_transformer_id` is INTEGER. The analytics join uses `b.power_transformer_id = pt.id` (varchar FK `power_transformer_id`). Resolution must handle BOTH: the varchar legacy FK (`power_transformer_id`) and the integer FKs (`primary_transformer_id`/`backup_transformer_id`). Query: `WHERE power_transformer_id = :id OR primary_transformer_id = :id::int OR backup_transformer_id = :id::int` |
+| `transformer` | `SELECT building_id FROM buildings WHERE power_transformer_id = :id` | `infrastructure_id` is `power_transformers.id` (VARCHAR). The only safe FK to match is `power_transformer_id VARCHAR(50)` — same type, same ID space, used by analytics (`b.power_transformer_id = pt.id`). The INTEGER columns `primary_transformer_id`/`backup_transformer_id` reference a different ID space and cannot be safely cast from varchar IDs like `'TR-001'`. If integer-FK buildings also need resolution, that requires a separate join through a mapping or normalization — **out of scope for v1**, flag for Phase 3 implementation. |
 | `controller` | `SELECT building_id FROM controllers WHERE controller_id = :id` | FK column is `building_id`, PK is `controller_id` (not `id`) |
 | `water_source` | `SELECT building_id FROM buildings WHERE cold_water_source_id = :id` | Buildings have `cold_water_source_id` varchar FK |
 | `heat_source` | `SELECT building_id FROM buildings WHERE heat_source_id = :id` | Buildings have `heat_source_id` varchar FK |
 
-**Schema clarification:** The `power_transformers` table (used by `analyticsService.js` and alerts) has `id VARCHAR(50)` as PK. Buildings reference them through THREE columns: `power_transformer_id VARCHAR(50)` (legacy), `primary_transformer_id INTEGER`, `backup_transformer_id INTEGER`. The integer columns were added later. Alert resolution must check all three to find affected buildings.
+**Schema clarification:** The `power_transformers` table (used by `analyticsService.js` and alerts) has `id VARCHAR(50)` as PK. Buildings reference them through THREE columns: `power_transformer_id VARCHAR(50)` (legacy, used by analytics), `primary_transformer_id INTEGER`, `backup_transformer_id INTEGER`. The integer columns reference a different ID space (possibly a separate `transformers` table or denormalized integer IDs). **v1 resolution uses only `power_transformer_id` (varchar-to-varchar match).** Extending to integer FK columns requires schema investigation during Phase 3 implementation.
 
 The resolved array is included in the webhook payload, not stored in the alerts table.
 
@@ -396,8 +396,10 @@ GET /api/building-requests/{external_id}?limit=3&sort=urgency
 
 **Bridge API access from frontend:** The frontend uses a single `apiBaseUrl = window.BACKEND_URL || '/api'` for all requests (`map-layers-control.js:9`). Bridge API runs on a different port (3100). Two options:
 
-- **Chosen: Nginx proxy** — add `/bridge/*` location in Nginx config that proxies to `bridge:3100`. Frontend calls `/bridge/api/request-counts` etc. No second base URL needed, no CORS issues, same auth cookies/headers work.
+- **Chosen: Nginx proxy** — add `/bridge/*` location in Nginx config that proxies to `bridge:3100`. Frontend calls `/bridge/api/request-counts` etc. No second base URL needed, no CORS issues.
 - Rejected: separate `window.BRIDGE_URL` — would require CORS config and duplicate auth logic.
+
+**Browser → Bridge auth:** Bridge map-data endpoints (`/api/request-counts`, `/api/building-requests/:id`) are public (no auth required) — they return only aggregate counts and request summaries, no sensitive data. The Bridge CRUD endpoints (`/api/alert-rules`) require the InfraSafe JWT token passed in `Authorization` header — Nginx proxies it through transparently. Bridge validates the JWT by calling InfraSafe's `/api/auth/verify` (or by sharing the same `JWT_SECRET` env var for local verification).
 
 Nginx config addition:
 ```nginx
@@ -500,12 +502,12 @@ CREATE INDEX idx_sync_log_status ON sync_log(status) WHERE status IN ('error', '
 2. **validators.js:** Update building validation — `latitude`/`longitude` become optional; add `external_id` as optional UUID field
 3. **Building model (`src/models/Building.js`):** Add `external_id` to SELECT/INSERT/UPDATE queries (currently not read/written)
 4. **Nginx config:** Add `/bridge/` proxy location pointing to bridge:3100
-5. **No PATCH route needed** — Bridge uses GET-merge-PUT pattern with existing `PUT /api/buildings/:id`
 5. **alertService.js:** Implement `sendWebhookNotification()` — resolve building IDs from infrastructure relationships (see Section 3 table), POST alert events to Bridge with HMAC signature
 6. **buildingMetricsService.js:** Include `external_id` in response so frontend can pass it to Bridge API
-7. **Frontend (script.js):** New "Заявки UK" layer with badge markers and popup section; deduplicate buildings by `building_id` (current map renders one marker per controller row — buildings with multiple controllers would get duplicate badges)
+7. **Frontend (script.js):** New "Заявки UK" layer with badge markers and popup section; deduplicate buildings by `building_id` (current map renders one marker per controller row — buildings with multiple controllers would get duplicate badges); skip buildings with NULL lat/lng
 8. **Frontend (map-layers-control.js):** Add layer toggle
 9. **Docker Compose:** Add bridge service container
+10. **Note:** No PATCH route needed — Bridge uses GET-merge-PUT pattern with existing `PUT /api/buildings/:id`
 
 ### UK (~/Code/UK)
 
