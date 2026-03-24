@@ -24,7 +24,16 @@ document.addEventListener("DOMContentLoaded", function () {
         metrics: false,
         waterSources: false,
         heatSources: false,
-        alerts: false
+        alerts: false,
+        integration: false
+    };
+
+    // Integration UK state
+    const integrationState = {
+        config: {},
+        rules: [],
+        logs: { logs: [], total: 0 },
+        logFilters: { page: 1, limit: 20, direction: '', status: '' }
     };
 
     // Состояние фильтров
@@ -394,6 +403,11 @@ document.addEventListener("DOMContentLoaded", function () {
                 break;
             case 'alerts':
                 if (!dataLoaded.alerts) loadAlerts();
+                break;
+            case 'integration':
+                loadIntegrationConfig();
+                loadIntegrationRules();
+                loadIntegrationLogs();
                 break;
         }
     }
@@ -3115,6 +3129,263 @@ document.addEventListener("DOMContentLoaded", function () {
             document.getElementById('edit-transformer-longitude').value = lng;
         });
     });
+
+    // ============================================================
+    // ИНТЕГРАЦИЯ УК (UK Integration)
+    // ============================================================
+
+    async function loadIntegrationConfig() {
+        try {
+            const response = await fetch(`${backendURL}/integration/config`, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            const data = await response.json();
+            if (data.success) {
+                integrationState.config = data.data;
+                renderIntegrationConfig();
+            }
+        } catch (error) {
+            console.error('Failed to load integration config:', error);
+        }
+    }
+
+    function renderIntegrationConfig() {
+        const config = integrationState.config;
+        const toggle = document.getElementById('integration-enabled');
+        const apiUrl = document.getElementById('uk-api-url');
+        const frontendUrl = document.getElementById('uk-frontend-url');
+
+        if (toggle) toggle.checked = config.uk_integration_enabled === 'true';
+        if (apiUrl) apiUrl.value = config.uk_api_url || '';
+        if (frontendUrl) frontendUrl.value = config.uk_frontend_url || '';
+    }
+
+    async function saveIntegrationConfig() {
+        try {
+            const toggle = document.getElementById('integration-enabled');
+            const apiUrl = document.getElementById('uk-api-url');
+            const frontendUrl = document.getElementById('uk-frontend-url');
+
+            const body = {
+                uk_integration_enabled: toggle.checked ? 'true' : 'false',
+                uk_api_url: apiUrl.value.trim(),
+                uk_frontend_url: frontendUrl.value.trim()
+            };
+
+            const response = await fetch(`${backendURL}/integration/config`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify(body)
+            });
+            const data = await response.json();
+            if (data.success) {
+                integrationState.config = data.data;
+                renderIntegrationConfig();
+                showToast('Настройки интеграции сохранены', 'success');
+            } else {
+                showToast('Ошибка: ' + (data.message || 'Неизвестная ошибка'), 'error');
+            }
+        } catch (error) {
+            console.error('Failed to save integration config:', error);
+            showToast('Ошибка сохранения настроек', 'error');
+        }
+    }
+
+    async function loadIntegrationRules() {
+        try {
+            const response = await fetch(`${backendURL}/integration/rules`, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            const data = await response.json();
+            if (data.success) {
+                integrationState.rules = data.data;
+                renderIntegrationRules();
+            }
+        } catch (error) {
+            console.error('Failed to load integration rules:', error);
+        }
+    }
+
+    function renderIntegrationRules() {
+        const tbody = document.querySelector('#integration-rules-table tbody');
+        if (!tbody) return;
+
+        tbody.textContent = '';
+        integrationState.rules.forEach(rule => {
+            const tr = document.createElement('tr');
+            const cells = [
+                rule.alert_type,
+                rule.severity,
+                rule.uk_category,
+                rule.uk_urgency,
+                rule.enabled ? '✓' : '✗'
+            ];
+            cells.forEach(text => {
+                const td = document.createElement('td');
+                td.textContent = text;
+                tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        });
+    }
+
+    async function loadIntegrationLogs() {
+        try {
+            const f = integrationState.logFilters;
+            const params = new URLSearchParams();
+            params.set('page', f.page);
+            params.set('limit', f.limit);
+            if (f.direction) params.set('direction', f.direction);
+            if (f.status) params.set('status', f.status);
+
+            const response = await fetch(`${backendURL}/integration/logs?${params}`, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            const data = await response.json();
+            if (data.success) {
+                integrationState.logs = data.data;
+                renderIntegrationLogs();
+            }
+        } catch (error) {
+            console.error('Failed to load integration logs:', error);
+        }
+    }
+
+    function renderIntegrationLogs() {
+        const tbody = document.querySelector('#integration-log-table tbody');
+        if (!tbody) return;
+
+        const { logs, total } = integrationState.logs;
+        const directionMap = { to_uk: '→ УК', from_uk: '← УК' };
+        const statusMap = { success: 'Успех', error: 'Ошибка', failed: 'Провал', pending: 'Ожидание' };
+
+        tbody.textContent = '';
+        if (!logs || logs.length === 0) {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = 7;
+            td.style.textAlign = 'center';
+            td.textContent = 'Нет данных';
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+            return;
+        }
+
+        logs.forEach(log => {
+            const tr = document.createElement('tr');
+
+            const idCell = document.createElement('td');
+            idCell.textContent = log.id;
+            tr.appendChild(idCell);
+
+            const dirCell = document.createElement('td');
+            dirCell.textContent = directionMap[log.direction] || log.direction;
+            tr.appendChild(dirCell);
+
+            const typeCell = document.createElement('td');
+            typeCell.textContent = log.entity_type;
+            tr.appendChild(typeCell);
+
+            const actionCell = document.createElement('td');
+            actionCell.textContent = log.action;
+            tr.appendChild(actionCell);
+
+            const statusCell = document.createElement('td');
+            statusCell.textContent = statusMap[log.status] || log.status;
+            tr.appendChild(statusCell);
+
+            const timeCell = document.createElement('td');
+            timeCell.textContent = new Date(log.created_at).toLocaleString('ru-RU');
+            tr.appendChild(timeCell);
+
+            const actionsCell = document.createElement('td');
+            if (log.status === 'error' || log.status === 'failed') {
+                const retryBtn = document.createElement('button');
+                retryBtn.textContent = '↻ Повторить';
+                retryBtn.className = 'btn btn-small';
+                retryBtn.dataset.logId = log.id;
+                retryBtn.addEventListener('click', () => retryIntegrationLog(log.id));
+                actionsCell.appendChild(retryBtn);
+            }
+            tr.appendChild(actionsCell);
+
+            tbody.appendChild(tr);
+        });
+
+        // Pagination
+        const paginationEl = document.getElementById('integration-log-pagination');
+        if (paginationEl) {
+            const f = integrationState.logFilters;
+            const totalPages = Math.ceil(total / f.limit) || 1;
+            paginationEl.textContent = '';
+
+            const info = document.createElement('span');
+            info.textContent = `Стр. ${f.page} / ${totalPages} (всего: ${total})`;
+            paginationEl.appendChild(info);
+
+            if (f.page > 1) {
+                const prevBtn = document.createElement('button');
+                prevBtn.textContent = '← Пред';
+                prevBtn.className = 'btn btn-small';
+                prevBtn.addEventListener('click', () => {
+                    integrationState.logFilters.page--;
+                    loadIntegrationLogs();
+                });
+                paginationEl.appendChild(prevBtn);
+            }
+            if (f.page < totalPages) {
+                const nextBtn = document.createElement('button');
+                nextBtn.textContent = 'След →';
+                nextBtn.className = 'btn btn-small';
+                nextBtn.addEventListener('click', () => {
+                    integrationState.logFilters.page++;
+                    loadIntegrationLogs();
+                });
+                paginationEl.appendChild(nextBtn);
+            }
+        }
+    }
+
+    async function retryIntegrationLog(logId) {
+        try {
+            const response = await fetch(`${backendURL}/integration/logs/retry/${logId}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            const data = await response.json();
+            if (data.success) {
+                showToast('Повтор запущен', 'success');
+                loadIntegrationLogs();
+            } else {
+                showToast('Ошибка повтора: ' + (data.message || 'Неизвестная ошибка'), 'error');
+            }
+        } catch (error) {
+            console.error('Failed to retry log:', error);
+        }
+    }
+
+    function initIntegrationTab() {
+        const saveBtn = document.getElementById('integration-save-btn');
+        if (saveBtn) saveBtn.addEventListener('click', saveIntegrationConfig);
+
+        const logStatusFilter = document.getElementById('integration-log-status');
+        const logDirectionFilter = document.getElementById('integration-log-direction');
+        const refreshBtn = document.getElementById('integration-log-refresh');
+
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                integrationState.logFilters.status = logStatusFilter ? logStatusFilter.value : '';
+                integrationState.logFilters.direction = logDirectionFilter ? logDirectionFilter.value : '';
+                integrationState.logFilters.page = 1;
+                loadIntegrationLogs();
+            });
+        }
+    }
+
+    initIntegrationTab();
 
     // Загружаем данные для форм после инициализации всех функций
     loadFormData();
