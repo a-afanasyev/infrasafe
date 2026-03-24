@@ -46,7 +46,10 @@ app.use(cors({
     origin: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : 'http://localhost:8080',
     credentials: true
 })); // CORS
-app.use(express.json({ limit: '1mb' })); // Парсинг JSON
+app.use(express.json({
+    limit: '1mb',
+    verify: (req, res, buf) => { req.rawBody = buf.toString(); }
+})); // Парсинг JSON (rawBody preserved for HMAC webhook verification)
 app.use(correlationId); // Correlation ID для трейсинга запросов
 morgan.token('safepath', (req) => req.path); // path without query string
 app.use(morgan(':method :safepath :status :response-time ms', { stream: { write: message => logger.info(message.trim()) } })); // Логирование HTTP запросов

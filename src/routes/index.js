@@ -14,6 +14,8 @@ const heatSourceRoutes = require('./heatSourceRoutes');
 const waterLineRoutes = require('./waterLineRoutes');
 const waterSupplierRoutes = require('./waterSupplierRoutes');
 const powerAnalyticsRoutes = require('./powerAnalyticsRoutes');
+const webhookRoutes = require('./webhookRoutes');
+const integrationRoutes = require('./integrationRoutes');
 const metricController = require('../controllers/metricController');
 const { authenticateJWT } = require('../middleware/auth');
 const { applyTelemetryRateLimit } = require('../middleware/rateLimiter');
@@ -83,6 +85,8 @@ const PUBLIC_ROUTES = [
     { method: 'POST', path: '/metrics/telemetry' },
     { method: 'GET',  path: '/buildings-metrics' },
     { method: 'GET',  path: '/' },
+    { method: 'POST', path: '/webhooks/uk/building' },
+    { method: 'POST', path: '/webhooks/uk/request' },
 ];
 
 const isPublicRoute = (method, path) => {
@@ -168,6 +172,8 @@ router.use('/analytics', analyticsRoutes);
 router.use('/alerts', alertRoutes);
 router.use('/admin', adminRoutes);
 router.use('/power-analytics', powerAnalyticsRoutes);
+router.use('/webhooks/uk', webhookRoutes);
+router.use('/integration', integrationRoutes);
 
 // Обработка 404 для API
 router.use((req, res, next) => {
