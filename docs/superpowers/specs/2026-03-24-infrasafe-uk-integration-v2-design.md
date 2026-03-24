@@ -252,7 +252,7 @@ Signature in `X-Webhook-Signature` header.
 
 **On update:** ukIntegrationService reads current building, merges UK fields, calls existing `PUT /buildings/:id` internally (service-level call, not HTTP).
 
-**On delete:** Soft — preserve `external_id` (needed for historical alert_request_map lookups), set `uk_synced_at = NULL` and add `uk_deleted_at TIMESTAMPTZ` flag on the building. Building stays in InfraSafe (may have controllers/alerts/metrics). Requires adding `uk_deleted_at` column in migration.
+**On delete:** Soft — preserve `external_id` (needed for historical alert_request_map lookups), set `uk_deleted_at = NOW()` on the building. Building stays in InfraSafe (may have controllers/alerts/metrics). Frontend and alert pipeline skip buildings with non-NULL `uk_deleted_at`.
 
 **Buildings without coordinates:** Frontend skips buildings with NULL lat/lng for map markers. They appear only in admin list.
 
@@ -435,7 +435,7 @@ New tab in admin.html — "Интеграция UK"
 ## 8. Webhook Security
 
 - HMAC-SHA256 signature in `X-Webhook-Signature` header
-- Shared secret stored in `integration_config` (uk_webhook_secret)
+- Shared secret read from env var `UK_WEBHOOK_SECRET` (never stored in DB)
 - Replay protection: reject timestamp >5 minutes old
 - Webhook routes added to public allowlist in `src/routes/index.js` (no JWT, HMAC instead)
 
