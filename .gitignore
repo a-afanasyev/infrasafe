@@ -108,3 +108,4 @@ database/backups/
 # docs/internal/activeContext.md
 # docs/internal/tasks.md
 # docs/internal/progress.md
+.worktrees/
