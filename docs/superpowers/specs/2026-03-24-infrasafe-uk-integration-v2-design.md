@@ -57,6 +57,9 @@ ALTER TABLE buildings ADD COLUMN external_id UUID UNIQUE;
 -- Relax lat/lng for buildings synced from UK without coordinates
 ALTER TABLE buildings ALTER COLUMN latitude DROP NOT NULL;
 ALTER TABLE buildings ALTER COLUMN longitude DROP NOT NULL;
+
+-- Soft-delete flag for buildings removed in UK
+ALTER TABLE buildings ADD COLUMN uk_deleted_at TIMESTAMPTZ;
 ```
 
 ### New tables
@@ -69,14 +72,16 @@ CREATE TABLE integration_config (
     updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Seed defaults
+-- Seed defaults (non-sensitive settings only)
 INSERT INTO integration_config (key, value) VALUES
     ('uk_integration_enabled', 'false'),
     ('uk_api_url', ''),
-    ('uk_webhook_secret', ''),
-    ('uk_service_user', ''),
-    ('uk_service_password', ''),
     ('uk_frontend_url', '');
+
+-- SENSITIVE values (uk_webhook_secret, uk_service_user, uk_service_password)
+-- are ENV-ONLY: read from process.env, never stored in DB or exposed via API.
+-- Admin UI shows masked "●●●●●●" for these fields (write-only: can set new value,
+-- cannot read current). This prevents plaintext secrets in the database.
 
 -- Alert-to-request mapping rules
 CREATE TABLE alert_rules (
@@ -114,7 +119,7 @@ CREATE TABLE integration_log (
     entity_id     VARCHAR(50),
     action        VARCHAR(30) NOT NULL,   -- building.created | alert.created | request.status_changed | ...
     payload       JSONB,
-    status        VARCHAR(20) DEFAULT 'success',  -- success | error | failed
+    status        VARCHAR(20) DEFAULT 'pending',   -- pending | success | error | failed
     error_message TEXT,
     retry_count   INTEGER DEFAULT 0,
     created_at    TIMESTAMPTZ DEFAULT NOW()
@@ -169,7 +174,7 @@ POST /api/webhooks/uk/request    — request.created/status_changed
 - HMAC-SHA256 signature verification via `X-Webhook-Signature` header
 - Replay protection: reject if timestamp >5 minutes old
 - Idempotency: check `event_id` in integration_log before processing
-- Returns 200 immediately, processes async
+- **Synchronous processing** — webhook is fully processed before returning 200. If processing fails, return 500 so UK retries. This avoids lost events without needing a durable queue.
 - **No JWT auth** — webhook endpoints use HMAC signature instead
 
 ### `src/routes/integrationRoutes.js`
@@ -247,7 +252,7 @@ Signature in `X-Webhook-Signature` header.
 
 **On update:** ukIntegrationService reads current building, merges UK fields, calls existing `PUT /buildings/:id` internally (service-level call, not HTTP).
 
-**On delete:** Soft — set `external_id = NULL`, log event. Building stays (may have controllers/alerts).
+**On delete:** Soft — preserve `external_id` (needed for historical alert_request_map lookups), set `uk_synced_at = NULL` and add `uk_deleted_at TIMESTAMPTZ` flag on the building. Building stays in InfraSafe (may have controllers/alerts/metrics). Requires adding `uk_deleted_at` column in migration.
 
 **Buildings without coordinates:** Frontend skips buildings with NULL lat/lng for map markers. They appear only in admin list.
 
@@ -275,6 +280,8 @@ if (await ukIntegrationService.isEnabled()) {
 | `heat_source` | `SELECT building_id FROM buildings WHERE heat_source_id = :id` | varchar FK |
 
 All queries are direct SQL in ukIntegrationService — no HTTP round-trips.
+
+**v1 transformer limitation:** Resolution uses only `power_transformer_id` (varchar FK, same ID space as `power_transformers.id` used by analytics/alerts). Buildings linked via integer FKs `primary_transformer_id`/`backup_transformer_id` (different ID space, possibly referencing a separate `transformers` table) are NOT covered. This means v1 alerts cover only buildings linked through legacy `power_transformer_id`. Extending to integer FK columns requires schema investigation and is tracked in Out of Scope (Section 13).
 
 ### Cardinality
 
@@ -378,15 +385,19 @@ New tab in admin.html — "Интеграция UK"
 **Section 2: Настройки**
 ```
 ┌─────────────────────────────────────┐
-│ UK API URL:    [________________]   │
-│ Webhook Secret:[________________]   │
-│ Логин сервиса: [________________]   │
-│ Пароль сервиса:[________________]   │
-│ UK Frontend URL:[_______________]   │
+│ UK API URL:    [________________]   │  ← editable, saved to DB
+│ UK Frontend URL:[_______________]   │  ← editable, saved to DB
+│                                     │
+│ Секреты (из переменных окружения):  │
+│ Webhook Secret: ●●●●●●●● [✎]      │  ← masked, write-only
+│ Логин сервиса:  ●●●●●●●● [✎]      │  ← masked, write-only
+│ Пароль сервиса: ●●●●●●●● [✎]      │  ← masked, write-only
 │                                     │
 │ [Проверить подключение] [Сохранить] │
 └─────────────────────────────────────┘
 ```
+
+**Note on secrets:** Webhook secret and service credentials are read from env vars (`UK_WEBHOOK_SECRET`, `UK_SERVICE_USER`, `UK_SERVICE_PASSWORD`). Admin UI shows masked values and cannot read them. The [✎] button opens a modal to set a new value — this updates the env var at runtime (in-memory override only, persists until restart; for permanent change, update `.env` file).
 
 **Section 3: Правила маппинга**
 ```
@@ -454,16 +465,18 @@ New tab in admin.html — "Интеграция UK"
 ## 11. Environment Variables (InfraSafe additions)
 
 ```bash
-# UK Integration (also configurable via admin UI / integration_config table)
+# Non-sensitive (also editable via admin UI, DB overrides env)
 UK_API_URL=http://uk-api:8085/api/v2
+UK_FRONTEND_URL=https://uk.domain.com
+UK_INTEGRATION_ENABLED=false          # initial state, toggleable via admin
+
+# Sensitive (env-only, never stored in DB, masked in admin UI)
 UK_WEBHOOK_SECRET=<shared_secret>
 UK_SERVICE_USER=bridge-service
 UK_SERVICE_PASSWORD=<strong_password>
-UK_FRONTEND_URL=https://uk.domain.com
-UK_INTEGRATION_ENABLED=false          # initial state, toggleable via admin
 ```
 
-**Priority:** Admin UI settings (integration_config table) override env vars at runtime.
+**Priority:** For non-sensitive settings, admin UI (integration_config table) overrides env vars. Sensitive settings are always from env vars only.
 
 ---
 
