@@ -35,6 +35,8 @@
         <button class="nav-btn" data-section="heat-sources" role="tab" aria-selected="false" aria-controls="heat-sources-section">Источники тепла</button>
         <span class="nav-separator">|</span>
         <button class="nav-btn" id="alerts-tab" data-section="alerts" role="tab" aria-selected="false" aria-controls="alerts-section">🚨 Тревоги</button>
+        <span class="nav-separator">|</span>
+        <button class="nav-btn" id="integration-tab" data-section="integration" role="tab" aria-selected="false" aria-controls="integration-section">🔗 Интеграция УК</button>
     </nav>
 
     <!-- Глобальный поиск -->
@@ -1361,6 +1363,98 @@
         </div>
 
         <div class="pagination" id="alerts-pagination"></div>
+    </section>
+
+    <!-- Integration Section -->
+    <section id="integration-section" class="admin-section" role="tabpanel" aria-labelledby="integration-tab">
+        <h2>🔗 Интеграция с Управляющей Компанией</h2>
+
+        <!-- Config Panel -->
+        <div class="integration-config-panel">
+            <h3>Настройки интеграции</h3>
+            <div class="form-group">
+                <label for="integration-enabled">Интеграция включена:</label>
+                <input type="checkbox" id="integration-enabled">
+            </div>
+            <div class="form-group">
+                <label for="uk-api-url">URL API УК:</label>
+                <input type="text" id="uk-api-url" placeholder="https://uk-system.example.com/api">
+            </div>
+            <div class="form-group">
+                <label for="uk-frontend-url">URL портала УК:</label>
+                <input type="text" id="uk-frontend-url" placeholder="https://uk-system.example.com">
+            </div>
+            <div class="form-group">
+                <label>Webhook Secret:</label>
+                <span id="uk-webhook-secret-display" class="secret-masked">●●●●●●●●</span>
+            </div>
+            <button id="integration-save-btn" class="btn btn-primary">Сохранить настройки</button>
+        </div>
+
+        <!-- Alert Rules -->
+        <div class="integration-rules-panel">
+            <h3>Правила маппинга алертов</h3>
+            <div class="table-container">
+                <table id="integration-rules-table">
+                    <thead>
+                        <tr>
+                            <th>Тип алерта</th>
+                            <th>Важность</th>
+                            <th>Категория УК</th>
+                            <th>Срочность УК</th>
+                            <th>Включено</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="5" style="text-align: center;">Загрузка...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Integration Log -->
+        <div class="integration-log-panel">
+            <h3>Журнал интеграции</h3>
+            <div class="filters-panel">
+                <div class="filter-group">
+                    <label for="integration-log-status">Статус:</label>
+                    <select id="integration-log-status">
+                        <option value="">Все</option>
+                        <option value="success">Успешно</option>
+                        <option value="error">Ошибка</option>
+                        <option value="pending">Ожидание</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="integration-log-direction">Направление:</label>
+                    <select id="integration-log-direction">
+                        <option value="">Все</option>
+                        <option value="incoming">Входящие</option>
+                        <option value="outgoing">Исходящие</option>
+                    </select>
+                </div>
+                <button id="integration-log-refresh" class="btn">Обновить</button>
+            </div>
+            <div class="table-container">
+                <table id="integration-log-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Направление</th>
+                            <th>Тип</th>
+                            <th>Действие</th>
+                            <th>Статус</th>
+                            <th>Дата</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="7" style="text-align: center;">Нет данных</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="pagination" id="integration-log-pagination"></div>
+        </div>
     </section>
 
     </div><!-- /.admin-container -->
