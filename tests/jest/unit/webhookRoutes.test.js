@@ -42,6 +42,12 @@ describe('webhookRoutes', () => {
         jest.clearAllMocks();
     });
 
+    afterAll(() => {
+        if (webhookRoutes.webhookLimiter) {
+            webhookRoutes.webhookLimiter.destroy();
+        }
+    });
+
     describe('verifyWebhook middleware', () => {
         it('returns 503 when UK integration is disabled', async () => {
             ukIntegrationService.isEnabled.mockResolvedValue(false);

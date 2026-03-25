@@ -5,6 +5,15 @@ const router = express.Router();
 const ukIntegrationService = require('../services/ukIntegrationService');
 const logger = require('../utils/logger');
 const { isValidUUID } = require('../utils/webhookValidation');
+const { SimpleRateLimiter } = require('../middleware/rateLimiter');
+
+const webhookLimiter = new SimpleRateLimiter({
+    windowMs: 60 * 1000,
+    max: 60,
+    message: 'Слишком много запросов к webhook. Попробуйте позже.',
+    standardHeaders: true,
+    legacyHeaders: false
+});
 
 /**
  * Middleware: verify HMAC webhook signature.
@@ -37,6 +46,8 @@ async function verifyWebhook(req, res, next) {
         return res.status(500).json({ success: false, message: 'Internal server error' });
     }
 }
+
+router.use(webhookLimiter.middleware());
 
 /**
  * POST /api/webhooks/uk/building
@@ -97,4 +108,5 @@ router.post('/request', verifyWebhook, async (req, res) => {
 });
 
 router.verifyWebhook = verifyWebhook;
+router.webhookLimiter = webhookLimiter;
 module.exports = router;
