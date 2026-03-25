@@ -39,8 +39,9 @@ jest.mock('../../../src/middleware/auth', () => ({
 // ---------------------------------------------------------------------------
 jest.mock('../../../src/middleware/rateLimiter', () => {
     const passThrough = (_req, _res, next) => next();
-    const limiterObj = { middleware: () => passThrough };
+    const limiterObj = { middleware: () => passThrough, destroy: () => {} };
     return {
+        SimpleRateLimiter: jest.fn().mockImplementation(() => limiterObj),
         applyTelemetryRateLimit: passThrough,
         applyCrudRateLimit: passThrough,
         applyAnalyticsRateLimit: passThrough,
