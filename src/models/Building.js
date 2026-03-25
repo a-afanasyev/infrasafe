@@ -316,6 +316,71 @@ class Building {
             client.release();
         }
     }
+    static async findByExternalId(externalId) {
+        try {
+            const { rows } = await db.query(
+                'SELECT * FROM buildings WHERE external_id = $1',
+                [externalId]
+            );
+            return rows.length ? rows[0] : null;
+        } catch (error) {
+            logger.error(`Error in Building.findByExternalId: ${error.message}`);
+            throw createError(`Failed to find building by external_id: ${error.message}`, 500);
+        }
+    }
+
+    static async createFromUK(data) {
+        try {
+            const { external_id, name, address, town } = data;
+            const { rows } = await db.query(
+                `INSERT INTO buildings (external_id, name, address, town)
+                 VALUES ($1, $2, $3, $4)
+                 RETURNING *`,
+                [external_id, name, address, town]
+            );
+            logger.info(`Created building from UK with ID: ${rows[0].building_id}, external_id: ${external_id}`);
+            return rows[0];
+        } catch (error) {
+            logger.error(`Error in Building.createFromUK: ${error.message}`);
+            throw createError(`Failed to create building from UK: ${error.message}`, 500);
+        }
+    }
+
+    static async updateFromUK(id, ukFields) {
+        try {
+            const { name, address, town } = ukFields;
+            const { rows } = await db.query(
+                `UPDATE buildings
+                 SET name = $1, address = $2, town = $3, uk_deleted_at = NULL
+                 WHERE building_id = $4
+                 RETURNING *`,
+                [name, address, town, id]
+            );
+            if (!rows.length) return null;
+            logger.info(`Updated building ${id} from UK sync`);
+            return rows[0];
+        } catch (error) {
+            logger.error(`Error in Building.updateFromUK: ${error.message}`);
+            throw createError(`Failed to update building from UK: ${error.message}`, 500);
+        }
+    }
+
+    static async softDelete(id) {
+        try {
+            const { rows } = await db.query(
+                `UPDATE buildings SET uk_deleted_at = NOW()
+                 WHERE building_id = $1
+                 RETURNING *`,
+                [id]
+            );
+            if (!rows.length) return null;
+            logger.info(`Soft-deleted building ${id} (UK removal)`);
+            return rows[0];
+        } catch (error) {
+            logger.error(`Error in Building.softDelete: ${error.message}`);
+            throw createError(`Failed to soft-delete building: ${error.message}`, 500);
+        }
+    }
 }
 
 module.exports = Building;
