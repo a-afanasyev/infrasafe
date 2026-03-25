@@ -7,6 +7,7 @@ const ukIntegrationService = require('../services/ukIntegrationService');
 const IntegrationLog = require('../models/IntegrationLog');
 const AlertRule = require('../models/AlertRule');
 const logger = require('../utils/logger');
+const { isValidDirection, isValidStatus, isValidEntityType } = require('../utils/webhookValidation');
 
 // All integration routes require admin access
 router.use(isAdmin);
@@ -55,6 +56,16 @@ const handlers = {
             const rawLimit = parseInt(req.query.limit, 10);
             const page = (!isNaN(rawPage) && rawPage >= 1) ? rawPage : undefined;
             const limit = (!isNaN(rawLimit) && rawLimit >= 1 && rawLimit <= 100) ? rawLimit : undefined;
+
+            if (direction !== undefined && !isValidDirection(direction)) {
+                return res.status(400).json({ success: false, message: 'Invalid direction filter' });
+            }
+            if (status !== undefined && !isValidStatus(status)) {
+                return res.status(400).json({ success: false, message: 'Invalid status filter' });
+            }
+            if (entity_type !== undefined && !isValidEntityType(entity_type)) {
+                return res.status(400).json({ success: false, message: 'Invalid entity_type filter' });
+            }
 
             const filters = {};
             if (direction !== undefined) filters.direction = direction;

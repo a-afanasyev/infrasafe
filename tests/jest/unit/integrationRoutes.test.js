@@ -19,6 +19,12 @@ jest.mock('../../../src/utils/logger', () => ({
     warn: jest.fn(),
     debug: jest.fn()
 }));
+jest.mock('../../../src/utils/webhookValidation', () => ({
+    isValidDirection: jest.fn(),
+    isValidStatus: jest.fn(),
+    isValidEntityType: jest.fn()
+}));
+const { isValidDirection, isValidStatus, isValidEntityType } = require('../../../src/utils/webhookValidation');
 
 const ukIntegrationService = require('../../../src/services/ukIntegrationService');
 const IntegrationLog = require('../../../src/models/IntegrationLog');
@@ -117,18 +123,24 @@ describe('integrationRoutes handlers', () => {
     // getLogs
     // -------------------------------------------------------------------------
     describe('getLogs', () => {
+        beforeEach(() => {
+            isValidDirection.mockReturnValue(true);
+            isValidStatus.mockReturnValue(true);
+            isValidEntityType.mockReturnValue(true);
+        });
+
         test('returns paginated logs passing parsed page/limit to findAll', async () => {
             const mockResult = { logs: [{ id: 1 }, { id: 2 }], total: 2 };
             IntegrationLog.findAll.mockResolvedValue(mockResult);
 
             const { req, res } = createMockReqRes(
                 {},
-                { page: '2', limit: '10', direction: 'inbound', status: 'success' }
+                { page: '2', limit: '10', direction: 'from_uk', status: 'success' }
             );
             await handlers.getLogs(req, res);
 
             expect(IntegrationLog.findAll).toHaveBeenCalledWith(
-                expect.objectContaining({ page: 2, limit: 10, direction: 'inbound', status: 'success' })
+                expect.objectContaining({ page: 2, limit: 10, direction: 'from_uk', status: 'success' })
             );
             expect(res.json).toHaveBeenCalledWith({ success: true, data: mockResult });
         });
@@ -141,6 +153,33 @@ describe('integrationRoutes handlers', () => {
 
             expect(res.status).toHaveBeenCalledWith(500);
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
+        });
+
+        it('rejects invalid direction filter with 400', async () => {
+            isValidDirection.mockReturnValue(false);
+            const req = { query: { direction: 'INVALID' } };
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+            await handlers.getLogs(req, res);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({ message: 'Invalid direction filter' })
+            );
+        });
+
+        it('rejects invalid status filter with 400', async () => {
+            isValidStatus.mockReturnValue(false);
+            const req = { query: { status: 'hacked' } };
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+            await handlers.getLogs(req, res);
+            expect(res.status).toHaveBeenCalledWith(400);
+        });
+
+        it('rejects invalid entity_type filter with 400', async () => {
+            isValidEntityType.mockReturnValue(false);
+            const req = { query: { entity_type: 'user' } };
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+            await handlers.getLogs(req, res);
+            expect(res.status).toHaveBeenCalledWith(400);
         });
     });
 
