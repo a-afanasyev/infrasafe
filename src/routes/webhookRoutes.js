@@ -69,6 +69,20 @@ router.post('/building', verifyWebhook, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Missing required field: building' });
         }
 
+        if (!Number.isInteger(building.id) || building.id <= 0) {
+            return res.status(400).json({ success: false, message: 'Invalid building.id: must be a positive integer' });
+        }
+
+        if (building.name && String(building.name).length > 500) {
+            return res.status(400).json({ success: false, message: 'building.name exceeds maximum length' });
+        }
+        if (building.address && String(building.address).length > 500) {
+            return res.status(400).json({ success: false, message: 'building.address exceeds maximum length' });
+        }
+        if (building.town && String(building.town).length > 200) {
+            return res.status(400).json({ success: false, message: 'building.town exceeds maximum length' });
+        }
+
         if (await ukIntegrationService.isDuplicateEvent(event_id)) {
             return res.status(200).json({ success: true, message: 'Already processed' });
         }
@@ -102,7 +116,7 @@ router.post('/request', verifyWebhook, async (req, res) => {
             event_id,
             direction: 'from_uk',
             entity_type: 'request',
-            entity_id: req.body.request?.request_number,
+            entity_id: String(req.body.request?.request_number ?? '').slice(0, 50) || null,
             action: event || 'request.unknown',
             payload: req.body,
             status: 'success'

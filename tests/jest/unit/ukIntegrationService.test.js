@@ -258,6 +258,7 @@ describe('UKIntegrationService', () => {
 
         beforeEach(() => {
             IntegrationLog.create.mockResolvedValue({ id: 1 });
+            IntegrationLog.updateStatus.mockResolvedValue({ id: 1 });
             isValidBuildingEvent.mockImplementation(e =>
                 ['building.created', 'building.updated', 'building.deleted'].includes(e)
             );
@@ -324,7 +325,7 @@ describe('UKIntegrationService', () => {
             expect(Building.softDelete).not.toHaveBeenCalled();
         });
 
-        it('logs integration event on success', async () => {
+        it('creates pending log entry then updates to success', async () => {
             Building.findByExternalId.mockResolvedValue(null);
             Building.createFromUK.mockResolvedValue({ building_id: 18 });
 
@@ -335,22 +336,31 @@ describe('UKIntegrationService', () => {
                     direction: 'from_uk',
                     entity_type: 'building',
                     action: 'building.created',
-                    status: 'success'
+                    status: 'pending'
                 })
             );
+            expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(1, 'success');
         });
 
-        it('logs error status and re-throws when processing fails', async () => {
+        it('updates log to error status and re-throws when processing fails', async () => {
             Building.findByExternalId.mockRejectedValue(new Error('DB down'));
 
             await expect(service.handleBuildingWebhook(basePayload)).rejects.toThrow('DB down');
 
             expect(IntegrationLog.create).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    status: 'error',
-                    error_message: 'DB down'
-                })
+                expect.objectContaining({ status: 'pending' })
             );
+            expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(1, 'error', 'DB down');
+        });
+
+        it('silently skips when concurrent duplicate event_id (UNIQUE violation)', async () => {
+            const uniqueError = new Error('duplicate key');
+            uniqueError.code = '23505';
+            IntegrationLog.create.mockRejectedValue(uniqueError);
+
+            await service.handleBuildingWebhook(basePayload);
+
+            expect(Building.findByExternalId).not.toHaveBeenCalled();
         });
 
         it('throws on invalid event type', async () => {

@@ -91,8 +91,13 @@ describe('Building UK Sync Methods', () => {
 
         it('returns null when building not found', async () => {
             db.query.mockResolvedValue({ rows: [] });
-            const result = await Building.updateFromUK(999, { name: 'X' });
+            const result = await Building.updateFromUK(999, { name: 'X', address: 'Y', town: 'Z' });
             expect(result).toBeNull();
+        });
+
+        it('throws when required UK fields are missing', async () => {
+            await expect(Building.updateFromUK(5, { name: 'X' }))
+                .rejects.toThrow('UK sync requires name, address, and town fields');
         });
     });
 

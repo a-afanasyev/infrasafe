@@ -171,6 +171,28 @@ class UKIntegrationService {
 
         const externalId = this._generateExternalId(ukBuilding.id);
 
+        // Insert pending log entry first — UNIQUE constraint on event_id
+        // prevents concurrent processing of the same event (TOCTOU race protection)
+        let logEntry;
+        try {
+            logEntry = await IntegrationLog.create({
+                event_id,
+                direction: 'from_uk',
+                entity_type: 'building',
+                entity_id: ukBuilding.id?.toString(),
+                action: event,
+                payload,
+                status: 'pending'
+            });
+        } catch (logError) {
+            // UNIQUE violation means another request is already processing this event
+            if (logError.code === '23505') {
+                logger.info(`Concurrent duplicate event_id ${event_id}, skipping`);
+                return;
+            }
+            throw logError;
+        }
+
         try {
             const existing = await Building.findByExternalId(externalId);
 
@@ -201,30 +223,13 @@ class UKIntegrationService {
                 }
             }
 
-            await IntegrationLog.create({
-                event_id,
-                direction: 'from_uk',
-                entity_type: 'building',
-                entity_id: ukBuilding.id?.toString(),
-                action: event,
-                payload,
-                status: 'success'
-            });
+            await IntegrationLog.updateStatus(logEntry.id, 'success');
         } catch (error) {
             logger.error(`handleBuildingWebhook error: ${error.message}`);
             try {
-                await IntegrationLog.create({
-                    event_id,
-                    direction: 'from_uk',
-                    entity_type: 'building',
-                    entity_id: ukBuilding.id?.toString(),
-                    action: event,
-                    payload,
-                    status: 'error',
-                    error_message: error.message
-                });
+                await IntegrationLog.updateStatus(logEntry.id, 'error', error.message);
             } catch (logError) {
-                logger.error(`Failed to log integration error: ${logError.message}`);
+                logger.error(`Failed to update integration log error: ${logError.message}`);
             }
             throw error;
         }

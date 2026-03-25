@@ -257,6 +257,25 @@ describe('webhookRoutes', () => {
             expect(res.body.message).toBe('Missing required field: building');
         });
 
+        it('rejects non-integer building.id with 400', async () => {
+            ukIntegrationService.isEnabled.mockResolvedValue(true);
+            ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);
+
+            const body = {
+                event_id: '550e8400-e29b-41d4-a716-446655440000',
+                event: 'building.created',
+                building: { id: 'abc', name: 'Test' }
+            };
+
+            const res = await request(app)
+                .post('/building')
+                .set('x-webhook-signature', 't=1234567890,v1=abc123')
+                .send(body);
+
+            expect(res.status).toBe(400);
+            expect(res.body.message).toContain('Invalid building.id');
+        });
+
         it('rejects non-UUID event_id with 400', async () => {
             ukIntegrationService.isEnabled.mockResolvedValue(true);
             ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);

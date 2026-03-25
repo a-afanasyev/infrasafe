@@ -349,6 +349,9 @@ class Building {
     static async updateFromUK(id, ukFields) {
         try {
             const { name, address, town } = ukFields;
+            if (name === undefined || address === undefined || town === undefined) {
+                throw createError('UK sync requires name, address, and town fields', 400);
+            }
             const { rows } = await db.query(
                 `UPDATE buildings
                  SET name = $1, address = $2, town = $3, uk_deleted_at = NULL
