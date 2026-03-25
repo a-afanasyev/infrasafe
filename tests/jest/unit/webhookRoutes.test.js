@@ -4,7 +4,8 @@ jest.mock('../../../src/services/ukIntegrationService', () => ({
     isEnabled: jest.fn(),
     verifyWebhookSignature: jest.fn(),
     isDuplicateEvent: jest.fn(),
-    logEvent: jest.fn()
+    logEvent: jest.fn(),
+    handleBuildingWebhook: jest.fn()
 }));
 jest.mock('../../../src/utils/logger', () => ({
     info: jest.fn(),
@@ -107,6 +108,87 @@ describe('webhookRoutes', () => {
                 expect.objectContaining({ success: false })
             );
             expect(next).not.toHaveBeenCalled();
+        });
+    });
+
+    const request = require('supertest');
+    const express = require('express');
+
+    describe('POST /building — building sync', () => {
+        let app;
+
+        beforeEach(() => {
+            app = express();
+            app.use(express.json({
+                verify: (req, res, buf) => { req.rawBody = buf.toString(); }
+            }));
+            app.use('/', webhookRoutes);
+        });
+
+        it('calls handleBuildingWebhook for building events', async () => {
+            ukIntegrationService.isEnabled.mockResolvedValue(true);
+            ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);
+            ukIntegrationService.isDuplicateEvent.mockResolvedValue(false);
+            ukIntegrationService.handleBuildingWebhook.mockResolvedValue();
+
+            const body = {
+                event_id: '550e8400-e29b-41d4-a716-446655440000',
+                event: 'building.created',
+                building: { id: 15, name: 'Дом 42', address: 'ул. Навои, 42', town: 'Ташкент' }
+            };
+
+            const res = await request(app)
+                .post('/building')
+                .set('x-webhook-signature', 't=1234567890,v1=abc123')
+                .send(body);
+
+            expect(res.status).toBe(200);
+            expect(res.body.success).toBe(true);
+            expect(ukIntegrationService.handleBuildingWebhook).toHaveBeenCalledWith(
+                expect.objectContaining({ event: 'building.created' })
+            );
+        });
+
+        it('returns 500 when handleBuildingWebhook throws', async () => {
+            ukIntegrationService.isEnabled.mockResolvedValue(true);
+            ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);
+            ukIntegrationService.isDuplicateEvent.mockResolvedValue(false);
+            ukIntegrationService.handleBuildingWebhook.mockRejectedValue(new Error('DB error'));
+
+            const body = {
+                event_id: '550e8400-e29b-41d4-a716-446655440000',
+                event: 'building.created',
+                building: { id: 15, name: 'Дом 42' }
+            };
+
+            const res = await request(app)
+                .post('/building')
+                .set('x-webhook-signature', 't=1234567890,v1=abc123')
+                .send(body);
+
+            expect(res.status).toBe(500);
+            expect(res.body.success).toBe(false);
+        });
+
+        it('returns 200 for duplicate event_id', async () => {
+            ukIntegrationService.isEnabled.mockResolvedValue(true);
+            ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);
+            ukIntegrationService.isDuplicateEvent.mockResolvedValue(true);
+
+            const body = {
+                event_id: '550e8400-e29b-41d4-a716-446655440000',
+                event: 'building.created',
+                building: { id: 15 }
+            };
+
+            const res = await request(app)
+                .post('/building')
+                .set('x-webhook-signature', 't=1234567890,v1=abc123')
+                .send(body);
+
+            expect(res.status).toBe(200);
+            expect(res.body.message).toBe('Already processed');
+            expect(ukIntegrationService.handleBuildingWebhook).not.toHaveBeenCalled();
         });
     });
 

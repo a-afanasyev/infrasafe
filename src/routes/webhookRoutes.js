@@ -43,21 +43,13 @@ async function verifyWebhook(req, res, next) {
  */
 router.post('/building', verifyWebhook, async (req, res) => {
     try {
-        const { event_id, event } = req.body;
+        const { event_id } = req.body;
 
         if (event_id && await ukIntegrationService.isDuplicateEvent(event_id)) {
             return res.status(200).json({ success: true, message: 'Already processed' });
         }
 
-        await ukIntegrationService.logEvent({
-            event_id,
-            direction: 'from_uk',
-            entity_type: 'building',
-            entity_id: req.body.building?.id?.toString(),
-            action: event || 'building.unknown',
-            payload: req.body,
-            status: 'success'
-        });
+        await ukIntegrationService.handleBuildingWebhook(req.body);
 
         return res.status(200).json({ success: true });
     } catch (error) {
