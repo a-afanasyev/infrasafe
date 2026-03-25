@@ -4,6 +4,7 @@ const express = require('express');
 const router = express.Router();
 const ukIntegrationService = require('../services/ukIntegrationService');
 const logger = require('../utils/logger');
+const { isValidUUID } = require('../utils/webhookValidation');
 
 /**
  * Middleware: verify HMAC webhook signature.
@@ -45,6 +46,10 @@ router.post('/building', verifyWebhook, async (req, res) => {
     try {
         const { event_id } = req.body;
 
+        if (event_id && !isValidUUID(event_id)) {
+            return res.status(400).json({ success: false, message: 'Invalid event_id format' });
+        }
+
         if (event_id && await ukIntegrationService.isDuplicateEvent(event_id)) {
             return res.status(200).json({ success: true, message: 'Already processed' });
         }
@@ -65,6 +70,10 @@ router.post('/building', verifyWebhook, async (req, res) => {
 router.post('/request', verifyWebhook, async (req, res) => {
     try {
         const { event_id, event } = req.body;
+
+        if (event_id && !isValidUUID(event_id)) {
+            return res.status(400).json({ success: false, message: 'Invalid event_id format' });
+        }
 
         if (event_id && await ukIntegrationService.isDuplicateEvent(event_id)) {
             return res.status(200).json({ success: true, message: 'Already processed' });

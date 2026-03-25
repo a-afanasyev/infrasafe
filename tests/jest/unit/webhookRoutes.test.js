@@ -13,6 +13,10 @@ jest.mock('../../../src/utils/logger', () => ({
     warn: jest.fn(),
     debug: jest.fn()
 }));
+jest.mock('../../../src/utils/webhookValidation', () => ({
+    isValidUUID: jest.fn()
+}));
+const { isValidUUID } = require('../../../src/utils/webhookValidation');
 
 const ukIntegrationService = require('../../../src/services/ukIntegrationService');
 const webhookRoutes = require('../../../src/routes/webhookRoutes');
@@ -123,6 +127,7 @@ describe('webhookRoutes', () => {
                 verify: (req, res, buf) => { req.rawBody = buf.toString(); }
             }));
             app.use('/', webhookRoutes);
+            isValidUUID.mockReturnValue(true); // default: valid UUID
         });
 
         it('calls handleBuildingWebhook for building events', async () => {
@@ -189,6 +194,27 @@ describe('webhookRoutes', () => {
             expect(res.status).toBe(200);
             expect(res.body.message).toBe('Already processed');
             expect(ukIntegrationService.handleBuildingWebhook).not.toHaveBeenCalled();
+        });
+
+        it('rejects non-UUID event_id with 400', async () => {
+            ukIntegrationService.isEnabled.mockResolvedValue(true);
+            ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);
+            isValidUUID.mockReturnValue(false);
+
+            const body = {
+                event_id: 'not-a-valid-uuid',
+                event: 'building.created',
+                building: { id: 15 }
+            };
+
+            const res = await request(app)
+                .post('/building')
+                .set('x-webhook-signature', 't=1234567890,v1=abc123')
+                .send(body);
+
+            expect(res.status).toBe(400);
+            expect(res.body.message).toBe('Invalid event_id format');
+            expect(ukIntegrationService.isDuplicateEvent).not.toHaveBeenCalled();
         });
     });
 
