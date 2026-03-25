@@ -20,11 +20,24 @@ jest.mock('../../../src/models/IntegrationLog', () => ({
     updateStatus: jest.fn()
 }));
 
+jest.mock('../../../src/models/Building', () => ({
+    findByExternalId: jest.fn(),
+    createFromUK: jest.fn(),
+    updateFromUK: jest.fn(),
+    softDelete: jest.fn()
+}));
+jest.mock('../../../src/utils/webhookValidation', () => ({
+    isValidBuildingEvent: jest.fn()
+}));
+
 // Require after mocks are set up
 const IntegrationConfig = require('../../../src/models/IntegrationConfig');
 const IntegrationLog = require('../../../src/models/IntegrationLog');
 const logger = require('../../../src/utils/logger');
 const service = require('../../../src/services/ukIntegrationService');
+
+const Building = require('../../../src/models/Building');
+const { isValidBuildingEvent } = require('../../../src/utils/webhookValidation');
 
 describe('UKIntegrationService', () => {
     beforeEach(() => {
@@ -232,6 +245,120 @@ describe('UKIntegrationService', () => {
             IntegrationLog.findByEventId.mockResolvedValue(null);
             const result = await service.isDuplicateEvent('new-456');
             expect(result).toBe(false);
+        });
+    });
+
+    describe('handleBuildingWebhook()', () => {
+        const basePayload = {
+            event_id: '550e8400-e29b-41d4-a716-446655440000',
+            event: 'building.created',
+            building: { id: 15, name: 'Дом 42', address: 'ул. Навои, 42', town: 'Ташкент' },
+            timestamp: '2026-03-24T14:30:00Z'
+        };
+
+        beforeEach(() => {
+            IntegrationLog.create.mockResolvedValue({ id: 1 });
+            isValidBuildingEvent.mockImplementation(e =>
+                ['building.created', 'building.updated', 'building.deleted'].includes(e)
+            );
+        });
+
+        it('creates a new building on building.created when not exists', async () => {
+            Building.findByExternalId.mockResolvedValue(null);
+            Building.createFromUK.mockResolvedValue({ building_id: 18 });
+
+            await service.handleBuildingWebhook(basePayload);
+
+            expect(Building.findByExternalId).toHaveBeenCalled();
+            expect(Building.createFromUK).toHaveBeenCalledWith(
+                expect.objectContaining({ name: 'Дом 42', address: 'ул. Навои, 42', town: 'Ташкент' })
+            );
+        });
+
+        it('updates existing building on building.created (idempotent)', async () => {
+            Building.findByExternalId.mockResolvedValue({ building_id: 5 });
+            Building.updateFromUK.mockResolvedValue({ building_id: 5 });
+
+            await service.handleBuildingWebhook(basePayload);
+
+            expect(Building.updateFromUK).toHaveBeenCalledWith(5, expect.objectContaining({ name: 'Дом 42' }));
+            expect(Building.createFromUK).not.toHaveBeenCalled();
+        });
+
+        it('updates building on building.updated', async () => {
+            const payload = { ...basePayload, event: 'building.updated' };
+            Building.findByExternalId.mockResolvedValue({ building_id: 5 });
+            Building.updateFromUK.mockResolvedValue({ building_id: 5 });
+
+            await service.handleBuildingWebhook(payload);
+
+            expect(Building.updateFromUK).toHaveBeenCalledWith(5, expect.objectContaining({ name: 'Дом 42' }));
+        });
+
+        it('creates building on building.updated if not exists (late-arriving create)', async () => {
+            const payload = { ...basePayload, event: 'building.updated' };
+            Building.findByExternalId.mockResolvedValue(null);
+            Building.createFromUK.mockResolvedValue({ building_id: 18 });
+
+            await service.handleBuildingWebhook(payload);
+
+            expect(Building.createFromUK).toHaveBeenCalled();
+        });
+
+        it('soft-deletes building on building.deleted', async () => {
+            const payload = { ...basePayload, event: 'building.deleted' };
+            Building.findByExternalId.mockResolvedValue({ building_id: 5 });
+            Building.softDelete.mockResolvedValue({ building_id: 5 });
+
+            await service.handleBuildingWebhook(payload);
+
+            expect(Building.softDelete).toHaveBeenCalledWith(5);
+        });
+
+        it('ignores building.deleted when building not found', async () => {
+            const payload = { ...basePayload, event: 'building.deleted' };
+            Building.findByExternalId.mockResolvedValue(null);
+
+            await service.handleBuildingWebhook(payload);
+
+            expect(Building.softDelete).not.toHaveBeenCalled();
+        });
+
+        it('logs integration event on success', async () => {
+            Building.findByExternalId.mockResolvedValue(null);
+            Building.createFromUK.mockResolvedValue({ building_id: 18 });
+
+            await service.handleBuildingWebhook(basePayload);
+
+            expect(IntegrationLog.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    direction: 'from_uk',
+                    entity_type: 'building',
+                    action: 'building.created',
+                    status: 'success'
+                })
+            );
+        });
+
+        it('logs error status and re-throws when processing fails', async () => {
+            Building.findByExternalId.mockRejectedValue(new Error('DB down'));
+
+            await expect(service.handleBuildingWebhook(basePayload)).rejects.toThrow('DB down');
+
+            expect(IntegrationLog.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    status: 'error',
+                    error_message: 'DB down'
+                })
+            );
+        });
+
+        it('throws on invalid event type', async () => {
+            isValidBuildingEvent.mockReturnValue(false);
+            const payload = { ...basePayload, event: 'building.migrated' };
+
+            await expect(service.handleBuildingWebhook(payload))
+                .rejects.toThrow('Unknown building event');
         });
     });
 });

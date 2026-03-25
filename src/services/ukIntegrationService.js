@@ -4,6 +4,8 @@ const crypto = require('crypto');
 const IntegrationConfig = require('../models/IntegrationConfig');
 const IntegrationLog = require('../models/IntegrationLog');
 const logger = require('../utils/logger');
+const Building = require('../models/Building');
+const { isValidBuildingEvent } = require('../utils/webhookValidation');
 
 const ALLOWED_CONFIG_KEYS = ['uk_integration_enabled', 'uk_api_url', 'uk_frontend_url'];
 const SENSITIVE_KEYS = ['uk_webhook_secret', 'uk_service_user', 'uk_service_password'];
@@ -132,6 +134,100 @@ class UKIntegrationService {
     async isDuplicateEvent(eventId) {
         const entry = await IntegrationLog.findByEventId(eventId);
         return entry !== null;
+    }
+
+    /**
+     * Generate a deterministic external_id for a UK building.
+     * Uses SHA-256 hash of "uk-building-{id}" truncated to UUID format.
+     * This is NOT a standard UUID v4/v5 — it is a deterministic hash-based ID
+     * used solely for deduplication. The same UK building.id always produces
+     * the same external_id, enabling idempotent create/update operations.
+     * @param {number} ukBuildingId
+     * @returns {string} UUID-formatted string (accepted by PostgreSQL UUID type)
+     */
+    _generateExternalId(ukBuildingId) {
+        const hash = crypto.createHash('sha256').update(`uk-building-${ukBuildingId}`).digest('hex');
+        return [
+            hash.substring(0, 8),
+            hash.substring(8, 12),
+            hash.substring(12, 16),
+            hash.substring(16, 20),
+            hash.substring(20, 32)
+        ].join('-');
+    }
+
+    /**
+     * Process a building webhook from UK system.
+     * Handles building.created, building.updated, building.deleted events.
+     * @param {Object} payload - Webhook payload with event, building, event_id
+     * @returns {Promise<void>}
+     */
+    async handleBuildingWebhook(payload) {
+        const { event, building: ukBuilding, event_id } = payload;
+
+        if (!isValidBuildingEvent(event)) {
+            throw new Error(`Unknown building event: ${event}`);
+        }
+
+        const externalId = this._generateExternalId(ukBuilding.id);
+
+        try {
+            const existing = await Building.findByExternalId(externalId);
+
+            if (event === 'building.deleted') {
+                if (existing) {
+                    await Building.softDelete(existing.building_id);
+                    logger.info(`Soft-deleted building ${existing.building_id} (UK building ${ukBuilding.id})`);
+                } else {
+                    logger.warn(`Building with external_id ${externalId} not found for deletion, ignoring`);
+                }
+            } else {
+                // building.created or building.updated — upsert logic
+                // Note: UK webhook also sends `contacts` but InfraSafe's buildings table
+                // does not have a contacts column — contacts are managed via management_company.
+                // The contacts field is intentionally not stored.
+                const ukFields = {
+                    name: ukBuilding.name,
+                    address: ukBuilding.address,
+                    town: ukBuilding.town
+                };
+
+                if (existing) {
+                    await Building.updateFromUK(existing.building_id, ukFields);
+                    logger.info(`Updated building ${existing.building_id} from UK (event: ${event})`);
+                } else {
+                    await Building.createFromUK({ external_id: externalId, ...ukFields });
+                    logger.info(`Created building from UK building ${ukBuilding.id} (event: ${event})`);
+                }
+            }
+
+            await IntegrationLog.create({
+                event_id,
+                direction: 'from_uk',
+                entity_type: 'building',
+                entity_id: ukBuilding.id?.toString(),
+                action: event,
+                payload,
+                status: 'success'
+            });
+        } catch (error) {
+            logger.error(`handleBuildingWebhook error: ${error.message}`);
+            try {
+                await IntegrationLog.create({
+                    event_id,
+                    direction: 'from_uk',
+                    entity_type: 'building',
+                    entity_id: ukBuilding.id?.toString(),
+                    action: event,
+                    payload,
+                    status: 'error',
+                    error_message: error.message
+                });
+            } catch (logError) {
+                logger.error(`Failed to log integration error: ${logError.message}`);
+            }
+            throw error;
+        }
     }
 }
 
