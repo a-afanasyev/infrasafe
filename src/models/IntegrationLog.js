@@ -134,7 +134,9 @@ class IntegrationLog {
                 limit = 20
             } = filters;
 
-            const offset = (page - 1) * limit;
+            const safePage = Math.max(1, page || 1);
+            const safeLimit = Math.min(Math.max(1, limit || 20), 100);
+            const offset = (safePage - 1) * safeLimit;
             const params = [];
             const conditions = [];
 
@@ -169,7 +171,7 @@ class IntegrationLog {
             const { rows: countRows } = await db.query(countQuery, params);
             const total = parseInt(countRows[0].count);
 
-            const dataParams = [...params, limit, offset];
+            const dataParams = [...params, safeLimit, offset];
             const dataQuery = `SELECT * FROM integration_log ${whereClause} ORDER BY created_at DESC LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`;
             const { rows: logs } = await db.query(dataQuery, dataParams);
 

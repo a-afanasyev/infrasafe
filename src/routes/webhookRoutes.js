@@ -21,7 +21,10 @@ async function verifyWebhook(req, res, next) {
             return res.status(401).json({ success: false, message: 'Missing webhook signature' });
         }
 
-        const rawBody = req.rawBody || JSON.stringify(req.body);
+        const rawBody = req.rawBody;
+        if (!rawBody) {
+            return res.status(400).json({ success: false, message: 'Invalid content type' });
+        }
         const valid = ukIntegrationService.verifyWebhookSignature(rawBody, signature);
         if (!valid) {
             return res.status(401).json({ success: false, message: 'Invalid webhook signature' });

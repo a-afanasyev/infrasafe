@@ -70,6 +70,8 @@ class UKIntegrationService {
                 return false;
             }
 
+            if (!signatureHeader) return false;
+
             // Parse header: "t=<timestamp>,v1=<hex_signature>"
             const parts = {};
             for (const part of signatureHeader.split(',')) {

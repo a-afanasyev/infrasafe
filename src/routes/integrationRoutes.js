@@ -51,8 +51,10 @@ const handlers = {
     async getLogs(req, res) {
         try {
             const { direction, status, entity_type, date_from, date_to } = req.query;
-            const page = req.query.page ? parseInt(req.query.page, 10) : undefined;
-            const limit = req.query.limit ? parseInt(req.query.limit, 10) : undefined;
+            const rawPage = parseInt(req.query.page, 10);
+            const rawLimit = parseInt(req.query.limit, 10);
+            const page = (!isNaN(rawPage) && rawPage >= 1) ? rawPage : undefined;
+            const limit = (!isNaN(rawLimit) && rawLimit >= 1 && rawLimit <= 100) ? rawLimit : undefined;
 
             const filters = {};
             if (direction !== undefined) filters.direction = direction;
@@ -78,6 +80,9 @@ const handlers = {
     async getLogById(req, res) {
         try {
             const id = parseInt(req.params.id, 10);
+            if (isNaN(id) || id < 1) {
+                return res.status(400).json({ success: false, message: 'Invalid log entry ID' });
+            }
             const log = await IntegrationLog.findById(id);
             if (!log) {
                 return res.status(404).json({ success: false, message: 'Log entry not found' });
@@ -97,6 +102,9 @@ const handlers = {
     async retryLog(req, res) {
         try {
             const id = parseInt(req.params.id, 10);
+            if (isNaN(id) || id < 1) {
+                return res.status(400).json({ success: false, message: 'Invalid log entry ID' });
+            }
             const log = await IntegrationLog.findById(id);
             if (!log) {
                 return res.status(404).json({ success: false, message: 'Log entry not found' });
