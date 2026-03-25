@@ -181,6 +181,26 @@ describe('integrationRoutes handlers', () => {
             await handlers.getLogs(req, res);
             expect(res.status).toHaveBeenCalledWith(400);
         });
+
+        it('rejects invalid date_from with 400', async () => {
+            const req = { query: { date_from: 'not-a-date' } };
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+            await handlers.getLogs(req, res);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({ message: 'Invalid date_from format' })
+            );
+        });
+
+        it('rejects invalid date_to with 400', async () => {
+            const req = { query: { date_to: 'xyz' } };
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+            await handlers.getLogs(req, res);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({ message: 'Invalid date_to format' })
+            );
+        });
     });
 
     // -------------------------------------------------------------------------

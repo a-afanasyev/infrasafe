@@ -166,7 +166,7 @@ class UKIntegrationService {
         const { event, building: ukBuilding, event_id } = payload;
 
         if (!isValidBuildingEvent(event)) {
-            throw new Error(`Unknown building event: ${event}`);
+            throw new Error('Invalid building event type');
         }
 
         const externalId = this._generateExternalId(ukBuilding.id);

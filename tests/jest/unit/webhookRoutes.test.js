@@ -202,6 +202,61 @@ describe('webhookRoutes', () => {
             expect(ukIntegrationService.handleBuildingWebhook).not.toHaveBeenCalled();
         });
 
+        it('rejects missing event_id with 400', async () => {
+            ukIntegrationService.isEnabled.mockResolvedValue(true);
+            ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);
+            isValidUUID.mockReturnValue(false);
+
+            const body = {
+                event: 'building.created',
+                building: { id: 15 }
+            };
+
+            const res = await request(app)
+                .post('/building')
+                .set('x-webhook-signature', 't=1234567890,v1=abc123')
+                .send(body);
+
+            expect(res.status).toBe(400);
+            expect(res.body.message).toBe('Invalid or missing event_id');
+        });
+
+        it('rejects missing event field with 400', async () => {
+            ukIntegrationService.isEnabled.mockResolvedValue(true);
+            ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);
+
+            const body = {
+                event_id: '550e8400-e29b-41d4-a716-446655440000',
+                building: { id: 15 }
+            };
+
+            const res = await request(app)
+                .post('/building')
+                .set('x-webhook-signature', 't=1234567890,v1=abc123')
+                .send(body);
+
+            expect(res.status).toBe(400);
+            expect(res.body.message).toBe('Missing required field: event');
+        });
+
+        it('rejects missing building field with 400', async () => {
+            ukIntegrationService.isEnabled.mockResolvedValue(true);
+            ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);
+
+            const body = {
+                event_id: '550e8400-e29b-41d4-a716-446655440000',
+                event: 'building.created'
+            };
+
+            const res = await request(app)
+                .post('/building')
+                .set('x-webhook-signature', 't=1234567890,v1=abc123')
+                .send(body);
+
+            expect(res.status).toBe(400);
+            expect(res.body.message).toBe('Missing required field: building');
+        });
+
         it('rejects non-UUID event_id with 400', async () => {
             ukIntegrationService.isEnabled.mockResolvedValue(true);
             ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);
@@ -219,7 +274,7 @@ describe('webhookRoutes', () => {
                 .send(body);
 
             expect(res.status).toBe(400);
-            expect(res.body.message).toBe('Invalid event_id format');
+            expect(res.body.message).toBe('Invalid or missing event_id');
             expect(ukIntegrationService.isDuplicateEvent).not.toHaveBeenCalled();
         });
     });

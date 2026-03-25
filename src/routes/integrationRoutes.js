@@ -67,6 +67,13 @@ const handlers = {
                 return res.status(400).json({ success: false, message: 'Invalid entity_type filter' });
             }
 
+            if (date_from !== undefined && isNaN(Date.parse(date_from))) {
+                return res.status(400).json({ success: false, message: 'Invalid date_from format' });
+            }
+            if (date_to !== undefined && isNaN(Date.parse(date_to))) {
+                return res.status(400).json({ success: false, message: 'Invalid date_to format' });
+            }
+
             const filters = {};
             if (direction !== undefined) filters.direction = direction;
             if (status !== undefined) filters.status = status;

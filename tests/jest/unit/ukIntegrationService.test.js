@@ -358,7 +358,7 @@ describe('UKIntegrationService', () => {
             const payload = { ...basePayload, event: 'building.migrated' };
 
             await expect(service.handleBuildingWebhook(payload))
-                .rejects.toThrow('Unknown building event');
+                .rejects.toThrow('Invalid building event type');
         });
     });
 });

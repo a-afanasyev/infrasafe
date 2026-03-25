@@ -16,15 +16,16 @@ class IntegrationLog {
                 entity_id,
                 action,
                 payload,
-                status = 'pending'
+                status = 'pending',
+                error_message = null
             } = data;
 
             const { rows } = await db.query(
                 `INSERT INTO integration_log
-                (event_id, direction, entity_type, entity_id, action, payload, status)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                (event_id, direction, entity_type, entity_id, action, payload, status, error_message)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 RETURNING *`,
-                [event_id, direction, entity_type, entity_id, action, JSON.stringify(payload), status]
+                [event_id, direction, entity_type, entity_id, action, JSON.stringify(payload), status, error_message]
             );
 
             logger.info(`Created integration log entry with ID: ${rows[0].id}`);

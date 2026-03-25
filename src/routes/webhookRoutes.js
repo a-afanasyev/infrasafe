@@ -55,13 +55,21 @@ router.use(webhookLimiter.middleware());
  */
 router.post('/building', verifyWebhook, async (req, res) => {
     try {
-        const { event_id } = req.body;
+        const { event_id, event, building } = req.body;
 
-        if (event_id && !isValidUUID(event_id)) {
-            return res.status(400).json({ success: false, message: 'Invalid event_id format' });
+        if (!event_id || !isValidUUID(event_id)) {
+            return res.status(400).json({ success: false, message: 'Invalid or missing event_id' });
         }
 
-        if (event_id && await ukIntegrationService.isDuplicateEvent(event_id)) {
+        if (!event || typeof event !== 'string') {
+            return res.status(400).json({ success: false, message: 'Missing required field: event' });
+        }
+
+        if (!building || typeof building !== 'object' || typeof building.id === 'undefined') {
+            return res.status(400).json({ success: false, message: 'Missing required field: building' });
+        }
+
+        if (await ukIntegrationService.isDuplicateEvent(event_id)) {
             return res.status(200).json({ success: true, message: 'Already processed' });
         }
 
@@ -82,11 +90,11 @@ router.post('/request', verifyWebhook, async (req, res) => {
     try {
         const { event_id, event } = req.body;
 
-        if (event_id && !isValidUUID(event_id)) {
-            return res.status(400).json({ success: false, message: 'Invalid event_id format' });
+        if (!event_id || !isValidUUID(event_id)) {
+            return res.status(400).json({ success: false, message: 'Invalid or missing event_id' });
         }
 
-        if (event_id && await ukIntegrationService.isDuplicateEvent(event_id)) {
+        if (await ukIntegrationService.isDuplicateEvent(event_id)) {
             return res.status(200).json({ success: true, message: 'Already processed' });
         }
 
