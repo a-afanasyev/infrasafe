@@ -4,9 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-InfraSafe is a digital IoT monitoring platform for multi-apartment buildings (Russian-language UI). It collects data from intelligent controllers (industrial PCs with sensors), processes metrics, and provides real-time visualization through interactive Leaflet maps and analytics dashboards. The system monitors electrical supply, water systems, heating, and environmental conditions with automated alerting.
+InfraSafe is a digital IoT monitoring platform for multi-apartment buildings (Russian-language UI). It collects data from intelligent controllers (industrial PCs with sensors), processes metrics, and provides real-time visualization through interactive Leaflet maps and analytics dashboards. The system monitors electrical supply, water systems, heating, and environmental conditions with automated alerting. Includes integration module with external UK (Управляющая Компания) management bot for bidirectional building and request synchronization.
 
 **Tech stack**: Node.js 20+ / Express.js backend, PostgreSQL 15+ with PostGIS, vanilla JavaScript frontend (Leaflet.js + Chart.js), Docker Compose orchestration, Nginx reverse proxy.
+
+**Active branches**:
+- `main` — production backend + legacy frontend
+- `feature/frontend-redesign` — new frontend-design/ (Inter font, design tokens, dark/light themes, responsive dashboard)
 
 ## Key Commands
 
@@ -46,24 +50,25 @@ psql postgresql://postgres:postgres@localhost:5435/infrasafe
 # Init scripts run automatically via Docker entrypoint from database/init/
 # Schema: database/init/01_init_database.sql
 # Seed data: database/init/02_seed_data.sql
-# Migrations: database/migrations/003-010
+# Migrations: database/migrations/003-011
+# UK Integration: database/migrations/011_uk_integration.sql
 ```
 
 ## Architecture
 
 ### Three-Layer Backend (src/)
 1. **Controllers** (`src/controllers/`) - HTTP handling, validation, response formatting
-2. **Services** (`src/services/`) - Business logic, caching, circuit breaker
+2. **Services** (`src/services/`) - Business logic, caching, circuit breaker, UK integration
 3. **Models** (`src/models/`) - Direct SQL queries via `pg` Pool (no ORM)
 
 ### Request Flow
-`Nginx (8080)` -> `/api/*` proxied to -> `Express (3000)` -> `src/routes/index.js` (main router) -> per-entity route files -> controllers -> services -> models -> PostgreSQL
+`Nginx (8088)` -> `/api/*` proxied to -> `Express (3000)` -> `src/routes/index.js` (main router) -> per-entity route files -> controllers -> services -> models -> PostgreSQL
 
 ### Authentication
 - **Default-deny JWT** middleware in `src/routes/index.js` — all routes require auth by default
-- Public routes allowlist: POST `/auth/login`, POST `/auth/register`, POST `/auth/refresh`, POST `/metrics/telemetry`, GET `/buildings-metrics`, GET `/`
+- Public routes allowlist: POST `/auth/login`, POST `/auth/register`, POST `/auth/refresh`, POST `/metrics/telemetry`, GET `/buildings-metrics`, GET `/`, POST `/webhooks/uk/building`, POST `/webhooks/uk/request`
 - `optionalAuth` on `/buildings-metrics` — anonymous gets truncated data, authenticated gets full metrics
-- `isAdmin` guards on: admin routes, analytics transformer CRUD, power-analytics refresh, controller status updates
+- `isAdmin` guards on: admin routes, analytics transformer CRUD, power-analytics refresh, controller status updates, integration config/logs/rules
 - JWT with refresh tokens, blacklist, and account locking (`src/middleware/auth.js`)
 
 ### Key Patterns
@@ -76,6 +81,10 @@ psql postgresql://postgres:postgres@localhost:5435/infrasafe
 - **Rate Limiting**: `src/middleware/rateLimiter.js` — brute-force and DDoS protection
 - **Graceful Shutdown**: SIGTERM/SIGINT handling in `src/server.js` — close HTTP server + DB pool
 - **Health Check**: `GET /health` — DB ping, returns `{ status: 'healthy' }` or 503
+- **Webhook HMAC Verification**: `src/services/ukIntegrationService.js` — HMAC-SHA256 signature with replay protection (300s tolerance), format `t=<timestamp>,v1=<hex>`
+- **Webhook Validation**: `src/utils/webhookValidation.js` — UUID, enum whitelist validation for webhook payloads
+- **Integration Event Logging**: `integration_log` table — audit trail for all UK sync operations with retry tracking
+- **Raw Body Preservation**: `src/server.js` — `req.rawBody` captured for webhook signature verification
 
 ### API Routes (src/routes/index.js)
 All mounted under `/api`:
@@ -88,20 +97,65 @@ All mounted under `/api`:
 - `/admin` - Bulk admin operations
 - `/buildings-metrics` - Map data aggregation
 - `/power-analytics` - Power grid analysis
+- `/webhooks/uk` - Incoming webhooks from UK bot (HMAC-verified, rate-limited 60/min, no JWT)
+- `/integration` - Admin UK integration config, logs, alert rules (admin-only)
 
-### Frontend
-- **Vanilla JS** (no framework), HTML files at project root (`index.html`, `admin.html`, `about.html`, `contacts.html`)
-- **Public assets** in `public/` - `script.js` (map interface), `admin.js` (admin panel), `admin-auth.js`, `map-layers-control.js`
+### UK Integration Module
+Bidirectional integration with UK Management Bot (Управляющая Компания). Phase 1 complete.
+
+**Backend files:**
+- `src/services/ukIntegrationService.js` — Core logic: webhook verification, building sync, config management
+- `src/routes/webhookRoutes.js` — POST `/webhooks/uk/building` and `/webhooks/uk/request`
+- `src/routes/integrationRoutes.js` — Admin API: config, logs, alert rules CRUD
+- `src/utils/webhookValidation.js` — Input validation helpers
+- `src/models/IntegrationConfig.js` — Key-value config store (DB-backed)
+- `src/models/IntegrationLog.js` — Sync event log with pagination and filtering
+- `src/models/AlertRule.js` — Alert-to-UK-request mapping rules
+- `src/models/AlertRequestMap.js` — Tracks which alerts created which UK requests
+
+**Building model extensions** (`src/models/Building.js`):
+- `external_id` (UUID) — reference to UK system building
+- `uk_deleted_at` — soft delete from UK
+- Methods: `findByExternalId()`, `createFromUK()`, `syncFromUK()`, `softDeleteFromUK()`
+
+**Security:** HMAC-SHA256 webhook signatures, replay protection, idempotency via event_id, rate limiting (60 req/min), timing-safe comparison. Secrets (UK_WEBHOOK_SECRET) stored in ENV only, never in DB.
+
+**Phased plan (5 phases):**
+1. Foundation (DB, models, routes, admin UI, logging) — **DONE**
+2. Building Sync (UK → InfraSafe) — planned
+3. Alert → Request Pipeline — planned
+4. Request → Alert Feedback — planned
+5. Map Layer (UI visualization) — planned
+
+**Spec:** `docs/superpowers/specs/2026-03-24-infrasafe-uk-integration-v2-design.md`
+
+### Frontend (Legacy — main branch)
+- **Vanilla JS** (no framework), HTML files at project root (`index.html`, `admin.html`, `about.html`, `contacts.html`, `documentation.html`)
+- **Public assets** in `public/` - `script.js` (map interface), `admin.js` (admin panel), `admin-auth.js`, `map-layers-control.js`, `login.html`
 - **Leaflet.js** with marker clustering, multiple layers (buildings, transformers, water/heat sources), custom icons
 - **Chart.js** for analytics visualization
 - **DOMPurify** for XSS protection (`public/utils/domSecurity.js`)
+- **Admin panel** includes "Интеграция UK" tab for managing integration settings, logs, and alert mapping rules
+
+### Frontend Redesign (feature/frontend-redesign branch)
+- **Directory**: `frontend-design/` — complete new frontend with design system
+- **Design tokens**: CSS custom properties in `css/design-tokens.css` (colors, spacing, typography, shadows)
+- **Themes**: Light/dark with `data-theme` attribute, persisted to localStorage
+- **Auth**: `js/auth.js` (JWT login/refresh), `js/auth-guard.js` (redirect to login), `js/api.js` (fetch wrapper with token)
+- **Shared components**: `js/sidebar.js`, `js/page-shell.js`, `js/theme.js`, `js/components/` (command-palette, notification-center, connection-banner, kiosk-mode)
+- **Pages**: dashboard.html, map.html, buildings.html, controllers.html, power.html, water.html, heating.html, energy-analytics.html, alerts.html, users.html, settings.html, shift-handover.html, login.html, index.html (landing)
+- **Map**: Leaflet with circleMarkers (color-coded status), collapsible sidebar, collapsible layers panel, table-based popups with blinking status indicators, dynamic power data loading
+- **Docker**: `docker-compose.dev.yml` mounts `frontend-design/` as nginx root on port 8088
 
 ### Database
 - **PostgreSQL 15+ with PostGIS** extension (SRID 4326 for coordinates)
 - **Core tables**: `users`, `buildings`, `controllers`, `metrics`, `alerts`, `alert_types`
 - **Infrastructure tables**: `power_transformers`, `cold_water_sources`, `heat_sources`, `water_lines`, `water_suppliers`
+- **UK Integration tables**: `integration_config`, `integration_log`, `alert_rules`, `alert_request_map`
+- **Building extensions**: `external_id` (UUID, UNIQUE), `uk_deleted_at` (TIMESTAMPTZ), nullable `latitude`/`longitude`
 - **Materialized views** for transformer load analytics
 - Schema defined in `database/init/01_init_database.sql`
+- UK migration: `database/migrations/011_uk_integration.sql`
 
 ### Generator
 `generator/` contains a standalone service (separate `package.json`) for generating simulated metric data, run via `docker-compose.generator.yml`.
@@ -115,13 +169,20 @@ JWT_SECRET, JWT_REFRESH_SECRET
 # Optional
 NODE_ENV=development|production
 PORT=3000
-CORS_ORIGINS=http://localhost:8080
+CORS_ORIGINS=http://localhost:8088,http://localhost:3000
 LOG_LEVEL=info|debug|warn|error
 LOG_FILE=logs/app.log
+
+# UK Integration (ENV-only secrets, never stored in DB)
+UK_WEBHOOK_SECRET          # HMAC-SHA256 shared secret for webhook verification
+UK_SERVICE_USER            # Service account for UK API calls
+UK_SERVICE_PASSWORD        # Service account password
+# UK Integration (DB-stored via integration_config, toggleable in admin UI)
+# uk_integration_enabled, uk_api_url, uk_frontend_url
 ```
 
 ## Docker Services
-- **frontend**: Nginx on port 8080 (static files + API proxy)
+- **frontend**: Nginx on port 8088 (static files + API proxy)
 - **app**: Node.js Express on port 3000
 - **postgres**: PostGIS on port 5435 (mapped from container 5432)
 
@@ -131,13 +192,14 @@ LOG_FILE=logs/app.log
 - **17 buildings** in Tashkent with coordinates, **34 metric records**
 
 ## Test Suite
-- **175 tests** across **16 test suites**, all passing
-- Unit tests: `tests/jest/unit/` (10 files — services, controllers, models, middleware)
-- Integration tests: `tests/jest/integration/` (API, default-deny auth)
-- Security tests: `tests/jest/security/` (SQL injection, XSS, general security)
+- **25 test files** across unit, integration, and security categories
+- Unit tests: `tests/jest/unit/` (20 files — services, controllers, models, middleware, UK integration)
+- Integration tests: `tests/jest/integration/` (2 files — API, default-deny auth)
+- Security tests: `tests/jest/security/` (3 files — SQL injection, XSS, general security)
 
 ## Known Architecture Issues
-- `public/admin.js` (~2,300 lines) and `public/script.js` (~1,400 lines) are monolithic
+- `public/admin.js` (~2,600 lines) and `public/script.js` (~1,400 lines) are monolithic
 - Models execute SQL directly (no repository pattern), making unit testing harder
 - Some backend code uses `console.error` instead of Winston logger
 - Code duplication across water-related route files
+- Frontend redesign (feature/frontend-redesign) not yet merged to main
