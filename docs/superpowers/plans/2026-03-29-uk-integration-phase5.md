@@ -65,10 +65,14 @@ jest.mock('../../../src/models/Building', () => ({
 jest.mock('../../../src/utils/webhookValidation', () => ({
     isValidBuildingEvent: jest.fn()
 }));
-// Mock axios for UK API calls
-jest.mock('axios');
+// Mock ukApiClient (Phase 3) — unified auth model
+jest.mock('../../../src/clients/ukApiClient', () => ({
+    get: jest.fn(),
+    createRequest: jest.fn(),
+    authenticate: jest.fn()
+}));
 
-const axios = require('axios');
+const ukApiClient = require('../../../src/clients/ukApiClient');
 const IntegrationConfig = require('../../../src/models/IntegrationConfig');
 const service = require('../../../src/services/ukIntegrationService');
 
@@ -92,44 +96,44 @@ describe('UKIntegrationService — Request Counts', () => {
             IntegrationConfig.isEnabled.mockResolvedValue(false);
             const result = await service.getRequestCounts();
             expect(result).toEqual({ buildings: {} });
-            expect(axios.get).not.toHaveBeenCalled();
+            expect(ukApiClient.get).not.toHaveBeenCalled();
         });
 
         it('fetches from UK API and returns data', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
             IntegrationConfig.get.mockResolvedValue('http://uk-api:8085/api/v2');
-            axios.get.mockResolvedValue(mockApiResponse);
+            ukApiClient.get.mockResolvedValue(mockApiResponse.data);
 
             const result = await service.getRequestCounts();
             expect(result.buildings['ext-uuid-1'].total).toBe(3);
-            expect(axios.get).toHaveBeenCalledTimes(1);
+            expect(ukApiClient.get).toHaveBeenCalledTimes(1);
         });
 
         it('returns cached data within 60s TTL', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
             IntegrationConfig.get.mockResolvedValue('http://uk-api:8085/api/v2');
-            axios.get.mockResolvedValue(mockApiResponse);
+            ukApiClient.get.mockResolvedValue(mockApiResponse.data);
 
             await service.getRequestCounts();
             await service.getRequestCounts();
-            expect(axios.get).toHaveBeenCalledTimes(1); // Only one actual call
+            expect(ukApiClient.get).toHaveBeenCalledTimes(1); // Only one actual call
         });
 
         it('re-fetches after cache invalidation', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
             IntegrationConfig.get.mockResolvedValue('http://uk-api:8085/api/v2');
-            axios.get.mockResolvedValue(mockApiResponse);
+            ukApiClient.get.mockResolvedValue(mockApiResponse.data);
 
             await service.getRequestCounts();
             service.invalidateRequestCache();
             await service.getRequestCounts();
-            expect(axios.get).toHaveBeenCalledTimes(2);
+            expect(ukApiClient.get).toHaveBeenCalledTimes(2);
         });
 
         it('returns empty on UK API error (graceful degradation)', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
             IntegrationConfig.get.mockResolvedValue('http://uk-api:8085/api/v2');
-            axios.get.mockRejectedValue(new Error('ECONNREFUSED'));
+            ukApiClient.get.mockRejectedValue(new Error('ECONNREFUSED'));
 
             const result = await service.getRequestCounts();
             expect(result).toEqual({ buildings: {} });
@@ -155,11 +159,11 @@ describe('UKIntegrationService — Request Counts', () => {
         it('fetches requests for a building from UK API', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
             IntegrationConfig.get.mockResolvedValue('http://uk-api:8085/api/v2');
-            axios.get.mockResolvedValue(mockRequests);
+            ukApiClient.get.mockResolvedValue(mockRequests);
 
             const result = await service.getBuildingRequests('ext-uuid-1', 3);
             expect(result.requests).toHaveLength(2);
-            expect(axios.get).toHaveBeenCalledWith(
+            expect(ukApiClient.get).toHaveBeenCalledWith(
                 expect.stringContaining('ext-uuid-1'),
                 expect.any(Object)
             );
@@ -168,7 +172,7 @@ describe('UKIntegrationService — Request Counts', () => {
         it('returns empty on UK API error (graceful degradation)', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
             IntegrationConfig.get.mockResolvedValue('http://uk-api:8085/api/v2');
-            axios.get.mockRejectedValue(new Error('timeout'));
+            ukApiClient.get.mockRejectedValue(new Error('timeout'));
 
             const result = await service.getBuildingRequests('ext-uuid-1');
             expect(result).toEqual({ requests: [] });
@@ -184,12 +188,12 @@ describe('UKIntegrationService — Request Counts', () => {
         it('clears the request counts cache', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
             IntegrationConfig.get.mockResolvedValue('http://uk-api:8085/api/v2');
-            axios.get.mockResolvedValue({ data: { buildings: {} } });
+            ukApiClient.get.mockResolvedValue({ data: { buildings: {} } });
 
             await service.getRequestCounts();
             service.invalidateRequestCache();
             await service.getRequestCounts();
-            expect(axios.get).toHaveBeenCalledTimes(2);
+            expect(ukApiClient.get).toHaveBeenCalledTimes(2);
         });
     });
 });
@@ -349,7 +353,7 @@ invalidated via invalidateRequestCache() (for webhook handler)."
 // tests/jest/integration/requestCountsApi.test.js
 'use strict';
 
-jest.mock('../../src/services/ukIntegrationService', () => ({
+jest.mock('../../../src/services/ukIntegrationService', () => ({
     getRequestCounts: jest.fn(),
     getBuildingRequests: jest.fn(),
     isEnabled: jest.fn(),
@@ -361,36 +365,42 @@ jest.mock('../../src/services/ukIntegrationService', () => ({
     handleBuildingWebhook: jest.fn(),
     invalidateRequestCache: jest.fn()
 }));
-jest.mock('../../src/models/IntegrationLog', () => ({
+jest.mock('../../../src/models/IntegrationLog', () => ({
     findAll: jest.fn(), findById: jest.fn(), updateStatus: jest.fn(), incrementRetry: jest.fn()
 }));
-jest.mock('../../src/models/AlertRule', () => ({ findAll: jest.fn() }));
-jest.mock('../../src/middleware/auth', () => ({
+jest.mock('../../../src/models/AlertRule', () => ({ findAll: jest.fn() }));
+// Simulate default-deny JWT + isAdmin:
+// - No auth header → 401
+// - Auth header with user role → passes JWT, blocked by isAdmin on admin routes
+// - Auth header with admin role → passes both
+jest.mock('../../../src/middleware/auth', () => ({
     authenticateJWT: (req, res, next) => {
-        req.user = { id: 1, role: 'user' };
+        if (!req.headers.authorization) {
+            return res.status(401).json({ success: false, message: 'Access token is missing' });
+        }
+        // Simulate role from header for testing
+        req.user = { id: 1, role: req.headers['x-test-role'] || 'user' };
         next();
     },
     isAdmin: (req, res, next) => {
-        if (req.headers['x-test-role'] === 'admin') {
-            req.user = { id: 1, role: 'admin' };
-            return next();
-        }
+        if (req.user && req.user.role === 'admin') return next();
         return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 }));
-jest.mock('../../src/utils/logger', () => ({
+jest.mock('../../../src/utils/logger', () => ({
     info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn()
 }));
 
 const express = require('express');
 const request = require('supertest');
-const integrationRoutes = require('../../src/routes/integrationRoutes');
-const ukIntegrationService = require('../../src/services/ukIntegrationService');
+const { authenticateJWT } = require('../../../src/middleware/auth');
+const integrationRoutes = require('../../../src/routes/integrationRoutes');
+const ukIntegrationService = require('../../../src/services/ukIntegrationService');
 
-// Build test app
+// Build test app WITH default-deny JWT (matches real index.js behavior)
 const app = express();
 app.use(express.json());
-app.use('/integration', integrationRoutes);
+app.use('/integration', authenticateJWT, integrationRoutes);
 
 describe('Integration API -- Request Counts', () => {
     beforeEach(() => jest.clearAllMocks());
@@ -401,21 +411,30 @@ describe('Integration API -- Request Counts', () => {
                 buildings: { 'uuid-1': { total: 2 } }
             });
 
-            // NO x-test-role header → mock assigns role: 'user' (non-admin)
-            // This proves the endpoint is accessible without admin role
+            // Authorization header present, no x-test-role → role: 'user'
+            // Proves endpoint is accessible without admin role
             const res = await request(app)
-                .get('/integration/request-counts');
+                .get('/integration/request-counts')
+                .set('Authorization', 'Bearer mock-user-token');
 
             expect(res.status).toBe(200);
             expect(res.body.success).toBe(true);
             expect(res.body.data.buildings['uuid-1'].total).toBe(2);
         });
 
+        it('returns 401 without auth token', async () => {
+            const res = await request(app)
+                .get('/integration/request-counts');
+
+            expect(res.status).toBe(401);
+        });
+
         it('returns 500 on service error', async () => {
             ukIntegrationService.getRequestCounts.mockRejectedValue(new Error('fail'));
 
             const res = await request(app)
-                .get('/integration/request-counts');
+                .get('/integration/request-counts')
+                .set('Authorization', 'Bearer mock-user-token');
 
             expect(res.status).toBe(500);
         });
@@ -427,9 +446,10 @@ describe('Integration API -- Request Counts', () => {
                 requests: [{ id: 1, title: 'Leak' }]
             });
 
-            // NO x-test-role header → regular user access
+            // Regular user with auth token (not admin)
             const res = await request(app)
-                .get('/integration/building-requests/a1b2c3d4-e5f6-7890-abcd-ef1234567890');
+                .get('/integration/building-requests/a1b2c3d4-e5f6-7890-abcd-ef1234567890')
+                .set('Authorization', 'Bearer mock-user-token');
 
             expect(res.status).toBe(200);
             expect(res.body.data.requests).toHaveLength(1);
@@ -437,19 +457,39 @@ describe('Integration API -- Request Counts', () => {
 
         it('returns 400 for invalid externalId format', async () => {
             const res = await request(app)
-                .get('/integration/building-requests/not-a-uuid');
+                .get('/integration/building-requests/not-a-uuid')
+                .set('Authorization', 'Bearer mock-user-token');
 
             expect(res.status).toBe(400);
         });
     });
 
-    describe('Admin-only routes still require admin role', () => {
-        it('GET /integration/config returns 403 for non-admin', async () => {
-            // No x-test-role → role: 'user' → isAdmin rejects
+    describe('Auth boundary verification', () => {
+        it('GET /integration/config returns 403 for non-admin authenticated user', async () => {
+            // Auth header present, role: 'user' → isAdmin rejects
+            const res = await request(app)
+                .get('/integration/config')
+                .set('Authorization', 'Bearer mock-user-token');
+
+            expect(res.status).toBe(403);
+        });
+
+        it('GET /integration/config returns 401 without auth', async () => {
             const res = await request(app)
                 .get('/integration/config');
 
-            expect(res.status).toBe(403);
+            expect(res.status).toBe(401);
+        });
+
+        it('GET /integration/config returns 200 for admin', async () => {
+            ukIntegrationService.getConfig.mockResolvedValue({ uk_integration_enabled: 'false' });
+
+            const res = await request(app)
+                .get('/integration/config')
+                .set('Authorization', 'Bearer mock-admin-token')
+                .set('x-test-role', 'admin');
+
+            expect(res.status).toBe(200);
         });
     });
 });

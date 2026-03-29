@@ -27,7 +27,7 @@
 | File | Change |
 |------|--------|
 | `src/models/AlertRule.js` | Add `findByTypeAndSeverity(alertType, severity)` static method |
-| `src/models/AlertRequestMap.js` | Add `create()` and `findByIdempotencyKey()` static methods |
+| `src/models/AlertRequestMap.js` | Add `create()`, `findByAlertAndBuilding()`, `markSent()`, `findByIdempotencyKey()` static methods |
 | `src/services/ukIntegrationService.js` | Add `sendAlertToUK()`, `resolveBuildingIds()`, `_mapInfrastructureToBuildings()` |
 | `src/services/alertService.js` | Add UK integration hook inside `sendNotifications()` |
 
@@ -610,6 +610,24 @@ class UKApiClient {
 
         throw lastError;
     }
+
+    /**
+     * Generic authenticated GET request to UK API.
+     * Used by Phase 5 (request counts, building requests).
+     * @param {string} path - URL path appended to uk_api_url
+     * @returns {Promise<Object>} parsed response body
+     */
+    async get(path) {
+        const token = await this.authenticate();
+        const apiUrl = await IntegrationConfig.get('uk_api_url');
+
+        const response = await axios.get(`${apiUrl}${path}`, {
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: REQUEST_TIMEOUT_MS
+        });
+
+        return response.data;
+    }
 }
 
 module.exports = new UKApiClient();
@@ -877,24 +895,35 @@ async sendAlertToUK(alertData) {
                 continue;
             }
 
-            const idempotencyKey = crypto.randomUUID();
-
             try {
-                // 5. Write mapping FIRST (local UNIQUE constraint prevents duplicates on retry)
-                // If this insert fails with duplicate key, the request was already sent — skip.
-                const mapping = await AlertRequestMap.create({
-                    infrasafe_alert_id: alertData.alert_id,
-                    building_external_id: building.external_id,
-                    idempotency_key: idempotencyKey
-                });
+                // 5. Check if mapping already exists (idempotency)
+                const existing = await AlertRequestMap.findByAlertAndBuilding(
+                    alertData.alert_id, building.external_id
+                );
 
-                if (!mapping) {
-                    // Duplicate — already processed this alert+building pair
+                let mapping;
+                let idempotencyKey;
+
+                if (existing && existing.status === 'sent') {
+                    // Already successfully sent — skip
                     logger.debug(`sendAlertToUK: already sent for alert ${alertData.alert_id}, building ${building.building_id}`);
                     continue;
+                } else if (existing && existing.status === 'pending') {
+                    // Previous attempt failed after mapping was created — retry with same key
+                    mapping = existing;
+                    idempotencyKey = existing.idempotency_key;
+                } else {
+                    // New mapping
+                    idempotencyKey = crypto.randomUUID();
+                    mapping = await AlertRequestMap.create({
+                        infrasafe_alert_id: alertData.alert_id,
+                        building_external_id: building.external_id,
+                        idempotency_key: idempotencyKey,
+                        status: 'pending'
+                    });
                 }
 
-                // 6. Then call UK API (idempotency_key header ensures UK deduplicates too)
+                // 6. Call UK API (idempotency_key header ensures UK deduplicates too)
                 const ukResponse = await ukApiClient.createRequest({
                     building_external_id: building.external_id,
                     category: rule.uk_category,
@@ -903,8 +932,8 @@ async sendAlertToUK(alertData) {
                     idempotency_key: idempotencyKey
                 });
 
-                // 7. Update mapping with UK request number
-                await AlertRequestMap.updateRequestNumber(
+                // 7. Mark mapping as sent with UK request number
+                await AlertRequestMap.markSent(
                     mapping.id, ukResponse.request_number
                 );
 
