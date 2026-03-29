@@ -4,7 +4,7 @@
 
 **Goal:** Achieve real E2E test coverage for all critical API flows by hitting a live Docker PostgreSQL + Express stack — no mocked DB.
 
-**Architecture:** New `tests/jest/e2e/` directory with supertest hitting `http://localhost:3000` (the running Docker app container). Tests authenticate via real JWT login, create/read/update/delete real data in the test database, and verify actual SQL results. A shared helper manages auth tokens and test data cleanup. Tests run with `npm run test:e2e` after `docker compose up`.
+**Architecture:** New `tests/jest/e2e/` directory with supertest hitting `http://localhost:3000` (the running Docker app container). Tests authenticate via real JWT login, create/read/update/delete real data in the test database, and verify persistence via follow-up HTTP GET calls. A shared helper manages auth tokens and test data cleanup (cascade delete). Tests run with `npm run test:e2e` after `docker compose up`.
 
 **Tech Stack:** Jest, supertest, real PostgreSQL (Docker port 5435), real Express (Docker port 3000)
 
@@ -125,20 +125,25 @@ const factory = {
     ...overrides,
   }),
   alert: (overrides = {}) => ({
-    building_id: 1,
-    type: 'TEMPERATURE_HIGH',
+    type: 'TRANSFORMER_OVERLOAD',
+    infrastructure_id: '1',
+    infrastructure_type: 'transformer',
     severity: 'WARNING',
     message: `E2E test alert ${Date.now()}`,
     ...overrides,
   }),
 };
 
-/** Cleanup helper — delete a building by ID (cascades controllers/metrics) */
+/** Cleanup helper — delete a building by ID with cascade (controllers/metrics).
+ *  Without ?cascade=true the API returns 400 if building has controllers. */
 async function deleteBuilding(token, id) {
-  await request(BASE_URL)
-    .delete(`/api/buildings/${id}`)
+  const res = await request(BASE_URL)
+    .delete(`/api/buildings/${id}?cascade=true`)
     .set('Authorization', `Bearer ${token}`)
-    .catch(() => {});
+    .catch(() => null);
+  if (res && res.status !== 200 && res.status !== 404) {
+    console.warn(`deleteBuilding(${id}) cleanup returned ${res.status}`);
+  }
 }
 
 module.exports = { BASE_URL, login, authed, anon, factory, deleteBuilding };
@@ -196,7 +201,9 @@ describe('E2E: Auth Flow', () => {
     const res = await authed(accessToken).get('/api/auth/profile');
 
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('username');
+    expect(res.body).toHaveProperty('success', true);
+    expect(res.body.user).toHaveProperty('username');
+    expect(res.body.user).toHaveProperty('role');
   });
 
   test('POST /api/auth/refresh — returns new access token', async () => {
@@ -317,15 +324,28 @@ describe('E2E: Buildings CRUD', () => {
     expect(getRes.body.name).toBe('Updated E2E Building');
   });
 
-  test('DELETE /api/buildings/:id — deletes building', async () => {
+  test('DELETE /api/buildings/:id?cascade=true — deletes building with related data', async () => {
     const createRes = await authed(token).post('/api/buildings').send(factory.building());
     const id = createRes.body.building_id;
 
-    const delRes = await authed(token).delete(`/api/buildings/${id}`);
+    // cascade=true required when building has controllers, safe to always use
+    const delRes = await authed(token).delete(`/api/buildings/${id}?cascade=true`);
     expect(delRes.status).toBe(200);
 
     const getRes = await authed(token).get(`/api/buildings/${id}`);
     expect(getRes.status).toBe(404);
+  });
+
+  test('DELETE /api/buildings/:id — without cascade on building with controllers returns 400', async () => {
+    // Create building + controller
+    const bRes = await authed(token).post('/api/buildings').send(factory.building());
+    const bId = bRes.body.building_id;
+    createdIds.push(bId);
+    await authed(token).post('/api/controllers').send(factory.controller(bId));
+
+    // Delete without cascade should fail
+    const delRes = await authed(token).delete(`/api/buildings/${bId}`);
+    expect([400, 409]).toContain(delRes.status);
   });
 
   test('GET /api/buildings-metrics — public access (no token)', async () => {
@@ -379,9 +399,16 @@ describe('E2E: Alert Lifecycle', () => {
     expect(res.body).toHaveProperty('data');
   });
 
-  test('POST /api/alerts — create alert', async () => {
+  test('POST /api/alerts — create alert (requires type, infrastructure_id, infrastructure_type, severity, message)', async () => {
     const res = await authed(token).post('/api/alerts').send(factory.alert());
-    expect([200, 201]).toContain(res.status);
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty('success', true);
+    expect(res.body.data).toHaveProperty('alert_id');
+  });
+
+  test('POST /api/alerts — missing required fields returns 400', async () => {
+    const res = await authed(token).post('/api/alerts').send({ type: 'MISSING_FIELDS' });
+    expect(res.status).toBe(400);
   });
 
   test('GET /api/alerts/statistics — alert stats', async () => {
@@ -523,19 +550,34 @@ describe('E2E: Metrics & Telemetry', () => {
     expect(res.body).toHaveProperty('data');
   });
 
-  test('POST /api/metrics/telemetry — ingest telemetry (public, no auth)', async () => {
+  test('POST /api/metrics/telemetry — ingest telemetry for known controller (public, no auth)', async () => {
     const res = await request(BASE_URL)
       .post('/api/metrics/telemetry')
       .send(factory.telemetry(serialNumber));
 
-    // 201 = created, 404 = controller not found (serial may not match)
-    expect([200, 201, 404]).toContain(res.status);
+    // 201 = metric created and saved to DB
+    // 404 = controller not found (serial_number mismatch — possible if DB state differs)
+    if (res.status === 201) {
+      expect(res.body).toHaveProperty('success', true);
+    } else {
+      expect(res.status).toBe(404);
+    }
   });
 
-  test('GET /api/metrics — after telemetry, metrics exist', async () => {
+  test('POST /api/metrics/telemetry — unknown serial returns 404', async () => {
+    const res = await request(BASE_URL)
+      .post('/api/metrics/telemetry')
+      .send(factory.telemetry('NONEXISTENT-SERIAL-999'));
+
+    expect(res.status).toBe(404);
+  });
+
+  test('GET /api/metrics — returns paginated metric list', async () => {
     const res = await authed(token).get('/api/metrics');
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('data');
+    expect(res.body).toHaveProperty('pagination');
+    expect(Array.isArray(res.body.data)).toBe(true);
   });
 });
 ```
@@ -774,19 +816,36 @@ function signPayload(payload, secret) {
 
 describe('E2E: UK Webhooks', () => {
   const WEBHOOK_SECRET = process.env.UK_WEBHOOK_SECRET || '';
+  // UK integration is disabled by default (integration_config.uk_integration_enabled = 'false')
+  // and UK_WEBHOOK_SECRET is not set in docker-compose.dev.yml.
+  // These tests validate the guard behaviour.
 
-  test('POST /api/webhooks/uk/building — without signature returns 401', async () => {
+  test('POST /api/webhooks/uk/building — returns 503 when integration disabled', async () => {
+    // Default state: uk_integration_enabled = false → 503
     const res = await request(BASE_URL)
       .post('/api/webhooks/uk/building')
       .send({ event_type: 'building.created', data: {} });
 
-    expect(res.status).toBe(401);
+    // 503 = integration disabled, 401 = missing signature (if enabled)
+    expect([401, 503]).toContain(res.status);
   });
 
-  // Only run HMAC tests when secret is configured
-  const conditionalTest = WEBHOOK_SECRET ? test : test.skip;
+  test('POST /api/webhooks/uk/building — without signature returns 401 (when enabled)', async () => {
+    // If integration is enabled but no signature → 401
+    // This test documents expected behaviour; may return 503 if not enabled
+    const res = await request(BASE_URL)
+      .post('/api/webhooks/uk/building')
+      .set('X-Webhook-Signature', 'invalid')
+      .send({ event_type: 'building.created', data: {} });
 
-  conditionalTest('POST /api/webhooks/uk/building — with valid HMAC signature', async () => {
+    expect([401, 503]).toContain(res.status);
+  });
+
+  // Full HMAC flow only works when UK_WEBHOOK_SECRET is set AND integration enabled
+  const canTestHmac = WEBHOOK_SECRET.length > 0;
+  const hmacTest = canTestHmac ? test : test.skip;
+
+  hmacTest('POST /api/webhooks/uk/building — with valid HMAC creates building', async () => {
     const payload = {
       event_id: crypto.randomUUID(),
       event_type: 'building.created',
@@ -884,11 +943,11 @@ Expected: All test files pass. If any fail due to schema differences or missing 
 
 - [ ] **Step 2: Document coverage**
 
-The plan covers ~60 endpoint tests across 10 files:
-- P0: auth (7), buildings (6), alerts (5) = **18 tests**
-- P1: controllers (5), metrics (3), analytics (7), admin (6) = **21 tests**
-- P2: infrastructure (6), webhooks (2), integration (4) = **12 tests**
-- **Total: ~51 real E2E tests** hitting live DB
+The plan covers ~65 endpoint tests across 10 files:
+- P0: auth (7), buildings (8), alerts (6) = **21 tests**
+- P1: controllers (5), metrics (4), analytics (7), admin (6) = **22 tests**
+- P2: infrastructure (6), webhooks (3), integration (4) = **13 tests**
+- **Total: ~56 real E2E tests** hitting live DB
 
 - [ ] **Step 3: Final commit**
 
