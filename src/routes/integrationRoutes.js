@@ -9,7 +9,34 @@ const AlertRule = require('../models/AlertRule');
 const logger = require('../utils/logger');
 const { isValidDirection, isValidStatus, isValidEntityType } = require('../utils/webhookValidation');
 
-// All integration routes require admin access
+// --- Routes accessible to any authenticated user (JWT, no admin) ---
+router.get('/request-counts', async (req, res) => {
+    try {
+        const data = await ukIntegrationService.getRequestCounts();
+        return res.json({ success: true, data });
+    } catch (error) {
+        logger.error(`GET /integration/request-counts error: ${error.message}`);
+        return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+router.get('/building-requests/:externalId', async (req, res) => {
+    try {
+        const { externalId } = req.params;
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!externalId || !UUID_RE.test(externalId)) {
+            return res.status(400).json({ success: false, message: 'Invalid externalId format' });
+        }
+        const limit = Math.min(parseInt(req.query.limit) || 3, 10);
+        const data = await ukIntegrationService.getBuildingRequests(externalId, limit);
+        return res.json({ success: true, data });
+    } catch (error) {
+        logger.error(`GET /integration/building-requests error: ${error.message}`);
+        return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+// All remaining integration routes require admin access
 router.use(isAdmin);
 
 const handlers = {

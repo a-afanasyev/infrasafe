@@ -12,6 +12,10 @@ const SENSITIVE_KEYS = ['uk_webhook_secret', 'uk_service_user', 'uk_service_pass
 const WEBHOOK_TIMESTAMP_TOLERANCE_SEC = 300;
 
 class UKIntegrationService {
+    _requestCountsCache = null;
+    _requestCountsCacheTime = 0;
+    _CACHE_TTL_MS = 60 * 1000; // 60 seconds
+
     /**
      * Check if UK integration is enabled.
      * On ANY error, returns false (graceful degradation). Never throws.
@@ -406,6 +410,9 @@ class UKIntegrationService {
                 status: 'success'
             });
 
+            // Invalidate request counts cache on any request event
+            this.invalidateRequestCache();
+
             // For request.created — just log (no alert mapping expected)
             if (event === 'request.created') {
                 logger.info(`handleRequestWebhook: request.created ${ukRequest.request_number}`);
@@ -448,6 +455,55 @@ class UKIntegrationService {
             logger.error(`handleRequestWebhook error: ${error.message}`);
             throw error;
         }
+    }
+    async getRequestCounts() {
+        const EMPTY = { buildings: {} };
+        try {
+            const enabled = await this.isEnabled();
+            if (!enabled) return EMPTY;
+
+            const now = Date.now();
+            if (this._requestCountsCache && (now - this._requestCountsCacheTime) < this._CACHE_TTL_MS) {
+                return this._requestCountsCache;
+            }
+
+            const ukApiClient = require('../clients/ukApiClient');
+            const response = await ukApiClient.get('/requests/counts-by-building');
+
+            const result = response || EMPTY;
+            this._requestCountsCache = result;
+            this._requestCountsCacheTime = Date.now();
+            return result;
+        } catch (error) {
+            logger.error(`ukIntegrationService.getRequestCounts error: ${error.message}`);
+            return EMPTY;
+        }
+    }
+
+    async getBuildingRequests(externalId, limit = 3) {
+        const EMPTY = { requests: [] };
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        try {
+            if (!externalId || !UUID_RE.test(externalId)) return EMPTY;
+
+            const enabled = await this.isEnabled();
+            if (!enabled) return EMPTY;
+
+            const ukApiClient = require('../clients/ukApiClient');
+            const response = await ukApiClient.get(
+                `/requests/by-building?external_id=${encodeURIComponent(externalId)}&limit=${limit}`
+            );
+
+            return response || EMPTY;
+        } catch (error) {
+            logger.error(`ukIntegrationService.getBuildingRequests error: ${error.message}`);
+            return EMPTY;
+        }
+    }
+
+    invalidateRequestCache() {
+        this._requestCountsCache = null;
+        this._requestCountsCacheTime = 0;
     }
 }
 
