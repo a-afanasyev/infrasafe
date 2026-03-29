@@ -571,7 +571,33 @@ feat(service): add handleRequestWebhook with status mapping and alert resolution
 These tests validate the route-level behavior: payload validation, calling `handleRequestWebhook`, and error responses. They require mocking `ukIntegrationService` at the route level.
 
 ```js
-// Requires mocked ukIntegrationService and express app setup from the test file's beforeAll
+// Route-level tests: mock verifyWebhook to pass through (HMAC tested separately),
+// mock ukIntegrationService for handler logic.
+// Setup: requires these mocks BEFORE requiring webhookRoutes:
+//
+// jest.mock('../../../src/services/ukIntegrationService', () => ({
+//     isDuplicateEvent: jest.fn(),
+//     handleRequestWebhook: jest.fn(),
+//     isEnabled: jest.fn().mockResolvedValue(true),
+//     verifyWebhookSignature: jest.fn().mockReturnValue(true),
+//     logEvent: jest.fn()
+// }));
+//
+// Then build app:
+//   const express = require('express');
+//   const app = express();
+//   app.use(express.json());
+//   // Bypass verifyWebhook by accessing the route handler directly
+//   const webhookRoutes = require('../../../src/routes/webhookRoutes');
+//   // Override verifyWebhook in test app to pass through:
+//   app.post('/webhooks/uk/request', (req, res, next) => {
+//       req.rawBody = JSON.stringify(req.body); // simulate rawBody
+//       next();
+//   }, webhookRoutes);
+//
+// OR: mock the verifyWebhook export to always call next():
+//   webhookRoutes.verifyWebhook = (req, res, next) => next();
+
 const crypto = require('crypto');
 
 const validPayload = () => ({

@@ -163,9 +163,9 @@ describe('UKIntegrationService — Request Counts', () => {
 
             const result = await service.getBuildingRequests('ext-uuid-1', 3);
             expect(result.requests).toHaveLength(2);
+            // ukApiClient.get(path) — single string argument
             expect(ukApiClient.get).toHaveBeenCalledWith(
-                expect.stringContaining('ext-uuid-1'),
-                expect.any(Object)
+                expect.stringContaining('ext-uuid-1')
             );
         });
 
@@ -209,13 +209,7 @@ npm run test:unit -- --testPathPattern=requestCounts
 
 - [ ] **Add cache + methods to `src/services/ukIntegrationService.js`**
 
-Add `axios` require at the top (after existing requires):
-
-```javascript
-const axios = require('axios');
-```
-
-Add a UUID format regex constant near the top:
+Add a UUID format regex constant near the top (no new requires needed — uses `ukApiClient` via lazy require):
 
 ```javascript
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -585,7 +579,25 @@ Routes mounted before isAdmin middleware in integrationRoutes."
 
 ---
 
-## Task 3: Webhook Cache Invalidation
+## Task 3: Ensure `external_id` in Buildings-Metrics Query
+
+> **MUST be done before frontend Tasks 5-6.** Frontend map layer and popup depend on `external_id` from `/buildings-metrics`, but current query does not return it.
+
+**Files:**
+- Modify: `src/models/Building.js` or `src/services/buildingMetricsService.js`
+
+- [ ] **Search for the buildings-metrics SQL query** and add `b.external_id` to SELECT. Look in `buildingMetricsService.js` or `Building.js` (method powering `GET /api/buildings-metrics`).
+
+- [ ] **Commit:**
+
+```bash
+git add <modified-file>
+git commit -m "fix(model): include external_id in buildings-metrics query for UK map layer"
+```
+
+---
+
+## Task 4: Webhook Cache Invalidation
 
 **Files:**
 - Modify: `src/services/ukIntegrationService.js` (handleRequestWebhook or webhook handler)
@@ -621,7 +633,7 @@ invalidateRequestCache() on request.created/status_changed events."
 
 ---
 
-## Task 4: Frontend -- UK Requests Map Layer
+## Task 5: Frontend -- UK Requests Map Layer
 
 **Files:**
 - Modify: `public/map-layers-control.js`
@@ -850,7 +862,7 @@ via safe DOM API (no raw HTML injection)."
 
 ---
 
-## Task 5: Frontend -- Building Popup "ЗАЯВКИ" Section
+## Task 6: Frontend -- Building Popup "ЗАЯВКИ" Section
 
 **Files:**
 - Modify: `public/script.js`
@@ -944,40 +956,6 @@ git commit -m "feat(map): add ЗАЯВКИ UK section to building popup
 Authenticated building popups now show a UK requests section (top 3 by
 urgency) for buildings with external_id. Data loaded dynamically on
 popup open via safe DOM API. Graceful fallback if UK unavailable."
-```
-
----
-
-## Task 6: Ensure `external_id` in Buildings-Metrics Query
-
-**Files:**
-- Modify: `src/models/Building.js` or relevant model/route
-
-### Step 6.1: Check and fix query
-
-- [ ] **Search for the buildings-metrics SQL query** and confirm `external_id` is in the SELECT list. If not, add it.
-
-Look in:
-- `src/models/Building.js` (likely `findAllWithMetrics` or similar)
-- `src/routes/buildingMetricsRoutes.js`
-- `src/controllers/buildingController.js`
-
-The query that powers `GET /api/buildings-metrics` must include:
-
-```sql
-b.external_id
-```
-
-in its SELECT clause. If missing, add it.
-
-### Step 6.2: Commit
-
-```bash
-git add <modified-file>
-git commit -m "fix(model): include external_id in buildings-metrics query
-
-Required for frontend to conditionally show UK requests section in
-building popups."
 ```
 
 ---

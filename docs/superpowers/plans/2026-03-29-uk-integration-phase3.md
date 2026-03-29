@@ -142,7 +142,7 @@ git commit -m "feat(uk): add AlertRule.findByTypeAndSeverity() for alert→UK ru
 
 ---
 
-## Task 2: Add `create()` and `findByIdempotencyKey()` to AlertRequestMap model
+## Task 2: Add AlertRequestMap methods (create, findByAlertAndBuilding, markSent, findByIdempotencyKey)
 
 **Files:**
 - Modify: `src/models/AlertRequestMap.js`
@@ -159,44 +159,72 @@ describe('AlertRequestMap', () => {
     beforeEach(() => jest.clearAllMocks());
 
     describe('create()', () => {
-        test('inserts a new mapping row', async () => {
+        test('inserts a new mapping row with pending status', async () => {
             const mockRow = {
                 id: 1,
                 infrasafe_alert_id: 42,
-                uk_request_number: 'REQ-001',
                 building_external_id: 'abc-def-123',
                 idempotency_key: 'idem-key-uuid',
-                status: 'active'
+                status: 'pending'
             };
             db.query.mockResolvedValue({ rows: [mockRow] });
 
             const result = await AlertRequestMap.create({
                 infrasafe_alert_id: 42,
-                uk_request_number: 'REQ-001',
                 building_external_id: 'abc-def-123',
-                idempotency_key: 'idem-key-uuid'
+                idempotency_key: 'idem-key-uuid',
+                status: 'pending'
             });
 
             expect(result).toEqual(mockRow);
             expect(db.query).toHaveBeenCalledWith(
                 expect.stringContaining('INSERT INTO alert_request_map'),
-                [42, 'REQ-001', 'abc-def-123', 'idem-key-uuid']
+                expect.arrayContaining([42, 'abc-def-123', 'idem-key-uuid', 'pending'])
             );
         });
 
-        test('returns null on UNIQUE violation (idempotency)', async () => {
+        test('returns null on UNIQUE violation (alert+building pair)', async () => {
             const uniqueError = new Error('unique violation');
             uniqueError.code = '23505';
             db.query.mockRejectedValue(uniqueError);
 
             const result = await AlertRequestMap.create({
                 infrasafe_alert_id: 42,
-                uk_request_number: 'REQ-001',
                 building_external_id: 'abc-def-123',
-                idempotency_key: 'idem-key-uuid'
+                idempotency_key: 'idem-key-uuid',
+                status: 'pending'
             });
 
             expect(result).toBeNull();
+        });
+    });
+
+    describe('findByAlertAndBuilding()', () => {
+        test('returns existing mapping', async () => {
+            const mockRow = { id: 1, status: 'pending', idempotency_key: 'key-1' };
+            db.query.mockResolvedValue({ rows: [mockRow] });
+
+            const result = await AlertRequestMap.findByAlertAndBuilding(42, 'abc-def-123');
+            expect(result).toEqual(mockRow);
+        });
+
+        test('returns null when not found', async () => {
+            db.query.mockResolvedValue({ rows: [] });
+
+            const result = await AlertRequestMap.findByAlertAndBuilding(42, 'nonexistent');
+            expect(result).toBeNull();
+        });
+    });
+
+    describe('markSent()', () => {
+        test('updates status to sent and sets request number', async () => {
+            db.query.mockResolvedValue({ rows: [{ id: 1, status: 'sent' }] });
+
+            await AlertRequestMap.markSent(1, 'REQ-001');
+            expect(db.query).toHaveBeenCalledWith(
+                expect.stringContaining('UPDATE alert_request_map'),
+                expect.arrayContaining(['sent', 'REQ-001', 1])
+            );
         });
     });
 
@@ -206,7 +234,6 @@ describe('AlertRequestMap', () => {
             db.query.mockResolvedValue({ rows: [mockRow] });
 
             const result = await AlertRequestMap.findByIdempotencyKey('some-uuid');
-
             expect(result).toEqual(mockRow);
         });
 
@@ -214,7 +241,6 @@ describe('AlertRequestMap', () => {
             db.query.mockResolvedValue({ rows: [] });
 
             const result = await AlertRequestMap.findByIdempotencyKey('nonexistent');
-
             expect(result).toBeNull();
         });
     });
@@ -238,22 +264,49 @@ After the existing `findByAlertId()` method, add:
 ```javascript
 static async create(data) {
     try {
-        const { infrasafe_alert_id, uk_request_number, building_external_id, idempotency_key } = data;
+        const { infrasafe_alert_id, building_external_id, idempotency_key, status = 'pending' } = data;
         const result = await db.query(
             `INSERT INTO alert_request_map
-             (infrasafe_alert_id, uk_request_number, building_external_id, idempotency_key, status, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, 'active', NOW(), NOW())
+             (infrasafe_alert_id, building_external_id, idempotency_key, status, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, NOW(), NOW())
              RETURNING *`,
-            [infrasafe_alert_id, uk_request_number, building_external_id, idempotency_key]
+            [infrasafe_alert_id, building_external_id, idempotency_key, status]
         );
         return result.rows[0];
     } catch (error) {
-        // UNIQUE violation = idempotent duplicate, return null instead of throwing
+        // UNIQUE(infrasafe_alert_id, building_external_id) violation = already exists
         if (error.code === '23505') {
-            logger.warn(`AlertRequestMap.create: duplicate idempotency_key ${idempotency_key}`);
+            logger.warn(`AlertRequestMap.create: duplicate alert+building pair`);
             return null;
         }
         logger.error(`AlertRequestMap.create error: ${error.message}`);
+        throw error;
+    }
+}
+
+static async findByAlertAndBuilding(alertId, buildingExternalId) {
+    try {
+        const result = await db.query(
+            'SELECT * FROM alert_request_map WHERE infrasafe_alert_id = $1 AND building_external_id = $2',
+            [alertId, buildingExternalId]
+        );
+        return result.rows[0] || null;
+    } catch (error) {
+        logger.error(`AlertRequestMap.findByAlertAndBuilding error: ${error.message}`);
+        throw error;
+    }
+}
+
+static async markSent(id, requestNumber) {
+    try {
+        const result = await db.query(
+            `UPDATE alert_request_map SET status = $1, uk_request_number = $2, updated_at = NOW()
+             WHERE id = $3 RETURNING *`,
+            ['sent', requestNumber, id]
+        );
+        return result.rows[0] || null;
+    } catch (error) {
+        logger.error(`AlertRequestMap.markSent error: ${error.message}`);
         throw error;
     }
 }
@@ -319,6 +372,9 @@ describe('UKApiClient', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         jest.resetModules();
+        // Set ENV-only credentials (sensitive keys never stored in DB)
+        process.env.UK_SERVICE_USER = 'svc_user';
+        process.env.UK_SERVICE_PASSWORD = 'svc_pass';
         // Re-require to reset cached token
         jest.mock('axios');
         jest.mock('../../../src/utils/logger', () => ({
@@ -330,12 +386,15 @@ describe('UKApiClient', () => {
         ukApiClient = require('../../../src/clients/ukApiClient');
     });
 
+    afterAll(() => {
+        delete process.env.UK_SERVICE_USER;
+        delete process.env.UK_SERVICE_PASSWORD;
+    });
+
     describe('authenticate()', () => {
         test('obtains JWT token from UK API', async () => {
-            IntegrationConfig.get
-                .mockResolvedValueOnce('https://uk.example.com')  // uk_api_url
-                .mockResolvedValueOnce('svc_user')                 // uk_service_user
-                .mockResolvedValueOnce('svc_pass');                // uk_service_password
+            // Only uk_api_url comes from DB; credentials from process.env
+            IntegrationConfig.get.mockResolvedValueOnce('https://uk.example.com');
 
             axios.post.mockResolvedValue({
                 status: 200,
@@ -353,10 +412,8 @@ describe('UKApiClient', () => {
         });
 
         test('caches token on subsequent calls', async () => {
-            IntegrationConfig.get
-                .mockResolvedValueOnce('https://uk.example.com')
-                .mockResolvedValueOnce('svc_user')
-                .mockResolvedValueOnce('svc_pass');
+            // Only uk_api_url from DB; UK_SERVICE_USER/PASSWORD from process.env (set in beforeEach)
+            IntegrationConfig.get.mockResolvedValueOnce('https://uk.example.com');
 
             axios.post.mockResolvedValue({
                 status: 200,
@@ -381,10 +438,8 @@ describe('UKApiClient', () => {
     describe('createRequest()', () => {
         test('posts request to UK API with auth header', async () => {
             // Setup: authenticate first
-            IntegrationConfig.get
-                .mockResolvedValueOnce('https://uk.example.com')
-                .mockResolvedValueOnce('svc_user')
-                .mockResolvedValueOnce('svc_pass');
+            // Only uk_api_url from DB; UK_SERVICE_USER/PASSWORD from process.env (set in beforeEach)
+            IntegrationConfig.get.mockResolvedValueOnce('https://uk.example.com');
 
             axios.post
                 .mockResolvedValueOnce({ status: 200, data: { token: 'jwt-123' } })  // auth
@@ -418,10 +473,8 @@ describe('UKApiClient', () => {
         });
 
         test('retries on failure with exponential backoff (max 3)', async () => {
-            IntegrationConfig.get
-                .mockResolvedValueOnce('https://uk.example.com')
-                .mockResolvedValueOnce('svc_user')
-                .mockResolvedValueOnce('svc_pass');
+            // Only uk_api_url from DB; UK_SERVICE_USER/PASSWORD from process.env (set in beforeEach)
+            IntegrationConfig.get.mockResolvedValueOnce('https://uk.example.com');
 
             const networkError = new Error('ECONNRESET');
             networkError.code = 'ECONNRESET';
@@ -449,10 +502,8 @@ describe('UKApiClient', () => {
         });
 
         test('throws after 3 failed retries', async () => {
-            IntegrationConfig.get
-                .mockResolvedValueOnce('https://uk.example.com')
-                .mockResolvedValueOnce('svc_user')
-                .mockResolvedValueOnce('svc_pass');
+            // Only uk_api_url from DB; UK_SERVICE_USER/PASSWORD from process.env (set in beforeEach)
+            IntegrationConfig.get.mockResolvedValueOnce('https://uk.example.com');
 
             const networkError = new Error('ECONNRESET');
 
@@ -515,11 +566,13 @@ class UKApiClient {
         }
 
         const apiUrl = await IntegrationConfig.get('uk_api_url');
-        const username = await IntegrationConfig.get('uk_service_user');
-        const password = await IntegrationConfig.get('uk_service_password');
+        // Sensitive credentials are ENV-ONLY (never stored in DB)
+        // as defined in ukIntegrationService.js SENSITIVE_KEYS
+        const username = process.env.UK_SERVICE_USER;
+        const password = process.env.UK_SERVICE_PASSWORD;
 
         if (!apiUrl || !username || !password) {
-            throw new Error('UK API credentials not configured (uk_api_url, uk_service_user, uk_service_password)');
+            throw new Error('UK API credentials not configured (uk_api_url in DB + UK_SERVICE_USER/UK_SERVICE_PASSWORD env vars)');
         }
 
         const response = await axios.post(
