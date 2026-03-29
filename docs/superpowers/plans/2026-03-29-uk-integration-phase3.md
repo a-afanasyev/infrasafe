@@ -880,6 +880,21 @@ async sendAlertToUK(alertData) {
             const idempotencyKey = crypto.randomUUID();
 
             try {
+                // 5. Write mapping FIRST (local UNIQUE constraint prevents duplicates on retry)
+                // If this insert fails with duplicate key, the request was already sent — skip.
+                const mapping = await AlertRequestMap.create({
+                    infrasafe_alert_id: alertData.alert_id,
+                    building_external_id: building.external_id,
+                    idempotency_key: idempotencyKey
+                });
+
+                if (!mapping) {
+                    // Duplicate — already processed this alert+building pair
+                    logger.debug(`sendAlertToUK: already sent for alert ${alertData.alert_id}, building ${building.building_id}`);
+                    continue;
+                }
+
+                // 6. Then call UK API (idempotency_key header ensures UK deduplicates too)
                 const ukResponse = await ukApiClient.createRequest({
                     building_external_id: building.external_id,
                     category: rule.uk_category,
@@ -888,13 +903,10 @@ async sendAlertToUK(alertData) {
                     idempotency_key: idempotencyKey
                 });
 
-                // 5. Track in alert_request_map
-                await AlertRequestMap.create({
-                    infrasafe_alert_id: alertData.alert_id,
-                    uk_request_number: ukResponse.request_number,
-                    building_external_id: building.external_id,
-                    idempotency_key: idempotencyKey
-                });
+                // 7. Update mapping with UK request number
+                await AlertRequestMap.updateRequestNumber(
+                    mapping.id, ukResponse.request_number
+                );
 
                 logger.info(
                     `sendAlertToUK: created UK request ${ukResponse.request_number} ` +

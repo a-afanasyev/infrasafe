@@ -245,18 +245,8 @@ async _getUkApiUrl() {
 }
 
 /**
- * Get UK service credentials for API authentication.
- * @returns {{ username: string|undefined, password: string|undefined }}
- */
-_getServiceCredentials() {
-    return {
-        username: process.env.UK_SERVICE_USER,
-        password: process.env.UK_SERVICE_PASSWORD
-    };
-}
-
-/**
  * Get request counts per building (with 60s cache).
+ * Uses ukApiClient from Phase 3 for authentication (JWT login, token caching).
  * Returns { buildings: { [externalId]: { total, by_urgency } } }
  * On ANY error, returns empty (graceful degradation). Never throws.
  * @returns {Promise<Object>}
@@ -272,16 +262,11 @@ async getRequestCounts() {
             return this._requestCountsCache;
         }
 
-        const ukApiUrl = await this._getUkApiUrl();
-        if (!ukApiUrl) return EMPTY;
+        // Use ukApiClient (Phase 3) for authenticated UK API calls
+        const ukApiClient = require('../clients/ukApiClient');
+        const response = await ukApiClient.get('/requests/counts-by-building');
 
-        const creds = this._getServiceCredentials();
-        const response = await axios.get(`${ukApiUrl}/requests/counts-by-building`, {
-            auth: creds.username ? creds : undefined,
-            timeout: 5000
-        });
-
-        const result = response.data || EMPTY;
+        const result = response || EMPTY;
         this._requestCountsCache = result;
         this._requestCountsCacheTime = Date.now();
         return result;
@@ -308,18 +293,13 @@ async getBuildingRequests(externalId, limit = 3) {
         if (!enabled) return EMPTY;
 
         const ukApiUrl = await this._getUkApiUrl();
-        if (!ukApiUrl) return EMPTY;
-
-        const creds = this._getServiceCredentials();
-        const response = await axios.get(
-            `${ukApiUrl}/requests/by-building?external_id=${encodeURIComponent(externalId)}&limit=${limit}`,
-            {
-                auth: creds.username ? creds : undefined,
-                timeout: 5000
-            }
+        // Use ukApiClient (Phase 3) for authenticated UK API calls
+        const ukApiClient = require('../clients/ukApiClient');
+        const response = await ukApiClient.get(
+            `/requests/by-building?external_id=${encodeURIComponent(externalId)}&limit=${limit}`
         );
 
-        return response.data || EMPTY;
+        return response || EMPTY;
     } catch (error) {
         logger.error(`ukIntegrationService.getBuildingRequests error: ${error.message}`);
         return EMPTY;
@@ -416,14 +396,15 @@ describe('Integration API -- Request Counts', () => {
     beforeEach(() => jest.clearAllMocks());
 
     describe('GET /integration/request-counts', () => {
-        it('returns request counts for authenticated user', async () => {
+        it('returns request counts for regular (non-admin) authenticated user', async () => {
             ukIntegrationService.getRequestCounts.mockResolvedValue({
                 buildings: { 'uuid-1': { total: 2 } }
             });
 
+            // NO x-test-role header → mock assigns role: 'user' (non-admin)
+            // This proves the endpoint is accessible without admin role
             const res = await request(app)
-                .get('/integration/request-counts')
-                .set('x-test-role', 'admin');
+                .get('/integration/request-counts');
 
             expect(res.status).toBe(200);
             expect(res.body.success).toBe(true);
@@ -434,22 +415,21 @@ describe('Integration API -- Request Counts', () => {
             ukIntegrationService.getRequestCounts.mockRejectedValue(new Error('fail'));
 
             const res = await request(app)
-                .get('/integration/request-counts')
-                .set('x-test-role', 'admin');
+                .get('/integration/request-counts');
 
             expect(res.status).toBe(500);
         });
     });
 
     describe('GET /integration/building-requests/:externalId', () => {
-        it('returns requests for a valid externalId', async () => {
+        it('returns requests for a valid externalId (non-admin user)', async () => {
             ukIntegrationService.getBuildingRequests.mockResolvedValue({
                 requests: [{ id: 1, title: 'Leak' }]
             });
 
+            // NO x-test-role header → regular user access
             const res = await request(app)
-                .get('/integration/building-requests/a1b2c3d4-e5f6-7890-abcd-ef1234567890')
-                .set('x-test-role', 'admin');
+                .get('/integration/building-requests/a1b2c3d4-e5f6-7890-abcd-ef1234567890');
 
             expect(res.status).toBe(200);
             expect(res.body.data.requests).toHaveLength(1);
@@ -457,10 +437,19 @@ describe('Integration API -- Request Counts', () => {
 
         it('returns 400 for invalid externalId format', async () => {
             const res = await request(app)
-                .get('/integration/building-requests/not-a-uuid')
-                .set('x-test-role', 'admin');
+                .get('/integration/building-requests/not-a-uuid');
 
             expect(res.status).toBe(400);
+        });
+    });
+
+    describe('Admin-only routes still require admin role', () => {
+        it('GET /integration/config returns 403 for non-admin', async () => {
+            // No x-test-role → role: 'user' → isAdmin rejects
+            const res = await request(app)
+                .get('/integration/config');
+
+            expect(res.status).toBe(403);
         });
     });
 });
@@ -746,8 +735,12 @@ async loadUKRequests(headers) {
         });
 
         // Lazy-load request details on popup open
+        // Use marker._popup to scope querySelector to THIS popup only
         marker.on('popupopen', async () => {
-            const detailEl = document.querySelector('.uk-requests-detail');
+            const popup = marker.getPopup();
+            const container = popup && popup.getElement();
+            if (!container) return;
+            const detailEl = container.querySelector('.uk-requests-detail');
             if (!detailEl) return;
             const extId = detailEl.dataset.externalId;
             try {

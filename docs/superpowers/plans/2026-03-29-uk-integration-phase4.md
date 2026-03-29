@@ -571,41 +571,85 @@ feat(service): add handleRequestWebhook with status mapping and alert resolution
 These tests validate the route-level behavior: payload validation, calling `handleRequestWebhook`, and error responses. They require mocking `ukIntegrationService` at the route level.
 
 ```js
-describe('POST /webhooks/uk/request route handler', () => {
-    // This section tests the route handler logic separately.
-    // The route calls ukIntegrationService.handleRequestWebhook() after validation.
+// Requires mocked ukIntegrationService and express app setup from the test file's beforeAll
+const crypto = require('crypto');
 
-    it('returns 400 if event_id is missing', async () => {
-        // Validate that the route rejects payloads without event_id
-        // (existing validation — should still pass after refactor)
+const validPayload = () => ({
+    event_id: crypto.randomUUID(),
+    event: 'request.status_changed',
+    request: { request_number: '260324-015', status: 'Принято', building_id: 15 }
+});
+
+describe('POST /webhooks/uk/request route handler', () => {
+    beforeEach(() => {
+        ukIntegrationService.isDuplicateEvent.mockResolvedValue(false);
+        ukIntegrationService.handleRequestWebhook.mockResolvedValue(undefined);
     });
 
-    it('returns 400 if event field is missing', async () => {
-        // New validation: event field must be present and a valid request event
+    it('returns 400 if event_id is missing', async () => {
+        const body = validPayload();
+        delete body.event_id;
+        const res = await request(app).post('/webhooks/uk/request').send(body);
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/event_id/i);
+    });
+
+    it('returns 400 if event is invalid', async () => {
+        const body = { ...validPayload(), event: 'invalid.event' };
+        const res = await request(app).post('/webhooks/uk/request').send(body);
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/event/i);
     });
 
     it('returns 400 if request object is missing', async () => {
-        // New validation: request must be an object with request_number
+        const body = validPayload();
+        delete body.request;
+        const res = await request(app).post('/webhooks/uk/request').send(body);
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/request/i);
     });
 
     it('returns 400 if request.request_number is missing', async () => {
-        // request_number is required for status tracking
+        const body = validPayload();
+        delete body.request.request_number;
+        const res = await request(app).post('/webhooks/uk/request').send(body);
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/request_number/i);
     });
 
     it('returns 400 if request.request_number exceeds 50 chars', async () => {
-        // Length guard matching existing entity_id slice
+        const body = validPayload();
+        body.request.request_number = 'x'.repeat(51);
+        const res = await request(app).post('/webhooks/uk/request').send(body);
+        expect(res.status).toBe(400);
+    });
+
+    it('returns 400 if status_changed but request.status missing', async () => {
+        const body = validPayload();
+        delete body.request.status;
+        const res = await request(app).post('/webhooks/uk/request').send(body);
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/status/i);
     });
 
     it('returns 200 for valid payload and delegates to handleRequestWebhook', async () => {
-        // Happy path: valid payload → handleRequestWebhook called → 200
+        const body = validPayload();
+        const res = await request(app).post('/webhooks/uk/request').send(body);
+        expect(res.status).toBe(200);
+        expect(ukIntegrationService.handleRequestWebhook).toHaveBeenCalledWith(body);
     });
 
     it('returns 200 with "Already processed" for duplicate event_id', async () => {
-        // Existing idempotency check should remain
+        ukIntegrationService.isDuplicateEvent.mockResolvedValue(true);
+        const res = await request(app).post('/webhooks/uk/request').send(validPayload());
+        expect(res.status).toBe(200);
+        expect(res.body.message).toMatch(/already/i);
     });
 
     it('returns 500 when handleRequestWebhook throws', async () => {
-        // Service error → 500 response, no leak of error details
+        ukIntegrationService.handleRequestWebhook.mockRejectedValue(new Error('DB down'));
+        const res = await request(app).post('/webhooks/uk/request').send(validPayload());
+        expect(res.status).toBe(500);
     });
 });
 ```
@@ -631,9 +675,9 @@ router.post('/request', verifyWebhook, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid or missing event_id' });
         }
 
-        // Validate event field
-        if (!event || typeof event !== 'string') {
-            return res.status(400).json({ success: false, message: 'Missing required field: event' });
+        // Validate event field — must be a valid request event type
+        if (!event || !isValidRequestEvent(event)) {
+            return res.status(400).json({ success: false, message: 'Invalid or missing event (expected request.created or request.status_changed)' });
         }
 
         // Validate request object
@@ -648,6 +692,11 @@ router.post('/request', verifyWebhook, async (req, res) => {
 
         if (ukRequest.request_number.length > 50) {
             return res.status(400).json({ success: false, message: 'request.request_number exceeds maximum length' });
+        }
+
+        // Validate status for status_changed events
+        if (event === 'request.status_changed' && (!ukRequest.status || typeof ukRequest.status !== 'string')) {
+            return res.status(400).json({ success: false, message: 'Missing required field: request.status for status_changed event' });
         }
 
         // Idempotency check
