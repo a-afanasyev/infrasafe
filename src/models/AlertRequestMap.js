@@ -90,6 +90,10 @@ class AlertRequestMap {
     }
 
     static async updateStatus(id, status) {
+        const VALID_STATUSES = ['pending', 'active', 'sent', 'resolved', 'cancelled'];
+        if (!VALID_STATUSES.includes(status)) {
+            throw new Error(`AlertRequestMap.updateStatus: invalid status '${status}'`);
+        }
         try {
             const result = await db.query(
                 'UPDATE alert_request_map SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *',

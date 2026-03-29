@@ -398,18 +398,28 @@ class UKIntegrationService {
 
         const TERMINAL_STATUSES = ['Принято', 'Отменена'];
 
+        // Insert pending log entry first — UNIQUE constraint on event_id
+        // prevents concurrent processing of the same event (TOCTOU race protection)
+        let logEntry;
         try {
-            // Log the event
-            await this.logEvent({
+            logEntry = await IntegrationLog.create({
                 event_id,
                 direction: 'from_uk',
                 entity_type: 'request',
                 entity_id: String(ukRequest.request_number || '').slice(0, 50),
                 action: event,
                 payload,
-                status: 'success'
+                status: 'pending'
             });
+        } catch (logError) {
+            if (logError.code === '23505') {
+                logger.info(`handleRequestWebhook: concurrent duplicate event_id ${event_id}, skipping`);
+                return;
+            }
+            throw logError;
+        }
 
+        try {
             // Invalidate request counts cache on any request event
             this.invalidateRequestCache();
 
@@ -440,8 +450,8 @@ class UKIntegrationService {
                     if (allTerminal) {
                         try {
                             const alertService = require('./alertService');
-                            // Use system user ID (1) for auto-resolution
-                            await alertService.resolveAlert(mapping.infrasafe_alert_id, 1);
+                            // Use null for system-initiated auto-resolution (no human user)
+                            await alertService.resolveAlert(mapping.infrasafe_alert_id, null);
                             logger.info(`handleRequestWebhook: auto-resolved alert ${mapping.infrasafe_alert_id} (all requests terminal)`);
                         } catch (resolveError) {
                             logger.error(`handleRequestWebhook: failed to resolve alert ${mapping.infrasafe_alert_id}: ${resolveError.message}`);
@@ -451,7 +461,14 @@ class UKIntegrationService {
 
                 logger.info(`handleRequestWebhook: updated mapping for request ${ukRequest.request_number} → status: ${newStatus}`);
             }
+
+            // Mark log entry as success
+            await IntegrationLog.updateStatus(logEntry.id, 'success').catch(() => {});
         } catch (error) {
+            // Mark log entry as error
+            if (logEntry) {
+                await IntegrationLog.updateStatus(logEntry.id, 'error', error.message).catch(() => {});
+            }
             logger.error(`handleRequestWebhook error: ${error.message}`);
             throw error;
         }

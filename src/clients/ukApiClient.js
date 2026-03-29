@@ -84,7 +84,7 @@ class UKApiClient {
                 }
 
                 if (attempt < MAX_RETRIES - 1) {
-                    const delay = BACKOFF_BASE_MS * Math.pow(5, attempt);
+                    const delay = BACKOFF_BASE_MS * Math.pow(2, attempt); // 1s, 2s, 4s
                     await new Promise(resolve => setTimeout(resolve, delay));
                 }
             }
@@ -94,15 +94,28 @@ class UKApiClient {
     }
 
     async get(path) {
-        const token = await this.authenticate();
+        let token = await this.authenticate();
         const apiUrl = await IntegrationConfig.get('uk_api_url');
 
-        const response = await axios.get(`${apiUrl}${path}`, {
-            headers: { Authorization: `Bearer ${token}` },
-            timeout: REQUEST_TIMEOUT_MS
-        });
-
-        return response.data;
+        try {
+            const response = await axios.get(`${apiUrl}${path}`, {
+                headers: { Authorization: `Bearer ${token}` },
+                timeout: REQUEST_TIMEOUT_MS
+            });
+            return response.data;
+        } catch (error) {
+            // On 401, clear token and retry once with fresh auth
+            if (error.response && error.response.status === 401) {
+                this.clearToken();
+                token = await this.authenticate();
+                const response = await axios.get(`${apiUrl}${path}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                    timeout: REQUEST_TIMEOUT_MS
+                });
+                return response.data;
+            }
+            throw error;
+        }
     }
 }
 

@@ -129,6 +129,10 @@ router.post('/request', verifyWebhook, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Missing required field: request.status for status_changed event' });
         }
 
+        if (ukRequest.status && ukRequest.status.length > 100) {
+            return res.status(400).json({ success: false, message: 'request.status exceeds maximum length' });
+        }
+
         if (await ukIntegrationService.isDuplicateEvent(event_id)) {
             return res.status(200).json({ success: true, message: 'Already processed' });
         }
