@@ -961,11 +961,9 @@ if (ukSection) {
 }
 ```
 
-### Step 5.3: Ensure `external_id` is available in building data
+### Step 5.3: Verify `external_id` is available in building data
 
-- [ ] **Verify that the `/api/buildings-metrics` endpoint returns `external_id`**. Check `src/models/Building.js` or the SQL query in `buildingMetricsRoutes.js`. If `external_id` is not included in the SELECT, add it.
-
-If not present, add `b.external_id` to the SELECT column list in the buildings-metrics query.
+- [ ] **Confirm Task 3 was completed** — both `BUILDINGS_METRICS_QUERY` SELECT and `mapAuthenticatedRow()` in `src/services/buildingMetricsService.js` must include `external_id`. Without the mapper change, the SQL column is fetched but stripped from the JSON response.
 
 ### Step 5.4: Manual verification
 
@@ -1027,7 +1025,7 @@ Verify:
 | 3 | `ukIntegrationService.js` | Webhook cache invalidation hook |
 | 4 | `map-layers-control.js` | Map layer with badge markers |
 | 5 | `script.js` | Building popup ЗАЯВКИ section |
-| 6 | Building model/query | Include `external_id` in metrics query |
+| 6 | Building model/query | Include `external_id` in metrics SQL + mapAuthenticatedRow() |
 | 7 | -- | Regression testing |
 
 **Total new tests:** ~12 unit + ~3 integration
