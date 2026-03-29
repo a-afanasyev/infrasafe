@@ -9,7 +9,8 @@ InfraSafe is a digital IoT monitoring platform for multi-apartment buildings (Ru
 **Tech stack**: Node.js 20+ / Express.js backend, PostgreSQL 15+ with PostGIS, vanilla JavaScript frontend (Leaflet.js + Chart.js), Docker Compose orchestration, Nginx reverse proxy.
 
 **Active branches**:
-- `main` — production backend + legacy frontend
+- `main` — production backend + legacy frontend + UK Phase 1-2
+- `feature/uk-integration-phase3-5` — UK Phase 3-5 (alert pipeline, request feedback, map layer backend) — ready to merge
 - `feature/frontend-redesign` — new frontend-design/ (Inter font, design tokens, dark/light themes, responsive dashboard)
 
 ## Key Commands
@@ -98,34 +99,46 @@ All mounted under `/api`:
 - `/buildings-metrics` - Map data aggregation
 - `/power-analytics` - Power grid analysis
 - `/webhooks/uk` - Incoming webhooks from UK bot (HMAC-verified, rate-limited 60/min, no JWT)
-- `/integration` - Admin UK integration config, logs, alert rules (admin-only)
+- `/integration` - UK integration: config/logs/rules (admin-only), request-counts/building-requests (any auth user)
 
 ### UK Integration Module
-Bidirectional integration with UK Management Bot (Управляющая Компания). Phase 1 complete.
+Bidirectional integration with UK Management Bot (Управляющая Компания). All 5 phases complete.
 
 **Backend files:**
-- `src/services/ukIntegrationService.js` — Core logic: webhook verification, building sync, config management
-- `src/routes/webhookRoutes.js` — POST `/webhooks/uk/building` and `/webhooks/uk/request`
-- `src/routes/integrationRoutes.js` — Admin API: config, logs, alert rules CRUD
+- `src/services/ukIntegrationService.js` — Core logic: webhook verification, building sync, alert→request pipeline, request→alert feedback, request counts with caching
+- `src/clients/ukApiClient.js` — UK API client: JWT auth with 25min token cache, createRequest() with retry + exponential backoff, get() with 401 retry
+- `src/routes/webhookRoutes.js` — POST `/webhooks/uk/building` and `/webhooks/uk/request` (full validation, TOCTOU-safe)
+- `src/routes/integrationRoutes.js` — Admin API + public-auth endpoints: config, logs, rules, request-counts, building-requests
 - `src/utils/webhookValidation.js` — Input validation helpers
 - `src/models/IntegrationConfig.js` — Key-value config store (DB-backed)
 - `src/models/IntegrationLog.js` — Sync event log with pagination and filtering
-- `src/models/AlertRule.js` — Alert-to-UK-request mapping rules
-- `src/models/AlertRequestMap.js` — Tracks which alerts created which UK requests
+- `src/models/AlertRule.js` — Alert-to-UK-request mapping rules + `findByTypeAndSeverity()`
+- `src/models/AlertRequestMap.js` — Tracks alert→request mappings: create, findByAlertAndBuilding, markSent, findByRequestNumber, updateStatus, areAllTerminal
+
+**Key methods in ukIntegrationService:**
+- `sendAlertToUK(alertData)` — matches alert rules, resolves buildings by infrastructure FK, creates UK requests with idempotent mappings
+- `handleRequestWebhook(payload)` — terminal status detection (Принято/Отменена), auto-resolves alert when all requests terminal
+- `resolveBuildingIds(id, type)` — resolves via primary/backup_transformer_id, controller_id, cold_water_source_id, heat_source_id
+- `getRequestCounts()` / `getBuildingRequests()` — UK API proxy with 60s cache, graceful degradation
 
 **Building model extensions** (`src/models/Building.js`):
 - `external_id` (UUID) — reference to UK system building
 - `uk_deleted_at` — soft delete from UK
 - Methods: `findByExternalId()`, `createFromUK()`, `syncFromUK()`, `softDeleteFromUK()`
 
-**Security:** HMAC-SHA256 webhook signatures, replay protection, idempotency via event_id, rate limiting (60 req/min), timing-safe comparison. Secrets (UK_WEBHOOK_SECRET) stored in ENV only, never in DB.
+**Security:** HMAC-SHA256 webhook signatures, replay protection, insert-first UNIQUE guard (TOCTOU-safe), idempotent alert→request mapping, rate limiting (60 req/min), timing-safe comparison. Secrets (UK_WEBHOOK_SECRET, UK_SERVICE_USER, UK_SERVICE_PASSWORD) stored in ENV only, never in DB.
+
+**API endpoints (Phase 5):**
+- `GET /integration/request-counts` — any authenticated user (not admin), 60s cached
+- `GET /integration/building-requests/:externalId` — any authenticated user, UUID validated
+- Both mounted BEFORE `router.use(isAdmin)` in integrationRoutes.js
 
 **Phased plan (5 phases):**
 1. Foundation (DB, models, routes, admin UI, logging) — **DONE**
-2. Building Sync (UK → InfraSafe) — planned
-3. Alert → Request Pipeline — planned
-4. Request → Alert Feedback — planned
-5. Map Layer (UI visualization) — planned
+2. Building Sync (UK → InfraSafe) — **DONE**
+3. Alert → Request Pipeline (InfraSafe → UK) — **DONE** (on feature/uk-integration-phase3-5)
+4. Request → Alert Feedback (UK → InfraSafe) — **DONE** (on feature/uk-integration-phase3-5)
+5. Map Layer backend (request counts, caching, external_id) — **DONE** (on feature/uk-integration-phase3-5)
 
 **Spec:** `docs/superpowers/specs/2026-03-24-infrasafe-uk-integration-v2-design.md`
 
@@ -192,10 +205,13 @@ UK_SERVICE_PASSWORD        # Service account password
 - **17 buildings** in Tashkent with coordinates, **34 metric records**
 
 ## Test Suite
-- **25 test files** across unit, integration, and security categories
+- **677 tests** total: `npm test` (620) + `npm run test:e2e` (57)
 - Unit tests: `tests/jest/unit/` (20 files — services, controllers, models, middleware, UK integration)
 - Integration tests: `tests/jest/integration/` (2 files — API, default-deny auth)
 - Security tests: `tests/jest/security/` (3 files — SQL injection, XSS, general security)
+- E2E tests: `tests/jest/e2e/` (10 files — real Docker containers, no mocks) — run via `npm run test:e2e`
+- E2E requires running Docker containers; excluded from default `npm test` via testPathIgnorePatterns
+- E2E globalSetup.js caches auth tokens to avoid rate limiter; restart app before running
 
 ## Known Architecture Issues
 - `public/admin.js` (~2,600 lines) and `public/script.js` (~1,400 lines) are monolithic
