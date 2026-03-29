@@ -15,7 +15,8 @@
     "test:smoke": "bash tests/smoke/run-smoke-tests.sh",
     "test:all": "npm run test:unit && npm run test:integration && npm run test:security && npm run test:smoke",
     "test:coverage": "jest --coverage",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "test:e2e": "jest --config tests/jest/e2e/jest.e2e.config.js --runInBand --testTimeout=15000"
   },
   "keywords": [
     "monitoring",

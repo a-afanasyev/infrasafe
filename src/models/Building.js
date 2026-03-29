@@ -124,9 +124,8 @@ class Building {
                                 'model', c.model,
                                 'vendor', c.vendor,
                                 'status', c.status,
-                                'firmware_version', c.firmware_version,
-                                'location', c.location,
-                                'last_seen', c.last_seen
+                                'installed_at', c.installed_at,
+                                'last_heartbeat', c.last_heartbeat
                             )
                         ) FILTER (WHERE c.controller_id IS NOT NULL),
                         '[]'
