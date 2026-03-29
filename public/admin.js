@@ -81,10 +81,11 @@ document.addEventListener("DOMContentLoaded", function () {
     };
 
     async function loadEntityCache() {
+        const h = { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` };
         const fetches = [
-            fetch('/api/buildings?limit=200').then(r => r.json()).then(d => d.data || []).catch(() => []),
-            fetch('/api/controllers?limit=200').then(r => r.json()).then(d => d.data || []).catch(() => []),
-            fetch('/api/transformers?limit=200').then(r => r.json()).then(d => d.data || []).catch(() => [])
+            fetch('/api/buildings?limit=200', { headers: h }).then(r => r.json()).then(d => d.data || []).catch(() => []),
+            fetch('/api/controllers?limit=200', { headers: h }).then(r => r.json()).then(d => d.data || []).catch(() => []),
+            fetch('/api/transformers?limit=200', { headers: h }).then(r => r.json()).then(d => d.data || []).catch(() => [])
         ];
         const [buildings, controllers, transformers] = await Promise.all(fetches);
         buildings.forEach(b => { entityCache.buildings[b.building_id] = b.name; });
@@ -2177,11 +2178,12 @@ document.addEventListener("DOMContentLoaded", function () {
     async function loadFormData() {
         try {
             // Загружаем все необходимые данные параллельно
+            const authHeaders = { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` };
             const [transformersResponse, linesResponse, waterLinesResponse, waterSuppliersResponse] = await Promise.all([
-                fetch('/api/transformers').then(r => r.json()),
-                fetch('/api/lines').then(r => r.json()),
-                fetch('/api/water-lines').then(r => r.json()),
-                fetch('/api/water-suppliers').then(r => r.json())
+                fetch('/api/transformers', { headers: authHeaders }).then(r => r.json()),
+                fetch('/api/lines', { headers: authHeaders }).then(r => r.json()),
+                fetch('/api/water-lines', { headers: authHeaders }).then(r => r.json()),
+                fetch('/api/water-suppliers', { headers: authHeaders }).then(r => r.json())
             ]);
 
             // Извлекаем массивы данных из ответов API

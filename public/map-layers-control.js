@@ -1190,7 +1190,7 @@ class MapLayersControl {
     // Загрузка источников воды на карту
     async loadWaterSources(headers) {
         try {
-            const response = await fetch(`${this.apiBaseUrl}/water-sources`, { headers });
+            const response = await fetch(`${this.apiBaseUrl}/cold-water-sources`, { headers });
 
             if (response.status === 401) throw new Error('401 Unauthorized');
             // Endpoint может не существовать (404)
