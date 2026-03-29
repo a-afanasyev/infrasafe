@@ -253,6 +253,16 @@ class InfrastructureAlertService {
             // WebSocket уведомления для активных пользователей (если реализован)
             this.broadcastAlert(alertData, alertId);
 
+            // UK Integration: forward alert as UK request (fire-and-forget, never throws)
+            try {
+                const ukIntegrationService = require('./ukIntegrationService');
+                if (await ukIntegrationService.isEnabled()) {
+                    await ukIntegrationService.sendAlertToUK({ ...alertData, alert_id: alertId });
+                }
+            } catch (ukError) {
+                logger.error('UK integration sendAlertToUK error (non-blocking):', ukError.message);
+            }
+
         } catch (error) {
             logger.error('Ошибка отправки уведомлений:', error);
         }

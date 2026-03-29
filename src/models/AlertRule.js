@@ -40,6 +40,19 @@ class AlertRule {
             throw error;
         }
     }
+
+    static async findByTypeAndSeverity(alertType, severity) {
+        try {
+            const result = await db.query(
+                'SELECT * FROM alert_rules WHERE alert_type = $1 AND severity = $2 AND enabled = true',
+                [alertType, severity]
+            );
+            return result.rows[0] || null;
+        } catch (error) {
+            logger.error(`AlertRule.findByTypeAndSeverity error: ${error.message}`);
+            throw error;
+        }
+    }
 }
 
 module.exports = AlertRule;

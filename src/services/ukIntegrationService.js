@@ -157,6 +157,155 @@ class UKIntegrationService {
     }
 
     /**
+     * Resolve building IDs affected by an infrastructure alert.
+     */
+    async resolveBuildingIds(infrastructureId, infrastructureType) {
+        const queries = {
+            transformer: `SELECT building_id, external_id FROM buildings
+                          WHERE (primary_transformer_id = $1 OR backup_transformer_id = $1)
+                            AND uk_deleted_at IS NULL`,
+            controller:  `SELECT b.building_id, b.external_id FROM controllers c
+                          JOIN buildings b ON b.building_id = c.building_id
+                          WHERE c.controller_id = $1 AND b.uk_deleted_at IS NULL`,
+            water_source: `SELECT building_id, external_id FROM buildings
+                           WHERE cold_water_source_id = $1 AND uk_deleted_at IS NULL`,
+            heat_source:  `SELECT building_id, external_id FROM buildings
+                           WHERE heat_source_id = $1 AND uk_deleted_at IS NULL`
+        };
+
+        const sql = queries[infrastructureType];
+        if (!sql) {
+            logger.warn(`resolveBuildingIds: unknown infrastructure_type '${infrastructureType}'`);
+            return [];
+        }
+
+        try {
+            const db = require('../config/database');
+            const result = await db.query(sql, [infrastructureId]);
+            return result.rows;
+        } catch (error) {
+            logger.error(`resolveBuildingIds error: ${error.message}`);
+            return [];
+        }
+    }
+
+    /**
+     * Send alert to UK as request(s). Called from alertService.sendNotifications().
+     * Never throws — InfraSafe must work normally even if UK integration fails.
+     */
+    async sendAlertToUK(alertData) {
+        try {
+            const enabled = await this.isEnabled();
+            if (!enabled) return;
+
+            const AlertRule = require('../models/AlertRule');
+            const AlertRequestMap = require('../models/AlertRequestMap');
+            const crypto = require('crypto');
+
+            // 1. Match alert to rule
+            const rule = await AlertRule.findByTypeAndSeverity(alertData.type, alertData.severity);
+            if (!rule) {
+                logger.debug(`sendAlertToUK: no matching rule for ${alertData.type}/${alertData.severity}`);
+                return;
+            }
+
+            // 2. Resolve affected buildings
+            const buildings = await this.resolveBuildingIds(alertData.infrastructure_id, alertData.infrastructure_type);
+            if (!buildings.length) {
+                logger.debug(`sendAlertToUK: no buildings found for ${alertData.infrastructure_type}:${alertData.infrastructure_id}`);
+                return;
+            }
+
+            // 3. Create UK request per building
+            const ukApiClient = require('../clients/ukApiClient');
+
+            for (const building of buildings) {
+                if (!building.external_id) {
+                    logger.debug(`sendAlertToUK: building ${building.building_id} has no external_id, skipping`);
+                    continue;
+                }
+
+                try {
+                    // Check if mapping already exists (idempotency)
+                    const existing = await AlertRequestMap.findByAlertAndBuilding(
+                        alertData.alert_id, building.external_id
+                    );
+
+                    let mapping;
+                    let idempotencyKey;
+
+                    if (existing && existing.status === 'sent') {
+                        logger.debug(`sendAlertToUK: already sent for alert ${alertData.alert_id}, building ${building.building_id}`);
+                        continue;
+                    } else if (existing && existing.status === 'pending') {
+                        mapping = existing;
+                        idempotencyKey = existing.idempotency_key;
+                    } else {
+                        idempotencyKey = crypto.randomUUID();
+                        mapping = await AlertRequestMap.create({
+                            infrasafe_alert_id: alertData.alert_id,
+                            building_external_id: building.external_id,
+                            idempotency_key: idempotencyKey,
+                            status: 'pending'
+                        });
+
+                        if (!mapping) {
+                            const raceWinner = await AlertRequestMap.findByAlertAndBuilding(
+                                alertData.alert_id, building.external_id
+                            );
+                            if (raceWinner && raceWinner.status === 'sent') continue;
+                            if (raceWinner && raceWinner.status === 'pending') {
+                                mapping = raceWinner;
+                                idempotencyKey = raceWinner.idempotency_key;
+                            } else {
+                                continue;
+                            }
+                        }
+                    }
+
+                    // Call UK API
+                    const ukResponse = await ukApiClient.createRequest({
+                        building_external_id: building.external_id,
+                        category: rule.uk_category,
+                        urgency: rule.uk_urgency,
+                        description: alertData.message,
+                        idempotency_key: idempotencyKey
+                    });
+
+                    // Mark as sent
+                    await AlertRequestMap.markSent(mapping.id, ukResponse.request_number);
+
+                    // Log success
+                    await this.logEvent({
+                        direction: 'to_uk',
+                        entity_type: 'alert',
+                        entity_id: String(alertData.alert_id),
+                        action: 'alert.forwarded',
+                        payload: { alert_id: alertData.alert_id, building_id: building.building_id, request_number: ukResponse.request_number },
+                        status: 'success'
+                    });
+
+                    logger.info(`sendAlertToUK: created UK request ${ukResponse.request_number} for alert ${alertData.alert_id}, building ${building.building_id}`);
+                } catch (buildingError) {
+                    logger.error(`sendAlertToUK: failed for building ${building.building_id}: ${buildingError.message}`);
+
+                    await this.logEvent({
+                        direction: 'to_uk',
+                        entity_type: 'alert',
+                        entity_id: String(alertData.alert_id),
+                        action: 'alert.forwarded',
+                        payload: { alert_id: alertData.alert_id, building_id: building.building_id },
+                        status: 'error',
+                        error_message: buildingError.message
+                    }).catch(() => {});
+                }
+            }
+        } catch (error) {
+            logger.error(`sendAlertToUK error: ${error.message}`);
+        }
+    }
+
+    /**
      * Process a building webhook from UK system.
      * Handles building.created, building.updated, building.deleted events.
      * @param {Object} payload - Webhook payload with event, building, event_id
