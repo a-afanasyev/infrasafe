@@ -70,6 +70,10 @@
     "testMatch": [
       "**/tests/jest/**/*.test.js"
     ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/tests/jest/e2e/"
+    ],
     "collectCoverageFrom": [
       "src/**/*.js",
       "!src/index.js"
