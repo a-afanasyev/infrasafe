@@ -4,7 +4,7 @@ const express = require('express');
 const router = express.Router();
 const ukIntegrationService = require('../services/ukIntegrationService');
 const logger = require('../utils/logger');
-const { isValidUUID } = require('../utils/webhookValidation');
+const { isValidUUID, isValidRequestEvent } = require('../utils/webhookValidation');
 const { SimpleRateLimiter } = require('../middleware/rateLimiter');
 
 const webhookLimiter = new SimpleRateLimiter({
@@ -99,28 +99,41 @@ router.post('/building', verifyWebhook, async (req, res) => {
 /**
  * POST /api/webhooks/uk/request
  * Receives request events from UK system.
+ * Phase 4: processes request status changes and auto-resolves alerts when all requests are terminal.
  */
 router.post('/request', verifyWebhook, async (req, res) => {
     try {
-        const { event_id, event } = req.body;
+        const { event_id, event, request: ukRequest } = req.body;
 
         if (!event_id || !isValidUUID(event_id)) {
             return res.status(400).json({ success: false, message: 'Invalid or missing event_id' });
+        }
+
+        if (!event || !isValidRequestEvent(event)) {
+            return res.status(400).json({ success: false, message: 'Invalid or missing event (expected request.created or request.status_changed)' });
+        }
+
+        if (!ukRequest || typeof ukRequest !== 'object') {
+            return res.status(400).json({ success: false, message: 'Missing required field: request' });
+        }
+
+        if (!ukRequest.request_number || typeof ukRequest.request_number !== 'string') {
+            return res.status(400).json({ success: false, message: 'Missing required field: request.request_number' });
+        }
+
+        if (ukRequest.request_number.length > 50) {
+            return res.status(400).json({ success: false, message: 'request.request_number exceeds maximum length' });
+        }
+
+        if (event === 'request.status_changed' && (!ukRequest.status || typeof ukRequest.status !== 'string')) {
+            return res.status(400).json({ success: false, message: 'Missing required field: request.status for status_changed event' });
         }
 
         if (await ukIntegrationService.isDuplicateEvent(event_id)) {
             return res.status(200).json({ success: true, message: 'Already processed' });
         }
 
-        await ukIntegrationService.logEvent({
-            event_id,
-            direction: 'from_uk',
-            entity_type: 'request',
-            entity_id: String(req.body.request?.request_number ?? '').slice(0, 50) || null,
-            action: event || 'request.unknown',
-            payload: req.body,
-            status: 'success'
-        });
+        await ukIntegrationService.handleRequestWebhook(req.body);
 
         return res.status(200).json({ success: true });
     } catch (error) {

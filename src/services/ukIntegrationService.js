@@ -383,6 +383,72 @@ class UKIntegrationService {
             throw error;
         }
     }
+
+    /**
+     * Handle incoming request status webhook from UK.
+     * Terminal statuses (Принято, Отменена) → resolve alert if all requests terminal.
+     * Non-terminal → log only.
+     */
+    async handleRequestWebhook(payload) {
+        const { event_id, event, request: ukRequest } = payload;
+
+        const TERMINAL_STATUSES = ['Принято', 'Отменена'];
+
+        try {
+            // Log the event
+            await this.logEvent({
+                event_id,
+                direction: 'from_uk',
+                entity_type: 'request',
+                entity_id: String(ukRequest.request_number || '').slice(0, 50),
+                action: event,
+                payload,
+                status: 'success'
+            });
+
+            // For request.created — just log (no alert mapping expected)
+            if (event === 'request.created') {
+                logger.info(`handleRequestWebhook: request.created ${ukRequest.request_number}`);
+                return;
+            }
+
+            // For request.status_changed — check if terminal
+            if (event === 'request.status_changed' && ukRequest.status) {
+                const AlertRequestMap = require('../models/AlertRequestMap');
+
+                // Find mapping by request number
+                const mapping = await AlertRequestMap.findByRequestNumber(ukRequest.request_number);
+                if (!mapping) {
+                    logger.debug(`handleRequestWebhook: no mapping for request ${ukRequest.request_number} (manual UK request)`);
+                    return;
+                }
+
+                // Update mapping status
+                const newStatus = TERMINAL_STATUSES.includes(ukRequest.status) ? 'resolved' : 'active';
+                await AlertRequestMap.updateStatus(mapping.id, newStatus);
+
+                // If terminal — check if ALL requests for this alert are terminal
+                if (TERMINAL_STATUSES.includes(ukRequest.status)) {
+                    const allTerminal = await AlertRequestMap.areAllTerminal(mapping.infrasafe_alert_id);
+                    if (allTerminal) {
+                        try {
+                            const alertService = require('./alertService');
+                            // Use system user ID (1) for auto-resolution
+                            await alertService.resolveAlert(mapping.infrasafe_alert_id, 1);
+                            logger.info(`handleRequestWebhook: auto-resolved alert ${mapping.infrasafe_alert_id} (all requests terminal)`);
+                        } catch (resolveError) {
+                            logger.error(`handleRequestWebhook: failed to resolve alert ${mapping.infrasafe_alert_id}: ${resolveError.message}`);
+                        }
+                    }
+                }
+
+                logger.info(`handleRequestWebhook: updated mapping for request ${ukRequest.request_number} → status: ${newStatus}`);
+            }
+        } catch (error) {
+            logger.error(`handleRequestWebhook error: ${error.message}`);
+            throw error;
+        }
+    }
 }
 
 module.exports = new UKIntegrationService();

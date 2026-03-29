@@ -75,6 +75,50 @@ class AlertRequestMap {
             throw error;
         }
     }
+
+    static async findByRequestNumber(requestNumber) {
+        try {
+            const result = await db.query(
+                'SELECT * FROM alert_request_map WHERE uk_request_number = $1',
+                [requestNumber]
+            );
+            return result.rows[0] || null;
+        } catch (error) {
+            logger.error(`AlertRequestMap.findByRequestNumber error: ${error.message}`);
+            throw error;
+        }
+    }
+
+    static async updateStatus(id, status) {
+        try {
+            const result = await db.query(
+                'UPDATE alert_request_map SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
+                [status, id]
+            );
+            return result.rows[0] || null;
+        } catch (error) {
+            logger.error(`AlertRequestMap.updateStatus error: ${error.message}`);
+            throw error;
+        }
+    }
+
+    static async areAllTerminal(alertId) {
+        try {
+            const result = await db.query(
+                `SELECT COUNT(*) as total,
+                        COUNT(*) FILTER (WHERE status IN ('resolved', 'cancelled')) as terminal
+                 FROM alert_request_map
+                 WHERE infrasafe_alert_id = $1`,
+                [alertId]
+            );
+            const row = result.rows[0];
+            if (!row || parseInt(row.total) === 0) return false;
+            return parseInt(row.terminal) === parseInt(row.total);
+        } catch (error) {
+            logger.error(`AlertRequestMap.areAllTerminal error: ${error.message}`);
+            throw error;
+        }
+    }
 }
 
 module.exports = AlertRequestMap;
