@@ -185,7 +185,7 @@ describe('UKIntegrationService — Request Counts', () => {
         it('clears the request counts cache', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
             IntegrationConfig.get.mockResolvedValue('http://uk-api:8085/api/v2');
-            ukApiClient.get.mockResolvedValue({ data: { buildings: {} } });
+            ukApiClient.get.mockResolvedValue({ buildings: {} });
 
             await service.getRequestCounts();
             service.invalidateRequestCache();
@@ -576,20 +576,47 @@ Routes mounted before isAdmin middleware in integrationRoutes."
 
 ---
 
-## Task 3: Ensure `external_id` in Buildings-Metrics Query
+## Task 3: Ensure `external_id` in Buildings-Metrics Response
 
-> **MUST be done before frontend Tasks 5-6.** Frontend map layer and popup depend on `external_id` from `/buildings-metrics`, but current query does not return it.
+> **MUST be done before frontend Tasks 5-6.** Frontend map layer and popup depend on `external_id` from `/buildings-metrics`, but current query and mapper do not include it.
 
 **Files:**
-- Modify: `src/models/Building.js` or `src/services/buildingMetricsService.js`
+- Modify: `src/services/buildingMetricsService.js`
 
-- [ ] **Search for the buildings-metrics SQL query** and add `b.external_id` to SELECT. Look in `buildingMetricsService.js` or `Building.js` (method powering `GET /api/buildings-metrics`).
+Two changes needed in `src/services/buildingMetricsService.js`:
+
+- [ ] **Step 3.1: Add `b.external_id` to the SQL SELECT** (line ~13, after `b.management_company`):
+
+```sql
+        b.external_id,
+```
+
+- [ ] **Step 3.2: Add `external_id` to `mapAuthenticatedRow()`** (line ~46, after `management_company`):
+
+```javascript
+    external_id: row.external_id || null,
+```
+
+Without Step 3.2, the SQL returns the column but `mapAuthenticatedRow()` strips it out — frontend never receives it.
+
+- [ ] **Step 3.3: Verify** — restart app, then:
+
+```bash
+curl -s http://localhost:3000/api/buildings-metrics \
+  -H "Authorization: Bearer $TOKEN" | \
+  node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{const j=JSON.parse(d);console.log('external_id:', j.data?.[0]?.external_id)})"
+```
+
+Expected: `external_id: <uuid or null>` (not `external_id: undefined`).
 
 - [ ] **Commit:**
 
 ```bash
-git add <modified-file>
-git commit -m "fix(model): include external_id in buildings-metrics query for UK map layer"
+git add src/services/buildingMetricsService.js
+git commit -m "fix(model): include external_id in buildings-metrics query AND mapper
+
+Both SQL SELECT and mapAuthenticatedRow() updated — without both changes
+the column is fetched but stripped before reaching the JSON response."
 ```
 
 ---
