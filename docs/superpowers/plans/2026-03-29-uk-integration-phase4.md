@@ -587,7 +587,11 @@ const request = require('supertest');
 const crypto = require('crypto');
 const ukIntegrationService = require('../../../src/services/ukIntegrationService');
 
-// Build test app: bypass verifyWebhook (mocked isEnabled + verifyWebhookSignature above make it pass)
+// Build test app: verifyWebhook passes because:
+// 1) isEnabled mock returns true
+// 2) verifyWebhookSignature mock returns true
+// 3) All requests include X-Webhook-Signature header (required by line 29-31)
+// 4) rawBody captured via express.json verify callback
 const routeApp = express();
 routeApp.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf.toString(); } }));
 const webhookRoutes = require('../../../src/routes/webhookRoutes');
@@ -599,6 +603,14 @@ const validPayload = () => ({
     request: { request_number: '260324-015', status: 'Принято', building_id: 15 }
 });
 
+// Helper: send POST with required X-Webhook-Signature header
+function postRequest(body) {
+    return request(routeApp)
+        .post('/webhooks/uk/request')
+        .set('X-Webhook-Signature', 't=9999999999,v1=dummysig')
+        .send(body);
+}
+
 describe('POST /webhooks/uk/request route handler', () => {
     beforeEach(() => {
         ukIntegrationService.isDuplicateEvent.mockResolvedValue(false);
@@ -608,14 +620,14 @@ describe('POST /webhooks/uk/request route handler', () => {
     it('returns 400 if event_id is missing', async () => {
         const body = validPayload();
         delete body.event_id;
-        const res = await request(routeApp).post('/webhooks/uk/request').send(body);
+        const res = await postRequest(body);
         expect(res.status).toBe(400);
         expect(res.body.message).toMatch(/event_id/i);
     });
 
     it('returns 400 if event is invalid', async () => {
         const body = { ...validPayload(), event: 'invalid.event' };
-        const res = await request(routeApp).post('/webhooks/uk/request').send(body);
+        const res = await postRequest(body);
         expect(res.status).toBe(400);
         expect(res.body.message).toMatch(/event/i);
     });
@@ -623,7 +635,7 @@ describe('POST /webhooks/uk/request route handler', () => {
     it('returns 400 if request object is missing', async () => {
         const body = validPayload();
         delete body.request;
-        const res = await request(routeApp).post('/webhooks/uk/request').send(body);
+        const res = await postRequest(body);
         expect(res.status).toBe(400);
         expect(res.body.message).toMatch(/request/i);
     });
@@ -631,7 +643,7 @@ describe('POST /webhooks/uk/request route handler', () => {
     it('returns 400 if request.request_number is missing', async () => {
         const body = validPayload();
         delete body.request.request_number;
-        const res = await request(routeApp).post('/webhooks/uk/request').send(body);
+        const res = await postRequest(body);
         expect(res.status).toBe(400);
         expect(res.body.message).toMatch(/request_number/i);
     });
@@ -639,35 +651,35 @@ describe('POST /webhooks/uk/request route handler', () => {
     it('returns 400 if request.request_number exceeds 50 chars', async () => {
         const body = validPayload();
         body.request.request_number = 'x'.repeat(51);
-        const res = await request(routeApp).post('/webhooks/uk/request').send(body);
+        const res = await postRequest(body);
         expect(res.status).toBe(400);
     });
 
     it('returns 400 if status_changed but request.status missing', async () => {
         const body = validPayload();
         delete body.request.status;
-        const res = await request(routeApp).post('/webhooks/uk/request').send(body);
+        const res = await postRequest(body);
         expect(res.status).toBe(400);
         expect(res.body.message).toMatch(/status/i);
     });
 
     it('returns 200 for valid payload and delegates to handleRequestWebhook', async () => {
         const body = validPayload();
-        const res = await request(routeApp).post('/webhooks/uk/request').send(body);
+        const res = await postRequest(body);
         expect(res.status).toBe(200);
         expect(ukIntegrationService.handleRequestWebhook).toHaveBeenCalledWith(body);
     });
 
     it('returns 200 with "Already processed" for duplicate event_id', async () => {
         ukIntegrationService.isDuplicateEvent.mockResolvedValue(true);
-        const res = await request(routeApp).post('/webhooks/uk/request').send(validPayload());
+        const res = await postRequest(validPayload());
         expect(res.status).toBe(200);
         expect(res.body.message).toMatch(/already/i);
     });
 
     it('returns 500 when handleRequestWebhook throws', async () => {
         ukIntegrationService.handleRequestWebhook.mockRejectedValue(new Error('DB down'));
-        const res = await request(routeApp).post('/webhooks/uk/request').send(validPayload());
+        const res = await postRequest(validPayload());
         expect(res.status).toBe(500);
     });
 });
@@ -677,7 +689,16 @@ describe('POST /webhooks/uk/request route handler', () => {
 
 ### Step 3.2: Update route handler in webhookRoutes.js
 
-- [ ] Replace the existing `router.post('/request', ...)` handler (lines 103-130) in `src/routes/webhookRoutes.js` with:
+- [ ] First, add `isValidRequestEvent` to the existing import at the top of `src/routes/webhookRoutes.js`:
+
+```js
+// Change line 7 from:
+const { isValidUUID } = require('../utils/webhookValidation');
+// To:
+const { isValidUUID, isValidRequestEvent } = require('../utils/webhookValidation');
+```
+
+- [ ] Then replace the existing `router.post('/request', ...)` handler (lines 103-130) with:
 
 ```js
 /**

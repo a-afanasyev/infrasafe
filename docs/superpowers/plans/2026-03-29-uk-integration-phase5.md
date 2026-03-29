@@ -83,12 +83,11 @@ describe('UKIntegrationService — Request Counts', () => {
     });
 
     describe('getRequestCounts()', () => {
-        const mockApiResponse = {
-            data: {
-                buildings: {
-                    'ext-uuid-1': { total: 3, by_urgency: { 'Критическая': 1, 'Средняя': 2 } },
-                    'ext-uuid-2': { total: 1, by_urgency: { 'Срочная': 1 } }
-                }
+        // ukApiClient.get() returns response.data (already unwrapped, see Phase 3)
+        const mockCounts = {
+            buildings: {
+                'a1b2c3d4-e5f6-7890-abcd-ef1234567890': { total: 3, by_urgency: { 'Критическая': 1, 'Средняя': 2 } },
+                'b2c3d4e5-f6a7-8901-bcde-f12345678901': { total: 1, by_urgency: { 'Срочная': 1 } }
             }
         };
 
@@ -102,17 +101,17 @@ describe('UKIntegrationService — Request Counts', () => {
         it('fetches from UK API and returns data', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
             IntegrationConfig.get.mockResolvedValue('http://uk-api:8085/api/v2');
-            ukApiClient.get.mockResolvedValue(mockApiResponse.data);
+            ukApiClient.get.mockResolvedValue(mockCounts);
 
             const result = await service.getRequestCounts();
-            expect(result.buildings['ext-uuid-1'].total).toBe(3);
+            expect(result.buildings['a1b2c3d4-e5f6-7890-abcd-ef1234567890'].total).toBe(3);
             expect(ukApiClient.get).toHaveBeenCalledTimes(1);
         });
 
         it('returns cached data within 60s TTL', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
             IntegrationConfig.get.mockResolvedValue('http://uk-api:8085/api/v2');
-            ukApiClient.get.mockResolvedValue(mockApiResponse.data);
+            ukApiClient.get.mockResolvedValue(mockCounts);
 
             await service.getRequestCounts();
             await service.getRequestCounts();
@@ -122,7 +121,7 @@ describe('UKIntegrationService — Request Counts', () => {
         it('re-fetches after cache invalidation', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
             IntegrationConfig.get.mockResolvedValue('http://uk-api:8085/api/v2');
-            ukApiClient.get.mockResolvedValue(mockApiResponse.data);
+            ukApiClient.get.mockResolvedValue(mockCounts);
 
             await service.getRequestCounts();
             service.invalidateRequestCache();
@@ -141,40 +140,38 @@ describe('UKIntegrationService — Request Counts', () => {
     });
 
     describe('getBuildingRequests()', () => {
+        const VALID_UUID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+        // ukApiClient.get() returns response.data (already unwrapped, see Phase 3 ukApiClient.get)
         const mockRequests = {
-            data: {
-                requests: [
-                    { id: 1, title: 'Протечка', urgency: 'Критическая', status: 'В работе' },
-                    { id: 2, title: 'Свет', urgency: 'Обычная', status: 'Новая' }
-                ]
-            }
+            requests: [
+                { id: 1, title: 'Протечка', urgency: 'Критическая', status: 'В работе' },
+                { id: 2, title: 'Свет', urgency: 'Обычная', status: 'Новая' }
+            ]
         };
 
         it('returns empty when integration is disabled', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(false);
-            const result = await service.getBuildingRequests('ext-uuid-1');
+            const result = await service.getBuildingRequests(VALID_UUID);
             expect(result).toEqual({ requests: [] });
         });
 
         it('fetches requests for a building from UK API', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
-            IntegrationConfig.get.mockResolvedValue('http://uk-api:8085/api/v2');
             ukApiClient.get.mockResolvedValue(mockRequests);
 
-            const result = await service.getBuildingRequests('ext-uuid-1', 3);
+            const result = await service.getBuildingRequests(VALID_UUID, 3);
             expect(result.requests).toHaveLength(2);
-            // ukApiClient.get(path) — single string argument
+            // ukApiClient.get(path) — single string argument, returns response.data
             expect(ukApiClient.get).toHaveBeenCalledWith(
-                expect.stringContaining('ext-uuid-1')
+                expect.stringContaining(VALID_UUID)
             );
         });
 
         it('returns empty on UK API error (graceful degradation)', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
-            IntegrationConfig.get.mockResolvedValue('http://uk-api:8085/api/v2');
             ukApiClient.get.mockRejectedValue(new Error('timeout'));
 
-            const result = await service.getBuildingRequests('ext-uuid-1');
+            const result = await service.getBuildingRequests(VALID_UUID);
             expect(result).toEqual({ requests: [] });
         });
 
