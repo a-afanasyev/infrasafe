@@ -859,11 +859,13 @@ Add new methods to the `UKIntegrationService` class before the closing brace:
 ```javascript
 /**
  * Resolve building IDs affected by an infrastructure alert.
- * Uses direct SQL based on infrastructure_type:
- *   - transformer → buildings.power_transformer_id
- *   - controller  → controllers.controller_id → controllers.building_id
- *   - water_source → buildings.cold_water_source_id
- *   - heat_source  → buildings.heat_source_id
+ * Uses direct SQL based on infrastructure_type.
+ *
+ * Transformer resolution: alerts reference transformers table (integer transformer_id)
+ * via alertService.checkTransformerLoad → analyticsService.getAllTransformersWithAnalytics.
+ * Buildings link to transformers via primary_transformer_id/backup_transformer_id (integer FKs),
+ * NOT power_transformer_id (varchar FK to legacy power_transformers table).
+ * See: Transformer.js:74, powerAnalyticsService.js:112.
  *
  * @param {string} infrastructureId
  * @param {string} infrastructureType
@@ -872,7 +874,8 @@ Add new methods to the `UKIntegrationService` class before the closing brace:
 async resolveBuildingIds(infrastructureId, infrastructureType) {
     const queries = {
         transformer: `SELECT building_id, external_id FROM buildings
-                      WHERE power_transformer_id = $1 AND uk_deleted_at IS NULL`,
+                      WHERE (primary_transformer_id = $1 OR backup_transformer_id = $1)
+                        AND uk_deleted_at IS NULL`,
         controller:  `SELECT b.building_id, b.external_id FROM controllers c
                       JOIN buildings b ON b.building_id = c.building_id
                       WHERE c.controller_id = $1 AND b.uk_deleted_at IS NULL`,
@@ -966,7 +969,7 @@ async sendAlertToUK(alertData) {
                     mapping = existing;
                     idempotencyKey = existing.idempotency_key;
                 } else {
-                    // New mapping
+                    // New mapping — create returns null on UNIQUE violation (concurrent duplicate)
                     idempotencyKey = crypto.randomUUID();
                     mapping = await AlertRequestMap.create({
                         infrasafe_alert_id: alertData.alert_id,
@@ -974,6 +977,20 @@ async sendAlertToUK(alertData) {
                         idempotency_key: idempotencyKey,
                         status: 'pending'
                     });
+
+                    if (!mapping) {
+                        // Concurrent insert won the race — re-read existing mapping
+                        const raceWinner = await AlertRequestMap.findByAlertAndBuilding(
+                            alertData.alert_id, building.external_id
+                        );
+                        if (raceWinner && raceWinner.status === 'sent') continue;
+                        if (raceWinner && raceWinner.status === 'pending') {
+                            mapping = raceWinner;
+                            idempotencyKey = raceWinner.idempotency_key;
+                        } else {
+                            continue; // unexpected state, skip
+                        }
+                    }
                 }
 
                 // 6. Call UK API (idempotency_key header ensures UK deduplicates too)

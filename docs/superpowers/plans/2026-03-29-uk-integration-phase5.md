@@ -1008,4 +1008,4 @@ Verify:
 
 **Total new tests:** ~12 unit + ~3 integration
 **Estimated effort:** 4-6 hours
-**Dependencies:** Phase 1 complete (integration foundation), Phase 2 complete (building sync with `external_id`). Phase 3-4 not required (request counts endpoint works independently via UK API proxy).
+**Dependencies:** Phase 1 complete (integration foundation), Phase 2 complete (building sync with `external_id`), **Phase 3 required** (provides `ukApiClient.js` with JWT auth used by `getRequestCounts()`/`getBuildingRequests()`).
