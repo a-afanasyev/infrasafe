@@ -8,25 +8,25 @@
 **E2E (separate):** `npm run test:e2e` (57 tests, live Docker, NOT in coverage)
 **Coverage config:** `collectCoverageFrom: ["src/**/*.js", "!src/index.js"]`, reporters: text + html + lcov
 
-**Total: 82 source files, 36 test files, 32.9% statement coverage**
+**BEFORE: 82 source files, 36 test files, 32.9% statement coverage**
+**AFTER: 82 source files, 79 test files, 90.2% statement coverage, 1943 tests, 0 failures**
 
 ---
 
-## Coverage by Directory (worst → best)
+## Final Coverage by Directory
 
-| Directory | Source Files | Tests | Stmts % | Branch % | Func % | Gap to 80% |
-|-----------|-------------|-------|---------|----------|--------|------------|
-| `src/clients` | 1 | 0 | 0% | 0% | 0% | +1 test file |
-| `src/controllers/admin` | 10 | 0 | 16% | 8% | 10% | +8 test files |
-| `src/models` | 16 | 4 (via mock) | 20% | 16% | 26% | +10 test files |
-| `src/config` | 1 | 0 | 25% | 0% | 0% | +1 test file |
-| `src/controllers` | 12 | 3 | 29% | 26% | 23% | +8 test files |
-| `src/services` | 11 | 7 | 32% | 30% | 36% | +5 test files |
-| `src/middleware` | 5 | 1 | 45% | 36% | 51% | +3 test files |
-| `src/utils` | 6 | 3 | 47% | 35% | 51% | +2 test files |
-| `src/routes` | 18 | 2 | 77% | 61% | 48% | +2 test files |
-| `src` (root) | 2 | 0 | 65% | — | — | indirect |
-| **TOTAL** | **82** | **20 direct** | **32.9%** | **26%** | **31.7%** | **~38 test files** |
+| Directory | Source | Stmts % | Status |
+|-----------|--------|---------|--------|
+| `src/clients` | 1 | 100% | DONE |
+| `src/config` | 1 | 100% | DONE |
+| `src/controllers` | 12 | 97% | DONE |
+| `src/controllers/admin` | 10 | 92% | DONE |
+| `src/routes` | 18 | 96% | DONE |
+| `src/middleware` | 5 | 93% | DONE |
+| `src/utils` | 6 | 92% | DONE |
+| `src/models` | 16 | 89% | DONE |
+| `src/services` | 11 | 85% | DONE |
+| **TOTAL** | **82** | **90.2%** | **ALL ≥ 80%** |
 
 ---
 
