@@ -230,11 +230,9 @@ describe('AuthService', () => {
             cacheService.get.mockResolvedValue(null);
             db.query.mockResolvedValue({ rows: [] });
 
-            try {
-                await authService.authenticateUser('nonexistent', 'pass');
-            } catch (error) {
-                expect(error.code).toBe('INVALID_CREDENTIALS');
-            }
+            await expect(
+                authService.authenticateUser('nonexistent', 'pass')
+            ).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
         });
 
         test('throws ACCOUNT_DISABLED when user is inactive', async () => {
@@ -249,11 +247,9 @@ describe('AuthService', () => {
                 }]
             });
 
-            try {
-                await authService.authenticateUser('disabled', 'StrongPass1');
-            } catch (error) {
-                expect(error.code).toBe('ACCOUNT_DISABLED');
-            }
+            await expect(
+                authService.authenticateUser('disabled', 'StrongPass1')
+            ).rejects.toMatchObject({ code: 'ACCOUNT_DISABLED' });
         });
 
         test('throws INVALID_CREDENTIALS when password is wrong', async () => {
@@ -268,11 +264,9 @@ describe('AuthService', () => {
                 }]
             });
 
-            try {
-                await authService.authenticateUser('admin', 'WrongPassword1');
-            } catch (error) {
-                expect(error.code).toBe('INVALID_CREDENTIALS');
-            }
+            await expect(
+                authService.authenticateUser('admin', 'WrongPassword1')
+            ).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
         });
 
         test('throws ACCOUNT_LOCKED when account is locked', async () => {
@@ -281,11 +275,9 @@ describe('AuthService', () => {
                 lockedUntil: Date.now() + 900000
             });
 
-            try {
-                await authService.authenticateUser('locked', 'pass');
-            } catch (error) {
-                expect(error.code).toBe('ACCOUNT_LOCKED');
-            }
+            await expect(
+                authService.authenticateUser('locked', 'pass')
+            ).rejects.toMatchObject({ code: 'ACCOUNT_LOCKED' });
         });
     });
 
@@ -443,11 +435,9 @@ describe('AuthService', () => {
             cacheService.get.mockResolvedValue(null);
             db.query.mockResolvedValueOnce({ rows: [] });
 
-            try {
-                await authService.changePassword(999, 'Old1', 'New1');
-            } catch (error) {
-                expect(error.code).toBe('USER_NOT_FOUND');
-            }
+            await expect(
+                authService.changePassword(999, 'Old1', 'New1')
+            ).rejects.toMatchObject({ code: 'USER_NOT_FOUND' });
         });
 
         test('throws INVALID_CURRENT_PASSWORD when current password is wrong', async () => {
@@ -460,11 +450,9 @@ describe('AuthService', () => {
                 })
                 .mockResolvedValueOnce({ rows: [{ password_hash: correctHash }] });
 
-            try {
-                await authService.changePassword(1, 'WrongPass123', 'NewPass123');
-            } catch (error) {
-                expect(error.code).toBe('INVALID_CURRENT_PASSWORD');
-            }
+            await expect(
+                authService.changePassword(1, 'WrongPass123', 'NewPass123')
+            ).rejects.toMatchObject({ code: 'INVALID_CURRENT_PASSWORD' });
         });
     });
 
@@ -520,11 +508,9 @@ describe('AuthService', () => {
                 lockedUntil: Date.now() + 900000
             });
 
-            try {
-                await authService.checkAccountLockout('user');
-            } catch (error) {
-                expect(error.code).toBe('ACCOUNT_LOCKED');
-            }
+            await expect(
+                authService.checkAccountLockout('user')
+            ).rejects.toMatchObject({ code: 'ACCOUNT_LOCKED' });
         });
 
         test('does not throw when lockout has expired', async () => {
