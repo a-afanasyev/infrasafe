@@ -137,27 +137,11 @@ describe('HeatSource Model', () => {
             await HeatSource.create({ ...mockRow, status: undefined });
 
             const params = db.query.mock.calls[0][1];
-            expect(params[9]).toBe('active'); // status param
-        });
-
-        test('passes all fields correctly', async () => {
-            db.query.mockResolvedValue({ rows: [mockRow] });
-
-            await HeatSource.create(mockRow);
-
-            const params = db.query.mock.calls[0][1];
-            expect(params[0]).toBe(1);                    // id
-            expect(params[1]).toBe('Heat Source Alpha');   // name
-            expect(params[2]).toBe('456 Heat St');         // address
-            expect(params[3]).toBe(41.3);                  // latitude
-            expect(params[4]).toBe(69.2);                  // longitude
-            expect(params[5]).toBe('boiler');              // source_type
-            expect(params[6]).toBe(50);                    // capacity_mw
-            expect(params[7]).toBe('gas');                 // fuel_type
-            expect(params[8]).toBe('2020-01-01');          // installation_date
-            expect(params[9]).toBe('active');              // status
-            expect(params[10]).toBe('Jane Doe');           // maintenance_contact
-            expect(params[11]).toBe('Test heat source');   // notes
+            expect(params).toEqual([
+                1, 'Heat Source Alpha', '456 Heat St', 41.3, 69.2,
+                'boiler', 50, 'gas', '2020-01-01', 'active',
+                'Jane Doe', 'Test heat source'
+            ]);
         });
 
         test('throws on database error', async () => {

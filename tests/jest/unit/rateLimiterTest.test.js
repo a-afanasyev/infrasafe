@@ -362,10 +362,12 @@ describe('Module-level functions', () => {
         expect(stats).toHaveProperty('register');
     });
 
+    // smoke test -- verifies no crash on cleanup
     test('resetAllRateLimits does not throw', () => {
         expect(() => resetAllRateLimits()).not.toThrow();
     });
 
+    // smoke test -- verifies no crash on cleanup
     test('destroyAllLimiters does not throw', () => {
         expect(() => destroyAllLimiters()).not.toThrow();
     });

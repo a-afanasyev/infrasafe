@@ -25,7 +25,7 @@ const AlertController = require('../../../src/controllers/alertController');
 const alertService = require('../../../src/services/alertService');
 
 describe('AlertController', () => {
-    let req, res;
+    let req, res, next;
 
     beforeEach(() => {
         req = {
@@ -38,13 +38,14 @@ describe('AlertController', () => {
             json: jest.fn(),
             status: jest.fn().mockReturnThis()
         };
+        next = jest.fn();
         jest.clearAllMocks();
     });
 
     describe('createAlert', () => {
         test('returns 400 when required fields are missing', async () => {
             req.body = { type: 'TEST' }; // missing other required fields
-            await AlertController.createAlert(req, res);
+            await AlertController.createAlert(req, res, next);
             expect(res.status).toHaveBeenCalledWith(400);
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -62,7 +63,7 @@ describe('AlertController', () => {
                 severity: 'EXTREME',
                 message: 'Test alert'
             };
-            await AlertController.createAlert(req, res);
+            await AlertController.createAlert(req, res, next);
             expect(res.status).toHaveBeenCalledWith(400);
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -85,7 +86,7 @@ describe('AlertController', () => {
             const mockAlert = { alert_id: 42, ...req.body, status: 'active' };
             alertService.createAlert.mockResolvedValue(mockAlert);
 
-            await AlertController.createAlert(req, res);
+            await AlertController.createAlert(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(201);
             expect(res.json).toHaveBeenCalledWith(
@@ -107,7 +108,7 @@ describe('AlertController', () => {
             };
             alertService.createAlert.mockResolvedValue({ alert_id: 1 });
 
-            await AlertController.createAlert(req, res);
+            await AlertController.createAlert(req, res, next);
 
             const callArg = alertService.createAlert.mock.calls[0][0];
             expect(callArg.severity).toBe('WARNING');
@@ -124,7 +125,7 @@ describe('AlertController', () => {
             };
             alertService.createAlert.mockResolvedValue({ alert_id: 1 });
 
-            await AlertController.createAlert(req, res);
+            await AlertController.createAlert(req, res, next);
 
             const callArg = alertService.createAlert.mock.calls[0][0];
             expect(callArg.affected_buildings).toBe(0);
@@ -141,7 +142,7 @@ describe('AlertController', () => {
             };
             alertService.createAlert.mockRejectedValue(new Error('DB error'));
 
-            await AlertController.createAlert(req, res);
+            await AlertController.createAlert(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(500);
         });
@@ -151,7 +152,7 @@ describe('AlertController', () => {
         test('returns 401 when no user is authenticated', async () => {
             req.user = {};
             req.params = { alertId: '10' };
-            await AlertController.acknowledgeAlert(req, res);
+            await AlertController.acknowledgeAlert(req, res, next);
             expect(res.status).toHaveBeenCalledWith(401);
         });
 
@@ -160,7 +161,7 @@ describe('AlertController', () => {
             const mockAlert = { alert_id: 10, status: 'acknowledged' };
             alertService.acknowledgeAlert.mockResolvedValue(mockAlert);
 
-            await AlertController.acknowledgeAlert(req, res);
+            await AlertController.acknowledgeAlert(req, res, next);
 
             expect(alertService.acknowledgeAlert).toHaveBeenCalledWith(10, 1);
             expect(res.json).toHaveBeenCalledWith(
@@ -177,7 +178,7 @@ describe('AlertController', () => {
                 new Error('Алерт 999 не найден или уже обработан')
             );
 
-            await AlertController.acknowledgeAlert(req, res);
+            await AlertController.acknowledgeAlert(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(404);
         });
@@ -186,7 +187,7 @@ describe('AlertController', () => {
             req.params = { alertId: '10' };
             alertService.acknowledgeAlert.mockRejectedValue(new Error('DB connection lost'));
 
-            await AlertController.acknowledgeAlert(req, res);
+            await AlertController.acknowledgeAlert(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(500);
         });
@@ -196,7 +197,7 @@ describe('AlertController', () => {
         test('returns 401 when no user is authenticated', async () => {
             req.user = {};
             req.params = { alertId: '20' };
-            await AlertController.resolveAlert(req, res);
+            await AlertController.resolveAlert(req, res, next);
             expect(res.status).toHaveBeenCalledWith(401);
         });
 
@@ -205,7 +206,7 @@ describe('AlertController', () => {
             const mockAlert = { alert_id: 20, status: 'resolved' };
             alertService.resolveAlert.mockResolvedValue(mockAlert);
 
-            await AlertController.resolveAlert(req, res);
+            await AlertController.resolveAlert(req, res, next);
 
             expect(alertService.resolveAlert).toHaveBeenCalledWith(20, 1);
             expect(res.json).toHaveBeenCalledWith(
@@ -222,7 +223,7 @@ describe('AlertController', () => {
                 new Error('Алерт 999 не найден или уже закрыт')
             );
 
-            await AlertController.resolveAlert(req, res);
+            await AlertController.resolveAlert(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(404);
         });
@@ -231,7 +232,7 @@ describe('AlertController', () => {
             req.params = { alertId: '20' };
             alertService.resolveAlert.mockRejectedValue(new Error('Timeout'));
 
-            await AlertController.resolveAlert(req, res);
+            await AlertController.resolveAlert(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(500);
         });
@@ -240,7 +241,7 @@ describe('AlertController', () => {
     describe('checkTransformer', () => {
         test('returns 400 when transformerId is missing', async () => {
             req.params = {};
-            await AlertController.checkTransformer(req, res);
+            await AlertController.checkTransformer(req, res, next);
             expect(res.status).toHaveBeenCalledWith(400);
         });
 
@@ -249,7 +250,7 @@ describe('AlertController', () => {
             const mockAlert = { alert_id: 50, type: 'TRANSFORMER_OVERLOAD' };
             alertService.checkTransformerLoad.mockResolvedValue(mockAlert);
 
-            await AlertController.checkTransformer(req, res);
+            await AlertController.checkTransformer(req, res, next);
 
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -264,7 +265,7 @@ describe('AlertController', () => {
             req.params = { transformerId: '5' };
             alertService.checkTransformerLoad.mockResolvedValue(null);
 
-            await AlertController.checkTransformer(req, res);
+            await AlertController.checkTransformer(req, res, next);
 
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -278,7 +279,7 @@ describe('AlertController', () => {
             req.params = { transformerId: '5' };
             alertService.checkTransformerLoad.mockRejectedValue(new Error('fail'));
 
-            await AlertController.checkTransformer(req, res);
+            await AlertController.checkTransformer(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(500);
         });
@@ -293,7 +294,7 @@ describe('AlertController', () => {
             };
             alertService.checkAllTransformers.mockResolvedValue(mockResult);
 
-            await AlertController.checkAllTransformers(req, res);
+            await AlertController.checkAllTransformers(req, res, next);
 
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -307,7 +308,7 @@ describe('AlertController', () => {
         test('returns 500 on error', async () => {
             alertService.checkAllTransformers.mockRejectedValue(new Error('fail'));
 
-            await AlertController.checkAllTransformers(req, res);
+            await AlertController.checkAllTransformers(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(500);
         });
@@ -319,7 +320,7 @@ describe('AlertController', () => {
             const mockStats = { period_days: 7, statistics: [] };
             alertService.getAlertStatistics.mockResolvedValue(mockStats);
 
-            await AlertController.getAlertStatistics(req, res);
+            await AlertController.getAlertStatistics(req, res, next);
 
             expect(alertService.getAlertStatistics).toHaveBeenCalledWith(7);
             expect(res.json).toHaveBeenCalledWith(
@@ -332,20 +333,20 @@ describe('AlertController', () => {
             const mockStats = { period_days: 30, statistics: [] };
             alertService.getAlertStatistics.mockResolvedValue(mockStats);
 
-            await AlertController.getAlertStatistics(req, res);
+            await AlertController.getAlertStatistics(req, res, next);
 
             expect(alertService.getAlertStatistics).toHaveBeenCalledWith(30);
         });
 
         test('returns 400 for period below 1', async () => {
             req.query = { days: '0' };
-            await AlertController.getAlertStatistics(req, res);
+            await AlertController.getAlertStatistics(req, res, next);
             expect(res.status).toHaveBeenCalledWith(400);
         });
 
         test('returns 400 for period above 365', async () => {
             req.query = { days: '400' };
-            await AlertController.getAlertStatistics(req, res);
+            await AlertController.getAlertStatistics(req, res, next);
             expect(res.status).toHaveBeenCalledWith(400);
         });
 
@@ -353,7 +354,7 @@ describe('AlertController', () => {
             req.query = { days: '7' };
             alertService.getAlertStatistics.mockRejectedValue(new Error('fail'));
 
-            await AlertController.getAlertStatistics(req, res);
+            await AlertController.getAlertStatistics(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(500);
         });
@@ -367,7 +368,7 @@ describe('AlertController', () => {
             };
             alertService.getThresholds.mockReturnValue(mockThresholds);
 
-            await AlertController.getThresholds(req, res);
+            await AlertController.getThresholds(req, res, next);
 
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -382,7 +383,7 @@ describe('AlertController', () => {
                 throw new Error('fail');
             });
 
-            await AlertController.getThresholds(req, res);
+            await AlertController.getThresholds(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(500);
         });
@@ -396,7 +397,7 @@ describe('AlertController', () => {
                 transformer_critical: 95
             });
 
-            await AlertController.updateThresholds(req, res);
+            await AlertController.updateThresholds(req, res, next);
 
             expect(alertService.updateThresholds).toHaveBeenCalledWith({ transformer_overload: 90 });
             expect(res.json).toHaveBeenCalledWith(
@@ -410,7 +411,7 @@ describe('AlertController', () => {
         test('returns 400 for invalid keys', async () => {
             req.body = { invalid_key: 50 };
 
-            await AlertController.updateThresholds(req, res);
+            await AlertController.updateThresholds(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(400);
             expect(res.json).toHaveBeenCalledWith(
@@ -424,7 +425,7 @@ describe('AlertController', () => {
         test('returns 400 for non-numeric values', async () => {
             req.body = { transformer_overload: 'not-a-number' };
 
-            await AlertController.updateThresholds(req, res);
+            await AlertController.updateThresholds(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(400);
         });
@@ -432,7 +433,7 @@ describe('AlertController', () => {
         test('returns 400 for negative values', async () => {
             req.body = { transformer_overload: -5 };
 
-            await AlertController.updateThresholds(req, res);
+            await AlertController.updateThresholds(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(400);
         });
@@ -440,7 +441,7 @@ describe('AlertController', () => {
         test('returns 400 for zero values', async () => {
             req.body = { transformer_overload: 0 };
 
-            await AlertController.updateThresholds(req, res);
+            await AlertController.updateThresholds(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(400);
         });
@@ -451,7 +452,7 @@ describe('AlertController', () => {
                 throw new Error('fail');
             });
 
-            await AlertController.updateThresholds(req, res);
+            await AlertController.updateThresholds(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(500);
         });
@@ -470,7 +471,7 @@ describe('AlertController', () => {
             };
             alertService.getActiveAlerts.mockResolvedValue({ data: [], total: 0 });
 
-            await AlertController.getActiveAlerts(req, res);
+            await AlertController.getActiveAlerts(req, res, next);
 
             expect(alertService.getActiveAlerts).toHaveBeenCalledWith(
                 { status: 'active', severity: 'WARNING', infrastructure_type: 'transformer' },
@@ -480,19 +481,19 @@ describe('AlertController', () => {
 
         test('rejects invalid status', async () => {
             req.query = { status: 'INVALID' };
-            await AlertController.getActiveAlerts(req, res);
+            await AlertController.getActiveAlerts(req, res, next);
             expect(res.status).toHaveBeenCalledWith(400);
         });
 
         test('rejects invalid severity', async () => {
             req.query = { severity: 'EXTREME' };
-            await AlertController.getActiveAlerts(req, res);
+            await AlertController.getActiveAlerts(req, res, next);
             expect(res.status).toHaveBeenCalledWith(400);
         });
 
         test('rejects invalid infrastructure_type', async () => {
             req.query = { infrastructure_type: 'nuclear' };
-            await AlertController.getActiveAlerts(req, res);
+            await AlertController.getActiveAlerts(req, res, next);
             expect(res.status).toHaveBeenCalledWith(400);
         });
 
@@ -500,7 +501,7 @@ describe('AlertController', () => {
             req.query = {};
             alertService.getActiveAlerts.mockRejectedValue(new Error('fail'));
 
-            await AlertController.getActiveAlerts(req, res);
+            await AlertController.getActiveAlerts(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(500);
         });
@@ -515,7 +516,7 @@ describe('AlertController', () => {
             };
             alertService.getStatus.mockReturnValue(mockStatus);
 
-            await AlertController.getSystemStatus(req, res);
+            await AlertController.getSystemStatus(req, res, next);
 
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -530,7 +531,7 @@ describe('AlertController', () => {
                 throw new Error('fail');
             });
 
-            await AlertController.getSystemStatus(req, res);
+            await AlertController.getSystemStatus(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(500);
         });

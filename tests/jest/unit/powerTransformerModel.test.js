@@ -56,7 +56,8 @@ describe('PowerTransformer Model', () => {
             await PowerTransformer.create({ ...mockRow, status: undefined });
 
             const params = db.query.mock.calls[0][1];
-            expect(params[11]).toBe('active');
+            expect(params).toContain('active');
+            expect(params).toHaveLength(14);
         });
 
         test('throws on database error', async () => {

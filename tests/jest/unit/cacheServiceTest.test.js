@@ -1,10 +1,3 @@
-jest.mock('../../../src/utils/logger', () => ({
-    info: jest.fn(),
-    error: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn()
-}));
-
 // We need a fresh CacheService instance for each test, not the singleton.
 // Require the module path to get access to the constructor.
 let CacheService;

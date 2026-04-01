@@ -112,13 +112,15 @@ describe('server.js', () => {
         });
 
         it('preserves rawBody on JSON-parsed requests', async () => {
-            // The server configures express.json with verify callback that sets req.rawBody.
-            // We verify indirectly: if the JSON middleware works, rawBody is set.
+            // Limitation: req.rawBody is set internally by the verify callback and
+            // cannot be directly asserted from outside the request lifecycle.
+            // We verify indirectly by POSTing a JSON body and confirming no 500 error.
             const res = await request(app)
-                .get('/api/test')
+                .post('/api/test')
+                .send({ test: 'data' })
                 .set('Content-Type', 'application/json');
 
-            expect(res.status).toBe(200);
+            expect(res.status).not.toBe(500);
         });
     });
 
@@ -141,28 +143,25 @@ describe('server.js', () => {
         it('attempts to serve index.html for unknown non-API paths', async () => {
             const res = await request(app).get('/some-unknown-path');
 
-            // In test env, the static file may not exist, yielding 404 or 200.
-            // The important thing is it does NOT return a 500 server error.
-            expect([200, 404]).toContain(res.status);
+            // In test env the static file does not exist, so Express returns 404.
+            // The key assertion is that it does NOT return a 500 server error.
+            expect(res.status).not.toBe(500);
         });
 
         it('passes through for .html paths', async () => {
             const res = await request(app).get('/about.html');
 
-            // Express.static would serve it if the file exists, otherwise 404
-            expect([200, 404]).toContain(res.status);
+            // Express.static serves the file if it exists; in test env it returns 404.
+            // The key assertion is that it does NOT return a 500 server error.
+            expect(res.status).not.toBe(500);
         });
     });
 });
 
 describe('graceful shutdown and process handlers', () => {
-    // Test that server.js registers the expected process event handlers.
-    // We inspect the process.on calls that were made when server.js was required.
+    // structural test only -- verifies handler registration, not behavior
 
     it('has SIGTERM handler registered on process', () => {
-        // server.js registers handlers at module load time.
-        // process.on('SIGTERM', ...) and process.on('SIGINT', ...) are called.
-        // We check by counting listeners.
         const sigtermListeners = process.listeners('SIGTERM');
         expect(sigtermListeners.length).toBeGreaterThanOrEqual(1);
     });

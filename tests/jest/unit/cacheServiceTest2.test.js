@@ -11,12 +11,7 @@
  * - close() with Redis client
  */
 
-jest.mock('../../../src/utils/logger', () => ({
-    info: jest.fn(),
-    error: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn()
-}));
+// Extends cacheServiceTest.test.js with Redis/advanced scenarios.
 
 let CacheService;
 let cacheService;

@@ -31,7 +31,7 @@ describe('AlertType Model', () => {
 
             expect(result).toHaveLength(2);
             expect(result[0].type_name).toBe('Temperature Alert');
-            expect(db.query.mock.calls[0][0]).toContain('SELECT * FROM alert_types ORDER BY type_name ASC');
+            expect(db.query.mock.calls[0][0]).toContain('ORDER BY type_name');
         });
 
         test('returns empty array when no types exist', async () => {

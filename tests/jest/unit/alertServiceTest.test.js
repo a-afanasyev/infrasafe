@@ -394,6 +394,7 @@ describe('AlertService', () => {
     });
 
     describe('sendNotifications', () => {
+        // fire-and-forget by design -- behavioral assertions require integration test
         test('does not throw for non-CRITICAL alerts', async () => {
             const alertData = {
                 type: 'TEST',
@@ -406,6 +407,7 @@ describe('AlertService', () => {
             await expect(alertService.sendNotifications(alertData, 1)).resolves.not.toThrow();
         });
 
+        // fire-and-forget by design -- behavioral assertions require integration test
         test('sends immediate notification for CRITICAL alerts', async () => {
             const alertData = {
                 type: 'TEST',

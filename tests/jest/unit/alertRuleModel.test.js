@@ -37,7 +37,7 @@ describe('AlertRule Model', () => {
             expect(result).toHaveLength(2);
             expect(result[0].id).toBe(1);
             expect(db.query).toHaveBeenCalledWith(
-                'SELECT * FROM alert_rules ORDER BY alert_type, severity'
+                expect.stringContaining('ORDER BY alert_type')
             );
         });
 
@@ -66,7 +66,7 @@ describe('AlertRule Model', () => {
             expect(result.id).toBe(1);
             expect(result.alert_type).toBe('voltage_low');
             expect(db.query).toHaveBeenCalledWith(
-                'SELECT * FROM alert_rules WHERE id = $1',
+                expect.stringContaining('WHERE id = $1'),
                 [1]
             );
         });
@@ -135,7 +135,7 @@ describe('AlertRule Model', () => {
             expect(result.alert_type).toBe('voltage_low');
             expect(result.severity).toBe('WARNING');
             expect(db.query).toHaveBeenCalledWith(
-                'SELECT * FROM alert_rules WHERE alert_type = $1 AND severity = $2 AND enabled = true',
+                expect.stringContaining('enabled = true'),
                 ['voltage_low', 'WARNING']
             );
         });

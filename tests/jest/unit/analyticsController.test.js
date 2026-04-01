@@ -144,7 +144,7 @@ describe('AnalyticsController', () => {
             expect(response.data[0].load_percent).toBe(50);
         });
 
-        test('filters overloaded_only', async () => {
+        test('filters overloaded_only (load_percent >= 80 threshold)', async () => {
             req.query.overloaded_only = 'true';
             const transformers = [
                 { id: 1, load_percent: 50 },
