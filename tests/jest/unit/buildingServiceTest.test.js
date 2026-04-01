@@ -258,12 +258,7 @@ describe('BuildingService', () => {
         test('throws BUILDING_HAS_CONTROLLERS when controllers exist', async () => {
             Controller.findByBuildingId.mockResolvedValue([{ controller_id: 1 }]);
 
-            try {
-                await buildingService.deleteBuilding(1);
-                expect(true).toBe(false);
-            } catch (error) {
-                expect(error.code).toBe('BUILDING_HAS_CONTROLLERS');
-            }
+            await expect(buildingService.deleteBuilding(1)).rejects.toMatchObject({ code: 'BUILDING_HAS_CONTROLLERS' });
         });
 
         test('returns null when building not found', async () => {

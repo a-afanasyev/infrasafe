@@ -182,12 +182,7 @@ describe('ControllerService', () => {
         test('throws CONTROLLER_NOT_FOUND when controller does not exist', async () => {
             Controller.findById.mockResolvedValue(null);
 
-            try {
-                await controllerService.getControllerMetrics(999);
-                expect(true).toBe(false); // should not reach here
-            } catch (error) {
-                expect(error.code).toBe('CONTROLLER_NOT_FOUND');
-            }
+            await expect(controllerService.getControllerMetrics(999)).rejects.toMatchObject({ code: 'CONTROLLER_NOT_FOUND' });
         });
 
         test('uses cache for metrics', async () => {
@@ -269,30 +264,15 @@ describe('ControllerService', () => {
         });
 
         test('throws INVALID_STATUS for invalid status value', async () => {
-            try {
-                await controllerService.updateControllerStatus(1, 'invalid');
-                expect(true).toBe(false);
-            } catch (error) {
-                expect(error.code).toBe('INVALID_STATUS');
-            }
+            await expect(controllerService.updateControllerStatus(1, 'invalid')).rejects.toMatchObject({ code: 'INVALID_STATUS' });
         });
 
         test('throws INVALID_STATUS for empty status', async () => {
-            try {
-                await controllerService.updateControllerStatus(1, '');
-                expect(true).toBe(false);
-            } catch (error) {
-                expect(error.code).toBe('INVALID_STATUS');
-            }
+            await expect(controllerService.updateControllerStatus(1, '')).rejects.toMatchObject({ code: 'INVALID_STATUS' });
         });
 
         test('throws INVALID_STATUS for null status', async () => {
-            try {
-                await controllerService.updateControllerStatus(1, null);
-                expect(true).toBe(false);
-            } catch (error) {
-                expect(error.code).toBe('INVALID_STATUS');
-            }
+            await expect(controllerService.updateControllerStatus(1, null)).rejects.toMatchObject({ code: 'INVALID_STATUS' });
         });
 
         test('returns null when controller not found', async () => {
@@ -319,12 +299,7 @@ describe('ControllerService', () => {
         test('throws CONTROLLER_HAS_METRICS when metrics exist', async () => {
             Metric.findByControllerId.mockResolvedValue([{ metric_id: 1 }]);
 
-            try {
-                await controllerService.deleteController(1);
-                expect(true).toBe(false);
-            } catch (error) {
-                expect(error.code).toBe('CONTROLLER_HAS_METRICS');
-            }
+            await expect(controllerService.deleteController(1)).rejects.toMatchObject({ code: 'CONTROLLER_HAS_METRICS' });
         });
 
         test('returns null when controller not found', async () => {

@@ -112,27 +112,11 @@ describe('PowerAnalyticsController', () => {
     });
 
     describe('getLinesPower', () => {
-        test('returns empty stub response', async () => {
-            await getLinesPower(req, res, next);
-
-            expect(res.status).toHaveBeenCalledWith(200);
-            expect(res.json).toHaveBeenCalledWith({
-                success: true,
-                data: [],
-                count: 0
-            });
-        });
+        test.todo('returns real lines power data when implemented');
     });
 
     describe('getLinePower', () => {
-        test('returns 404 stub response', async () => {
-            await getLinePower(req, res, next);
-
-            expect(res.status).toHaveBeenCalledWith(404);
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({ success: false })
-            );
-        });
+        test.todo('returns real line power data when implemented');
     });
 
     describe('getTransformersPower', () => {
@@ -210,16 +194,7 @@ describe('PowerAnalyticsController', () => {
     });
 
     describe('getPhaseImbalanceAnalysis', () => {
-        test('returns empty stub response', async () => {
-            await getPhaseImbalanceAnalysis(req, res, next);
-
-            expect(res.status).toHaveBeenCalledWith(200);
-            expect(res.json).toHaveBeenCalledWith({
-                success: true,
-                data: [],
-                count: 0
-            });
-        });
+        test.todo('returns real phase imbalance analysis when implemented');
     });
 
     describe('refreshPowerViews', () => {

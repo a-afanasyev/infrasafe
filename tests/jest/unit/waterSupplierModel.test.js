@@ -276,7 +276,7 @@ describe('WaterSupplier Model', () => {
 
             expect(result).toHaveLength(1);
             expect(db.query).toHaveBeenCalledWith(
-                expect.stringContaining('WHERE type = $1 AND status = $2'),
+                expect.stringContaining('WHERE supplier_type = $1 AND status = $2'),
                 ['cold_water', 'active']
             );
         });

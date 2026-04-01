@@ -175,12 +175,7 @@ describe('MetricService', () => {
         test('throws CONTROLLER_NOT_FOUND when controller does not exist', async () => {
             Controller.findById.mockResolvedValue(null);
 
-            try {
-                await metricService.createMetric({ controller_id: 999, voltage: 220 });
-                expect(true).toBe(false);
-            } catch (error) {
-                expect(error.code).toBe('CONTROLLER_NOT_FOUND');
-            }
+            await expect(metricService.createMetric({ controller_id: 999, voltage: 220 })).rejects.toMatchObject({ code: 'CONTROLLER_NOT_FOUND' });
         });
 
         test('throws when controller_id is missing', async () => {
@@ -237,12 +232,7 @@ describe('MetricService', () => {
         test('throws CONTROLLER_NOT_FOUND when serial number not found', async () => {
             Controller.findBySerialNumber.mockResolvedValue(null);
 
-            try {
-                await metricService.processTelemetry({ serial_number: 'UNKNOWN', metrics: {} });
-                expect(true).toBe(false);
-            } catch (error) {
-                expect(error.code).toBe('CONTROLLER_NOT_FOUND');
-            }
+            await expect(metricService.processTelemetry({ serial_number: 'UNKNOWN', metrics: {} })).rejects.toMatchObject({ code: 'CONTROLLER_NOT_FOUND' });
         });
 
         test('throws when serial_number is missing', async () => {
@@ -266,12 +256,7 @@ describe('MetricService', () => {
         test('throws CONTROLLER_NOT_FOUND when controller does not exist', async () => {
             Controller.findById.mockResolvedValue(null);
 
-            try {
-                await metricService.getMetricsByControllerId(999);
-                expect(true).toBe(false);
-            } catch (error) {
-                expect(error.code).toBe('CONTROLLER_NOT_FOUND');
-            }
+            await expect(metricService.getMetricsByControllerId(999)).rejects.toMatchObject({ code: 'CONTROLLER_NOT_FOUND' });
         });
 
         test('returns cached data when available', async () => {
@@ -317,12 +302,7 @@ describe('MetricService', () => {
         test('throws CONTROLLER_NOT_FOUND for missing controller', async () => {
             Controller.findById.mockResolvedValue(null);
 
-            try {
-                await metricService.getAggregatedMetrics(999, '1h');
-                expect(true).toBe(false);
-            } catch (error) {
-                expect(error.code).toBe('CONTROLLER_NOT_FOUND');
-            }
+            await expect(metricService.getAggregatedMetrics(999, '1h')).rejects.toMatchObject({ code: 'CONTROLLER_NOT_FOUND' });
         });
     });
 

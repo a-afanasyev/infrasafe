@@ -242,7 +242,7 @@ class WaterSupplier {
     static async findByType(type) {
         try {
             const { rows } = await db.query(
-                'SELECT * FROM water_suppliers WHERE type = $1 AND status = $2 ORDER BY name',
+                'SELECT * FROM water_suppliers WHERE supplier_type = $1 AND status = $2 ORDER BY name',
                 [type, 'active']
             );
 

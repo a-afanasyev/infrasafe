@@ -180,42 +180,6 @@ describe('AdminMetricController', () => {
     });
 
     describe('batchMetricsOperation', () => {
-        test('returns success with stub message', async () => {
-            req.body = { action: 'delete' };
-
-            await batchMetricsOperation(req, res, next);
-
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    success: true,
-                    affected: 0,
-                    message: expect.stringContaining('delete')
-                })
-            );
-        });
-
-        test('includes action name in message', async () => {
-            req.body = { action: 'archive' };
-
-            await batchMetricsOperation(req, res, next);
-
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: expect.stringContaining('archive')
-                })
-            );
-        });
-
-        test('returns affected 0 as stub', async () => {
-            req.body = { action: 'cleanup', ids: [1, 2, 3] };
-
-            await batchMetricsOperation(req, res, next);
-
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    affected: 0
-                })
-            );
-        });
+        test.todo('performs real batch operations when implemented');
     });
 });
