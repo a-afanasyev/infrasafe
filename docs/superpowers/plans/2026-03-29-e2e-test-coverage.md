@@ -4,7 +4,7 @@
 
 **Goal:** Achieve real E2E test coverage for all critical API flows by hitting a live Docker PostgreSQL + Express stack — no mocked DB.
 
-**Architecture:** New `tests/jest/e2e/` directory with supertest hitting `http://localhost:3000` (the running Docker app container). Tests authenticate via real JWT login, create/read/update/delete real data in the test database, and verify persistence via follow-up HTTP GET calls. A shared helper manages auth tokens and test data cleanup (cascade delete). Tests run with `npm run test:e2e` after `docker compose up`.
+**Architecture:** New `tests/jest/e2e/` directory with supertest hitting `http://localhost:3000` (the running Docker app container). E2E uses a dedicated Jest config so it does not inherit `tests/jest/setup.js`, which is tuned for in-process mocked tests. Tests authenticate via real JWT login, create/read/update/delete real data in the test database, and verify persistence via follow-up HTTP GET calls. A shared helper manages auth tokens, user bootstrap, and test data cleanup (cascade delete). Tests run with `npm run test:e2e` after `docker compose up`.
 
 **Tech Stack:** Jest, supertest, real PostgreSQL (Docker port 5435), real Express (Docker port 3000)
 
@@ -16,6 +16,7 @@
 
 ```
 tests/jest/e2e/
+├── jest.e2e.config.js        # Dedicated Jest config for external/live API tests
 ├── helpers/
 │   └── e2eHelper.js          # Auth, cleanup, base URL, test data factories
 ├── auth.e2e.test.js           # P0: Full auth flow (login, token, profile, refresh, logout)
@@ -38,6 +39,7 @@ Modify:
 ### Task 1: E2E Test Infrastructure
 
 **Files:**
+- Create: `tests/jest/e2e/jest.e2e.config.js`
 - Create: `tests/jest/e2e/helpers/e2eHelper.js`
 - Modify: `package.json` (add script)
 
@@ -46,12 +48,23 @@ Modify:
 In `package.json` scripts section, add:
 
 ```json
-"test:e2e": "jest tests/jest/e2e --forceExit --runInBand --testTimeout=15000"
+"test:e2e": "jest --config tests/jest/e2e/jest.e2e.config.js --runInBand --testTimeout=15000"
 ```
 
-`--runInBand` ensures tests run sequentially (shared DB state). `--testTimeout=15000` for network calls.
+`--runInBand` ensures tests run sequentially (shared DB state). Dedicated config avoids `tests/jest/setup.js`, which mutates ports for mocked/in-process suites. `--testTimeout=15000` for network calls.
 
-- [ ] **Step 2: Create e2eHelper.js**
+- [ ] **Step 2: Create jest.e2e.config.js**
+
+```js
+module.exports = {
+  rootDir: '../../../',
+  testEnvironment: 'node',
+  testMatch: ['<rootDir>/tests/jest/e2e/**/*.test.js'],
+  verbose: true,
+};
+```
+
+- [ ] **Step 3: Create e2eHelper.js**
 
 ```js
 /**
@@ -86,6 +99,26 @@ function authed(token) {
   };
 }
 
+async function registerUser(username, password = 'TestPass123') {
+  const email = `${username}@test.com`;
+  const res = await request(BASE_URL)
+    .post('/api/auth/register')
+    .send({ username, password, email });
+
+  // 201 = created, 409 = already exists
+  if (![201, 409].includes(res.status)) {
+    throw new Error(`registerUser(${username}) failed with ${res.status}`);
+  }
+
+  return { username, password, email };
+}
+
+async function registerAndLogin(username = `e2e_user_${Date.now()}`, password = 'TestPass123') {
+  await registerUser(username, password);
+  const auth = await login(username, password);
+  return { username, password, ...auth };
+}
+
 /** Unauthenticated request */
 function anon() {
   return {
@@ -115,13 +148,16 @@ const factory = {
   }),
   telemetry: (serialNumber, overrides = {}) => ({
     serial_number: serialNumber,
-    electricity_ph1: 220 + Math.random() * 10,
-    electricity_ph2: 221 + Math.random() * 10,
-    electricity_ph3: 219 + Math.random() * 10,
-    cold_water_pressure: 3.5 + Math.random(),
-    cold_water_temp: 12 + Math.random() * 3,
-    temperature: 21 + Math.random() * 3,
-    humidity: 45 + Math.random() * 15,
+    timestamp: new Date().toISOString(),
+    metrics: {
+      electricity_ph1: 220 + Math.random() * 10,
+      electricity_ph2: 221 + Math.random() * 10,
+      electricity_ph3: 219 + Math.random() * 10,
+      cold_water_pressure: 3.5 + Math.random(),
+      cold_water_temp: 12 + Math.random() * 3,
+      air_temp: 21 + Math.random() * 3,
+      humidity: 45 + Math.random() * 15,
+    },
     ...overrides,
   }),
   alert: (overrides = {}) => ({
@@ -146,20 +182,29 @@ async function deleteBuilding(token, id) {
   }
 }
 
-module.exports = { BASE_URL, login, authed, anon, factory, deleteBuilding };
+module.exports = {
+  BASE_URL,
+  login,
+  registerUser,
+  registerAndLogin,
+  authed,
+  anon,
+  factory,
+  deleteBuilding,
+};
 ```
 
-- [ ] **Step 3: Verify infrastructure connects to running containers**
+- [ ] **Step 4: Verify infrastructure connects to running containers**
 
 Run: `docker compose -f docker-compose.dev.yml ps` — all 3 containers must be healthy.
 
 Run: `curl -s http://localhost:3000/health | jq .status` — should return `"healthy"`.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add tests/jest/e2e/helpers/e2eHelper.js package.json
-git commit -m "test: add E2E test infrastructure with real DB helpers"
+git add tests/jest/e2e/jest.e2e.config.js tests/jest/e2e/helpers/e2eHelper.js package.json
+git commit -m "test: add isolated E2E Jest config and live API helpers"
 ```
 
 ---
@@ -364,7 +409,7 @@ describe('E2E: Buildings CRUD', () => {
 - [ ] **Step 2: Run test**
 
 Run: `npm run test:e2e -- --testPathPattern=buildings`
-Expected: All 6 tests PASS.
+Expected: All 7 tests PASS.
 
 - [ ] **Step 3: Commit**
 
@@ -386,43 +431,59 @@ git commit -m "test(e2e): buildings CRUD — create, read, update, delete, publi
 const { login, authed, factory } = require('./helpers/e2eHelper');
 
 describe('E2E: Alert Lifecycle', () => {
-  let token;
+  let adminToken;
+  let createdAlertId;
 
   beforeAll(async () => {
-    const auth = await login();
-    token = auth.accessToken;
+    const auth = await login('admin', 'admin123');
+    adminToken = auth.accessToken;
   });
 
   test('GET /api/alerts — list active alerts', async () => {
-    const res = await authed(token).get('/api/alerts');
+    const res = await authed(adminToken).get('/api/alerts');
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('data');
   });
 
-  test('POST /api/alerts — create alert (requires type, infrastructure_id, infrastructure_type, severity, message)', async () => {
-    const res = await authed(token).post('/api/alerts').send(factory.alert());
+  test('POST /api/alerts — create alert', async () => {
+    const res = await authed(adminToken).post('/api/alerts').send(factory.alert());
     expect(res.status).toBe(201);
     expect(res.body).toHaveProperty('success', true);
     expect(res.body.data).toHaveProperty('alert_id');
+    createdAlertId = res.body.data.alert_id;
+  });
+
+  test('PATCH /api/alerts/:alertId/acknowledge — acknowledge active alert', async () => {
+    const res = await authed(adminToken).patch(`/api/alerts/${createdAlertId}/acknowledge`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('success', true);
+    expect(res.body.data).toHaveProperty('status', 'acknowledged');
+  });
+
+  test('PATCH /api/alerts/:alertId/resolve — resolve acknowledged alert', async () => {
+    const res = await authed(adminToken).patch(`/api/alerts/${createdAlertId}/resolve`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('success', true);
+    expect(res.body.data).toHaveProperty('status', 'resolved');
   });
 
   test('POST /api/alerts — missing required fields returns 400', async () => {
-    const res = await authed(token).post('/api/alerts').send({ type: 'MISSING_FIELDS' });
+    const res = await authed(adminToken).post('/api/alerts').send({ type: 'MISSING_FIELDS' });
     expect(res.status).toBe(400);
   });
 
   test('GET /api/alerts/statistics — alert stats', async () => {
-    const res = await authed(token).get('/api/alerts/statistics');
+    const res = await authed(adminToken).get('/api/alerts/statistics');
     expect(res.status).toBe(200);
   });
 
   test('GET /api/alerts/status — system status', async () => {
-    const res = await authed(token).get('/api/alerts/status');
+    const res = await authed(adminToken).get('/api/alerts/status');
     expect(res.status).toBe(200);
   });
 
   test('GET /api/alerts/thresholds — get thresholds', async () => {
-    const res = await authed(token).get('/api/alerts/thresholds');
+    const res = await authed(adminToken).get('/api/alerts/thresholds');
     expect(res.status).toBe(200);
   });
 });
@@ -436,7 +497,7 @@ Run: `npm run test:e2e -- --testPathPattern=alerts`
 
 ```bash
 git add tests/jest/e2e/alerts.e2e.test.js
-git commit -m "test(e2e): alert lifecycle — list, create, statistics, thresholds"
+git commit -m "test(e2e): alert lifecycle — create, acknowledge, resolve, statistics"
 ```
 
 ---
@@ -521,7 +582,7 @@ git commit -m "test(e2e): controllers CRUD — list, create, get by ID, by build
 - [ ] **Step 1: Write metrics E2E tests**
 
 ```js
-const { login, authed, anon, factory, deleteBuilding, BASE_URL } = require('./helpers/e2eHelper');
+const { login, authed, factory, deleteBuilding, BASE_URL } = require('./helpers/e2eHelper');
 const request = require('supertest');
 
 describe('E2E: Metrics & Telemetry', () => {
@@ -555,13 +616,10 @@ describe('E2E: Metrics & Telemetry', () => {
       .post('/api/metrics/telemetry')
       .send(factory.telemetry(serialNumber));
 
-    // 201 = metric created and saved to DB
-    // 404 = controller not found (serial_number mismatch — possible if DB state differs)
-    if (res.status === 201) {
-      expect(res.body).toHaveProperty('success', true);
-    } else {
-      expect(res.status).toBe(404);
-    }
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty('controller_id', controllerId);
+    expect(res.body).toHaveProperty('metric');
+    expect(res.body.metric).toHaveProperty('controller_id', controllerId);
   });
 
   test('POST /api/metrics/telemetry — unknown serial returns 404', async () => {
@@ -669,7 +727,7 @@ git commit -m "test(e2e): analytics + power-analytics read endpoints"
 - [ ] **Step 1: Write admin E2E tests**
 
 ```js
-const { login, authed } = require('./helpers/e2eHelper');
+const { login, registerAndLogin, authed } = require('./helpers/e2eHelper');
 
 describe('E2E: Admin Operations', () => {
   let adminToken;
@@ -707,7 +765,7 @@ describe('E2E: Admin Operations', () => {
 
   // Non-admin gets 403
   test('Non-admin user gets 403 on admin routes', async () => {
-    const { accessToken } = await login('testuser', 'TestPass123');
+    const { accessToken } = await registerAndLogin(`e2e_non_admin_${Date.now()}`);
     const res = await authed(accessToken).get('/api/admin/stats');
     expect(res.status).toBe(403);
   });
@@ -800,7 +858,7 @@ git commit -m "test(e2e): infrastructure — transformers, lines, water/heat sou
 - [ ] **Step 1: Write webhook E2E tests**
 
 ```js
-const { BASE_URL } = require('./helpers/e2eHelper');
+const { BASE_URL, login, authed } = require('./helpers/e2eHelper');
 const request = require('supertest');
 const crypto = require('crypto');
 
@@ -816,41 +874,57 @@ function signPayload(payload, secret) {
 
 describe('E2E: UK Webhooks', () => {
   const WEBHOOK_SECRET = process.env.UK_WEBHOOK_SECRET || '';
-  // UK integration is disabled by default (integration_config.uk_integration_enabled = 'false')
-  // and UK_WEBHOOK_SECRET is not set in docker-compose.dev.yml.
-  // These tests validate the guard behaviour.
+  const ENABLE_FULL_WEBHOOK_E2E = process.env.E2E_ENABLE_UK_INTEGRATION === 'true';
+  let adminToken;
 
-  test('POST /api/webhooks/uk/building — returns 503 when integration disabled', async () => {
-    // Default state: uk_integration_enabled = false → 503
+  beforeAll(async () => {
+    if (ENABLE_FULL_WEBHOOK_E2E) {
+      const auth = await login('admin', 'admin123');
+      adminToken = auth.accessToken;
+      await authed(adminToken)
+        .put('/api/integration/config')
+        .send({ uk_integration_enabled: 'true' });
+    }
+  });
+
+  test('POST /api/webhooks/uk/building — guard returns 503 when disabled or 401 when signature missing', async () => {
     const res = await request(BASE_URL)
       .post('/api/webhooks/uk/building')
-      .send({ event_type: 'building.created', data: {} });
+      .send({
+        event_id: crypto.randomUUID(),
+        event: 'building.created',
+        building: { id: 900001, name: 'Guard Building', address: 'ул. Тестовая 1', town: 'Ташкент' },
+      });
 
-    // 503 = integration disabled, 401 = missing signature (if enabled)
     expect([401, 503]).toContain(res.status);
   });
 
-  test('POST /api/webhooks/uk/building — without signature returns 401 (when enabled)', async () => {
-    // If integration is enabled but no signature → 401
-    // This test documents expected behaviour; may return 503 if not enabled
+  test('POST /api/webhooks/uk/building — invalid signature returns 401 (or 503 when disabled)', async () => {
     const res = await request(BASE_URL)
       .post('/api/webhooks/uk/building')
       .set('X-Webhook-Signature', 'invalid')
-      .send({ event_type: 'building.created', data: {} });
+      .send({
+        event_id: crypto.randomUUID(),
+        event: 'building.created',
+        building: { id: 900002, name: 'Invalid Sig Building', address: 'ул. Тестовая 2', town: 'Ташкент' },
+      });
 
     expect([401, 503]).toContain(res.status);
   });
 
-  // Full HMAC flow only works when UK_WEBHOOK_SECRET is set AND integration enabled
-  const canTestHmac = WEBHOOK_SECRET.length > 0;
+  // Full HMAC flow only works when:
+  // 1) app container has UK_WEBHOOK_SECRET in its environment
+  // 2) integration is enabled for the running DB
+  // For Docker dev, export UK_WEBHOOK_SECRET before `docker compose up` or add it to app.environment.
+  const canTestHmac = WEBHOOK_SECRET.length > 0 && ENABLE_FULL_WEBHOOK_E2E;
   const hmacTest = canTestHmac ? test : test.skip;
 
   hmacTest('POST /api/webhooks/uk/building — with valid HMAC creates building', async () => {
     const payload = {
       event_id: crypto.randomUUID(),
-      event_type: 'building.created',
-      data: {
-        id: crypto.randomUUID(),
+      event: 'building.created',
+      building: {
+        id: 900003,
         name: 'E2E Webhook Building',
         address: 'ул. Тестовая 1',
         town: 'Ташкент',
@@ -863,7 +937,7 @@ describe('E2E: UK Webhooks', () => {
       .set('X-Webhook-Signature', signature)
       .send(payload);
 
-    expect([200, 201]).toContain(res.status);
+    expect(res.status).toBe(200);
   });
 });
 ```
@@ -887,7 +961,7 @@ git commit -m "test(e2e): UK webhooks — signature verification, building event
 - [ ] **Step 1: Write integration admin E2E tests**
 
 ```js
-const { login, authed } = require('./helpers/e2eHelper');
+const { login, registerAndLogin, authed } = require('./helpers/e2eHelper');
 
 describe('E2E: UK Integration Admin', () => {
   let adminToken;
@@ -913,7 +987,7 @@ describe('E2E: UK Integration Admin', () => {
   });
 
   test('Non-admin gets 403 on integration routes', async () => {
-    const { accessToken } = await login('testuser', 'TestPass123');
+    const { accessToken } = await registerAndLogin(`e2e_non_admin_${Date.now()}`);
     const res = await authed(accessToken).get('/api/integration/config');
     expect(res.status).toBe(403);
   });
@@ -943,14 +1017,14 @@ Expected: All test files pass. If any fail due to schema differences or missing 
 
 - [ ] **Step 2: Document coverage**
 
-The plan covers ~65 endpoint tests across 10 files:
-- P0: auth (7), buildings (8), alerts (6) = **21 tests**
+The plan covers ~57 endpoint tests across 10 files:
+- P0: auth (7), buildings (7), alerts (8) = **22 tests**
 - P1: controllers (5), metrics (4), analytics (7), admin (6) = **22 tests**
 - P2: infrastructure (6), webhooks (3), integration (4) = **13 tests**
-- **Total: ~56 real E2E tests** hitting live DB
+- **Total: ~57 real E2E tests** hitting live DB
 
 - [ ] **Step 3: Final commit**
 
 ```bash
-git commit --allow-empty -m "test(e2e): complete E2E coverage plan — 51 tests across 10 suites"
+git commit --allow-empty -m "test(e2e): complete E2E coverage plan — 57 tests across 10 suites"
 ```
