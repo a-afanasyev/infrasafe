@@ -8,7 +8,7 @@ const getBuildingsWithMetrics = async (req, res, next) => {
         res.json(result);
     } catch (error) {
         logger.error(`Error in getBuildingsWithMetrics: ${error.message}`);
-        next(createError(`Failed to get buildings with metrics: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 };
 

@@ -17,6 +17,17 @@ const init = async () => {
             max: 20,
             min: 2,
             idleTimeoutMillis: 30000,
+            connectionTimeoutMillis: 5000,
+        });
+
+        // Обработка ошибок idle-клиентов
+        pool.on('error', (err) => {
+            logger.error('Unexpected error on idle database client:', err.message);
+        });
+
+        // Устанавливаем statement_timeout для каждого нового соединения
+        pool.on('connect', (client) => {
+            client.query('SET statement_timeout = 30000');
         });
 
         // Проверка соединения

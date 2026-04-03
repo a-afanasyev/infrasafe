@@ -90,7 +90,7 @@ async function getOptimizedLines(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in getOptimizedLines: ${error.message}`);
-        next(createError(`Failed to get lines: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -118,7 +118,7 @@ async function createLine(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in createLine: ${error.message}`);
-        next(createError(`Failed to create line: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -146,7 +146,7 @@ async function getLineById(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in getLineById: ${error.message}`);
-        next(createError(`Failed to get line: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -192,7 +192,7 @@ async function updateLine(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in updateLine: ${error.message}`);
-        next(createError(`Failed to update line: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -214,7 +214,7 @@ async function deleteLine(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in deleteLine: ${error.message}`);
-        next(createError(`Failed to delete line: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -258,7 +258,7 @@ async function batchLinesOperation(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in batchLinesOperation: ${error.message}`);
-        next(createError(`Batch operation failed: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 

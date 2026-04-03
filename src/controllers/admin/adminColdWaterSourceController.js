@@ -67,7 +67,7 @@ async function getOptimizedColdWaterSources(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in getOptimizedColdWaterSources: ${error.message}`);
-        next(createError(`Failed to get cold water sources: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -104,7 +104,7 @@ async function createColdWaterSource(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in createColdWaterSource: ${error.message}`);
-        next(createError(`Failed to create cold water source: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -121,7 +121,7 @@ async function getColdWaterSourceById(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in getColdWaterSourceById: ${error.message}`);
-        next(createError(`Failed to get cold water source: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -177,7 +177,7 @@ async function updateColdWaterSource(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in updateColdWaterSource: ${error.message}`);
-        next(createError(`Failed to update cold water source: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -196,7 +196,7 @@ async function deleteColdWaterSource(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in deleteColdWaterSource: ${error.message}`);
-        next(createError(`Failed to delete cold water source: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 

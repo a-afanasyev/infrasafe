@@ -10,8 +10,10 @@ const swaggerUi = require('swagger-ui-express');
 const apiRoutes = require('./routes');
 const errorHandler = require('./middleware/errorHandler');
 const correlationId = require('./middleware/correlationId');
+const { destroyAllLimiters } = require('./middleware/rateLimiter');
 const logger = require('./utils/logger');
 const db = require('./config/database');
+const cacheService = require('./services/cacheService');
 
 // Создаем экземпляр приложения Express
 const app = express();
@@ -145,6 +147,11 @@ const gracefulShutdown = async (signal) => {
         await new Promise(resolve => server.close(resolve));
         logger.info('HTTP server closed');
     }
+
+    // Очистка таймеров и ресурсов
+    try { destroyAllLimiters(); } catch (e) { logger.error('Rate limiter cleanup error:', e.message); }
+    try { await cacheService.close(); } catch (e) { logger.error('Cache close error:', e.message); }
+
     try {
         await db.close();
         logger.info('Database connection closed');
@@ -165,6 +172,7 @@ process.on('uncaughtException', (err) => {
 
 process.on('unhandledRejection', (reason, promise) => {
     logger.error('Необработанное отклонение обещания:', reason);
+    gracefulShutdown('unhandledRejection');
 });
 
 module.exports = app; // Для тестирования

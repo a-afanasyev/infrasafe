@@ -93,7 +93,7 @@ async function getOptimizedWaterLines(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in getOptimizedWaterLines: ${error.message}`);
-        next(createError(`Failed to get water lines: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -141,7 +141,7 @@ async function createWaterLine(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in createWaterLine: ${error.message}`);
-        next(createError(`Failed to create water line: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -172,7 +172,7 @@ async function getWaterLineById(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in getWaterLineById: ${error.message}`);
-        next(createError(`Failed to get water line: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -241,7 +241,7 @@ async function updateWaterLine(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in updateWaterLine: ${error.message}`);
-        next(createError(`Failed to update water line: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -271,7 +271,7 @@ async function deleteWaterLine(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in deleteWaterLine: ${error.message}`);
-        next(createError(`Failed to delete water line: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -323,7 +323,7 @@ async function batchWaterLinesOperation(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in batchWaterLinesOperation: ${error.message}`);
-        next(createError(`Batch operation failed: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 

@@ -80,7 +80,7 @@ async function getOptimizedControllers(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in getOptimizedControllers: ${error.message}`);
-        next(createError(`Failed to get controllers: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 

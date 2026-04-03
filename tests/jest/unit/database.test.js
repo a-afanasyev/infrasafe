@@ -12,7 +12,8 @@ const mockClient = {
 const mockPoolInstance = {
     connect: jest.fn().mockResolvedValue(mockClient),
     query: jest.fn(),
-    end: jest.fn().mockResolvedValue(undefined)
+    end: jest.fn().mockResolvedValue(undefined),
+    on: jest.fn()
 };
 
 jest.mock('pg', () => ({

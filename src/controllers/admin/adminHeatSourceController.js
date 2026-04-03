@@ -67,7 +67,7 @@ async function getOptimizedHeatSources(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in getOptimizedHeatSources: ${error.message}`);
-        next(createError(`Failed to get heat sources: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -104,7 +104,7 @@ async function createHeatSource(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in createHeatSource: ${error.message}`);
-        next(createError(`Failed to create heat source: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -121,7 +121,7 @@ async function getHeatSourceById(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in getHeatSourceById: ${error.message}`);
-        next(createError(`Failed to get heat source: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -177,7 +177,7 @@ async function updateHeatSource(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in updateHeatSource: ${error.message}`);
-        next(createError(`Failed to update heat source: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -196,7 +196,7 @@ async function deleteHeatSource(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in deleteHeatSource: ${error.message}`);
-        next(createError(`Failed to delete heat source: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 

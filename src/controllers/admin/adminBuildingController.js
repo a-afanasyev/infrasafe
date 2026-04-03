@@ -80,7 +80,7 @@ async function getOptimizedBuildings(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in getOptimizedBuildings: ${error.message}`);
-        next(createError(`Failed to get buildings: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 

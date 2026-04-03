@@ -85,7 +85,7 @@ async function getOptimizedTransformers(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in getOptimizedTransformers: ${error.message}`);
-        next(createError(`Failed to get transformers: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -113,7 +113,7 @@ async function createTransformer(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in createTransformer: ${error.message}`);
-        next(createError(`Failed to create transformer: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -141,7 +141,7 @@ async function getTransformerById(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in getTransformerById: ${error.message}`);
-        next(createError(`Failed to get transformer: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -187,7 +187,7 @@ async function updateTransformer(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in updateTransformer: ${error.message}`);
-        next(createError(`Failed to update transformer: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -209,7 +209,7 @@ async function deleteTransformer(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in deleteTransformer: ${error.message}`);
-        next(createError(`Failed to delete transformer: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 
@@ -253,7 +253,7 @@ async function batchTransformersOperation(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in batchTransformersOperation: ${error.message}`);
-        next(createError(`Batch operation failed: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 

@@ -73,7 +73,7 @@ async function getOptimizedMetrics(req, res, next) {
 
     } catch (error) {
         logger.error(`Error in getOptimizedMetrics: ${error.message}`);
-        next(createError(`Failed to get metrics: ${error.message}`, 500));
+        next(createError('Internal server error', 500));
     }
 }
 

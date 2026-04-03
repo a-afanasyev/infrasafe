@@ -13,11 +13,15 @@ const errorHandler = (err, req, res, next) => {
     // Устанавливаем статус ответа
     const statusCode = err.statusCode || 500;
 
-    // Формируем ответ
+    // Формируем ответ — для 500 ошибок никогда не раскрываем внутренние детали клиенту
+    const clientMessage = statusCode >= 500
+        ? 'Внутренняя ошибка сервера'
+        : (err.message || 'Внутренняя ошибка сервера');
+
     const errorResponse = {
         success: false,
         error: {
-            message: err.message || 'Внутренняя ошибка сервера',
+            message: clientMessage,
             status: statusCode
         }
     };
