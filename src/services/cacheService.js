@@ -243,12 +243,19 @@ class CacheService {
             }
         }
 
-        // Redis cache - используем SCAN для поиска по паттерну
+        // Redis cache - используем SCAN для поиска по паттерну (KEYS блокирует Redis)
         if (this.redisAvailable) {
             try {
-                const keys = await this.redisClient.keys(`*${pattern}*`);
-                if (keys.length > 0) {
-                    await this.redisClient.del(keys);
+                const matchPattern = `*${pattern}*`;
+                const keysToDelete = [];
+                let cursor = '0';
+                do {
+                    const result = await this.redisClient.scan(cursor, 'MATCH', matchPattern, 'COUNT', 100);
+                    cursor = result[0];
+                    keysToDelete.push(...result[1]);
+                } while (cursor !== '0');
+                if (keysToDelete.length > 0) {
+                    await this.redisClient.del(keysToDelete);
                 }
             } catch (error) {
                 logger.warn('Не удалось очистить Redis по паттерну:', error.message);

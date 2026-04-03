@@ -4,10 +4,11 @@ const logger = require('../utils/logger');
  * Middleware для обработки ошибок
  */
 const errorHandler = (err, req, res, next) => {
-    // Логируем ошибку
-    logger.error(`Error: ${err.message}`);
+    // Логируем ошибку с correlation ID для трейсинга
+    const correlationId = req.correlationId || 'unknown';
+    logger.error(`[${correlationId}] Error: ${err.message}`);
     if (err.stack) {
-        logger.debug(err.stack);
+        logger.debug(`[${correlationId}] ${err.stack}`);
     }
 
     // Устанавливаем статус ответа

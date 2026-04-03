@@ -400,7 +400,7 @@ describe('CacheService — extended coverage', () => {
     describe('invalidatePattern — Redis path', () => {
         it('scans and deletes matching keys from Redis', async () => {
             const mockRedisClient = {
-                keys: jest.fn().mockResolvedValue(['metrics:1', 'metrics:2']),
+                scan: jest.fn().mockResolvedValue(['0', ['metrics:1', 'metrics:2']]),
                 del: jest.fn().mockResolvedValue(2),
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
@@ -410,13 +410,13 @@ describe('CacheService — extended coverage', () => {
 
             await cacheService.invalidatePattern('metrics');
 
-            expect(mockRedisClient.keys).toHaveBeenCalledWith('*metrics*');
+            expect(mockRedisClient.scan).toHaveBeenCalledWith('0', 'MATCH', '*metrics*', 'COUNT', 100);
             expect(mockRedisClient.del).toHaveBeenCalledWith(['metrics:1', 'metrics:2']);
         });
 
         it('does not call del when no Redis keys match', async () => {
             const mockRedisClient = {
-                keys: jest.fn().mockResolvedValue([]),
+                scan: jest.fn().mockResolvedValue(['0', []]),
                 del: jest.fn(),
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
@@ -429,9 +429,9 @@ describe('CacheService — extended coverage', () => {
             expect(mockRedisClient.del).not.toHaveBeenCalled();
         });
 
-        it('continues when Redis keys scan fails', async () => {
+        it('continues when Redis scan fails', async () => {
             const mockRedisClient = {
-                keys: jest.fn().mockRejectedValue(new Error('Redis scan error')),
+                scan: jest.fn().mockRejectedValue(new Error('Redis scan error')),
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };

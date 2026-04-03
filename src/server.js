@@ -1,4 +1,7 @@
 require('dotenv').config();
+const { validateEnv } = require('./config/env');
+validateEnv();
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -54,7 +57,8 @@ app.use(express.json({
 })); // Парсинг JSON (rawBody preserved for HMAC webhook verification)
 app.use(correlationId); // Correlation ID для трейсинга запросов
 morgan.token('safepath', (req) => req.path); // path without query string
-app.use(morgan(':method :safepath :status :response-time ms', { stream: { write: message => logger.info(message.trim()) } })); // Логирование HTTP запросов
+morgan.token('correlationId', (req) => req.correlationId || '-');
+app.use(morgan(':method :safepath :status :response-time ms :correlationId', { stream: { write: message => logger.info(message.trim()) } })); // Логирование HTTP запросов
 
 // Health check endpoint для Docker
 app.get('/health', async (req, res) => {
@@ -128,6 +132,9 @@ db.init()
         server = app.listen(PORT, () => {
             logger.info(`Сервер запущен на порту ${PORT}`);
         });
+        server.timeout = 30000; // 30s — максимальное время обработки запроса
+        server.keepAliveTimeout = 65000; // Чуть больше чем типичный Nginx proxy_read_timeout (60s)
+        server.headersTimeout = 66000; // Должен быть больше keepAliveTimeout
     })
     .catch((error) => {
         logger.error(`Ошибка инициализации базы данных: ${error.message}`);

@@ -215,7 +215,10 @@ class AuthService {
     // Обновление токена
     async refreshToken(refreshToken) {
         try {
-            const decoded = jwt.verify(refreshToken, this.jwtRefreshSecret);
+            const decoded = jwt.verify(refreshToken, this.jwtRefreshSecret, {
+                issuer: 'infrasafe-api',
+                audience: 'infrasafe-client'
+            });
 
             if (decoded.type !== 'refresh') {
                 const error = new Error('Недействительный refresh токен');
