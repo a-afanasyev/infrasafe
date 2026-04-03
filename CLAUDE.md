@@ -219,3 +219,6 @@ UK_SERVICE_PASSWORD        # Service account password
 - Some backend code uses `console.error` instead of Winston logger
 - Code duplication across water-related route files
 - Frontend redesign (feature/frontend-redesign) not yet merged to main
+
+
+NEVER delete the project directory or run rm -rf in the project root
