@@ -1,11 +1,10 @@
 const analyticsService = require('../services/analyticsService');
 const PowerTransformer = require('../models/PowerTransformer');
-const logger = require('../utils/logger');
 
 class AnalyticsController {
 
     // Получение загрузки конкретного трансформатора
-    static async getTransformerLoad(req, res) {
+    static async getTransformerLoad(req, res, next) {
         try {
             const { transformerId } = req.params;
 
@@ -24,16 +23,12 @@ class AnalyticsController {
             });
 
         } catch (error) {
-            logger.error('Ошибка получения загрузки трансформатора:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Получение всех трансформаторов с аналитикой
-    static async getAllTransformersAnalytics(req, res) {
+    static async getAllTransformersAnalytics(req, res, next) {
         try {
             const {
                 status,
@@ -70,16 +65,12 @@ class AnalyticsController {
             });
 
         } catch (error) {
-            logger.error('Ошибка получения аналитики всех трансформаторов:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Получение перегруженных трансформаторов
-    static async getOverloadedTransformers(req, res) {
+    static async getOverloadedTransformers(req, res, next) {
         try {
             const { threshold } = req.query;
             const loadThreshold = threshold ? parseFloat(threshold) : undefined;
@@ -94,16 +85,12 @@ class AnalyticsController {
             });
 
         } catch (error) {
-            logger.error('Ошибка получения перегруженных трансформаторов:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Геопространственный поиск трансформаторов
-    static async findTransformersInRadius(req, res) {
+    static async findTransformersInRadius(req, res, next) {
         try {
             const { latitude, longitude, radius } = req.query;
 
@@ -139,16 +126,12 @@ class AnalyticsController {
             });
 
         } catch (error) {
-            logger.error('Ошибка геопространственного поиска:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Поиск ближайших зданий к трансформатору
-    static async findNearestBuildings(req, res) {
+    static async findNearestBuildings(req, res, next) {
         try {
             const { transformerId } = req.params;
             const { max_distance, limit } = req.query;
@@ -174,16 +157,12 @@ class AnalyticsController {
             });
 
         } catch (error) {
-            logger.error('Ошибка поиска ближайших зданий:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Анализ загрузки по зонам
-    static async getLoadAnalyticsByZone(req, res) {
+    static async getLoadAnalyticsByZone(req, res, next) {
         try {
             const zoneAnalytics = await analyticsService.getLoadAnalysByZone();
 
@@ -194,16 +173,12 @@ class AnalyticsController {
             });
 
         } catch (error) {
-            logger.error('Ошибка получения аналитики по зонам:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Прогнозирование нагрузки
-    static async getPeakLoadForecast(req, res) {
+    static async getPeakLoadForecast(req, res, next) {
         try {
             const { transformerId } = req.params;
             const { hours } = req.query;
@@ -225,16 +200,12 @@ class AnalyticsController {
             });
 
         } catch (error) {
-            logger.error('Ошибка получения прогноза нагрузки:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Статистика по трансформаторам
-    static async getTransformerStatistics(req, res) {
+    static async getTransformerStatistics(req, res, next) {
         try {
             const statistics = await analyticsService.getTransformerStatistics();
 
@@ -244,16 +215,12 @@ class AnalyticsController {
             });
 
         } catch (error) {
-            logger.error('Ошибка получения статистики трансформаторов:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Обновление материализованного представления
-    static async refreshAnalytics(req, res) {
+    static async refreshAnalytics(req, res, next) {
         try {
             const result = await analyticsService.refreshTransformerAnalytics();
 
@@ -264,16 +231,12 @@ class AnalyticsController {
             });
 
         } catch (error) {
-            logger.error('Ошибка обновления аналитики:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Инвалидация кэшей
-    static async invalidateCaches(req, res) {
+    static async invalidateCaches(req, res, next) {
         try {
             await analyticsService.invalidateTransformerCaches();
 
@@ -283,16 +246,12 @@ class AnalyticsController {
             });
 
         } catch (error) {
-            logger.error('Ошибка инвалидации кэшей:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Состояние системы мониторинга
-    static async getSystemStatus(req, res) {
+    static async getSystemStatus(req, res, next) {
         try {
             const circuitBreakerStatus = analyticsService.getCircuitBreakerStatus();
 
@@ -306,16 +265,12 @@ class AnalyticsController {
             });
 
         } catch (error) {
-            logger.error('Ошибка получения состояния системы:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Сброс Circuit Breaker'ов
-    static async resetCircuitBreakers(req, res) {
+    static async resetCircuitBreakers(req, res, next) {
         try {
             analyticsService.resetCircuitBreakers();
 
@@ -325,16 +280,12 @@ class AnalyticsController {
             });
 
         } catch (error) {
-            logger.error('Ошибка сброса Circuit Breaker\'ов:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Обновление порогов алертов
-    static async updateThresholds(req, res) {
+    static async updateThresholds(req, res, next) {
         try {
             const { thresholds } = req.body;
 
@@ -354,18 +305,14 @@ class AnalyticsController {
             });
 
         } catch (error) {
-            logger.error('Ошибка обновления порогов:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // CRUD операции для трансформаторов
 
     // Создание трансформатора
-    static async createTransformer(req, res) {
+    static async createTransformer(req, res, next) {
         try {
             const transformerData = req.body;
 
@@ -392,16 +339,12 @@ class AnalyticsController {
             });
 
         } catch (error) {
-            logger.error('Ошибка создания трансформатора:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Обновление трансформатора
-    static async updateTransformer(req, res) {
+    static async updateTransformer(req, res, next) {
         try {
             const { transformerId } = req.params;
             const updateData = req.body;
@@ -425,16 +368,12 @@ class AnalyticsController {
             });
 
         } catch (error) {
-            logger.error('Ошибка обновления трансформатора:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Удаление трансформатора
-    static async deleteTransformer(req, res) {
+    static async deleteTransformer(req, res, next) {
         try {
             const { transformerId } = req.params;
 
@@ -456,11 +395,7 @@ class AnalyticsController {
             });
 
         } catch (error) {
-            logger.error('Ошибка удаления трансформатора:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 }

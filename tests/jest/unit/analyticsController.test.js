@@ -50,7 +50,7 @@ describe('AnalyticsController', () => {
             const loadData = { load_percent: 75, status: 'normal' };
             analyticsService.getTransformerLoad.mockResolvedValue(loadData);
 
-            await AnalyticsController.getTransformerLoad(req, res);
+            await AnalyticsController.getTransformerLoad(req, res, next);
 
             expect(res.json).toHaveBeenCalledWith({
                 success: true,
@@ -61,7 +61,7 @@ describe('AnalyticsController', () => {
         test('returns 400 when transformerId is missing', async () => {
             req.params = {};
 
-            await AnalyticsController.getTransformerLoad(req, res);
+            await AnalyticsController.getTransformerLoad(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(400);
             expect(res.json).toHaveBeenCalledWith(
@@ -69,16 +69,14 @@ describe('AnalyticsController', () => {
             );
         });
 
-        test('returns 500 on service error', async () => {
+        test('delegates to next(error) on service error', async () => {
             req.params.transformerId = '1';
-            analyticsService.getTransformerLoad.mockRejectedValue(new Error('Service error'));
+            const error = new Error('Service error');
+            analyticsService.getTransformerLoad.mockRejectedValue(error);
 
-            await AnalyticsController.getTransformerLoad(req, res);
+            await AnalyticsController.getTransformerLoad(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({ success: false })
-            );
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -90,7 +88,7 @@ describe('AnalyticsController', () => {
             ];
             analyticsService.getAllTransformersWithAnalytics.mockResolvedValue(transformers);
 
-            await AnalyticsController.getAllTransformersAnalytics(req, res);
+            await AnalyticsController.getAllTransformersAnalytics(req, res, next);
 
             expect(res.json).toHaveBeenCalledWith({
                 success: true,
@@ -107,7 +105,7 @@ describe('AnalyticsController', () => {
             ];
             analyticsService.getAllTransformersWithAnalytics.mockResolvedValue(transformers);
 
-            await AnalyticsController.getAllTransformersAnalytics(req, res);
+            await AnalyticsController.getAllTransformersAnalytics(req, res, next);
 
             const response = res.json.mock.calls[0][0];
             expect(response.data).toHaveLength(1);
@@ -122,7 +120,7 @@ describe('AnalyticsController', () => {
             ];
             analyticsService.getAllTransformersWithAnalytics.mockResolvedValue(transformers);
 
-            await AnalyticsController.getAllTransformersAnalytics(req, res);
+            await AnalyticsController.getAllTransformersAnalytics(req, res, next);
 
             const response = res.json.mock.calls[0][0];
             expect(response.data).toHaveLength(1);
@@ -137,7 +135,7 @@ describe('AnalyticsController', () => {
             ];
             analyticsService.getAllTransformersWithAnalytics.mockResolvedValue(transformers);
 
-            await AnalyticsController.getAllTransformersAnalytics(req, res);
+            await AnalyticsController.getAllTransformersAnalytics(req, res, next);
 
             const response = res.json.mock.calls[0][0];
             expect(response.data).toHaveLength(1);
@@ -152,19 +150,20 @@ describe('AnalyticsController', () => {
             ];
             analyticsService.getAllTransformersWithAnalytics.mockResolvedValue(transformers);
 
-            await AnalyticsController.getAllTransformersAnalytics(req, res);
+            await AnalyticsController.getAllTransformersAnalytics(req, res, next);
 
             const response = res.json.mock.calls[0][0];
             expect(response.data).toHaveLength(1);
             expect(response.data[0].load_percent).toBe(85);
         });
 
-        test('returns 500 on service error', async () => {
-            analyticsService.getAllTransformersWithAnalytics.mockRejectedValue(new Error('fail'));
+        test('delegates to next(error) on service error', async () => {
+            const error = new Error('fail');
+            analyticsService.getAllTransformersWithAnalytics.mockRejectedValue(error);
 
-            await AnalyticsController.getAllTransformersAnalytics(req, res);
+            await AnalyticsController.getAllTransformersAnalytics(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -173,7 +172,7 @@ describe('AnalyticsController', () => {
             const data = [{ id: 1, load_percent: 90 }];
             analyticsService.getOverloadedTransformers.mockResolvedValue(data);
 
-            await AnalyticsController.getOverloadedTransformers(req, res);
+            await AnalyticsController.getOverloadedTransformers(req, res, next);
 
             expect(analyticsService.getOverloadedTransformers).toHaveBeenCalledWith(undefined);
             expect(res.json).toHaveBeenCalledWith({
@@ -188,18 +187,19 @@ describe('AnalyticsController', () => {
             req.query.threshold = '70';
             analyticsService.getOverloadedTransformers.mockResolvedValue([]);
 
-            await AnalyticsController.getOverloadedTransformers(req, res);
+            await AnalyticsController.getOverloadedTransformers(req, res, next);
 
             expect(analyticsService.getOverloadedTransformers).toHaveBeenCalledWith(70);
             expect(res.json.mock.calls[0][0].threshold).toBe(70);
         });
 
-        test('returns 500 on error', async () => {
-            analyticsService.getOverloadedTransformers.mockRejectedValue(new Error('fail'));
+        test('delegates to next(error) on error', async () => {
+            const error = new Error('fail');
+            analyticsService.getOverloadedTransformers.mockRejectedValue(error);
 
-            await AnalyticsController.getOverloadedTransformers(req, res);
+            await AnalyticsController.getOverloadedTransformers(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -209,7 +209,7 @@ describe('AnalyticsController', () => {
             const data = [{ id: 1 }];
             analyticsService.findTransformersInRadius.mockResolvedValue(data);
 
-            await AnalyticsController.findTransformersInRadius(req, res);
+            await AnalyticsController.findTransformersInRadius(req, res, next);
 
             expect(analyticsService.findTransformersInRadius).toHaveBeenCalledWith(41.3, 69.2, 3000);
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -223,7 +223,7 @@ describe('AnalyticsController', () => {
             req.query = { latitude: '41.3', longitude: '69.2' };
             analyticsService.findTransformersInRadius.mockResolvedValue([]);
 
-            await AnalyticsController.findTransformersInRadius(req, res);
+            await AnalyticsController.findTransformersInRadius(req, res, next);
 
             expect(analyticsService.findTransformersInRadius).toHaveBeenCalledWith(41.3, 69.2, 5000);
         });
@@ -231,7 +231,7 @@ describe('AnalyticsController', () => {
         test('returns 400 when coordinates missing', async () => {
             req.query = {};
 
-            await AnalyticsController.findTransformersInRadius(req, res);
+            await AnalyticsController.findTransformersInRadius(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(400);
         });
@@ -239,18 +239,19 @@ describe('AnalyticsController', () => {
         test('returns 400 for invalid coordinates', async () => {
             req.query = { latitude: 'abc', longitude: 'xyz' };
 
-            await AnalyticsController.findTransformersInRadius(req, res);
+            await AnalyticsController.findTransformersInRadius(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(400);
         });
 
-        test('returns 500 on service error', async () => {
+        test('delegates to next(error) on service error', async () => {
             req.query = { latitude: '41.3', longitude: '69.2' };
-            analyticsService.findTransformersInRadius.mockRejectedValue(new Error('fail'));
+            const error = new Error('fail');
+            analyticsService.findTransformersInRadius.mockRejectedValue(error);
 
-            await AnalyticsController.findTransformersInRadius(req, res);
+            await AnalyticsController.findTransformersInRadius(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -260,7 +261,7 @@ describe('AnalyticsController', () => {
             const data = [{ building_id: 1, distance: 500 }];
             analyticsService.findNearestBuildings.mockResolvedValue(data);
 
-            await AnalyticsController.findNearestBuildings(req, res);
+            await AnalyticsController.findNearestBuildings(req, res, next);
 
             expect(analyticsService.findNearestBuildings).toHaveBeenCalledWith('1', 1000, 50);
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -275,18 +276,19 @@ describe('AnalyticsController', () => {
             req.query = { max_distance: '2000', limit: '10' };
             analyticsService.findNearestBuildings.mockResolvedValue([]);
 
-            await AnalyticsController.findNearestBuildings(req, res);
+            await AnalyticsController.findNearestBuildings(req, res, next);
 
             expect(analyticsService.findNearestBuildings).toHaveBeenCalledWith('1', 2000, 10);
         });
 
-        test('returns 500 on error', async () => {
+        test('delegates to next(error) on error', async () => {
             req.params.transformerId = '1';
-            analyticsService.findNearestBuildings.mockRejectedValue(new Error('fail'));
+            const error = new Error('fail');
+            analyticsService.findNearestBuildings.mockRejectedValue(error);
 
-            await AnalyticsController.findNearestBuildings(req, res);
+            await AnalyticsController.findNearestBuildings(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -295,7 +297,7 @@ describe('AnalyticsController', () => {
             const data = [{ zone: 'A', avg_load: 60 }];
             analyticsService.getLoadAnalysByZone.mockResolvedValue(data);
 
-            await AnalyticsController.getLoadAnalyticsByZone(req, res);
+            await AnalyticsController.getLoadAnalyticsByZone(req, res, next);
 
             expect(res.json).toHaveBeenCalledWith({
                 success: true,
@@ -304,12 +306,13 @@ describe('AnalyticsController', () => {
             });
         });
 
-        test('returns 500 on error', async () => {
-            analyticsService.getLoadAnalysByZone.mockRejectedValue(new Error('fail'));
+        test('delegates to next(error) on error', async () => {
+            const error = new Error('fail');
+            analyticsService.getLoadAnalysByZone.mockRejectedValue(error);
 
-            await AnalyticsController.getLoadAnalyticsByZone(req, res);
+            await AnalyticsController.getLoadAnalyticsByZone(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -319,7 +322,7 @@ describe('AnalyticsController', () => {
             const forecast = { peak_hour: 14, peak_load: 95 };
             analyticsService.getPeakLoadForecast.mockResolvedValue(forecast);
 
-            await AnalyticsController.getPeakLoadForecast(req, res);
+            await AnalyticsController.getPeakLoadForecast(req, res, next);
 
             expect(analyticsService.getPeakLoadForecast).toHaveBeenCalledWith('1', 24);
             expect(res.json).toHaveBeenCalledWith({
@@ -333,7 +336,7 @@ describe('AnalyticsController', () => {
             req.query.hours = '48';
             analyticsService.getPeakLoadForecast.mockResolvedValue({});
 
-            await AnalyticsController.getPeakLoadForecast(req, res);
+            await AnalyticsController.getPeakLoadForecast(req, res, next);
 
             expect(analyticsService.getPeakLoadForecast).toHaveBeenCalledWith('1', 48);
         });
@@ -342,7 +345,7 @@ describe('AnalyticsController', () => {
             req.params.transformerId = '1';
             req.query.hours = '0';
 
-            await AnalyticsController.getPeakLoadForecast(req, res);
+            await AnalyticsController.getPeakLoadForecast(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(400);
         });
@@ -351,18 +354,19 @@ describe('AnalyticsController', () => {
             req.params.transformerId = '1';
             req.query.hours = '200';
 
-            await AnalyticsController.getPeakLoadForecast(req, res);
+            await AnalyticsController.getPeakLoadForecast(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(400);
         });
 
-        test('returns 500 on error', async () => {
+        test('delegates to next(error) on error', async () => {
             req.params.transformerId = '1';
-            analyticsService.getPeakLoadForecast.mockRejectedValue(new Error('fail'));
+            const error = new Error('fail');
+            analyticsService.getPeakLoadForecast.mockRejectedValue(error);
 
-            await AnalyticsController.getPeakLoadForecast(req, res);
+            await AnalyticsController.getPeakLoadForecast(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -371,7 +375,7 @@ describe('AnalyticsController', () => {
             const stats = { total: 10, active: 8 };
             analyticsService.getTransformerStatistics.mockResolvedValue(stats);
 
-            await AnalyticsController.getTransformerStatistics(req, res);
+            await AnalyticsController.getTransformerStatistics(req, res, next);
 
             expect(res.json).toHaveBeenCalledWith({
                 success: true,
@@ -379,12 +383,13 @@ describe('AnalyticsController', () => {
             });
         });
 
-        test('returns 500 on error', async () => {
-            analyticsService.getTransformerStatistics.mockRejectedValue(new Error('fail'));
+        test('delegates to next(error) on error', async () => {
+            const error = new Error('fail');
+            analyticsService.getTransformerStatistics.mockRejectedValue(error);
 
-            await AnalyticsController.getTransformerStatistics(req, res);
+            await AnalyticsController.getTransformerStatistics(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -393,7 +398,7 @@ describe('AnalyticsController', () => {
             const result = { refreshed: true };
             analyticsService.refreshTransformerAnalytics.mockResolvedValue(result);
 
-            await AnalyticsController.refreshAnalytics(req, res);
+            await AnalyticsController.refreshAnalytics(req, res, next);
 
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
                 success: true,
@@ -401,12 +406,13 @@ describe('AnalyticsController', () => {
             }));
         });
 
-        test('returns 500 on error', async () => {
-            analyticsService.refreshTransformerAnalytics.mockRejectedValue(new Error('fail'));
+        test('delegates to next(error) on error', async () => {
+            const error = new Error('fail');
+            analyticsService.refreshTransformerAnalytics.mockRejectedValue(error);
 
-            await AnalyticsController.refreshAnalytics(req, res);
+            await AnalyticsController.refreshAnalytics(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -414,19 +420,20 @@ describe('AnalyticsController', () => {
         test('invalidates caches successfully', async () => {
             analyticsService.invalidateTransformerCaches.mockResolvedValue();
 
-            await AnalyticsController.invalidateCaches(req, res);
+            await AnalyticsController.invalidateCaches(req, res, next);
 
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
                 success: true
             }));
         });
 
-        test('returns 500 on error', async () => {
-            analyticsService.invalidateTransformerCaches.mockRejectedValue(new Error('fail'));
+        test('delegates to next(error) on error', async () => {
+            const error = new Error('fail');
+            analyticsService.invalidateTransformerCaches.mockRejectedValue(error);
 
-            await AnalyticsController.invalidateCaches(req, res);
+            await AnalyticsController.invalidateCaches(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -435,7 +442,7 @@ describe('AnalyticsController', () => {
             const cbStatus = { main: 'closed' };
             analyticsService.getCircuitBreakerStatus.mockReturnValue(cbStatus);
 
-            await AnalyticsController.getSystemStatus(req, res);
+            await AnalyticsController.getSystemStatus(req, res, next);
 
             const response = res.json.mock.calls[0][0];
             expect(response.success).toBe(true);
@@ -444,14 +451,15 @@ describe('AnalyticsController', () => {
             expect(response.data.timestamp).toBeDefined();
         });
 
-        test('returns 500 on error', async () => {
+        test('delegates to next(error) on error', async () => {
+            const error = new Error('fail');
             analyticsService.getCircuitBreakerStatus.mockImplementation(() => {
-                throw new Error('fail');
+                throw error;
             });
 
-            await AnalyticsController.getSystemStatus(req, res);
+            await AnalyticsController.getSystemStatus(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -459,7 +467,7 @@ describe('AnalyticsController', () => {
         test('resets circuit breakers', async () => {
             analyticsService.resetCircuitBreakers.mockReturnValue();
 
-            await AnalyticsController.resetCircuitBreakers(req, res);
+            await AnalyticsController.resetCircuitBreakers(req, res, next);
 
             expect(analyticsService.resetCircuitBreakers).toHaveBeenCalled();
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -467,14 +475,15 @@ describe('AnalyticsController', () => {
             }));
         });
 
-        test('returns 500 on error', async () => {
+        test('delegates to next(error) on error', async () => {
+            const error = new Error('fail');
             analyticsService.resetCircuitBreakers.mockImplementation(() => {
-                throw new Error('fail');
+                throw error;
             });
 
-            await AnalyticsController.resetCircuitBreakers(req, res);
+            await AnalyticsController.resetCircuitBreakers(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -483,7 +492,7 @@ describe('AnalyticsController', () => {
             req.body = { thresholds: { warning: 70, critical: 90 } };
             analyticsService.updateThresholds.mockReturnValue();
 
-            await AnalyticsController.updateThresholds(req, res);
+            await AnalyticsController.updateThresholds(req, res, next);
 
             expect(analyticsService.updateThresholds).toHaveBeenCalledWith({ warning: 70, critical: 90 });
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -495,7 +504,7 @@ describe('AnalyticsController', () => {
         test('returns 400 when thresholds missing', async () => {
             req.body = {};
 
-            await AnalyticsController.updateThresholds(req, res);
+            await AnalyticsController.updateThresholds(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(400);
         });
@@ -503,20 +512,21 @@ describe('AnalyticsController', () => {
         test('returns 400 when thresholds is not an object', async () => {
             req.body = { thresholds: 'invalid' };
 
-            await AnalyticsController.updateThresholds(req, res);
+            await AnalyticsController.updateThresholds(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(400);
         });
 
-        test('returns 500 on error', async () => {
+        test('delegates to next(error) on error', async () => {
             req.body = { thresholds: { warning: 70 } };
+            const error = new Error('fail');
             analyticsService.updateThresholds.mockImplementation(() => {
-                throw new Error('fail');
+                throw error;
             });
 
-            await AnalyticsController.updateThresholds(req, res);
+            await AnalyticsController.updateThresholds(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -530,7 +540,7 @@ describe('AnalyticsController', () => {
             PowerTransformer.create.mockResolvedValue(created);
             analyticsService.invalidateTransformerCaches.mockResolvedValue();
 
-            await AnalyticsController.createTransformer(req, res);
+            await AnalyticsController.createTransformer(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(201);
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -542,21 +552,22 @@ describe('AnalyticsController', () => {
         test('returns 400 when required field is missing', async () => {
             req.body = { name: 'TP-100' }; // missing id, address, etc.
 
-            await AnalyticsController.createTransformer(req, res);
+            await AnalyticsController.createTransformer(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(400);
         });
 
-        test('returns 500 on model error', async () => {
+        test('delegates to next(error) on model error', async () => {
             req.body = {
                 id: 'T1', name: 'TP-100', address: '123 St',
                 latitude: 41.3, longitude: 69.2, capacity_kva: 630
             };
-            PowerTransformer.create.mockRejectedValue(new Error('fail'));
+            const error = new Error('fail');
+            PowerTransformer.create.mockRejectedValue(error);
 
-            await AnalyticsController.createTransformer(req, res);
+            await AnalyticsController.createTransformer(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -568,7 +579,7 @@ describe('AnalyticsController', () => {
             PowerTransformer.update.mockResolvedValue(updated);
             analyticsService.invalidateTransformerCaches.mockResolvedValue();
 
-            await AnalyticsController.updateTransformer(req, res);
+            await AnalyticsController.updateTransformer(req, res, next);
 
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
                 success: true,
@@ -581,19 +592,20 @@ describe('AnalyticsController', () => {
             req.body = { name: 'X' };
             PowerTransformer.update.mockResolvedValue(null);
 
-            await AnalyticsController.updateTransformer(req, res);
+            await AnalyticsController.updateTransformer(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(404);
         });
 
-        test('returns 500 on error', async () => {
+        test('delegates to next(error) on error', async () => {
             req.params.transformerId = '1';
             req.body = { name: 'X' };
-            PowerTransformer.update.mockRejectedValue(new Error('fail'));
+            const error = new Error('fail');
+            PowerTransformer.update.mockRejectedValue(error);
 
-            await AnalyticsController.updateTransformer(req, res);
+            await AnalyticsController.updateTransformer(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -603,7 +615,7 @@ describe('AnalyticsController', () => {
             PowerTransformer.delete.mockResolvedValue({ id: 1 });
             analyticsService.invalidateTransformerCaches.mockResolvedValue();
 
-            await AnalyticsController.deleteTransformer(req, res);
+            await AnalyticsController.deleteTransformer(req, res, next);
 
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
                 success: true
@@ -614,18 +626,19 @@ describe('AnalyticsController', () => {
             req.params.transformerId = '999';
             PowerTransformer.delete.mockResolvedValue(null);
 
-            await AnalyticsController.deleteTransformer(req, res);
+            await AnalyticsController.deleteTransformer(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(404);
         });
 
-        test('returns 500 on error', async () => {
+        test('delegates to next(error) on error', async () => {
             req.params.transformerId = '1';
-            PowerTransformer.delete.mockRejectedValue(new Error('fail'));
+            const error = new Error('fail');
+            PowerTransformer.delete.mockRejectedValue(error);
 
-            await AnalyticsController.deleteTransformer(req, res);
+            await AnalyticsController.deleteTransformer(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 });

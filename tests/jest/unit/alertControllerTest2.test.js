@@ -132,7 +132,7 @@ describe('AlertController', () => {
             expect(callArg.data).toEqual({});
         });
 
-        test('returns 500 on service error', async () => {
+        test('delegates to next(error) on service error', async () => {
             req.body = {
                 type: 'TEST',
                 infrastructure_id: 1,
@@ -140,11 +140,12 @@ describe('AlertController', () => {
                 severity: 'WARNING',
                 message: 'Test'
             };
-            alertService.createAlert.mockRejectedValue(new Error('DB error'));
+            const error = new Error('DB error');
+            alertService.createAlert.mockRejectedValue(error);
 
             await AlertController.createAlert(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -183,13 +184,14 @@ describe('AlertController', () => {
             expect(res.status).toHaveBeenCalledWith(404);
         });
 
-        test('returns 500 on unexpected error', async () => {
+        test('delegates to next(error) on unexpected error', async () => {
             req.params = { alertId: '10' };
-            alertService.acknowledgeAlert.mockRejectedValue(new Error('DB connection lost'));
+            const error = new Error('DB connection lost');
+            alertService.acknowledgeAlert.mockRejectedValue(error);
 
             await AlertController.acknowledgeAlert(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -228,13 +230,14 @@ describe('AlertController', () => {
             expect(res.status).toHaveBeenCalledWith(404);
         });
 
-        test('returns 500 on unexpected error', async () => {
+        test('delegates to next(error) on unexpected error', async () => {
             req.params = { alertId: '20' };
-            alertService.resolveAlert.mockRejectedValue(new Error('Timeout'));
+            const error = new Error('Timeout');
+            alertService.resolveAlert.mockRejectedValue(error);
 
             await AlertController.resolveAlert(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -275,13 +278,14 @@ describe('AlertController', () => {
             );
         });
 
-        test('returns 500 on error', async () => {
+        test('delegates to next(error) on error', async () => {
             req.params = { transformerId: '5' };
-            alertService.checkTransformerLoad.mockRejectedValue(new Error('fail'));
+            const error = new Error('fail');
+            alertService.checkTransformerLoad.mockRejectedValue(error);
 
             await AlertController.checkTransformer(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -305,12 +309,13 @@ describe('AlertController', () => {
             );
         });
 
-        test('returns 500 on error', async () => {
-            alertService.checkAllTransformers.mockRejectedValue(new Error('fail'));
+        test('delegates to next(error) on error', async () => {
+            const error = new Error('fail');
+            alertService.checkAllTransformers.mockRejectedValue(error);
 
             await AlertController.checkAllTransformers(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -350,13 +355,14 @@ describe('AlertController', () => {
             expect(res.status).toHaveBeenCalledWith(400);
         });
 
-        test('returns 500 on error', async () => {
+        test('delegates to next(error) on error', async () => {
             req.query = { days: '7' };
-            alertService.getAlertStatistics.mockRejectedValue(new Error('fail'));
+            const error = new Error('fail');
+            alertService.getAlertStatistics.mockRejectedValue(error);
 
             await AlertController.getAlertStatistics(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -378,14 +384,15 @@ describe('AlertController', () => {
             );
         });
 
-        test('returns 500 on error', async () => {
+        test('delegates to next(error) on error', async () => {
+            const error = new Error('fail');
             alertService.getThresholds.mockImplementation(() => {
-                throw new Error('fail');
+                throw error;
             });
 
             await AlertController.getThresholds(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -446,15 +453,16 @@ describe('AlertController', () => {
             expect(res.status).toHaveBeenCalledWith(400);
         });
 
-        test('returns 500 on error', async () => {
+        test('delegates to next(error) on error', async () => {
             req.body = { transformer_overload: 90 };
+            const error = new Error('fail');
             alertService.updateThresholds.mockImplementation(() => {
-                throw new Error('fail');
+                throw error;
             });
 
             await AlertController.updateThresholds(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -497,13 +505,14 @@ describe('AlertController', () => {
             expect(res.status).toHaveBeenCalledWith(400);
         });
 
-        test('returns 500 on service error', async () => {
+        test('delegates to next(error) on service error', async () => {
             req.query = {};
-            alertService.getActiveAlerts.mockRejectedValue(new Error('fail'));
+            const error = new Error('fail');
+            alertService.getActiveAlerts.mockRejectedValue(error);
 
             await AlertController.getActiveAlerts(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 
@@ -526,14 +535,15 @@ describe('AlertController', () => {
             );
         });
 
-        test('returns 500 on error', async () => {
+        test('delegates to next(error) on error', async () => {
+            const error = new Error('fail');
             alertService.getStatus.mockImplementation(() => {
-                throw new Error('fail');
+                throw error;
             });
 
             await AlertController.getSystemStatus(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
+            expect(next).toHaveBeenCalledWith(error);
         });
     });
 });

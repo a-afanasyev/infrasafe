@@ -1,10 +1,9 @@
 const alertService = require('../services/alertService');
-const logger = require('../utils/logger');
 
 class AlertController {
 
     // Получение всех активных алертов
-    static async getActiveAlerts(req, res) {
+    static async getActiveAlerts(req, res, next) {
         try {
             const { severity, infrastructure_type, limit, status, page, sort, order } = req.query;
 
@@ -52,16 +51,12 @@ class AlertController {
             });
 
         } catch (error) {
-            logger.error('Ошибка получения активных алертов:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Подтверждение алерта (acknowledge)
-    static async acknowledgeAlert(req, res) {
+    static async acknowledgeAlert(req, res, next) {
         try {
             const { alertId } = req.params;
             const userId = req.user?.user_id; // Из JWT токена
@@ -82,22 +77,18 @@ class AlertController {
             });
 
         } catch (error) {
-            logger.error('Ошибка подтверждения алерта:', error);
             if (error.message && error.message.includes('не найден')) {
                 return res.status(404).json({
                     success: false,
                     message: 'Алерт не найден или уже обработан'
                 });
             }
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Закрытие алерта (resolve)
-    static async resolveAlert(req, res) {
+    static async resolveAlert(req, res, next) {
         try {
             const { alertId } = req.params;
             const userId = req.user?.user_id; // Из JWT токена
@@ -118,22 +109,18 @@ class AlertController {
             });
 
         } catch (error) {
-            logger.error('Ошибка закрытия алерта:', error);
             if (error.message && error.message.includes('не найден')) {
                 return res.status(404).json({
                     success: false,
                     message: 'Алерт не найден или уже обработан'
                 });
             }
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Создание алерта вручную
-    static async createAlert(req, res) {
+    static async createAlert(req, res, next) {
         try {
             const {
                 type,
@@ -181,16 +168,12 @@ class AlertController {
             });
 
         } catch (error) {
-            logger.error('Ошибка создания алерта:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Проверка конкретного трансформатора
-    static async checkTransformer(req, res) {
+    static async checkTransformer(req, res, next) {
         try {
             const { transformerId } = req.params;
 
@@ -218,16 +201,12 @@ class AlertController {
             }
 
         } catch (error) {
-            logger.error('Ошибка проверки трансформатора:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Массовая проверка всех трансформаторов
-    static async checkAllTransformers(req, res) {
+    static async checkAllTransformers(req, res, next) {
         try {
             const result = await alertService.checkAllTransformers();
 
@@ -238,16 +217,12 @@ class AlertController {
             });
 
         } catch (error) {
-            logger.error('Ошибка массовой проверки трансформаторов:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Получение статистики алертов
-    static async getAlertStatistics(req, res) {
+    static async getAlertStatistics(req, res, next) {
         try {
             const { days } = req.query;
             const period = days ? parseInt(days) : 7;
@@ -267,16 +242,12 @@ class AlertController {
             });
 
         } catch (error) {
-            logger.error('Ошибка получения статистики алертов:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Получение и обновление порогов алертов
-    static async getThresholds(req, res) {
+    static async getThresholds(req, res, next) {
         try {
             const thresholds = alertService.getThresholds();
 
@@ -286,15 +257,11 @@ class AlertController {
             });
 
         } catch (error) {
-            logger.error('Ошибка получения порогов алертов:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
-    static async updateThresholds(req, res) {
+    static async updateThresholds(req, res, next) {
         try {
             const newThresholds = req.body;
 
@@ -335,16 +302,12 @@ class AlertController {
             });
 
         } catch (error) {
-            logger.error('Ошибка обновления порогов алертов:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 
     // Статус системы алертов
-    static async getSystemStatus(req, res) {
+    static async getSystemStatus(req, res, next) {
         try {
             const status = alertService.getStatus();
 
@@ -354,11 +317,7 @@ class AlertController {
             });
 
         } catch (error) {
-            logger.error('Ошибка получения статуса системы алертов:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Внутренняя ошибка сервера'
-            });
+            next(error);
         }
     }
 }

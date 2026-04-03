@@ -32,7 +32,9 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            styleSrc: ["'self'", "'unsafe-inline'", "https:"],
+            styleSrc: isProduction
+                ? ["'self'", "https:"]
+                : ["'self'", "'unsafe-inline'", "https:"],
             scriptSrc: isProduction
                 ? ["'self'", "https://cdn.jsdelivr.net", "https://unpkg.com"]
                 : ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.jsdelivr.net", "https://unpkg.com"],

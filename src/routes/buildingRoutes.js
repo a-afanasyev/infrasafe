@@ -1,6 +1,6 @@
 const express = require('express');
 const buildingController = require('../controllers/buildingController');
-const { applyCrudRateLimit } = require('../middleware/rateLimiter');
+const { applyCrudRateLimit, applyAnalyticsRateLimit } = require('../middleware/rateLimiter');
 const { validateBuildingCreate } = require('../middleware/validators');
 const router = express.Router();
 
@@ -42,7 +42,7 @@ const router = express.Router();
  *       200:
  *         description: Успешный ответ со списком зданий
  */
-router.get('/', buildingController.getAllBuildings);
+router.get('/', applyAnalyticsRateLimit, buildingController.getAllBuildings);
 
 /**
  * @swagger
@@ -115,7 +115,7 @@ router.get('/', buildingController.getAllBuildings);
  *       400:
  *         description: Неверные параметры поиска
  */
-router.get('/search', buildingController.findBuildingsInRadius);
+router.get('/search', applyAnalyticsRateLimit, buildingController.findBuildingsInRadius);
 
 /**
  * @swagger
@@ -162,7 +162,7 @@ router.get('/search', buildingController.findBuildingsInRadius);
  *       500:
  *         description: Ошибка сервера
  */
-router.get('/statistics', buildingController.getBuildingsStatistics);
+router.get('/statistics', applyAnalyticsRateLimit, buildingController.getBuildingsStatistics);
 
 /**
  * @swagger
@@ -185,7 +185,7 @@ router.get('/statistics', buildingController.getBuildingsStatistics);
  *       404:
  *         description: Здание не найдено
  */
-router.get('/:id', buildingController.getBuildingById);
+router.get('/:id', applyAnalyticsRateLimit, buildingController.getBuildingById);
 
 /**
  * @swagger

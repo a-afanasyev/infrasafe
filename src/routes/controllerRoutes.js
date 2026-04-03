@@ -1,6 +1,6 @@
 const express = require('express');
 const controllerController = require('../controllers/controllerController');
-const { applyCrudRateLimit } = require('../middleware/rateLimiter');
+const { applyCrudRateLimit, applyAnalyticsRateLimit } = require('../middleware/rateLimiter');
 const { isAdmin } = require('../middleware/auth');
 const { validateControllerCreate, validateIdParam } = require('../middleware/validators');
 const router = express.Router();
@@ -43,7 +43,7 @@ const router = express.Router();
  *       200:
  *         description: Успешный ответ со списком контроллеров
  */
-router.get('/', controllerController.getAllControllers);
+router.get('/', applyAnalyticsRateLimit, controllerController.getAllControllers);
 
 /**
  * @swagger

@@ -308,7 +308,7 @@ router.get('/transformers/statistics', applyAnalyticsRateLimit, analyticsControl
  *       200:
  *         description: Состояние Circuit Breaker'ов и кэша
  */
-router.get('/status', analyticsController.getSystemStatus);
+router.get('/status', applyAnalyticsRateLimit, analyticsController.getSystemStatus);
 
 /**
  * @swagger
