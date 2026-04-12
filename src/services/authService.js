@@ -126,12 +126,34 @@ class AuthService {
                 email: user.email,
                 role: user.role,
                 last_login: new Date().toISOString(),
-                is_active: user.is_active
+                is_active: user.is_active,
+                totp_enabled: user.totp_enabled || false
             };
         } catch (error) {
             logger.error(`Ошибка аутентификации: ${error.message}`);
             throw error;
         }
+    }
+
+    // Генерация временного токена для 2FA (5 мин, scope: 2fa)
+    generateTempToken(user) {
+        return jwt.sign(
+            { user_id: user.user_id, username: user.username, role: user.role, scope: '2fa' },
+            this.jwtSecret,
+            { expiresIn: '5m', issuer: 'infrasafe-api', audience: 'infrasafe-client' }
+        );
+    }
+
+    // Верификация временного токена для 2FA
+    verifyTempToken(token) {
+        const decoded = jwt.verify(token, this.jwtSecret, {
+            issuer: 'infrasafe-api',
+            audience: 'infrasafe-client'
+        });
+        if (decoded.scope !== '2fa') {
+            throw new Error('Invalid token scope');
+        }
+        return decoded;
     }
 
     // Генерация JWT токена

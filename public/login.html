@@ -177,22 +177,23 @@
             <p>Система мониторинга инфраструктуры</p>
         </div>
 
+        <!-- Step 1: Login form -->
         <form id="login-form">
             <div id="error-container"></div>
             <div id="success-container"></div>
-            
+
             <div class="form-group">
                 <label for="username">Логин:</label>
                 <input type="text" id="username" name="username" required
                        placeholder="Введите ваш логин" autocomplete="username">
             </div>
-            
+
             <div class="form-group">
                 <label for="password">Пароль:</label>
                 <input type="password" id="password" name="password" required
                        placeholder="Введите ваш пароль" autocomplete="current-password">
             </div>
-            
+
             <div class="form-group">
                 <button type="submit" class="login-btn" id="login-button">
                     Войти
@@ -201,6 +202,61 @@
             </div>
         </form>
 
+        <!-- Step 2: 2FA code entry -->
+        <form id="totp-form" style="display:none">
+            <div id="totp-error-container"></div>
+            <div id="totp-success-container"></div>
+
+            <p style="color:#666; margin-bottom:20px;">Введите 6-значный код из приложения-аутентификатора или одноразовый код восстановления</p>
+
+            <div class="form-group">
+                <label for="totp-code">Код 2FA:</label>
+                <input type="text" id="totp-code" name="totp-code" required
+                       placeholder="000000" autocomplete="one-time-code"
+                       maxlength="9" style="text-align:center; font-size:24px; letter-spacing:8px;">
+            </div>
+
+            <div class="form-group">
+                <button type="submit" class="login-btn" id="totp-button">Подтвердить</button>
+                <div class="loading" id="totp-loading">Проверка кода...</div>
+            </div>
+
+            <p style="margin-top:15px;"><a href="#" id="back-to-login" style="color:#667eea; text-decoration:none;">Назад к логину</a></p>
+        </form>
+
+        <!-- Step 2b: 2FA setup (QR code) -->
+        <div id="totp-setup" style="display:none">
+            <div id="setup-error-container"></div>
+
+            <p style="color:#666; margin-bottom:15px;">Для вашего аккаунта требуется двухфакторная аутентификация. Отсканируйте QR-код приложением (Google Authenticator, Authy):</p>
+
+            <div style="text-align:center; margin:20px 0;">
+                <img id="qr-code-img" src="" alt="QR Code" style="max-width:200px;">
+            </div>
+
+            <div style="background:#f8f9fa; padding:10px; border-radius:5px; margin-bottom:15px; word-break:break-all;">
+                <small style="color:#999;">Ручной ввод:</small><br>
+                <code id="totp-secret-display" style="font-size:14px;"></code>
+            </div>
+
+            <div id="recovery-codes-block" style="background:#fff3cd; padding:15px; border-radius:5px; margin-bottom:20px; text-align:left;">
+                <strong style="color:#856404;">Коды восстановления (сохраните!):</strong>
+                <pre id="recovery-codes-display" style="margin:10px 0 0; font-size:13px; color:#856404;"></pre>
+            </div>
+
+            <form id="confirm-totp-form">
+                <div class="form-group">
+                    <label for="confirm-code">Введите код из приложения для подтверждения:</label>
+                    <input type="text" id="confirm-code" required placeholder="000000"
+                           autocomplete="one-time-code" maxlength="6"
+                           style="text-align:center; font-size:24px; letter-spacing:8px;">
+                </div>
+                <div class="form-group">
+                    <button type="submit" class="login-btn" id="confirm-button">Активировать 2FA</button>
+                </div>
+            </form>
+        </div>
+
         <div class="login-info">
             <p><strong>Для входа используйте учетные данные администратора</strong></p>
             <p style="font-size: 0.85rem; color: #666;">Обратитесь к администратору системы для получения доступа</p>
@@ -208,151 +264,193 @@
     </div>
 
     <script>
-        // Класс для обработки авторизации на странице login.html
         class LoginHandler {
             constructor() {
+                this.tempToken = null;
                 this.initializeForm();
+                this.initializeTOTPForm();
+                this.initializeSetupForm();
             }
 
+            // --- Step 1: Login form ---
             initializeForm() {
                 const form = document.getElementById('login-form');
-                const usernameInput = document.getElementById('username');
-                const passwordInput = document.getElementById('password');
-                const loginButton = document.getElementById('login-button');
-                const loading = document.getElementById('loading');
+                document.getElementById('username').focus();
 
                 form.addEventListener('submit', async (e) => {
                     e.preventDefault();
-                    
-                    const username = usernameInput.value.trim();
-                    const password = passwordInput.value.trim();
+                    const username = document.getElementById('username').value.trim();
+                    const password = document.getElementById('password').value.trim();
+                    if (!username || !password) { this.showError('error-container', 'Заполните все поля'); return; }
 
-                    if (!username || !password) {
-                        this.showError('Пожалуйста, заполните все поля');
-                        return;
-                    }
-
-                    // Показываем индикатор загрузки
-                    loginButton.disabled = true;
-                    loading.style.display = 'block';
-                    this.clearMessages();
+                    this.setLoading('login-button', 'loading', true);
+                    this.clearAll();
 
                     try {
-                        const success = await this.performLogin(username, password);
-                        
-                        if (success) {
-                            this.showSuccess('Вход выполнен успешно! Перенаправление...');
-                            
-                            // Перенаправляем на главную страницу или админку
-                            setTimeout(() => {
-                                window.location.href = '/admin.html';
-                            }, 1500);
+                        const res = await fetch('/api/auth/login', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username, password })
+                        });
+                        const data = await res.json();
+
+                        if (!res.ok) throw new Error(data.message || data.error || 'Ошибка авторизации');
+
+                        if (data.requires2FA) {
+                            // 2FA enabled — show code input
+                            this.tempToken = data.tempToken;
+                            this.showStep('totp-form');
+                            document.getElementById('totp-code').focus();
+                        } else if (data.requires2FASetup) {
+                            // Admin needs 2FA setup — fetch QR
+                            this.tempToken = data.tempToken;
+                            await this.loadSetup();
+                        } else {
+                            // No 2FA — direct login
+                            this.completeLogin(data);
                         }
-                    } catch (error) {
-                        this.showError(error.message || 'Произошла ошибка при входе');
+                    } catch (err) {
+                        this.showError('error-container', err.message);
                     } finally {
-                        // Скрываем индикатор загрузки
-                        loginButton.disabled = false;
-                        loading.style.display = 'none';
+                        this.setLoading('login-button', 'loading', false);
                     }
                 });
 
-                // Автофокус на поле логина
-                usernameInput.focus();
+                document.getElementById('back-to-login').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.tempToken = null;
+                    this.showStep('login-form');
+                    document.getElementById('username').focus();
+                });
             }
 
-            async performLogin(username, password) {
-                try {
-                    const response = await fetch('/api/auth/login', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ username, password })
-                    });
+            // --- Step 2: TOTP verification ---
+            initializeTOTPForm() {
+                document.getElementById('totp-form').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const code = document.getElementById('totp-code').value.trim();
+                    if (!code) { this.showError('totp-error-container', 'Введите код'); return; }
 
-                    if (response.ok) {
-                        const data = await response.json();
-                        
-                        // Сохраняем токен в localStorage
-                        const token = data.accessToken || data.token;
-                        if (token) {
-                            localStorage.setItem('admin_token', token);
-                            return true;
-                        } else {
-                            throw new Error('Токен не получен');
-                        }
-                    } else {
-                        const errorData = await response.json();
-                        throw new Error(errorData.message || errorData.error || 'Ошибка авторизации');
+                    this.setLoading('totp-button', 'totp-loading', true);
+                    this.clearAll();
+
+                    try {
+                        const res = await fetch('/api/auth/verify-2fa', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ tempToken: this.tempToken, code })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.message || data.error || 'Неверный код');
+                        this.completeLogin(data);
+                    } catch (err) {
+                        this.showError('totp-error-container', err.message);
+                        document.getElementById('totp-code').value = '';
+                        document.getElementById('totp-code').focus();
+                    } finally {
+                        this.setLoading('totp-button', 'totp-loading', false);
                     }
-                } catch (error) {
-                    console.error('Ошибка входа:', error);
-                    throw error;
+                });
+            }
+
+            // --- Step 2b: 2FA setup ---
+            async loadSetup() {
+                try {
+                    const res = await fetch('/api/auth/setup-2fa', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ tempToken: this.tempToken })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.message || data.error || 'Ошибка настройки 2FA');
+
+                    document.getElementById('qr-code-img').src = data.qrCodeUrl;
+                    document.getElementById('totp-secret-display').textContent = data.secret;
+                    document.getElementById('recovery-codes-display').textContent = data.recoveryCodes.join('\n');
+                    this.showStep('totp-setup');
+                    document.getElementById('confirm-code').focus();
+                } catch (err) {
+                    this.showError('error-container', err.message);
                 }
             }
 
-            showError(message) {
-                this.clearMessages();
-                const errorContainer = document.getElementById('error-container');
-                
-                // ИСПРАВЛЕНИЕ XSS: Используем безопасные методы вместо innerHTML
-                if (window.DOMSecurity) {
-                    window.DOMSecurity.showSecureErrorMessage(errorContainer, message);
-                } else {
-                    // Fallback для случая, если утилиты не загружены
-                    console.warn('DOMSecurity утилиты не загружены, используется fallback');
-                    const errorDiv = document.createElement('div');
-                    errorDiv.className = 'error-message';
-                    errorDiv.textContent = message;
-                    errorContainer.appendChild(errorDiv);
-                }
+            initializeSetupForm() {
+                document.getElementById('confirm-totp-form').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const code = document.getElementById('confirm-code').value.trim();
+                    if (!code) { this.showError('setup-error-container', 'Введите код'); return; }
+
+                    document.getElementById('confirm-button').disabled = true;
+
+                    try {
+                        const res = await fetch('/api/auth/confirm-2fa', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ tempToken: this.tempToken, code })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.message || data.error || 'Неверный код');
+                        this.completeLogin(data);
+                    } catch (err) {
+                        this.showError('setup-error-container', err.message);
+                        document.getElementById('confirm-code').value = '';
+                        document.getElementById('confirm-code').focus();
+                    } finally {
+                        document.getElementById('confirm-button').disabled = false;
+                    }
+                });
             }
 
-            showSuccess(message) {
-                this.clearMessages();
-                const successContainer = document.getElementById('success-container');
-                
-                // ИСПРАВЛЕНИЕ XSS: Используем безопасные методы вместо innerHTML
-                if (window.DOMSecurity) {
-                    window.DOMSecurity.showSecureSuccessMessage(successContainer, message);
-                } else {
-                    // Fallback для случая, если утилиты не загружены
-                    console.warn('DOMSecurity утилиты не загружены, используется fallback');
-                    const successDiv = document.createElement('div');
-                    successDiv.className = 'success-message';
-                    successDiv.textContent = message;
-                    successContainer.appendChild(successDiv);
-                }
+            // --- Helpers ---
+            completeLogin(data) {
+                const token = data.accessToken || data.token;
+                if (!token) throw new Error('Токен не получен');
+                localStorage.setItem('admin_token', token);
+                if (data.refreshToken) localStorage.setItem('refresh_token', data.refreshToken);
+                this.showSuccess('success-container', 'Вход выполнен! Перенаправление...');
+                setTimeout(() => { window.location.href = '/admin.html'; }, 1000);
             }
 
-            clearMessages() {
-                // ИСПРАВЛЕНИЕ XSS: Используем безопасные методы очистки
-                const errorContainer = document.getElementById('error-container');
-                const successContainer = document.getElementById('success-container');
-                
-                if (window.DOMSecurity) {
-                    window.DOMSecurity.clearContainer(errorContainer);
-                    window.DOMSecurity.clearContainer(successContainer);
-                } else {
-                    // Fallback - безопасная очистка через textContent
-                    if (errorContainer) errorContainer.textContent = '';
-                    if (successContainer) successContainer.textContent = '';
-                }
+            showStep(stepId) {
+                ['login-form', 'totp-form', 'totp-setup'].forEach(id => {
+                    document.getElementById(id).style.display = id === stepId ? 'block' : 'none';
+                });
+            }
+
+            setLoading(btnId, loadingId, on) {
+                document.getElementById(btnId).disabled = on;
+                document.getElementById(loadingId).style.display = on ? 'block' : 'none';
+            }
+
+            showError(containerId, message) {
+                const c = document.getElementById(containerId);
+                c.textContent = '';
+                const div = document.createElement('div');
+                div.className = 'error-message';
+                div.textContent = message;
+                c.appendChild(div);
+            }
+
+            showSuccess(containerId, message) {
+                const c = document.getElementById(containerId);
+                c.textContent = '';
+                const div = document.createElement('div');
+                div.className = 'success-message';
+                div.textContent = message;
+                c.appendChild(div);
+            }
+
+            clearAll() {
+                ['error-container', 'success-container', 'totp-error-container', 'totp-success-container', 'setup-error-container'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = '';
+                });
             }
         }
 
-        // Инициализируем обработчик при загрузке страницы
         document.addEventListener('DOMContentLoaded', () => {
-            // Проверяем, есть ли уже токен - если да, перенаправляем
             const existingToken = localStorage.getItem('admin_token');
-            if (existingToken) {
-                console.log('Токен найден, перенаправление на админку...');
-                window.location.href = '/admin.html';
-                return;
-            }
-
-            // Инициализируем форму входа
+            if (existingToken) { window.location.href = '/admin.html'; return; }
             new LoginHandler();
         });
     </script>

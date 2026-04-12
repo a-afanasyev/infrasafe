@@ -30,6 +30,10 @@ jest.mock('../../../src/middleware/auth', () => ({
     optionalAuth: (req, res, next) => {
         req.user = null; // anonymous by default for public routes
         next();
+    },
+    authenticateTempToken: (req, res, next) => {
+        req.tempUser = { user_id: 1, username: 'admin', role: 'admin' };
+        next();
     }
 }));
 

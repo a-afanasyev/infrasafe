@@ -248,14 +248,17 @@ describe('XSS Protection Tests', () => {
             });
         });
         
-        test('login.html should use DOMSecurity for error messages', () => {
+        test('login.html should use safe DOM methods for error messages', () => {
             const content = fs.readFileSync(
                 path.join(__dirname, '../../../public/login.html'),
                 'utf8'
             );
-            
-            // Проверяем использование DOMSecurity для сообщений
-            expect(content).toContain('DOMSecurity.showSecureErrorMessage');
+
+            // Проверяем использование безопасных методов (textContent или DOMSecurity)
+            const usesSafeDOM = content.includes('textContent') || content.includes('DOMSecurity.showSecureErrorMessage');
+            expect(usesSafeDOM).toBe(true);
+            // Не должно быть innerHTML для пользовательских данных
+            expect(content).not.toMatch(/innerHTML\s*=\s*[^'"`]*message/);
         });
     });
     

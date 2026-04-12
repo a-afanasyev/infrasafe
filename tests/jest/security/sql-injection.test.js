@@ -25,7 +25,8 @@ jest.mock('../../../src/middleware/auth', () => ({
     authenticateJWT: (req, res, next) => { req.user = { id: 1, role: 'admin' }; next(); },
     isAdmin: (req, res, next) => next(),
     authenticateRefresh: (req, res, next) => next(),
-    optionalAuth: (req, res, next) => { req.user = { id: 1, role: 'admin' }; next(); }
+    optionalAuth: (req, res, next) => { req.user = { id: 1, role: 'admin' }; next(); },
+    authenticateTempToken: (req, res, next) => { req.tempUser = { user_id: 1, username: 'admin', role: 'admin' }; next(); }
 }));
 
 // Импортируем Express app напрямую, без запуска сервера

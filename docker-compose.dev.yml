@@ -73,6 +73,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:-dev-secret-key-change-in-production}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-dev-refresh-secret-key-change-in-production}
       - CORS_ORIGINS=http://localhost:8088,http://localhost:3000
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-infrasafe-totp-dev-key-change-in-production-32ch}
     depends_on:
       postgres:
         condition: service_healthy

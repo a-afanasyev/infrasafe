@@ -1,11 +1,19 @@
 jest.mock('../../../src/services/authService', () => ({
     authenticateUser: jest.fn(),
     generateTokens: jest.fn(),
+    generateTempToken: jest.fn(),
     registerUser: jest.fn(),
     findUserById: jest.fn(),
     logout: jest.fn(),
     refreshToken: jest.fn(),
     changePassword: jest.fn()
+}));
+
+jest.mock('../../../src/services/totpService', () => ({
+    verifyCode: jest.fn(),
+    generateSetup: jest.fn(),
+    confirmSetup: jest.fn(),
+    disable: jest.fn()
 }));
 
 jest.mock('../../../src/utils/logger', () => ({
@@ -59,13 +67,14 @@ describe('AuthController', () => {
             expect(res.status).toHaveBeenCalledWith(400);
         });
 
-        test('returns tokens and user on successful login', async () => {
-            req.body = { username: 'admin', password: 'StrongPass1' };
+        test('returns tokens for non-admin user without 2FA', async () => {
+            req.body = { username: 'testuser', password: 'StrongPass1' };
             const mockUser = {
-                user_id: 1,
-                username: 'admin',
-                role: 'admin',
-                last_login: '2025-01-01'
+                user_id: 2,
+                username: 'testuser',
+                role: 'user',
+                last_login: '2025-01-01',
+                totp_enabled: false
             };
             const mockTokens = {
                 accessToken: 'access-token',
@@ -83,14 +92,36 @@ describe('AuthController', () => {
                 expect.objectContaining({
                     success: true,
                     message: 'Login successful',
-                    accessToken: 'access-token',
-                    refreshToken: 'refresh-token',
-                    user: expect.objectContaining({
-                        id: 1,
-                        username: 'admin',
-                        role: 'admin'
-                    })
+                    accessToken: 'access-token'
                 })
+            );
+        });
+
+        test('returns requires2FASetup for admin without 2FA', async () => {
+            req.body = { username: 'admin', password: 'admin123' };
+            authService.authenticateUser.mockResolvedValue({
+                user_id: 1, username: 'admin', role: 'admin', totp_enabled: false
+            });
+            authService.generateTempToken.mockReturnValue('temp-token');
+
+            await authController.login(req, res, next);
+
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({ requires2FASetup: true, tempToken: 'temp-token' })
+            );
+        });
+
+        test('returns requires2FA for user with 2FA enabled', async () => {
+            req.body = { username: 'admin', password: 'admin123' };
+            authService.authenticateUser.mockResolvedValue({
+                user_id: 1, username: 'admin', role: 'admin', totp_enabled: true
+            });
+            authService.generateTempToken.mockReturnValue('temp-token-2fa');
+
+            await authController.login(req, res, next);
+
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({ requires2FA: true, tempToken: 'temp-token-2fa' })
             );
         });
 

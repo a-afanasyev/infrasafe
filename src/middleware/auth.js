@@ -251,9 +251,34 @@ const optionalAuth = async (req, res, next) => {
     }
 };
 
+// Проверка временного токена 2FA (scope: '2fa', TTL 5 мин)
+const authenticateTempToken = async (req, res, next) => {
+    try {
+        const { tempToken } = req.body;
+
+        if (!tempToken) {
+            return res.status(400).json({
+                success: false,
+                message: 'Temporary token is required'
+            });
+        }
+
+        const decoded = authService.verifyTempToken(tempToken);
+        req.tempUser = decoded;
+        next();
+    } catch (error) {
+        logger.warn(`Invalid temp token: ${error.message}`);
+        return res.status(401).json({
+            success: false,
+            message: 'Invalid or expired temporary token'
+        });
+    }
+};
+
 module.exports = {
     authenticateJWT,
     isAdmin,
     authenticateRefresh,
-    optionalAuth
+    optionalAuth,
+    authenticateTempToken
 };

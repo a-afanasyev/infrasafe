@@ -8,6 +8,9 @@ if (!process.env.JWT_SECRET) {
 if (!process.env.JWT_REFRESH_SECRET) {
   process.env.JWT_REFRESH_SECRET = 'test-refresh-secret-key';
 }
+if (!process.env.TOTP_ENCRYPTION_KEY) {
+  process.env.TOTP_ENCRYPTION_KEY = 'test-totp-encryption-key-32chars!';
+}
 
 // Настройка для тестов
 
