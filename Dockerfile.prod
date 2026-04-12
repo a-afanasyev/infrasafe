@@ -7,7 +7,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Устанавливаем зависимости с exact versions и очищаем кэш
-RUN npm install --only=production && \
+RUN npm ci --omit=dev && \
     npm cache clean --force
 
 # Production stage

@@ -42,6 +42,16 @@ describe('AdminService', () => {
                 adminService.batchDelete('buildings', 'id', [1])
             ).rejects.toThrow('FK constraint');
         });
+
+        test('rejects untrusted table name', async () => {
+            await expect(adminService.batchDelete('users; DROP TABLE --', 'id', [1]))
+                .rejects.toMatchObject({ message: expect.stringContaining('not allowed') });
+        });
+
+        test('rejects untrusted column name', async () => {
+            await expect(adminService.batchDelete('buildings', 'id; DROP TABLE --', [1]))
+                .rejects.toMatchObject({ message: expect.stringContaining('not allowed') });
+        });
     });
 
     describe('batchUpdateColumn', () => {
@@ -67,6 +77,11 @@ describe('AdminService', () => {
                 'controllers', 'id', [999], 'status', 'active'
             );
             expect(result.rowCount).toBe(0);
+        });
+
+        test('rejects untrusted column for update', async () => {
+            await expect(adminService.batchUpdateColumn('buildings', 'building_id', [1], 'col; DROP TABLE --', 'val'))
+                .rejects.toMatchObject({ message: expect.stringContaining('not allowed') });
         });
     });
 });

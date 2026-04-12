@@ -82,10 +82,10 @@ describe('UKApiClient', () => {
             expect(axios.post).toHaveBeenCalledTimes(2);
         });
 
-        test('throws when credentials are not configured', async () => {
+        test('throws when api url is not configured', async () => {
             IntegrationConfig.get.mockResolvedValue(null);
 
-            await expect(client.authenticate()).rejects.toThrow('UK API credentials not configured');
+            await expect(client.authenticate()).rejects.toThrow('UK API URL is required');
         });
 
         test('throws when env vars are missing', async () => {

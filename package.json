@@ -34,6 +34,9 @@
   ],
   "author": "InfraSafe Development Team",
   "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/a-afanasyev/infrasafe.git"
@@ -43,7 +46,7 @@
     "url": "https://github.com/a-afanasyev/infrasafe/issues"
   },
   "dependencies": {
-    "bcrypt": "^5.1.1",
+    "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dompurify": "^3.2.7",
     "dotenv": "^16.3.1",
@@ -56,10 +59,10 @@
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.0",
     "winston": "^3.11.0",
-    "winston-daily-rotate-file": "^5.0.0"
+    "winston-daily-rotate-file": "^5.0.0",
+    "axios": "^1.15.0"
   },
   "devDependencies": {
-    "axios": "^1.11.0",
     "eslint": "^8.56.0",
     "jest": "^29.7.0",
     "nodemon": "^3.0.2",

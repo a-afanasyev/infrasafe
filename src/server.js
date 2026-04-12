@@ -20,6 +20,7 @@ const cacheService = require('./services/cacheService');
 
 // Создаем экземпляр приложения Express
 const app = express();
+app.set('trust proxy', 1);
 
 // Настройка порта
 const PORT = process.env.PORT || 3000;

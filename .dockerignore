@@ -4,5 +4,24 @@ logs
 *.log
 .git
 .gitignore
-.env.local
-.DS_Store 
+.DS_Store
+
+# Secrets — NEVER include in image
+.env
+.env.*
+!.env.example
+
+# Development/test files — not needed in production image
+tests/
+docs/
+coverage/
+monitoring/
+generator/
+frontend-design/
+.github/
+.worktrees/
+*.md
+!README.md
+docker-compose*.yml
+backup-database.sh
+swagger_update.js

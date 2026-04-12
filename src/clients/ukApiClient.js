@@ -2,6 +2,7 @@
 
 const axios = require('axios');
 const IntegrationConfig = require('../models/IntegrationConfig');
+const { validateUKApiUrl } = require('../utils/urlValidation');
 const logger = require('../utils/logger');
 
 const TOKEN_CACHE_TTL_MS = 25 * 60 * 1000;
@@ -21,6 +22,7 @@ class UKApiClient {
         }
 
         const apiUrl = await IntegrationConfig.get('uk_api_url');
+        validateUKApiUrl(apiUrl);
         const username = process.env.UK_SERVICE_USER;
         const password = process.env.UK_SERVICE_PASSWORD;
 
@@ -49,6 +51,7 @@ class UKApiClient {
     async createRequest(data) {
         const token = await this.authenticate();
         const apiUrl = await IntegrationConfig.get('uk_api_url');
+        validateUKApiUrl(apiUrl);
 
         let lastError;
 
@@ -96,6 +99,7 @@ class UKApiClient {
     async get(path) {
         let token = await this.authenticate();
         const apiUrl = await IntegrationConfig.get('uk_api_url');
+        validateUKApiUrl(apiUrl);
 
         try {
             const response = await axios.get(`${apiUrl}${path}`, {

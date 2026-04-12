@@ -16,7 +16,7 @@ class AuthService {
             throw new Error('JWT_REFRESH_SECRET environment variable is required');
         }
         this.jwtRefreshSecret = process.env.JWT_REFRESH_SECRET;
-        this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
+        this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || '1h';
         this.refreshTokenExpiresIn = '7d';
         this.cachePrefix = 'auth';
         this.maxLoginAttempts = 5;

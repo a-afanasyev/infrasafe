@@ -6,6 +6,7 @@ const IntegrationLog = require('../models/IntegrationLog');
 const logger = require('../utils/logger');
 const Building = require('../models/Building');
 const { isValidBuildingEvent } = require('../utils/webhookValidation');
+const { validateUKApiUrl } = require('../utils/urlValidation');
 
 const ALLOWED_CONFIG_KEYS = ['uk_integration_enabled', 'uk_api_url', 'uk_frontend_url'];
 const SENSITIVE_KEYS = ['uk_webhook_secret', 'uk_service_user', 'uk_service_password'];
@@ -55,6 +56,9 @@ class UKIntegrationService {
                 throw new Error('Cannot update this setting via API');
             }
             if (ALLOWED_CONFIG_KEYS.includes(key)) {
+                if (key === 'uk_api_url') {
+                    validateUKApiUrl(value);
+                }
                 await IntegrationConfig.set(key, value);
             } else {
                 logger.warn(`ukIntegrationService.updateConfig: unknown key "${key}", skipping`);

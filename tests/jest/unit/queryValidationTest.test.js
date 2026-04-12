@@ -166,33 +166,26 @@ describe('queryValidation', () => {
             expect(validateSearchString(123)).toBe('');
         });
 
-        test('removes HTML meta characters', () => {
-            const result = validateSearchString('<script>alert("xss")</script>');
-            expect(result).not.toContain('<');
-            expect(result).not.toContain('>');
-            expect(result).not.toContain('"');
+        test('preserves special characters (parameterized queries handle SQL safety)', () => {
+            expect(validateSearchString("O'zbekiston")).toBe("O'zbekiston");
+            expect(validateSearchString("building <A>")).toBe("building <A>");
+            expect(validateSearchString("test'; DROP TABLE--")).toBe("test'; DROP TABLE--");
+            expect(validateSearchString('script injection')).toBe('script injection');
+            expect(validateSearchString('javascript:void(0)')).toBe('javascript:void(0)');
+            expect(validateSearchString('onerror=alert(1)')).toBe('onerror=alert(1)');
         });
 
-        test('removes SQL meta characters', () => {
-            const result = validateSearchString("'; DROP TABLE users;--");
-            expect(result).not.toContain("'");
-            expect(result).not.toContain(';');
-            expect(result).not.toContain('%');
+        test('escapes LIKE wildcard characters', () => {
+            expect(validateSearchString('%')).toBe('\\%');
+            expect(validateSearchString('_')).toBe('\\_');
+            expect(validateSearchString('test%value')).toBe('test\\%value');
+            expect(validateSearchString('hello_world')).toBe('hello\\_world');
+            expect(validateSearchString('100%')).toBe('100\\%');
         });
 
-        test('removes "script" word', () => {
-            const result = validateSearchString('script injection');
-            expect(result.toLowerCase()).not.toContain('script');
-        });
-
-        test('removes "javascript" word', () => {
-            const result = validateSearchString('javascript:void(0)');
-            expect(result.toLowerCase()).not.toContain('javascript');
-        });
-
-        test('removes event handlers', () => {
-            const result = validateSearchString('onerror=alert(1)');
-            expect(result).not.toMatch(/on\w+=/i);
+        test('escapes backslashes before wildcards', () => {
+            expect(validateSearchString('path\\file')).toBe('path\\\\file');
+            expect(validateSearchString('50\\%')).toBe('50\\\\\\%');
         });
 
         test('trims whitespace', () => {

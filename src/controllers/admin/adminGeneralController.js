@@ -1,8 +1,5 @@
 const { createError } = require('../../utils/helpers');
-
-/**
- * Admin general operations: global search, stats dashboard, data export.
- */
+const db = require('../../config/database');
 
 async function globalSearch(req, res, next) {
     try {
@@ -21,13 +18,19 @@ async function globalSearch(req, res, next) {
 
 async function getAdminStats(req, res, next) {
     try {
-        const stats = {
-            buildings: { total: 17, active: 10 },
-            controllers: { total: 15, active: 8, offline: 3, maintenance: 4 },
-            metrics: { total: 1000, today: 50 },
-            message: 'Stats generated (stub)'
-        };
-        res.json(stats);
+        const [buildings, controllers, metrics, alerts] = await Promise.all([
+            db.query('SELECT COUNT(*) FROM buildings'),
+            db.query('SELECT COUNT(*) FROM controllers'),
+            db.query('SELECT COUNT(*) FROM metrics'),
+            db.query("SELECT COUNT(*) FROM alerts WHERE status = 'active'"),
+        ]);
+
+        res.json({
+            buildings: { total: parseInt(buildings.rows[0].count, 10) },
+            controllers: { total: parseInt(controllers.rows[0].count, 10) },
+            metrics: { total: parseInt(metrics.rows[0].count, 10) },
+            alerts: { active: parseInt(alerts.rows[0].count, 10) },
+        });
     } catch (error) {
         next(createError('Failed to get stats', 500));
     }
@@ -35,11 +38,9 @@ async function getAdminStats(req, res, next) {
 
 async function exportData(req, res, next) {
     try {
-        const { type, format } = req.body;
-        res.json({
-            success: true,
-            message: `Export ${type} in ${format} initiated (stub)`,
-            downloadUrl: '/api/admin/download/export-123.csv'
+        res.status(501).json({
+            success: false,
+            error: 'Export functionality not yet implemented',
         });
     } catch (error) {
         next(createError('Export failed', 500));

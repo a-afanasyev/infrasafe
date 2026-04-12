@@ -285,7 +285,7 @@ async function batchWaterLinesOperation(req, res, next) {
 
         let result;
         switch (action) {
-            case 'delete':
+            case 'delete': {
                 // Проверяем, есть ли связанные здания
                 const checkQuery = 'SELECT building_id FROM buildings WHERE cold_water_line_id = ANY($1) OR hot_water_line_id = ANY($1)';
                 const checkResult = await pool.query(checkQuery, [ids]);
@@ -297,19 +297,22 @@ async function batchWaterLinesOperation(req, res, next) {
                 const deleteQuery = 'DELETE FROM water_lines WHERE line_id = ANY($1) RETURNING line_id';
                 result = await pool.query(deleteQuery, [ids]);
                 break;
+            }
 
-            case 'update_status':
+            case 'update_status': {
                 if (!data || !data.status) {
                     return next(createError('status is required for update_status action', 400));
                 }
                 const updateStatusQuery = 'UPDATE water_lines SET status = $1, updated_at = NOW() WHERE line_id = ANY($2) RETURNING line_id';
                 result = await pool.query(updateStatusQuery, [data.status, ids]);
                 break;
+            }
 
-            case 'set_maintenance':
+            case 'set_maintenance': {
                 const maintenanceQuery = 'UPDATE water_lines SET status = \'maintenance\', updated_at = NOW() WHERE line_id = ANY($1) RETURNING line_id';
                 result = await pool.query(maintenanceQuery, [ids]);
                 break;
+            }
 
             default:
                 return next(createError(`Unknown action: ${action}`, 400));

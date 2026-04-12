@@ -212,28 +212,23 @@ function validateSearchString(searchString, maxLength = 100) {
     if (!searchString || typeof searchString !== 'string') {
         return '';
     }
-    
-    try {
-        // Удаляем потенциально опасные символы
-        let cleanString = searchString
-            .replace(/[<>\"'%;()&+]/g, '') // Удаляем HTML и SQL метасимволы
-            .replace(/script/gi, '') // Удаляем слово "script"
-            .replace(/javascript/gi, '') // Удаляем "javascript"
-            .replace(/on\w+=/gi, '') // Удаляем event handlers
-            .trim();
-        
-        // Ограничиваем длину
-        if (cleanString.length > maxLength) {
-            cleanString = cleanString.substring(0, maxLength);
-            logger.warn(`Строка поиска обрезана до ${maxLength} символов`);
-        }
-        
-        return cleanString;
-        
-    } catch (error) {
-        logger.error(`Ошибка валидации строки поиска: ${error.message}`);
-        return '';
+
+    let cleanString = searchString.trim();
+
+    if (cleanString.length > maxLength) {
+        cleanString = cleanString.substring(0, maxLength);
+        logger.warn(`Строка поиска обрезана до ${maxLength} символов`);
     }
+
+    // Escape LIKE/ILIKE wildcard characters so user input is treated literally.
+    // SQL injection is handled by parameterized queries ($1) — this only
+    // prevents % and _ from acting as wildcards in ILIKE patterns.
+    cleanString = cleanString
+        .replace(/\\/g, '\\\\')  // escape backslash first
+        .replace(/%/g, '\\%')    // escape percent
+        .replace(/_/g, '\\_');   // escape underscore
+
+    return cleanString;
 }
 
 /**

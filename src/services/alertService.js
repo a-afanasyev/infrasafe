@@ -299,17 +299,13 @@ class InfrastructureAlertService {
 
     // Получение списка получателей критических уведомлений
     async getCriticalAlertRecipients() {
-        try {
-            // В будущем здесь будет запрос к БД пользователей с настройками уведомлений
-            return [
-                { type: 'log', level: 'critical' },
-                // { type: 'email', address: 'admin@infrasafe.com' },
-                // { type: 'telegram', chat_id: '123456789' }
-            ];
-        } catch (error) {
-            logger.error('Ошибка получения получателей уведомлений:', error);
-            return [];
-        }
+        // В будущем здесь будет запрос к БД пользователей с настройками уведомлений
+        // При добавлении async-вызовов обернуть в try-catch
+        return [
+            { type: 'log', level: 'critical' },
+            // { type: 'email', address: 'admin@infrasafe.com' },
+            // { type: 'telegram', chat_id: '123456789' }
+        ];
     }
 
     // Подтверждение алерта
