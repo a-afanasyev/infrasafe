@@ -332,6 +332,7 @@ class AuthService {
 
             if (result.rows.length > 0) {
                 // Destructure to exclude password_hash from cached/returned object
+                // eslint-disable-next-line no-unused-vars
                 const { password_hash, ...user } = result.rows[0];
                 await cacheService.set(cacheKey, user, { ttl: 300 });
                 return user;

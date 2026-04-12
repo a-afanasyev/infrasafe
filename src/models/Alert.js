@@ -21,8 +21,6 @@ class Alert {
             const { validateSortOrder } = require('../utils/queryValidation');
             
             // Определяем доступные колонки для алертов
-            const allowedSortColumns = ['alert_id', 'severity', 'status', 'created_at', 'resolved_at'];
-            
             // Валидируем параметры сортировки через систему безопасности
             const { validSort, validOrder: validOrderSecure } = validateSortOrder('alerts', sort, validOrder);
 

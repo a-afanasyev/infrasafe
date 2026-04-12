@@ -114,7 +114,7 @@ class SimpleRateLimiter {
         let activeKeys = 0;
         let totalHits = 0;
 
-        for (const [key, data] of this.store.entries()) {
+        for (const [, data] of this.store.entries()) {
             if (now <= data.resetTime) {
                 activeKeys++;
                 totalHits += data.hits;

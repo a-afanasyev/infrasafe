@@ -1,6 +1,5 @@
 const authService = require('../services/authService');
 const logger = require('../utils/logger');
-const { createError } = require('../utils/helpers');
 
 // Логин пользователя
 const login = async (req, res, next) => {

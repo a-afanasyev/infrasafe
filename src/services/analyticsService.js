@@ -80,7 +80,7 @@ class AnalyticsService {
     }
 
     // Асинхронная проверка на алерты (не блокирует основной запрос)
-    async checkForAlerts(transformerId, loadData) {
+    async checkForAlerts(transformerId, _loadData) {
         try {
             // Выполняем в фоне, чтобы не замедлять ответ API
             setImmediate(async () => {

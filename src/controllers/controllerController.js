@@ -1,6 +1,5 @@
 const controllerService = require('../services/controllerService');
 const logger = require('../utils/logger');
-const { createError } = require('../utils/helpers');
 const { sendError, sendNotFound } = require('../utils/apiResponse');
 
 // Получить все контроллеры

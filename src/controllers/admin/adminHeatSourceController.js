@@ -21,7 +21,7 @@ async function getOptimizedHeatSources(req, res, next) {
 
         const { validSort, validOrder } = validateSortOrder('heat_sources', sort, order);
         const { pageNum, limitNum, offset } = validatePagination(page, limit);
-        const cleanSearch = validateSearchString(search);
+        validateSearchString(search);
 
         let query = 'SELECT * FROM heat_sources';
         let countQuery = 'SELECT COUNT(*) FROM heat_sources';

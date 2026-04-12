@@ -129,88 +129,26 @@ class WaterLine {
             // Динамическое построение SQL для поддержки всех полей
             const fields = [];
             const values = [];
-            let paramCount = 0;
-            
+
             // Обязательные поля
-            if (lineData.name) {
-                fields.push('name');
-                values.push(lineData.name);
-                paramCount++;
-            }
-            
+            if (lineData.name) { fields.push('name'); values.push(lineData.name); }
+
             // Опциональные поля
-            if (lineData.description !== undefined) {
-                fields.push('description');
-                values.push(lineData.description);
-                paramCount++;
-            }
-            
-            if (lineData.diameter_mm !== undefined) {
-                fields.push('diameter_mm');
-                values.push(lineData.diameter_mm);
-                paramCount++;
-            }
-            
-            if (lineData.material !== undefined) {
-                fields.push('material');
-                values.push(lineData.material);
-                paramCount++;
-            }
-            
-            if (lineData.pressure_bar !== undefined) {
-                fields.push('pressure_bar');
-                values.push(lineData.pressure_bar);
-                paramCount++;
-            }
-            
-            if (lineData.installation_date !== undefined) {
-                fields.push('installation_date');
-                values.push(lineData.installation_date);
-                paramCount++;
-            }
-            
-            if (lineData.status !== undefined) {
-                fields.push('status');
-                values.push(lineData.status);
-                paramCount++;
-            }
-            
-            if (lineData.main_path) {
-                fields.push('main_path');
-                values.push(JSON.stringify(lineData.main_path));
-                paramCount++;
-            }
-            
-            if (lineData.branches) {
-                fields.push('branches');
-                values.push(JSON.stringify(lineData.branches));
-                paramCount++;
-            }
-            
-            if (lineData.latitude_start !== undefined) {
-                fields.push('latitude_start');
-                values.push(lineData.latitude_start);
-                paramCount++;
-            }
-            
-            if (lineData.longitude_start !== undefined) {
-                fields.push('longitude_start');
-                values.push(lineData.longitude_start);
-                paramCount++;
-            }
-            
-            if (lineData.latitude_end !== undefined) {
-                fields.push('latitude_end');
-                values.push(lineData.latitude_end);
-                paramCount++;
-            }
-            
-            if (lineData.longitude_end !== undefined) {
-                fields.push('longitude_end');
+            if (lineData.description !== undefined) { fields.push('description'); values.push(lineData.description); }
+            if (lineData.diameter_mm !== undefined) { fields.push('diameter_mm'); values.push(lineData.diameter_mm); }
+            if (lineData.material !== undefined) { fields.push('material'); values.push(lineData.material); }
+            if (lineData.pressure_bar !== undefined) { fields.push('pressure_bar'); values.push(lineData.pressure_bar); }
+            if (lineData.installation_date !== undefined) { fields.push('installation_date'); values.push(lineData.installation_date); }
+            if (lineData.status !== undefined) { fields.push('status'); values.push(lineData.status); }
+            if (lineData.main_path) { fields.push('main_path'); values.push(JSON.stringify(lineData.main_path)); }
+            if (lineData.branches) { fields.push('branches'); values.push(JSON.stringify(lineData.branches)); }
+            if (lineData.latitude_start !== undefined) { fields.push('latitude_start'); values.push(lineData.latitude_start); }
+            if (lineData.longitude_start !== undefined) { fields.push('longitude_start'); values.push(lineData.longitude_start); }
+            if (lineData.latitude_end !== undefined) { fields.push('latitude_end'); values.push(lineData.latitude_end); }
+            if (lineData.longitude_end !== undefined) { fields.push('longitude_end');
                 values.push(lineData.longitude_end);
-                paramCount++;
             }
-            
+
             const placeholders = fields.map((_, i) => `$${i + 1}`).join(', ');
             const query = `
                 INSERT INTO water_lines (${fields.join(', ')})

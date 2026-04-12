@@ -1,6 +1,5 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
-const cacheService = require('./cacheService');
 const { CircuitBreakerFactory } = require('../utils/circuitBreaker');
 
 class InfrastructureAlertService {
@@ -271,7 +270,7 @@ class InfrastructureAlertService {
     // Немедленные уведомления для критических алертов
     async sendImmediateNotification(alertData, alertId) {
         // Получаем список получателей критических уведомлений
-        const recipients = await this.getCriticalAlertRecipients();
+        await this.getCriticalAlertRecipients();
 
         const notificationData = {
             alert_id: alertId,

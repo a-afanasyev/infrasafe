@@ -106,82 +106,23 @@ class Line {
             // Динамическое построение SQL запроса для поддержки всех полей
             const fields = [];
             const values = [];
-            let paramCount = 0;
-            
+
             // Обязательные поля
-            if (lineData.name) {
-                fields.push('name');
-                values.push(lineData.name);
-                paramCount++;
-            }
-            
-            if (lineData.voltage_kv) {
-                fields.push('voltage_kv');
-                values.push(lineData.voltage_kv);
-                paramCount++;
-            }
-            
-            if (lineData.length_km) {
-                fields.push('length_km');
-                values.push(lineData.length_km);
-                paramCount++;
-            }
-            
+            if (lineData.name) { fields.push('name'); values.push(lineData.name); }
+            if (lineData.voltage_kv) { fields.push('voltage_kv'); values.push(lineData.voltage_kv); }
+            if (lineData.length_km) { fields.push('length_km'); values.push(lineData.length_km); }
+
             // Опциональные поля
-            if (lineData.transformer_id) {
-                fields.push('transformer_id');
-                values.push(lineData.transformer_id);
-                paramCount++;
-            }
-            
-            if (lineData.main_path) {
-                fields.push('main_path');
-                values.push(JSON.stringify(lineData.main_path));
-                paramCount++;
-            }
-            
-            if (lineData.branches) {
-                fields.push('branches');
-                values.push(JSON.stringify(lineData.branches));
-                paramCount++;
-            }
-            
-            if (lineData.cable_type) {
-                fields.push('cable_type');
-                values.push(lineData.cable_type);
-                paramCount++;
-            }
-            
-            if (lineData.commissioning_year) {
-                fields.push('commissioning_year');
-                values.push(lineData.commissioning_year);
-                paramCount++;
-            }
-            
-            if (lineData.latitude_start) {
-                fields.push('latitude_start');
-                values.push(lineData.latitude_start);
-                paramCount++;
-            }
-            
-            if (lineData.longitude_start) {
-                fields.push('longitude_start');
-                values.push(lineData.longitude_start);
-                paramCount++;
-            }
-            
-            if (lineData.latitude_end) {
-                fields.push('latitude_end');
-                values.push(lineData.latitude_end);
-                paramCount++;
-            }
-            
-            if (lineData.longitude_end) {
-                fields.push('longitude_end');
-                values.push(lineData.longitude_end);
-                paramCount++;
-            }
-            
+            if (lineData.transformer_id) { fields.push('transformer_id'); values.push(lineData.transformer_id); }
+            if (lineData.main_path) { fields.push('main_path'); values.push(JSON.stringify(lineData.main_path)); }
+            if (lineData.branches) { fields.push('branches'); values.push(JSON.stringify(lineData.branches)); }
+            if (lineData.cable_type) { fields.push('cable_type'); values.push(lineData.cable_type); }
+            if (lineData.commissioning_year) { fields.push('commissioning_year'); values.push(lineData.commissioning_year); }
+            if (lineData.latitude_start) { fields.push('latitude_start'); values.push(lineData.latitude_start); }
+            if (lineData.longitude_start) { fields.push('longitude_start'); values.push(lineData.longitude_start); }
+            if (lineData.latitude_end) { fields.push('latitude_end'); values.push(lineData.latitude_end); }
+            if (lineData.longitude_end) { fields.push('longitude_end'); values.push(lineData.longitude_end); }
+
             // Формируем запрос
             const placeholders = fields.map((_, i) => `$${i + 1}`).join(', ');
             const query = `

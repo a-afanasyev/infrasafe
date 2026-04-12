@@ -3,7 +3,7 @@ const db = require('../../config/database');
 
 async function globalSearch(req, res, next) {
     try {
-        const { query, type = 'all', limit = 50 } = req.query;
+        const { query, type = 'all' } = req.query;
         res.json({
             results: [],
             total: 0,

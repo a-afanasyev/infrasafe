@@ -1,7 +1,6 @@
 const metricService = require('../services/metricService');
 const logger = require('../utils/logger');
-const { createError } = require('../utils/helpers');
-const { sendError, sendNotFound } = require('../utils/apiResponse');
+const { sendNotFound } = require('../utils/apiResponse');
 
 // Получить все метрики
 const getAllMetrics = async (req, res, next) => {

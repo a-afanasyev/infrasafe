@@ -9,7 +9,7 @@ const router = express.Router();
 // GET /api/water-suppliers - Получить всех поставщиков воды
 router.get('/', async (req, res, next) => {
     try {
-        const { page = 1, limit = 100, type, line_id } = req.query;
+        const { page = 1, limit = 100, type } = req.query;
         const filters = {};
 
         if (type) {

@@ -21,7 +21,7 @@ async function getOptimizedColdWaterSources(req, res, next) {
 
         const { validSort, validOrder } = validateSortOrder('water_sources', sort, order);
         const { pageNum, limitNum, offset } = validatePagination(page, limit);
-        const cleanSearch = validateSearchString(search);
+        validateSearchString(search);
 
         let query = 'SELECT * FROM cold_water_sources';
         let countQuery = 'SELECT COUNT(*) FROM cold_water_sources';

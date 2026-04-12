@@ -1,6 +1,6 @@
 const HeatSource = require('../models/HeatSource');
 const logger = require('../utils/logger');
-const { sendNotFound, sendError } = require('../utils/apiResponse');
+const { sendNotFound } = require('../utils/apiResponse');
 
 const getAll = async (req, res, next) => {
     try {

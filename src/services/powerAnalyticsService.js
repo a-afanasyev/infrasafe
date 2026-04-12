@@ -1,5 +1,4 @@
 const db = require('../config/database');
-const logger = require('../utils/logger');
 
 const POWER_FACTOR = 0.95;
 
