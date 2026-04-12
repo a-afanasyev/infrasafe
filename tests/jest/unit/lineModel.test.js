@@ -195,6 +195,51 @@ describe('Line Model', () => {
         });
     });
 
+    describe('create with optional coordinate fields', () => {
+        test('includes coordinate fields when provided', async () => {
+            db.query.mockResolvedValue({ rows: [mockRow] });
+
+            await Line.create({
+                name: 'Line Alpha',
+                voltage_kv: 10,
+                length_km: 5.5,
+                cable_type: 'underground',
+                commissioning_year: 2020,
+                latitude_start: 41.3,
+                longitude_start: 69.2,
+                latitude_end: 41.4,
+                longitude_end: 69.3
+            });
+
+            const query = db.query.mock.calls[0][0];
+            const params = db.query.mock.calls[0][1];
+            expect(query).toContain('latitude_start');
+            expect(query).toContain('longitude_start');
+            expect(query).toContain('latitude_end');
+            expect(query).toContain('longitude_end');
+            expect(params).toContain(41.3);
+            expect(params).toContain(69.2);
+            expect(params).toContain(41.4);
+            expect(params).toContain(69.3);
+        });
+
+        test('omits coordinate fields when not provided', async () => {
+            db.query.mockResolvedValue({ rows: [mockRow] });
+
+            await Line.create({
+                name: 'Line Alpha',
+                voltage_kv: 10,
+                length_km: 5.5
+            });
+
+            const query = db.query.mock.calls[0][0];
+            expect(query).not.toContain('latitude_start');
+            expect(query).not.toContain('longitude_start');
+            expect(query).not.toContain('latitude_end');
+            expect(query).not.toContain('longitude_end');
+        });
+    });
+
     describe('update', () => {
         test('updates and returns line', async () => {
             const updated = { ...mockRow, name: 'Updated Line' };
@@ -229,6 +274,52 @@ describe('Line Model', () => {
             db.query.mockRejectedValue(new Error('DB error'));
 
             await expect(Line.update(1, { name: 'X' })).rejects.toThrow('Failed to update line');
+        });
+    });
+
+    describe('update with optional fields', () => {
+        test('updates only provided fields including coordinates', async () => {
+            db.query.mockResolvedValue({ rows: [mockRow] });
+
+            await Line.update(1, {
+                latitude_start: 41.3,
+                longitude_start: 69.2,
+                latitude_end: 41.4,
+                longitude_end: 69.3,
+                cable_type: 'overhead',
+                commissioning_year: 2022,
+                main_path: [[41.3, 69.2], [41.4, 69.3]],
+                branches: [[[41.3, 69.2]]]
+            });
+
+            const query = db.query.mock.calls[0][0];
+            expect(query).toContain('latitude_start');
+            expect(query).toContain('longitude_start');
+            expect(query).toContain('latitude_end');
+            expect(query).toContain('longitude_end');
+            expect(query).toContain('cable_type');
+            expect(query).toContain('commissioning_year');
+            expect(query).toContain('main_path');
+            expect(query).toContain('branches');
+        });
+
+        test('updates voltage_kv and length_km when provided', async () => {
+            db.query.mockResolvedValue({ rows: [mockRow] });
+
+            await Line.update(1, {
+                voltage_kv: 35,
+                length_km: 12.5,
+                transformer_id: 3
+            });
+
+            const query = db.query.mock.calls[0][0];
+            const params = db.query.mock.calls[0][1];
+            expect(query).toContain('voltage_kv');
+            expect(query).toContain('length_km');
+            expect(query).toContain('transformer_id');
+            expect(params).toContain(35);
+            expect(params).toContain(12.5);
+            expect(params).toContain(3);
         });
     });
 

@@ -441,4 +441,140 @@ describe('MetricService', () => {
             expect(result.amperage.max).toBe(15);
         });
     });
+
+    describe('getLastMetricsForAllControllers', () => {
+        test('returns data from cache when available', async () => {
+            const cachedMetrics = [mockMetric];
+            cacheService.get.mockResolvedValue(cachedMetrics);
+
+            const result = await metricService.getLastMetricsForAllControllers();
+
+            expect(result).toEqual(cachedMetrics);
+            expect(Metric.findLastForAllControllers).not.toHaveBeenCalled();
+        });
+
+        test('fetches from DB and caches on miss', async () => {
+            const metrics = [mockMetric];
+            Metric.findLastForAllControllers.mockResolvedValue(metrics);
+
+            const result = await metricService.getLastMetricsForAllControllers();
+
+            expect(Metric.findLastForAllControllers).toHaveBeenCalled();
+            expect(cacheService.set).toHaveBeenCalled();
+            expect(result).toEqual(metrics);
+        });
+
+        test('throws on DB error', async () => {
+            Metric.findLastForAllControllers.mockRejectedValue(new Error('DB error'));
+
+            await expect(metricService.getLastMetricsForAllControllers()).rejects.toThrow('DB error');
+        });
+    });
+
+    describe('getAggregatedMetrics - timeFrame variants', () => {
+        beforeEach(() => {
+            Controller.findById.mockResolvedValue(mockController);
+            Metric.findByControllerId.mockResolvedValue([]);
+        });
+
+        test('uses 24h time frame', async () => {
+            const result = await metricService.getAggregatedMetrics(1, '24h');
+
+            expect(result.count).toBe(0);
+            expect(Metric.findByControllerId).toHaveBeenCalled();
+        });
+
+        test('uses 7d time frame', async () => {
+            const result = await metricService.getAggregatedMetrics(1, '7d');
+
+            expect(result.count).toBe(0);
+            expect(Metric.findByControllerId).toHaveBeenCalled();
+        });
+
+        test('uses default (1h) time frame for unknown value', async () => {
+            const result = await metricService.getAggregatedMetrics(1, 'unknown');
+
+            expect(result.count).toBe(0);
+            expect(Metric.findByControllerId).toHaveBeenCalled();
+        });
+    });
+
+    describe('cleanupOldMetrics', () => {
+        test('returns cleanup result with default 30 days', async () => {
+            const result = await metricService.cleanupOldMetrics();
+
+            expect(result.message).toContain('30 дней');
+            expect(result.cutoffDate).toBeTruthy();
+        });
+
+        test('returns cleanup result with custom days', async () => {
+            const result = await metricService.cleanupOldMetrics(7);
+
+            expect(result.message).toContain('7 дней');
+            expect(result.cutoffDate).toBeTruthy();
+        });
+
+        test('returns valid ISO date string as cutoffDate', async () => {
+            const result = await metricService.cleanupOldMetrics(10);
+
+            expect(() => new Date(result.cutoffDate)).not.toThrow();
+            expect(isNaN(Date.parse(result.cutoffDate))).toBe(false);
+        });
+    });
+
+    describe('updateThresholds', () => {
+        test('updates voltage thresholds', () => {
+            const result = metricService.updateThresholds({
+                voltage: { min: 210, max: 240 }
+            });
+
+            expect(result.voltage).toEqual({ min: 210, max: 240 });
+            // Other thresholds should remain unchanged
+            expect(result.amperage).toBeDefined();
+        });
+
+        test('merges new thresholds with existing ones', () => {
+            const originalAmperage = { ...metricService.thresholds.amperage };
+
+            metricService.updateThresholds({ voltage: { min: 190, max: 260 } });
+
+            expect(metricService.thresholds.amperage).toEqual(originalAmperage);
+        });
+
+        test('returns the updated thresholds', () => {
+            const result = metricService.updateThresholds({
+                temperature: { min: -20, max: 60 }
+            });
+
+            expect(result.temperature).toEqual({ min: -20, max: 60 });
+        });
+    });
+
+    describe('invalidateMetricCaches - error path', () => {
+        test('does not throw when cache invalidation fails', async () => {
+            cacheService.invalidatePattern.mockRejectedValue(new Error('Cache error'));
+
+            await expect(metricService.invalidateMetricCaches(1)).resolves.not.toThrow();
+        });
+
+        test('does not throw when invalidate fails without controllerId', async () => {
+            cacheService.invalidatePattern.mockRejectedValue(new Error('Cache error'));
+
+            await expect(metricService.invalidateMetricCaches()).resolves.not.toThrow();
+        });
+    });
+
+    describe('createMetric - controller status update error', () => {
+        test('continues even when controller status update fails', async () => {
+            const metricData = { controller_id: 1, voltage: 220 };
+            Controller.findById.mockResolvedValue(mockController);
+            Metric.create.mockResolvedValue({ metric_id: 2, ...metricData });
+            Controller.updateStatus.mockRejectedValue(new Error('Status update failed'));
+
+            const result = await metricService.createMetric(metricData);
+
+            // Should still return the created metric despite status update failure
+            expect(result).toHaveProperty('metric_id', 2);
+        });
+    });
 });

@@ -415,4 +415,167 @@ describe('ControllerService', () => {
             expect(() => controllerService.validateControllerData({ serial_number: 'SN', status: 'maintenance' })).not.toThrow();
         });
     });
+
+    describe('updateControllersStatusByActivity', () => {
+        test('sets controller to offline when no metrics exist and status is not offline', async () => {
+            Controller.findAll.mockResolvedValue({
+                data: [{ controller_id: 1, serial_number: 'SN-001', status: 'online' }]
+            });
+            Metric.findByControllerId.mockResolvedValue([]);
+            Controller.updateStatus.mockResolvedValue({});
+
+            const result = await controllerService.updateControllersStatusByActivity();
+
+            expect(Controller.updateStatus).toHaveBeenCalledWith(1, 'offline');
+            expect(result.updated).toBe(1);
+            expect(result.total).toBe(1);
+        });
+
+        test('skips controller already offline when no metrics exist', async () => {
+            Controller.findAll.mockResolvedValue({
+                data: [{ controller_id: 1, serial_number: 'SN-001', status: 'offline' }]
+            });
+            Metric.findByControllerId.mockResolvedValue([]);
+
+            const result = await controllerService.updateControllersStatusByActivity();
+
+            expect(Controller.updateStatus).not.toHaveBeenCalled();
+            expect(result.updated).toBe(0);
+        });
+
+        test('sets controller to offline when last metric is older than timeout', async () => {
+            const oldTimestamp = new Date(Date.now() - 700000).toISOString(); // older than 600000ms timeout
+            Controller.findAll.mockResolvedValue({
+                data: [{ controller_id: 1, serial_number: 'SN-001', status: 'online' }]
+            });
+            Metric.findByControllerId.mockResolvedValue([{ timestamp: oldTimestamp }]);
+            Controller.updateStatus.mockResolvedValue({});
+
+            const result = await controllerService.updateControllersStatusByActivity();
+
+            expect(Controller.updateStatus).toHaveBeenCalledWith(1, 'offline');
+            expect(result.updated).toBe(1);
+        });
+
+        test('does not set maintenance controller to offline even if metric is old', async () => {
+            const oldTimestamp = new Date(Date.now() - 700000).toISOString();
+            Controller.findAll.mockResolvedValue({
+                data: [{ controller_id: 1, serial_number: 'SN-001', status: 'maintenance' }]
+            });
+            Metric.findByControllerId.mockResolvedValue([{ timestamp: oldTimestamp }]);
+
+            const result = await controllerService.updateControllersStatusByActivity();
+
+            expect(Controller.updateStatus).not.toHaveBeenCalled();
+            expect(result.updated).toBe(0);
+        });
+
+        test('sets offline controller back to online when fresh metric exists', async () => {
+            const freshTimestamp = new Date().toISOString();
+            Controller.findAll.mockResolvedValue({
+                data: [{ controller_id: 1, serial_number: 'SN-001', status: 'offline' }]
+            });
+            Metric.findByControllerId.mockResolvedValue([{ timestamp: freshTimestamp }]);
+            Controller.updateStatus.mockResolvedValue({});
+
+            const result = await controllerService.updateControllersStatusByActivity();
+
+            expect(Controller.updateStatus).toHaveBeenCalledWith(1, 'online');
+            expect(result.updated).toBe(1);
+        });
+
+        test('does not change online controller with fresh metric', async () => {
+            const freshTimestamp = new Date().toISOString();
+            Controller.findAll.mockResolvedValue({
+                data: [{ controller_id: 1, serial_number: 'SN-001', status: 'online' }]
+            });
+            Metric.findByControllerId.mockResolvedValue([{ timestamp: freshTimestamp }]);
+
+            const result = await controllerService.updateControllersStatusByActivity();
+
+            expect(Controller.updateStatus).not.toHaveBeenCalled();
+            expect(result.updated).toBe(0);
+        });
+
+        test('handles per-controller error gracefully and continues', async () => {
+            Controller.findAll.mockResolvedValue({
+                data: [
+                    { controller_id: 1, serial_number: 'SN-001', status: 'online' },
+                    { controller_id: 2, serial_number: 'SN-002', status: 'online' }
+                ]
+            });
+            // First controller throws, second has no metrics
+            Metric.findByControllerId
+                .mockRejectedValueOnce(new Error('DB error'))
+                .mockResolvedValueOnce([]);
+            Controller.updateStatus.mockResolvedValue({});
+
+            const result = await controllerService.updateControllersStatusByActivity();
+
+            // Should still update the second controller
+            expect(result.updated).toBe(1);
+            expect(result.total).toBe(2);
+        });
+
+        test('invalidates list cache when updates were made', async () => {
+            Controller.findAll.mockResolvedValue({
+                data: [{ controller_id: 1, serial_number: 'SN-001', status: 'online' }]
+            });
+            Metric.findByControllerId.mockResolvedValue([]);
+            Controller.updateStatus.mockResolvedValue({});
+
+            await controllerService.updateControllersStatusByActivity();
+
+            expect(cacheService.invalidatePattern).toHaveBeenCalled();
+        });
+
+        test('handles empty data array from findAll', async () => {
+            Controller.findAll.mockResolvedValue({ data: [] });
+
+            const result = await controllerService.updateControllersStatusByActivity();
+
+            expect(result.updated).toBe(0);
+            expect(result.total).toBe(0);
+        });
+
+        test('handles missing data property from findAll', async () => {
+            Controller.findAll.mockResolvedValue({});
+
+            const result = await controllerService.updateControllersStatusByActivity();
+
+            expect(result.updated).toBe(0);
+            expect(result.total).toBe(0);
+        });
+
+        test('throws on top-level error', async () => {
+            Controller.findAll.mockRejectedValue(new Error('DB connection failed'));
+
+            await expect(controllerService.updateControllersStatusByActivity()).rejects.toThrow('DB connection failed');
+        });
+    });
+
+    describe('getControllersStatistics - error path', () => {
+        test('throws on DB error', async () => {
+            Controller.findAll.mockRejectedValue(new Error('DB error'));
+
+            await expect(controllerService.getControllersStatistics()).rejects.toThrow('DB error');
+        });
+    });
+
+    describe('invalidateControllerCache - error path', () => {
+        test('does not throw when cache invalidation fails', async () => {
+            cacheService.invalidate.mockRejectedValue(new Error('Cache error'));
+
+            // Should not throw - errors are caught and logged
+            await expect(controllerService.invalidateControllerCache(1)).resolves.not.toThrow();
+        });
+    });
+
+    describe('invalidateControllerListCache - error path', () => {
+        test('does not throw when cache pattern invalidation fails', async () => {
+            cacheService.invalidatePattern.mockRejectedValue(new Error('Cache error'));
+
+            await expect(controllerService.invalidateControllerListCache()).resolves.not.toThrow();
+        });
+    });
 });

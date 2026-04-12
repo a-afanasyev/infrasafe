@@ -65,6 +65,41 @@ describe('Database module', () => {
             await expect(db.init()).rejects.toThrow('Connection refused');
             expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('Connection refused'));
         });
+
+        test('registers error and connect event handlers', async () => {
+            await db.init();
+
+            const onCalls = mockPoolInstance.on.mock.calls;
+            const eventNames = onCalls.map(call => call[0]);
+            expect(eventNames).toContain('error');
+            expect(eventNames).toContain('connect');
+        });
+
+        test('pool error handler logs the error', async () => {
+            await db.init();
+
+            const errorCall = mockPoolInstance.on.mock.calls.find(call => call[0] === 'error');
+            const errorHandler = errorCall[1];
+
+            errorHandler(new Error('idle client error'));
+
+            expect(logger.error).toHaveBeenCalledWith(
+                'Unexpected error on idle database client:',
+                'idle client error'
+            );
+        });
+
+        test('pool connect handler sets statement_timeout', async () => {
+            await db.init();
+
+            const connectCall = mockPoolInstance.on.mock.calls.find(call => call[0] === 'connect');
+            const connectHandler = connectCall[1];
+
+            const mockConnClient = { query: jest.fn() };
+            connectHandler(mockConnClient);
+
+            expect(mockConnClient.query).toHaveBeenCalledWith('SET statement_timeout = 30000');
+        });
     });
 
     describe('query', () => {

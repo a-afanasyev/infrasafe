@@ -197,6 +197,47 @@ describe('WaterLine Model', () => {
         });
     });
 
+    describe('create with all optional fields', () => {
+        test('includes coordinate and metadata fields when provided', async () => {
+            db.query.mockResolvedValue({ rows: [mockRow] });
+
+            await WaterLine.create({
+                name: 'Water Line 1',
+                description: 'Main water supply',
+                diameter_mm: 200,
+                material: 'steel',
+                pressure_bar: 6,
+                installation_date: '2020-01-01',
+                status: 'active',
+                main_path: [[41.3, 69.2], [41.4, 69.3]],
+                branches: [[[41.3, 69.2]]],
+                latitude_start: 41.3,
+                longitude_start: 69.2,
+                latitude_end: 41.4,
+                longitude_end: 69.3
+            });
+
+            const query = db.query.mock.calls[0][0];
+            const params = db.query.mock.calls[0][1];
+            expect(query).toContain('pressure_bar');
+            expect(query).toContain('installation_date');
+            expect(query).toContain('status');
+            expect(query).toContain('main_path');
+            expect(query).toContain('branches');
+            expect(query).toContain('latitude_start');
+            expect(query).toContain('longitude_start');
+            expect(query).toContain('latitude_end');
+            expect(query).toContain('longitude_end');
+            expect(params).toContain(6);
+            expect(params).toContain('2020-01-01');
+            expect(params).toContain('active');
+            expect(params).toContain(41.3);
+            expect(params).toContain(69.2);
+            expect(params).toContain(41.4);
+            expect(params).toContain(69.3);
+        });
+    });
+
     describe('update', () => {
         test('updates and returns water line', async () => {
             const updated = { ...mockRow, name: 'Updated WL' };
@@ -231,6 +272,52 @@ describe('WaterLine Model', () => {
             db.query.mockRejectedValue(new Error('DB error'));
 
             await expect(WaterLine.update(1, { name: 'X' })).rejects.toThrow('Failed to update water line');
+        });
+    });
+
+    describe('update with all optional fields', () => {
+        test('updates all fields including coordinates', async () => {
+            db.query.mockResolvedValue({ rows: [mockRow] });
+
+            await WaterLine.update(1, {
+                description: 'Updated supply',
+                diameter_mm: 300,
+                material: 'copper',
+                pressure_bar: 8,
+                installation_date: '2022-06-15',
+                status: 'maintenance',
+                main_path: [[41.3, 69.2], [41.4, 69.3]],
+                branches: [[[41.3, 69.2]]],
+                latitude_start: 41.31,
+                longitude_start: 69.21,
+                latitude_end: 41.41,
+                longitude_end: 69.31
+            });
+
+            const query = db.query.mock.calls[0][0];
+            const params = db.query.mock.calls[0][1];
+            expect(query).toContain('description');
+            expect(query).toContain('diameter_mm');
+            expect(query).toContain('material');
+            expect(query).toContain('pressure_bar');
+            expect(query).toContain('installation_date');
+            expect(query).toContain('status');
+            expect(query).toContain('main_path');
+            expect(query).toContain('branches');
+            expect(query).toContain('latitude_start');
+            expect(query).toContain('longitude_start');
+            expect(query).toContain('latitude_end');
+            expect(query).toContain('longitude_end');
+            expect(params).toContain('Updated supply');
+            expect(params).toContain(300);
+            expect(params).toContain('copper');
+            expect(params).toContain(8);
+            expect(params).toContain('2022-06-15');
+            expect(params).toContain('maintenance');
+            expect(params).toContain(41.31);
+            expect(params).toContain(69.21);
+            expect(params).toContain(41.41);
+            expect(params).toContain(69.31);
         });
     });
 

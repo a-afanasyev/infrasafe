@@ -592,5 +592,220 @@ describe('AuthService', () => {
 
             await expect(authService.cleanupExpiredTokens()).resolves.not.toThrow();
         });
+
+        test('does not log when no tokens deleted', async () => {
+            const logger = require('../../../src/utils/logger');
+            db.query.mockResolvedValue({ rowCount: 0 });
+
+            await authService.cleanupExpiredTokens();
+
+            // logger.info should NOT be called when rowCount is 0
+            const infoCalls = logger.info.mock.calls.filter(c =>
+                c[0] && c[0].includes('просроченных токенов')
+            );
+            expect(infoCalls).toHaveLength(0);
+        });
+    });
+
+    describe('generateTokens - error path', () => {
+        test('throws when jwt.sign fails', () => {
+            // Temporarily override jwtSecret to cause sign to fail
+            const origSecret = authService.jwtSecret;
+            authService.jwtSecret = undefined;
+
+            expect(() => authService.generateTokens({
+                user_id: 1, username: 'u', email: 'u@b.com', role: 'user'
+            })).toThrow();
+
+            authService.jwtSecret = origSecret;
+        });
+    });
+
+    describe('verifyToken', () => {
+        test('returns decoded payload for valid token', async () => {
+            const user = { user_id: 1, username: 'admin', email: 'admin@test.com', role: 'admin' };
+            const tokens = authService.generateTokens(user);
+
+            cacheService.get.mockResolvedValue(null); // not blacklisted
+            db.query
+                .mockResolvedValueOnce({ rows: [] }) // isTokenBlacklisted DB check
+                .mockResolvedValueOnce({
+                    rows: [{ user_id: 1, username: 'admin', email: 'admin@test.com', role: 'admin', is_active: true }]
+                }); // findUserById
+
+            const decoded = await authService.verifyToken(tokens.accessToken);
+
+            expect(decoded.user_id).toBe(1);
+            expect(decoded.username).toBe('admin');
+        });
+
+        test('throws TOKEN_BLACKLISTED when token is blacklisted', async () => {
+            const user = { user_id: 1, username: 'admin', email: 'admin@test.com', role: 'admin' };
+            const tokens = authService.generateTokens(user);
+
+            cacheService.get.mockResolvedValue(true); // blacklisted in cache
+
+            await expect(authService.verifyToken(tokens.accessToken)).rejects.toMatchObject({ code: 'TOKEN_BLACKLISTED' });
+        });
+
+        test('throws USER_NOT_FOUND when user does not exist', async () => {
+            const user = { user_id: 999, username: 'ghost', email: 'ghost@test.com', role: 'user' };
+            const tokens = authService.generateTokens(user);
+
+            cacheService.get.mockResolvedValue(null); // not blacklisted
+            db.query
+                .mockResolvedValueOnce({ rows: [] }) // isTokenBlacklisted DB check
+                .mockResolvedValueOnce({ rows: [] }); // findUserById returns null
+
+            await expect(authService.verifyToken(tokens.accessToken)).rejects.toMatchObject({ code: 'USER_NOT_FOUND' });
+        });
+
+        test('throws USER_NOT_FOUND when user is inactive', async () => {
+            const user = { user_id: 1, username: 'inactive', email: 'i@test.com', role: 'user' };
+            const tokens = authService.generateTokens(user);
+
+            cacheService.get.mockResolvedValue(null);
+            db.query
+                .mockResolvedValueOnce({ rows: [] }) // isTokenBlacklisted
+                .mockResolvedValueOnce({
+                    rows: [{ user_id: 1, username: 'inactive', is_active: false }]
+                });
+
+            await expect(authService.verifyToken(tokens.accessToken)).rejects.toMatchObject({ code: 'USER_NOT_FOUND' });
+        });
+
+        test('throws TOKEN_EXPIRED for expired token', async () => {
+            const expiredToken = jwt.sign(
+                { user_id: 1, username: 'u', email: 'u@b.com', role: 'user' },
+                process.env.JWT_SECRET,
+                { expiresIn: '0s', issuer: 'infrasafe-api', audience: 'infrasafe-client' }
+            );
+
+            // Wait a tiny bit to ensure expiration
+            await new Promise(r => setTimeout(r, 10));
+
+            await expect(authService.verifyToken(expiredToken)).rejects.toMatchObject({ code: 'TOKEN_EXPIRED' });
+        });
+
+        test('throws INVALID_TOKEN for malformed token', async () => {
+            await expect(authService.verifyToken('invalid.token.here')).rejects.toMatchObject({ code: 'INVALID_TOKEN' });
+        });
+    });
+
+    describe('refreshToken - invalid type', () => {
+        test('throws INVALID_REFRESH_TOKEN when token type is not refresh', async () => {
+            // Generate an access token (type is NOT 'refresh') and try to use it as refresh
+            const user = { user_id: 1, username: 'admin', email: 'admin@test.com', role: 'admin' };
+            const tokens = authService.generateTokens(user);
+
+            // Try to use the access token as a refresh token - it will fail jwt.verify with wrong secret
+            // Instead, sign a token with the refresh secret but without type: 'refresh'
+            const fakeRefreshToken = jwt.sign(
+                { user_id: 1, type: 'access' },
+                process.env.JWT_REFRESH_SECRET,
+                { expiresIn: '7d', issuer: 'infrasafe-api', audience: 'infrasafe-client' }
+            );
+
+            await expect(authService.refreshToken(fakeRefreshToken)).rejects.toMatchObject({ code: 'INVALID_REFRESH_TOKEN' });
+        });
+    });
+
+    describe('logout - error path', () => {
+        test('throws when blacklistToken encounters a fatal error', async () => {
+            // blacklistToken swallows errors internally via catch, so logout itself won't throw
+            // but let's verify it handles gracefully when jwt.decode returns null
+            const result = await authService.logout('completely-invalid-token');
+            // blacklistToken catches errors internally, so logout still succeeds
+            expect(result.message).toBe('Выход выполнен успешно');
+        });
+    });
+
+    describe('changePassword - password_hash row not found', () => {
+        test('throws USER_NOT_FOUND when password_hash query returns empty', async () => {
+            cacheService.get.mockResolvedValue(null);
+            db.query
+                .mockResolvedValueOnce({
+                    rows: [{ user_id: 1, username: 'u', is_active: true }]
+                }) // findUserById
+                .mockResolvedValueOnce({ rows: [] }); // password_hash query returns empty
+
+            await expect(
+                authService.changePassword(1, 'OldPass123', 'NewPass123')
+            ).rejects.toMatchObject({ code: 'USER_NOT_FOUND' });
+        });
+    });
+
+    describe('findUserById - error path', () => {
+        test('throws on DB error', async () => {
+            cacheService.get.mockResolvedValue(null);
+            db.query.mockRejectedValue(new Error('DB connection lost'));
+
+            await expect(authService.findUserById(1)).rejects.toThrow('DB connection lost');
+        });
+    });
+
+    describe('findUserByUsernameOrEmail - error path', () => {
+        test('throws on DB error', async () => {
+            db.query.mockRejectedValue(new Error('DB error'));
+
+            await expect(authService.findUserByUsernameOrEmail('user')).rejects.toThrow('DB error');
+        });
+    });
+
+    describe('updateLastLogin - error path', () => {
+        test('does not throw on DB error (error is caught)', async () => {
+            db.query.mockRejectedValue(new Error('DB error'));
+
+            // updateLastLogin catches errors and only logs them
+            await expect(authService.updateLastLogin(1)).resolves.not.toThrow();
+        });
+    });
+
+    describe('blacklistToken - edge cases', () => {
+        test('does not store token when TTL is zero or negative (already expired)', async () => {
+            // Create an already-expired token
+            const expiredToken = jwt.sign(
+                { user_id: 1, username: 'u', email: 'u@b.com', role: 'user' },
+                process.env.JWT_SECRET,
+                { expiresIn: '0s', issuer: 'infrasafe-api', audience: 'infrasafe-client' }
+            );
+
+            await new Promise(r => setTimeout(r, 10));
+
+            cacheService.set.mockClear();
+            db.query.mockClear();
+
+            await authService.blacklistToken(expiredToken);
+
+            // Should not call cacheService.set or db.query since ttl <= 0
+            expect(cacheService.set).not.toHaveBeenCalled();
+        });
+
+        test('handles DB error in blacklistToken gracefully (falls back to cache)', async () => {
+            const user = { user_id: 1, username: 'u', email: 'u@b.com', role: 'user' };
+            const tokens = authService.generateTokens(user);
+
+            cacheService.set.mockResolvedValue(undefined);
+            db.query.mockRejectedValue(new Error('DB insert failed'));
+
+            // Should not throw - DB error is caught, cache still works
+            await expect(authService.blacklistToken(tokens.accessToken)).resolves.not.toThrow();
+            // Cache should still have been called
+            expect(cacheService.set).toHaveBeenCalled();
+        });
+    });
+
+    describe('isTokenBlacklisted - DB error path', () => {
+        test('returns false when DB check fails', async () => {
+            const user = { user_id: 1, username: 'u', email: 'u@b.com', role: 'user' };
+            const tokens = authService.generateTokens(user);
+
+            cacheService.get.mockResolvedValue(null); // not in cache
+            db.query.mockRejectedValue(new Error('DB error')); // DB fails
+
+            const result = await authService.isTokenBlacklisted(tokens.accessToken);
+            // Should fall through to return false
+            expect(result).toBe(false);
+        });
     });
 });
