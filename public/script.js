@@ -2109,8 +2109,19 @@ document.addEventListener('DOMContentLoaded', async function () {
         const modal = document.getElementById('map-login-modal');
         if (modal) {
             modal.style.display = 'none';
-            const errorEl = document.getElementById('map-login-error');
-            if (errorEl) errorEl.style.display = 'none';
+            // Reset to step 1 and clear errors
+            ['map-login-error', 'map-2fa-error', 'map-setup-error'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+            const loginF = document.getElementById('map-login-form');
+            const tfaF = document.getElementById('map-2fa-form');
+            const setupF = document.getElementById('map-2fa-setup');
+            if (loginF) loginF.style.display = 'block';
+            if (tfaF) tfaF.style.display = 'none';
+            if (setupF) setupF.style.display = 'none';
+            const title = document.getElementById('map-login-title');
+            if (title) title.textContent = 'Вход в систему';
         }
     }
 
@@ -2153,7 +2164,44 @@ document.addEventListener('DOMContentLoaded', async function () {
         loginBackdrop.addEventListener('click', hideLoginModal);
     }
 
-    // Обработка формы логина
+    // --- 2FA state for map login modal ---
+    let mapTempToken = null;
+
+    function showMapLoginStep(step) {
+        document.getElementById('map-login-form').style.display = step === 'login' ? 'block' : 'none';
+        document.getElementById('map-2fa-form').style.display = step === '2fa' ? 'block' : 'none';
+        document.getElementById('map-2fa-setup').style.display = step === 'setup' ? 'block' : 'none';
+        const title = document.getElementById('map-login-title');
+        if (step === 'login') title.textContent = 'Вход в систему';
+        if (step === '2fa') title.textContent = 'Двухфакторная аутентификация';
+        if (step === 'setup') title.textContent = 'Настройка 2FA';
+    }
+
+    function showMapError(containerId, msg) {
+        const el = document.getElementById(containerId);
+        if (el) { el.textContent = msg; el.style.display = 'block'; }
+    }
+
+    function hideMapErrors() {
+        ['map-login-error', 'map-2fa-error', 'map-setup-error'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+    }
+
+    async function completeMapLogin(data) {
+        const token = data.accessToken || data.token;
+        apiClient.setToken(token);
+        hideLoginModal();
+        showMapLoginStep('login');
+        mapTempToken = null;
+        updateAuthButton();
+        await loadData();
+        if (window.mapLayersControl) window.mapLayersControl.handleAuthChange(true);
+        showToast('Вы вошли в систему', 'success');
+    }
+
+    // Step 1: Login form
     const loginForm = document.getElementById('map-login-form');
     if (loginForm) {
         loginForm.addEventListener('submit', async (e) => {
@@ -2161,11 +2209,10 @@ document.addEventListener('DOMContentLoaded', async function () {
             const username = document.getElementById('map-login-username').value;
             const password = document.getElementById('map-login-password').value;
             const submitBtn = document.getElementById('map-login-submit');
-            const errorEl = document.getElementById('map-login-error');
 
             submitBtn.disabled = true;
             submitBtn.textContent = 'Вход...';
-            if (errorEl) errorEl.style.display = 'none';
+            hideMapErrors();
 
             try {
                 const response = await fetch('/api/auth/login', {
@@ -2176,36 +2223,106 @@ document.addEventListener('DOMContentLoaded', async function () {
                 const data = await response.json();
 
                 if (response.ok && (data.accessToken || data.token)) {
-                    const token = data.accessToken || data.token;
-                    apiClient.setToken(token);
-                    hideLoginModal();
-                    updateAuthButton();
-                    // Перезагружаем карту (полные данные)
-                    await loadData();
-                    // Показываем слои инфраструктуры
-                    if (window.mapLayersControl) {
-                        window.mapLayersControl.handleAuthChange(true);
+                    await completeMapLogin(data);
+                } else if (response.ok && data.requires2FA) {
+                    mapTempToken = data.tempToken;
+                    showMapLoginStep('2fa');
+                    document.getElementById('map-2fa-code').focus();
+                } else if (response.ok && data.requires2FASetup) {
+                    mapTempToken = data.tempToken;
+                    // Fetch QR setup
+                    const setupRes = await fetch('/api/auth/setup-2fa', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ tempToken: mapTempToken })
+                    });
+                    const setupData = await setupRes.json();
+                    if (setupRes.ok) {
+                        document.getElementById('map-qr-img').src = setupData.qrCodeUrl;
+                        document.getElementById('map-qr-secret').textContent = setupData.secret;
+                        document.getElementById('map-recovery-codes').textContent = setupData.recoveryCodes.join('\n');
+                        showMapLoginStep('setup');
+                        document.getElementById('map-confirm-code').focus();
+                    } else {
+                        showMapError('map-login-error', setupData.message || 'Ошибка настройки 2FA');
                     }
-                    showToast('Вы вошли в систему', 'success');
-                } else if (response.ok && (data.requires2FA || data.requires2FASetup)) {
-                    // 2FA required — redirect to full login page
-                    hideLoginModal();
-                    window.location.href = '/login.html';
                 } else {
-                    const msg = data.message || data.error || 'Неверные учетные данные';
-                    if (errorEl) {
-                        errorEl.textContent = msg;
-                        errorEl.style.display = 'block';
-                    }
+                    showMapError('map-login-error', data.message || data.error || 'Неверные учетные данные');
                 }
             } catch (err) {
-                if (errorEl) {
-                    errorEl.textContent = 'Ошибка подключения к серверу';
-                    errorEl.style.display = 'block';
-                }
+                showMapError('map-login-error', 'Ошибка подключения к серверу');
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Войти';
+            }
+        });
+    }
+
+    // Step 2: 2FA verification
+    const tfaForm = document.getElementById('map-2fa-form');
+    if (tfaForm) {
+        tfaForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const code = document.getElementById('map-2fa-code').value.trim();
+            const btn = document.getElementById('map-2fa-submit');
+            if (!code) return;
+            btn.disabled = true;
+            hideMapErrors();
+            try {
+                const res = await fetch('/api/auth/verify-2fa', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tempToken: mapTempToken, code })
+                });
+                const data = await res.json();
+                if (res.ok && data.accessToken) {
+                    await completeMapLogin(data);
+                } else {
+                    showMapError('map-2fa-error', data.message || data.error || 'Неверный код');
+                    document.getElementById('map-2fa-code').value = '';
+                    document.getElementById('map-2fa-code').focus();
+                }
+            } catch (err) {
+                showMapError('map-2fa-error', 'Ошибка подключения');
+            } finally {
+                btn.disabled = false;
+            }
+        });
+        document.getElementById('map-2fa-back').addEventListener('click', (e) => {
+            e.preventDefault();
+            mapTempToken = null;
+            showMapLoginStep('login');
+        });
+    }
+
+    // Step 2b: 2FA setup confirm
+    const confirmForm = document.getElementById('map-confirm-2fa-form');
+    if (confirmForm) {
+        confirmForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const code = document.getElementById('map-confirm-code').value.trim();
+            const btn = document.getElementById('map-confirm-submit');
+            if (!code) return;
+            btn.disabled = true;
+            hideMapErrors();
+            try {
+                const res = await fetch('/api/auth/confirm-2fa', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tempToken: mapTempToken, code })
+                });
+                const data = await res.json();
+                if (res.ok && data.accessToken) {
+                    await completeMapLogin(data);
+                } else {
+                    showMapError('map-setup-error', data.message || data.error || 'Неверный код');
+                    document.getElementById('map-confirm-code').value = '';
+                    document.getElementById('map-confirm-code').focus();
+                }
+            } catch (err) {
+                showMapError('map-setup-error', 'Ошибка подключения');
+            } finally {
+                btn.disabled = false;
             }
         });
     }

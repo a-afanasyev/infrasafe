@@ -105,7 +105,9 @@
         <div class="map-login-backdrop"></div>
         <div class="map-login-form">
             <button class="map-login-close" id="map-login-close" type="button" aria-label="Закрыть">&times;</button>
-            <h3>Вход в систему</h3>
+            <h3 id="map-login-title">Вход в систему</h3>
+
+            <!-- Step 1: credentials -->
             <form id="map-login-form">
                 <div class="map-login-field">
                     <label for="map-login-username">Логин</label>
@@ -118,6 +120,43 @@
                 <div id="map-login-error" class="map-login-error" style="display:none;"></div>
                 <button type="submit" class="map-login-submit" id="map-login-submit">Войти</button>
             </form>
+
+            <!-- Step 2: 2FA code -->
+            <form id="map-2fa-form" style="display:none;">
+                <p style="color:#666; font-size:14px; margin-bottom:12px;">Введите код из приложения-аутентификатора</p>
+                <div class="map-login-field">
+                    <label for="map-2fa-code">Код 2FA</label>
+                    <input type="text" id="map-2fa-code" required autocomplete="one-time-code"
+                           placeholder="000000" maxlength="9"
+                           style="text-align:center; font-size:22px; letter-spacing:6px;">
+                </div>
+                <div id="map-2fa-error" class="map-login-error" style="display:none;"></div>
+                <button type="submit" class="map-login-submit" id="map-2fa-submit">Подтвердить</button>
+                <a href="#" id="map-2fa-back" style="display:block; text-align:center; margin-top:10px; color:#667eea; font-size:13px; text-decoration:none;">Назад</a>
+            </form>
+
+            <!-- Step 2b: 2FA setup (QR) -->
+            <div id="map-2fa-setup" style="display:none;">
+                <p style="color:#666; font-size:13px; margin-bottom:10px;">Отсканируйте QR-код приложением (Google Authenticator, Authy):</p>
+                <div style="text-align:center; margin:12px 0;"><img id="map-qr-img" src="" alt="QR" style="max-width:180px;"></div>
+                <div style="background:#f5f5f5; padding:8px; border-radius:5px; margin-bottom:10px; word-break:break-all; font-size:12px;">
+                    <span style="color:#999;">Ключ:</span> <code id="map-qr-secret"></code>
+                </div>
+                <div style="background:#fff3cd; padding:10px; border-radius:5px; margin-bottom:12px; font-size:12px;">
+                    <strong style="color:#856404;">Коды восстановления:</strong>
+                    <pre id="map-recovery-codes" style="margin:6px 0 0; color:#856404;"></pre>
+                </div>
+                <form id="map-confirm-2fa-form">
+                    <div class="map-login-field">
+                        <label for="map-confirm-code">Код из приложения</label>
+                        <input type="text" id="map-confirm-code" required placeholder="000000"
+                               autocomplete="one-time-code" maxlength="6"
+                               style="text-align:center; font-size:22px; letter-spacing:6px;">
+                    </div>
+                    <div id="map-setup-error" class="map-login-error" style="display:none;"></div>
+                    <button type="submit" class="map-login-submit" id="map-confirm-submit">Активировать 2FA</button>
+                </form>
+            </div>
         </div>
     </div>
 
