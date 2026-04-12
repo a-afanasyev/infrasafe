@@ -2187,6 +2187,10 @@ document.addEventListener('DOMContentLoaded', async function () {
                         window.mapLayersControl.handleAuthChange(true);
                     }
                     showToast('Вы вошли в систему', 'success');
+                } else if (response.ok && (data.requires2FA || data.requires2FASetup)) {
+                    // 2FA required — redirect to full login page
+                    hideLoginModal();
+                    window.location.href = '/login.html';
                 } else {
                     const msg = data.message || data.error || 'Неверные учетные данные';
                     if (errorEl) {
