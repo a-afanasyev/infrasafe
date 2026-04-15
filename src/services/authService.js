@@ -256,7 +256,7 @@ class AuthService {
             const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
             try {
                 await db.query(
-                    `INSERT INTO token_blacklist (token_hash, expires_at, created_at)
+                    `INSERT INTO token_blacklist (token_hash, expires_at, blacklisted_at)
                      VALUES ($1, to_timestamp($2), NOW())`,
                     [tokenHash, decoded.exp]
                 );
