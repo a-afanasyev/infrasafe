@@ -393,16 +393,33 @@ describe('AuthService', () => {
             ).rejects.toThrow();
         });
 
-        test('throws when user not found during refresh', async () => {
+        test('throws USER_NOT_FOUND when user not found during refresh', async () => {
             const user = { user_id: 999, username: 'ghost', email: 'g@b.com', role: 'user' };
             const tokens = authService.generateTokens(user);
 
             cacheService.get.mockResolvedValue(null);
-            db.query.mockResolvedValueOnce({ rows: [] }); // findUserById returns null
+            db.query
+                .mockResolvedValueOnce({ rowCount: 1 })  // atomic INSERT into token_blacklist
+                .mockResolvedValueOnce({ rows: [] });     // findUserById returns null
 
             await expect(
                 authService.refreshToken(tokens.refreshToken)
-            ).rejects.toThrow();
+            ).rejects.toMatchObject({ code: 'USER_NOT_FOUND' });
+        });
+
+        // ARCH-105: core scenario — concurrent duplicate refresh rejected
+        test('throws TOKEN_REUSE when refresh token already consumed', async () => {
+            const user = { user_id: 1, username: 'admin', email: 'a@b.com', role: 'admin' };
+            const tokens = authService.generateTokens(user);
+
+            cacheService.get.mockResolvedValue(null);
+            const uniqueError = new Error('duplicate key value violates unique constraint');
+            uniqueError.code = '23505';
+            db.query.mockRejectedValueOnce(uniqueError);
+
+            await expect(
+                authService.refreshToken(tokens.refreshToken)
+            ).rejects.toMatchObject({ code: 'TOKEN_REUSE' });
         });
     });
 

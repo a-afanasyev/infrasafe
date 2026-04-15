@@ -112,7 +112,7 @@ describe('Auth Middleware', () => {
         test('returns 401 when token is invalid or expired', async () => {
             req.headers.authorization = 'Bearer invalid-token';
             authService.isTokenBlacklisted.mockResolvedValue(false);
-            jwt.verify.mockImplementation((token, secret, cb) => {
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 const err = new Error('jwt expired');
                 err.name = 'TokenExpiredError';
                 cb(err, null);
@@ -131,7 +131,7 @@ describe('Auth Middleware', () => {
         test('returns 401 when user is not found', async () => {
             req.headers.authorization = 'Bearer valid-token';
             authService.isTokenBlacklisted.mockResolvedValue(false);
-            jwt.verify.mockImplementation((token, secret, cb) => {
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 999 });
             });
             authService.findUserById.mockResolvedValue(null);
@@ -149,7 +149,7 @@ describe('Auth Middleware', () => {
         test('returns 401 when account is locked', async () => {
             req.headers.authorization = 'Bearer valid-token';
             authService.isTokenBlacklisted.mockResolvedValue(false);
-            jwt.verify.mockImplementation((token, secret, cb) => {
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 1 });
             });
             const lockedUser = {
@@ -171,7 +171,7 @@ describe('Auth Middleware', () => {
         test('sets req.user and calls next on valid token', async () => {
             req.headers.authorization = 'Bearer valid-token';
             authService.isTokenBlacklisted.mockResolvedValue(false);
-            jwt.verify.mockImplementation((token, secret, cb) => {
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 1 });
             });
             authService.findUserById.mockResolvedValue(mockUser);
@@ -190,7 +190,7 @@ describe('Auth Middleware', () => {
         test('returns 500 when findUserById throws', async () => {
             req.headers.authorization = 'Bearer valid-token';
             authService.isTokenBlacklisted.mockResolvedValue(false);
-            jwt.verify.mockImplementation((token, secret, cb) => {
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 1 });
             });
             authService.findUserById.mockRejectedValue(new Error('DB error'));
@@ -285,7 +285,7 @@ describe('Auth Middleware', () => {
         test('returns 401 when refresh token is invalid', async () => {
             req.body = { refreshToken: 'invalid-token' };
             authService.isTokenBlacklisted.mockResolvedValue(false);
-            jwt.verify.mockImplementation((token, secret, cb) => {
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 const err = new Error('invalid token');
                 err.name = 'JsonWebTokenError';
                 cb(err, null);
@@ -304,7 +304,7 @@ describe('Auth Middleware', () => {
         test('returns 401 when user is not found', async () => {
             req.body = { refreshToken: 'valid-refresh' };
             authService.isTokenBlacklisted.mockResolvedValue(false);
-            jwt.verify.mockImplementation((token, secret, cb) => {
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 999 });
             });
             authService.findUserById.mockResolvedValue(null);
@@ -322,7 +322,7 @@ describe('Auth Middleware', () => {
         test('returns 401 when account is locked', async () => {
             req.body = { refreshToken: 'valid-refresh' };
             authService.isTokenBlacklisted.mockResolvedValue(false);
-            jwt.verify.mockImplementation((token, secret, cb) => {
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 1 });
             });
             const lockedUser = {
@@ -344,7 +344,7 @@ describe('Auth Middleware', () => {
         test('sets req.user and calls next on valid refresh token', async () => {
             req.body = { refreshToken: 'valid-refresh' };
             authService.isTokenBlacklisted.mockResolvedValue(false);
-            jwt.verify.mockImplementation((token, secret, cb) => {
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 1 });
             });
             authService.findUserById.mockResolvedValue(mockUser);
@@ -363,7 +363,7 @@ describe('Auth Middleware', () => {
         test('returns 500 when findUserById throws', async () => {
             req.body = { refreshToken: 'valid-refresh' };
             authService.isTokenBlacklisted.mockResolvedValue(false);
-            jwt.verify.mockImplementation((token, secret, cb) => {
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 1 });
             });
             authService.findUserById.mockRejectedValue(new Error('DB error'));
@@ -420,7 +420,7 @@ describe('Auth Middleware', () => {
         test('sets req.user to null when token is invalid', async () => {
             req.headers.authorization = 'Bearer invalid-token';
             authService.isTokenBlacklisted.mockResolvedValue(false);
-            jwt.verify.mockImplementation((token, secret, cb) => {
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(new Error('invalid'), null);
             });
 
@@ -433,7 +433,7 @@ describe('Auth Middleware', () => {
         test('sets req.user when token is valid', async () => {
             req.headers.authorization = 'Bearer valid-token';
             authService.isTokenBlacklisted.mockResolvedValue(false);
-            jwt.verify.mockImplementation((token, secret, cb) => {
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 1 });
             });
             authService.findUserById.mockResolvedValue(mockUser);
@@ -451,7 +451,7 @@ describe('Auth Middleware', () => {
         test('sets req.user to null when user not found', async () => {
             req.headers.authorization = 'Bearer valid-token';
             authService.isTokenBlacklisted.mockResolvedValue(false);
-            jwt.verify.mockImplementation((token, secret, cb) => {
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 999 });
             });
             authService.findUserById.mockResolvedValue(null);
@@ -465,7 +465,7 @@ describe('Auth Middleware', () => {
         test('sets req.user to null when account is locked', async () => {
             req.headers.authorization = 'Bearer valid-token';
             authService.isTokenBlacklisted.mockResolvedValue(false);
-            jwt.verify.mockImplementation((token, secret, cb) => {
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 1 });
             });
             const lockedUser = {
@@ -483,7 +483,7 @@ describe('Auth Middleware', () => {
         test('sets req.user to null when findUserById throws', async () => {
             req.headers.authorization = 'Bearer valid-token';
             authService.isTokenBlacklisted.mockResolvedValue(false);
-            jwt.verify.mockImplementation((token, secret, cb) => {
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 1 });
             });
             authService.findUserById.mockRejectedValue(new Error('DB error'));

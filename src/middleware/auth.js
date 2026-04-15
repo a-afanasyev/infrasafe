@@ -56,7 +56,10 @@ const authenticateJWT = async (req, res, next) => {
             });
         }
 
-        const decoded = await verifyJwt(token, process.env.JWT_SECRET);
+        const decoded = await verifyJwt(token, process.env.JWT_SECRET, {
+            issuer: 'infrasafe-api',
+            audience: 'infrasafe-client'
+        });
 
         const user = await authService.findUserById(decoded.user_id);
         if (!user) {
@@ -133,7 +136,10 @@ const authenticateRefresh = async (req, res, next) => {
             });
         }
 
-        const decoded = await verifyJwt(refreshToken, process.env.JWT_REFRESH_SECRET);
+        const decoded = await verifyJwt(refreshToken, process.env.JWT_REFRESH_SECRET, {
+            issuer: 'infrasafe-api',
+            audience: 'infrasafe-client'
+        });
 
         const user = await authService.findUserById(decoded.user_id);
         if (!user) {
@@ -197,7 +203,10 @@ const optionalAuth = async (req, res, next) => {
             return next();
         }
 
-        const decoded = await verifyJwt(token, process.env.JWT_SECRET);
+        const decoded = await verifyJwt(token, process.env.JWT_SECRET, {
+            issuer: 'infrasafe-api',
+            audience: 'infrasafe-client'
+        });
 
         const user = await authService.findUserById(decoded.user_id);
         if (user && !(user.account_locked_until && new Date(user.account_locked_until) > new Date())) {
@@ -207,7 +216,10 @@ const optionalAuth = async (req, res, next) => {
         }
         next();
     } catch (error) {
-        // Optional auth — all errors result in unauthenticated continuation
+        // Optional auth — log unexpected (non-JWT) errors for observability
+        if (error.name !== 'JsonWebTokenError' && error.name !== 'TokenExpiredError') {
+            logger.warn(`optionalAuth unexpected error: ${error.message}`);
+        }
         req.user = null;
         next();
     }
