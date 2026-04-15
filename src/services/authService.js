@@ -550,8 +550,9 @@ class AuthService {
             'SELECT password_hash FROM users WHERE user_id = $1 AND is_active = true',
             [userId]
         );
-        if (!result.rows.length) return false;
-        return bcrypt.compare(password, result.rows[0].password_hash);
+        const hash = result.rows[0]?.password_hash;
+        if (!hash) return false;
+        return bcrypt.compare(password, hash);
     }
 
     // Очистка просроченных токенов из черного списка

@@ -267,10 +267,9 @@ const setup2FA = async (req, res, next) => {
 
         const setup = await totpService.generateSetup(user.user_id, user.username);
 
-        // SEC-101: blacklist tempToken so it cannot be reused
-        if (req.tempToken) {
-            await authService.blacklistToken(req.tempToken);
-        }
+        // NOTE: do NOT blacklist tempToken here — setup2FA is not terminal.
+        // The same tempToken must remain valid for the subsequent confirm2FA call.
+        // Blacklisting happens in confirm2FA and verify2FA (terminal operations).
 
         res.json({
             success: true,
