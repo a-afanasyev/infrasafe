@@ -234,6 +234,11 @@ const verify2FA = async (req, res, next) => {
             return res.status(401).json({ error: 'Invalid 2FA code' });
         }
 
+        // SEC-101: blacklist tempToken so it cannot be reused
+        if (req.tempToken) {
+            await authService.blacklistToken(req.tempToken);
+        }
+
         // Генерация полных токенов
         const tokens = authService.generateTokens(user);
 
@@ -262,6 +267,11 @@ const setup2FA = async (req, res, next) => {
 
         const setup = await totpService.generateSetup(user.user_id, user.username);
 
+        // SEC-101: blacklist tempToken so it cannot be reused
+        if (req.tempToken) {
+            await authService.blacklistToken(req.tempToken);
+        }
+
         res.json({
             success: true,
             qrCodeUrl: setup.qrCodeUrl,
@@ -286,6 +296,11 @@ const confirm2FA = async (req, res, next) => {
         }
 
         await totpService.confirmSetup(user.user_id, code);
+
+        // SEC-101: blacklist tempToken so it cannot be reused
+        if (req.tempToken) {
+            await authService.blacklistToken(req.tempToken);
+        }
 
         // 2FA активирована — выдаём полные токены
         const tokens = authService.generateTokens(user);
@@ -319,14 +334,13 @@ const disable2FA = async (req, res, next) => {
             return res.status(400).json({ error: 'Password is required to disable 2FA' });
         }
 
-        // Верифицируем пароль
-        const user = await authService.findUserById(userId);
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
+        // SEC-105: verify password without incrementing lockout counter
+        const isPasswordValid = await authService.verifyPasswordOnly(userId, password);
+        if (!isPasswordValid) {
+            return res.status(401).json({ error: 'Invalid password' });
         }
 
-        const dbUser = await authService.authenticateUser(user.username, password);
-        await totpService.disable(dbUser.user_id);
+        await totpService.disable(userId);
 
         res.json({
             success: true,
@@ -335,9 +349,6 @@ const disable2FA = async (req, res, next) => {
     } catch (error) {
         if (error.message === 'Admins cannot disable 2FA') {
             return res.status(403).json({ error: error.message });
-        }
-        if (error.code === 'INVALID_CREDENTIALS') {
-            return res.status(401).json({ error: 'Invalid password' });
         }
         logger.error(`Disable 2FA error: ${error.message}`);
         next(error);

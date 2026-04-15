@@ -542,6 +542,18 @@ class AuthService {
         }
     }
 
+    // SEC-105: verify password without affecting lockout counters
+    // For use in secondary auth flows (disable-2fa) where failed attempts
+    // should not lock the account
+    async verifyPasswordOnly(userId, password) {
+        const result = await db.query(
+            'SELECT password_hash FROM users WHERE user_id = $1 AND is_active = true',
+            [userId]
+        );
+        if (!result.rows.length) return false;
+        return bcrypt.compare(password, result.rows[0].password_hash);
+    }
+
     // Очистка просроченных токенов из черного списка
     async cleanupExpiredTokens() {
         try {
