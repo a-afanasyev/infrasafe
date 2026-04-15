@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 const cacheService = require('./cacheService');
 const db = require('../config/database');
+const { CircuitBreakerFactory } = require('../utils/circuitBreaker');
 
 class AuthService {
     constructor() {
@@ -21,6 +22,9 @@ class AuthService {
         this.cachePrefix = 'auth';
         this.maxLoginAttempts = 5;
         this.lockoutDuration = 15 * 60 * 1000; // 15 минут
+
+        // ARCH-102: circuit breaker for blacklist DB lookups — fail-open on DB outage
+        this.blacklistBreaker = CircuitBreakerFactory.createDatabaseBreaker('BlacklistDB');
 
         // Periodic cleanup of expired blacklisted tokens (every hour)
         this.cleanupIntervalId = setInterval(() => {
@@ -234,7 +238,7 @@ class AuthService {
         }
     }
 
-    // Обновление токена
+    // ARCH-105: Atomic refresh token rotation — blacklist BEFORE generating new tokens
     async refreshToken(refreshToken) {
         try {
             const decoded = jwt.verify(refreshToken, this.jwtRefreshSecret, {
@@ -248,15 +252,29 @@ class AuthService {
                 throw error;
             }
 
+            // Atomic consume: blacklist first, fail if already consumed (UNIQUE on token_hash)
+            const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+            try {
+                await db.query(
+                    `INSERT INTO token_blacklist (token_hash, expires_at, created_at)
+                     VALUES ($1, to_timestamp($2), NOW())`,
+                    [tokenHash, decoded.exp]
+                );
+            } catch (dbError) {
+                if (dbError.code === '23505') { // UNIQUE violation — already consumed
+                    const error = new Error('Refresh token already used');
+                    error.code = 'TOKEN_REUSE';
+                    throw error;
+                }
+                throw dbError;
+            }
+
             const user = await this.findUserById(decoded.user_id);
             if (!user || !user.is_active) {
                 const error = new Error('Пользователь не найден или деактивирован');
                 error.code = 'USER_NOT_FOUND';
                 throw error;
             }
-
-            // Blacklist the consumed refresh token to prevent reuse
-            await this.blacklistToken(refreshToken);
 
             // Генерируем новые токены
             const tokens = this.generateTokens(user);
@@ -502,6 +520,7 @@ class AuthService {
     }
 
     // Проверка, находится ли токен в черном списке
+    // ARCH-102: circuit breaker wraps DB lookup — fail-open on outage
     async isTokenBlacklisted(token) {
         try {
             const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
@@ -513,13 +532,17 @@ class AuthService {
                 return true;
             }
 
-            // L2: Check database on cache miss
+            // L2: Database with circuit breaker — fail-open when breaker is open
             try {
-                const result = await db.query(
-                    'SELECT 1 FROM token_blacklist WHERE token_hash = $1 AND expires_at > NOW()',
-                    [tokenHash]
-                );
-                if (result.rows.length > 0) {
+                const isBlacklisted = await this.blacklistBreaker.execute(async () => {
+                    const result = await db.query(
+                        'SELECT 1 FROM token_blacklist WHERE token_hash = $1 AND expires_at > NOW()',
+                        [tokenHash]
+                    );
+                    return result.rows.length > 0;
+                });
+
+                if (isBlacklisted) {
                     // Populate L1 cache for future lookups
                     const decoded = jwt.decode(token);
                     if (decoded && decoded.exp) {
@@ -530,9 +553,9 @@ class AuthService {
                     }
                     return true;
                 }
-            } catch (dbError) {
-                logger.error(`Ошибка проверки черного списка в БД: ${dbError.message}`);
-                // If DB is unavailable, rely on cache result (already checked above)
+            } catch (breakerError) {
+                // Circuit breaker open or DB error — fail-open: assume not blacklisted
+                logger.warn(`Blacklist DB check unavailable (circuit breaker): ${breakerError.message}`);
             }
 
             return false;

@@ -363,15 +363,16 @@ describe('AuthService', () => {
         });
     });
 
+    // ARCH-105: atomic refresh — INSERT blacklist BEFORE findUserById
     describe('refreshToken', () => {
         test('returns new tokens for valid refresh token', async () => {
             const user = { user_id: 1, username: 'admin', email: 'a@b.com', role: 'admin' };
             const tokens = authService.generateTokens(user);
 
-            // Mock findUserById (refresh flow uses it)
             cacheService.get.mockResolvedValue(null);
             db.query
-                .mockResolvedValueOnce({
+                .mockResolvedValueOnce({ rowCount: 1 }) // 1st: atomic INSERT into token_blacklist
+                .mockResolvedValueOnce({                 // 2nd: findUserById SELECT
                     rows: [{
                         user_id: 1,
                         username: 'admin',
@@ -379,8 +380,7 @@ describe('AuthService', () => {
                         role: 'admin',
                         is_active: true
                     }]
-                })
-                .mockResolvedValue({ rowCount: 1 }); // blacklistToken DB insert
+                });
 
             const newTokens = await authService.refreshToken(tokens.refreshToken);
             expect(newTokens).toHaveProperty('accessToken');

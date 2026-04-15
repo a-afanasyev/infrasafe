@@ -113,7 +113,9 @@ describe('Auth Middleware', () => {
             req.headers.authorization = 'Bearer invalid-token';
             authService.isTokenBlacklisted.mockResolvedValue(false);
             jwt.verify.mockImplementation((token, secret, cb) => {
-                cb(new Error('jwt expired'), null);
+                const err = new Error('jwt expired');
+                err.name = 'TokenExpiredError';
+                cb(err, null);
             });
 
             await authenticateJWT(req, res, next);
@@ -284,7 +286,9 @@ describe('Auth Middleware', () => {
             req.body = { refreshToken: 'invalid-token' };
             authService.isTokenBlacklisted.mockResolvedValue(false);
             jwt.verify.mockImplementation((token, secret, cb) => {
-                cb(new Error('invalid token'), null);
+                const err = new Error('invalid token');
+                err.name = 'JsonWebTokenError';
+                cb(err, null);
             });
 
             await authenticateRefresh(req, res, next);
