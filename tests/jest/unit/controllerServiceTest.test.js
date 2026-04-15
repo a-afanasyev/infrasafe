@@ -31,9 +31,11 @@ jest.mock('../../../src/utils/logger', () => ({
     debug: jest.fn()
 }));
 
+const db = require('../../../src/config/database');
 const Controller = require('../../../src/models/Controller');
 const Metric = require('../../../src/models/Metric');
 const cacheService = require('../../../src/services/cacheService');
+const logger = require('../../../src/utils/logger');
 const controllerService = require('../../../src/services/controllerService');
 
 describe('ControllerService', () => {
@@ -416,141 +418,82 @@ describe('ControllerService', () => {
         });
     });
 
+    // PERF-001: Tests updated for CTE-based single-query implementation
+    // Two db.query calls: 1) CTE UPDATE, 2) COUNT(*) for total
+    const mockCountQuery = { rows: [{ count: '50' }] };
+
     describe('updateControllersStatusByActivity', () => {
-        test('sets controller to offline when no metrics exist and status is not offline', async () => {
-            Controller.findAll.mockResolvedValue({
-                data: [{ controller_id: 1, serial_number: 'SN-001', status: 'online' }]
-            });
-            Metric.findByControllerId.mockResolvedValue([]);
-            Controller.updateStatus.mockResolvedValue({});
+        test('updates controllers and returns count when CTE finds changes', async () => {
+            db.query
+                .mockResolvedValueOnce({
+                    rowCount: 2,
+                    rows: [
+                        { controller_id: 1, serial_number: 'SN-001', current_status: 'online', new_status: 'offline' },
+                        { controller_id: 3, serial_number: 'SN-003', current_status: 'offline', new_status: 'online' }
+                    ]
+                })
+                .mockResolvedValueOnce(mockCountQuery);
 
             const result = await controllerService.updateControllersStatusByActivity();
 
-            expect(Controller.updateStatus).toHaveBeenCalledWith(1, 'offline');
-            expect(result.updated).toBe(1);
-            expect(result.total).toBe(1);
-        });
-
-        test('skips controller already offline when no metrics exist', async () => {
-            Controller.findAll.mockResolvedValue({
-                data: [{ controller_id: 1, serial_number: 'SN-001', status: 'offline' }]
-            });
-            Metric.findByControllerId.mockResolvedValue([]);
-
-            const result = await controllerService.updateControllersStatusByActivity();
-
-            expect(Controller.updateStatus).not.toHaveBeenCalled();
-            expect(result.updated).toBe(0);
-        });
-
-        test('sets controller to offline when last metric is older than timeout', async () => {
-            const oldTimestamp = new Date(Date.now() - 700000).toISOString(); // older than 600000ms timeout
-            Controller.findAll.mockResolvedValue({
-                data: [{ controller_id: 1, serial_number: 'SN-001', status: 'online' }]
-            });
-            Metric.findByControllerId.mockResolvedValue([{ timestamp: oldTimestamp }]);
-            Controller.updateStatus.mockResolvedValue({});
-
-            const result = await controllerService.updateControllersStatusByActivity();
-
-            expect(Controller.updateStatus).toHaveBeenCalledWith(1, 'offline');
-            expect(result.updated).toBe(1);
-        });
-
-        test('does not set maintenance controller to offline even if metric is old', async () => {
-            const oldTimestamp = new Date(Date.now() - 700000).toISOString();
-            Controller.findAll.mockResolvedValue({
-                data: [{ controller_id: 1, serial_number: 'SN-001', status: 'maintenance' }]
-            });
-            Metric.findByControllerId.mockResolvedValue([{ timestamp: oldTimestamp }]);
-
-            const result = await controllerService.updateControllersStatusByActivity();
-
-            expect(Controller.updateStatus).not.toHaveBeenCalled();
-            expect(result.updated).toBe(0);
-        });
-
-        test('sets offline controller back to online when fresh metric exists', async () => {
-            const freshTimestamp = new Date().toISOString();
-            Controller.findAll.mockResolvedValue({
-                data: [{ controller_id: 1, serial_number: 'SN-001', status: 'offline' }]
-            });
-            Metric.findByControllerId.mockResolvedValue([{ timestamp: freshTimestamp }]);
-            Controller.updateStatus.mockResolvedValue({});
-
-            const result = await controllerService.updateControllersStatusByActivity();
-
-            expect(Controller.updateStatus).toHaveBeenCalledWith(1, 'online');
-            expect(result.updated).toBe(1);
-        });
-
-        test('does not change online controller with fresh metric', async () => {
-            const freshTimestamp = new Date().toISOString();
-            Controller.findAll.mockResolvedValue({
-                data: [{ controller_id: 1, serial_number: 'SN-001', status: 'online' }]
-            });
-            Metric.findByControllerId.mockResolvedValue([{ timestamp: freshTimestamp }]);
-
-            const result = await controllerService.updateControllersStatusByActivity();
-
-            expect(Controller.updateStatus).not.toHaveBeenCalled();
-            expect(result.updated).toBe(0);
-        });
-
-        test('handles per-controller error gracefully and continues', async () => {
-            Controller.findAll.mockResolvedValue({
-                data: [
-                    { controller_id: 1, serial_number: 'SN-001', status: 'online' },
-                    { controller_id: 2, serial_number: 'SN-002', status: 'online' }
-                ]
-            });
-            // First controller throws, second has no metrics
-            Metric.findByControllerId
-                .mockRejectedValueOnce(new Error('DB error'))
-                .mockResolvedValueOnce([]);
-            Controller.updateStatus.mockResolvedValue({});
-
-            const result = await controllerService.updateControllersStatusByActivity();
-
-            // Should still update the second controller
-            expect(result.updated).toBe(1);
-            expect(result.total).toBe(2);
-        });
-
-        test('invalidates list cache when updates were made', async () => {
-            Controller.findAll.mockResolvedValue({
-                data: [{ controller_id: 1, serial_number: 'SN-001', status: 'online' }]
-            });
-            Metric.findByControllerId.mockResolvedValue([]);
-            Controller.updateStatus.mockResolvedValue({});
-
-            await controllerService.updateControllersStatusByActivity();
-
+            expect(db.query).toHaveBeenCalledWith(expect.stringContaining('WITH latest_metrics'), expect.any(Array));
+            expect(result.updated).toBe(2);
+            expect(result.total).toBe(50);
             expect(cacheService.invalidatePattern).toHaveBeenCalled();
         });
 
-        test('handles empty data array from findAll', async () => {
-            Controller.findAll.mockResolvedValue({ data: [] });
+        test('returns zero when no controllers need status change', async () => {
+            db.query
+                .mockResolvedValueOnce({ rowCount: 0, rows: [] })
+                .mockResolvedValueOnce(mockCountQuery);
 
             const result = await controllerService.updateControllersStatusByActivity();
 
             expect(result.updated).toBe(0);
-            expect(result.total).toBe(0);
+            expect(result.total).toBe(50);
+            expect(cacheService.invalidatePattern).not.toHaveBeenCalled();
         });
 
-        test('handles missing data property from findAll', async () => {
-            Controller.findAll.mockResolvedValue({});
+        test('passes timeout interval as parameterized query argument', async () => {
+            db.query
+                .mockResolvedValueOnce({ rowCount: 0, rows: [] })
+                .mockResolvedValueOnce(mockCountQuery);
 
-            const result = await controllerService.updateControllersStatusByActivity();
+            await controllerService.updateControllersStatusByActivity();
 
-            expect(result.updated).toBe(0);
-            expect(result.total).toBe(0);
+            expect(db.query).toHaveBeenCalledWith(
+                expect.stringContaining('$1::interval'),
+                ['10 minutes']
+            );
         });
 
-        test('throws on top-level error', async () => {
-            Controller.findAll.mockRejectedValue(new Error('DB connection failed'));
+        test('does not invalidate cache when no updates', async () => {
+            db.query
+                .mockResolvedValueOnce({ rowCount: 0, rows: [] })
+                .mockResolvedValueOnce(mockCountQuery);
+
+            await controllerService.updateControllersStatusByActivity();
+
+            expect(cacheService.invalidatePattern).not.toHaveBeenCalled();
+        });
+
+        test('throws on CTE query DB error', async () => {
+            db.query.mockRejectedValueOnce(new Error('DB connection failed'));
 
             await expect(controllerService.updateControllersStatusByActivity()).rejects.toThrow('DB connection failed');
+        });
+
+        test('logs each status transition', async () => {
+            db.query
+                .mockResolvedValueOnce({
+                    rowCount: 1,
+                    rows: [{ controller_id: 1, serial_number: 'SN-001', current_status: 'online', new_status: 'offline' }]
+                })
+                .mockResolvedValueOnce(mockCountQuery);
+
+            await controllerService.updateControllersStatusByActivity();
+
+            expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('SN-001'));
         });
     });
 

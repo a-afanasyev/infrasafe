@@ -510,6 +510,8 @@ CREATE INDEX IF NOT EXISTS idx_water_lines_branches ON water_lines USING gin(bra
 CREATE INDEX IF NOT EXISTS idx_metrics_controller ON metrics(controller_id);
 CREATE INDEX IF NOT EXISTS idx_metrics_timestamp ON metrics(timestamp);
 CREATE INDEX IF NOT EXISTS idx_metrics_leak ON metrics(leak_sensor) WHERE leak_sensor = true;
+-- ARCH-108: compound index for controller metrics lookups (LATERAL joins, status sweep)
+CREATE INDEX IF NOT EXISTS idx_metrics_ctrl_ts ON metrics(controller_id, timestamp DESC);
 
 -- Индексы для алертов
 CREATE INDEX IF NOT EXISTS idx_infrastructure_alerts_type ON infrastructure_alerts(type);
@@ -825,37 +827,38 @@ CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(log_level);
 -- МАТЕРИАЛИЗОВАННЫЕ ПРЕДСТАВЛЕНИЯ
 -- ===============================================
 
--- Материализованное представление: Загрузка трансформаторов в реальном времени
+-- ARCH-107: Materialized view uses active 'transformers' table (not legacy 'power_transformers')
+-- Column aliases (id, capacity_kva) maintain backward compat with PowerTransformer.js and analyticsService
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_transformer_load_realtime AS
 SELECT
-    pt.id,
-    pt.name,
-    pt.capacity_kva,
-    pt.status,
-    pt.latitude,
-    pt.longitude,
-    
+    t.transformer_id AS id,
+    t.name,
+    t.power_kva AS capacity_kva,
+    t.status,
+    t.latitude,
+    t.longitude,
+
     COUNT(DISTINCT b.building_id) as buildings_count,
     COUNT(DISTINCT c.controller_id) as controllers_count,
     COUNT(DISTINCT CASE WHEN c.status = 'active' THEN c.controller_id END) as active_controllers_count,
-    
+
     AVG(COALESCE(m.electricity_ph1, 0) + COALESCE(m.electricity_ph2, 0) + COALESCE(m.electricity_ph3, 0)) as avg_total_voltage,
     AVG(COALESCE(m.amperage_ph1, 0) + COALESCE(m.amperage_ph2, 0) + COALESCE(m.amperage_ph3, 0)) as avg_total_amperage,
-    
+
     CASE
-        WHEN pt.capacity_kva > 0 THEN
-            LEAST(100, AVG(COALESCE(m.amperage_ph1, 0) + COALESCE(m.amperage_ph2, 0) + COALESCE(m.amperage_ph3, 0)) * 0.4 / pt.capacity_kva * 100)
+        WHEN t.power_kva > 0 THEN
+            LEAST(100, AVG(COALESCE(m.amperage_ph1, 0) + COALESCE(m.amperage_ph2, 0) + COALESCE(m.amperage_ph3, 0)) * 0.4 / t.power_kva * 100)
         ELSE 0
     END as load_percent,
-    
+
     MAX(m.timestamp) as last_metric_time,
     COUNT(CASE WHEN m.timestamp > NOW() - INTERVAL '1 hour' THEN 1 END) as recent_metrics_count
 
-FROM power_transformers pt
-LEFT JOIN buildings b ON pt.id::VARCHAR = b.power_transformer_id::VARCHAR
+FROM transformers t
+LEFT JOIN buildings b ON (t.transformer_id = b.primary_transformer_id OR t.transformer_id = b.backup_transformer_id)
 LEFT JOIN controllers c ON b.building_id = c.building_id
 LEFT JOIN metrics m ON c.controller_id = m.controller_id AND m.timestamp > NOW() - INTERVAL '24 hours'
-GROUP BY pt.id, pt.name, pt.capacity_kva, pt.status, pt.latitude, pt.longitude;
+GROUP BY t.transformer_id, t.name, t.power_kva, t.status, t.latitude, t.longitude;
 
 -- Уникальный индекс для конкурентного обновления материализованного представления
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_transformer_load_id ON mv_transformer_load_realtime(id);

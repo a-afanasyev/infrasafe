@@ -239,17 +239,18 @@ class AnalyticsService {
                 return cached;
             }
 
+            // ARCH-107: join through active 'transformers' table (not legacy power_transformers)
             const query = `
                 SELECT
                     b.town as zone_name,
-                    COUNT(DISTINCT pt.id) as transformers_count,
+                    COUNT(DISTINCT mv.id) as transformers_count,
                     COUNT(DISTINCT b.building_id) as buildings_count,
                     AVG(mv.load_percent) as avg_load_percent,
                     MAX(mv.load_percent) as max_load_percent,
                     COUNT(CASE WHEN mv.load_percent > $1 THEN 1 END) as overloaded_count
                 FROM buildings b
-                LEFT JOIN power_transformers pt ON b.power_transformer_id = pt.id
-                LEFT JOIN mv_transformer_load_realtime mv ON pt.id = mv.id
+                LEFT JOIN mv_transformer_load_realtime mv
+                    ON (b.primary_transformer_id = mv.id OR b.backup_transformer_id = mv.id)
                 WHERE b.town IS NOT NULL
                 GROUP BY b.town
                 ORDER BY avg_load_percent DESC NULLS LAST

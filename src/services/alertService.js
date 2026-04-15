@@ -419,7 +419,7 @@ class InfrastructureAlertService {
         return { data: result.rows, total };
     }
 
-    // Массовая проверка всех трансформаторов
+    // PERF-002: Bounded concurrency replaces sequential for...of loop
     async checkAllTransformers() {
         await this.ensureInitialized();
 
@@ -427,16 +427,20 @@ class InfrastructureAlertService {
             const analyticsService = require('./analyticsService');
             const transformers = await analyticsService.getAllTransformersWithAnalytics();
 
+            const CONCURRENCY = 5;
             const alerts = [];
 
-            for (const transformer of transformers) {
-                try {
-                    const alert = await this.checkTransformerLoad(transformer.id);
-                    if (alert) {
-                        alerts.push(alert);
+            for (let i = 0; i < transformers.length; i += CONCURRENCY) {
+                const batch = transformers.slice(i, i + CONCURRENCY);
+                const results = await Promise.allSettled(
+                    batch.map(t => this.checkTransformerLoad(t.id))
+                );
+                for (const result of results) {
+                    if (result.status === 'fulfilled' && result.value) {
+                        alerts.push(result.value);
+                    } else if (result.status === 'rejected') {
+                        logger.error(`Ошибка проверки трансформатора: ${result.reason?.message}`);
                     }
-                } catch (error) {
-                    logger.error(`Ошибка проверки трансформатора ${transformer.id}:`, error);
                 }
             }
 

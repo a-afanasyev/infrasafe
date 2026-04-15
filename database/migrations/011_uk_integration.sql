@@ -79,3 +79,7 @@ CREATE INDEX IF NOT EXISTS idx_integration_log_status ON integration_log(status)
 CREATE INDEX IF NOT EXISTS idx_integration_log_created ON integration_log(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_buildings_external_id ON buildings(external_id) WHERE external_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_buildings_uk_deleted ON buildings(uk_deleted_at) WHERE uk_deleted_at IS NOT NULL;
+
+-- ARCH-120: missing indexes for alert_request_map performance
+CREATE INDEX IF NOT EXISTS idx_arm_alert_id ON alert_request_map(infrasafe_alert_id);
+CREATE INDEX IF NOT EXISTS idx_arm_request_number ON alert_request_map(uk_request_number) WHERE uk_request_number IS NOT NULL;

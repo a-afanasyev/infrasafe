@@ -89,9 +89,10 @@ class Metric {
      * @param {number} controllerId - ID контроллера
      * @param {string} startDate - Начальная дата (опционально)
      * @param {string} endDate - Конечная дата (опционально)
+     * @param {number} limit - Максимальное количество записей (опционально)
      * @returns {Promise<Array>} - Массив метрик
      */
-    static async findByControllerId(controllerId, startDate, endDate) {
+    static async findByControllerId(controllerId, startDate, endDate, limit) {
         try {
             let query = `
                 SELECT * FROM metrics
@@ -113,6 +114,12 @@ class Metric {
             }
 
             query += ` ORDER BY timestamp DESC`;
+
+            // SEC-002: add LIMIT to prevent unbounded result sets
+            if (limit && Number.isInteger(limit) && limit > 0) {
+                query += ` LIMIT $${params.length + 1}`;
+                params.push(limit);
+            }
 
             const { rows } = await db.query(query, params);
             return rows;
@@ -209,6 +216,44 @@ class Metric {
             logger.error(`Error in Metric.create: ${error.message}`);
             throw createError(`Failed to create metric: ${error.message}`);
         }
+    }
+
+    /**
+     * ARCH-103: Delete metrics older than cutoffDate in batches to avoid long locks.
+     * @param {Date} cutoffDate
+     * @param {number} batchSize - rows per DELETE (default 10000)
+     * @returns {Promise<number>} - total rows deleted
+     */
+    static async deleteOlderThan(cutoffDate, batchSize = 10000) {
+        if (!(cutoffDate instanceof Date) || isNaN(cutoffDate.getTime())) {
+            throw new TypeError('cutoffDate must be a valid Date object');
+        }
+        const safeBatch = Number.isInteger(batchSize) && batchSize > 0 && batchSize <= 100000
+            ? batchSize : 10000;
+
+        let totalDeleted = 0;
+        let deleted;
+
+        try {
+            do {
+                const result = await db.query(
+                    `DELETE FROM metrics
+                     WHERE metric_id IN (
+                         SELECT metric_id FROM metrics
+                         WHERE timestamp < $1
+                         LIMIT $2
+                     )`,
+                    [cutoffDate.toISOString(), safeBatch]
+                );
+                deleted = result.rowCount;
+                totalDeleted += deleted;
+            } while (deleted === safeBatch);
+        } catch (error) {
+            logger.error(`deleteOlderThan failed after deleting ${totalDeleted} rows: ${error.message}`);
+            throw error;
+        }
+
+        return totalDeleted;
     }
 
     /**

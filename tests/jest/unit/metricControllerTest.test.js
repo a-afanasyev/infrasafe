@@ -333,13 +333,13 @@ describe('MetricController', () => {
             expect(res.json).toHaveBeenCalledWith(mockResult);
         });
 
-        test('uses default daysToKeep 30 when not specified', async () => {
+        test('uses default daysToKeep 90 when not specified', async () => {
             req.query = {};
             metricService.cleanupOldMetrics.mockResolvedValue({ deleted: 0 });
 
             await cleanupOldMetrics(req, res, next);
 
-            expect(metricService.cleanupOldMetrics).toHaveBeenCalledWith(30);
+            expect(metricService.cleanupOldMetrics).toHaveBeenCalledWith(90);
         });
 
         test('calls next on error', async () => {
