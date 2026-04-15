@@ -281,6 +281,6 @@ router.post('/setup-2fa', authLimiter.middleware(), authenticateTempToken, authC
 router.post('/confirm-2fa', authLimiter.middleware(), authenticateTempToken, authController.confirm2FA);
 
 // Disable 2FA (requires full JWT auth + password confirmation)
-router.post('/disable-2fa', authController.disable2FA);
+router.post('/disable-2fa', authLimiter.middleware(), authController.disable2FA);
 
 module.exports = router;
