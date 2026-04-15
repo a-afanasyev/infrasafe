@@ -252,6 +252,7 @@ const optionalAuth = async (req, res, next) => {
 };
 
 // Проверка временного токена 2FA (scope: '2fa', TTL 5 мин)
+// SEC-101: check blacklist to prevent tempToken reuse after successful 2FA verification
 const authenticateTempToken = async (req, res, next) => {
     try {
         const { tempToken } = req.body;
@@ -263,8 +264,18 @@ const authenticateTempToken = async (req, res, next) => {
             });
         }
 
+        // Check if tempToken has already been used
+        const isBlacklisted = await authService.isTokenBlacklisted(tempToken);
+        if (isBlacklisted) {
+            return res.status(401).json({
+                success: false,
+                message: 'Temporary token has already been used'
+            });
+        }
+
         const decoded = authService.verifyTempToken(tempToken);
         req.tempUser = decoded;
+        req.tempToken = tempToken; // Pass to controller for blacklisting after use
         next();
     } catch (error) {
         logger.warn(`Invalid temp token: ${error.message}`);

@@ -9,15 +9,34 @@ const ISSUER = 'InfraSafe';
 const RECOVERY_CODE_COUNT = 8;
 const BCRYPT_ROUNDS = 12;
 
+// SEC-106: anti-replay — track used TOTP codes to prevent reuse within validity window
+const usedCodes = new Map();
+setInterval(() => {
+    const now = Date.now();
+    for (const [hash, expiresAt] of usedCodes.entries()) {
+        if (now > expiresAt) usedCodes.delete(hash);
+    }
+}, 60000).unref();
+
+function markCodeUsed(userId, code) {
+    const hash = crypto.createHash('sha256').update(`${userId}:${code}`).digest('hex');
+    if (usedCodes.has(hash)) return false;
+    usedCodes.set(hash, Date.now() + 60000);
+    return true;
+}
+
 // AES-256-GCM encryption for TOTP secrets
 const ALGORITHM = 'aes-256-gcm';
 
+// SEC-104: use HKDF for proper key derivation instead of raw SHA-256
 function getEncryptionKey() {
     const key = process.env.TOTP_ENCRYPTION_KEY;
     if (!key || key.length < 32) {
         throw new Error('TOTP_ENCRYPTION_KEY must be at least 32 characters');
     }
-    return crypto.createHash('sha256').update(key).digest();
+    return Buffer.from(
+        crypto.hkdfSync('sha256', key, 'infrasafe-totp-v1', 'aes-encryption-key', 32)
+    );
 }
 
 function encrypt(text) {
@@ -135,6 +154,10 @@ async function verifyCode(userId, code) {
     // Try TOTP code first
     const secret = decrypt(user.totp_secret);
     if (otplib.verifySync({ secret, token: code }).valid) {
+        // SEC-106: prevent replay — same code cannot be used twice within 60s
+        if (!markCodeUsed(userId, code)) {
+            return { valid: false, reason: 'code_already_used' };
+        }
         return { valid: true, method: 'totp' };
     }
 
