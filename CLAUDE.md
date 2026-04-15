@@ -179,6 +179,9 @@ Bidirectional integration with UK Management Bot (Управляющая Ком�
 DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
 JWT_SECRET, JWT_REFRESH_SECRET
 
+# 2FA (TOTP) Encryption — required (generate: openssl rand -base64 32)
+TOTP_ENCRYPTION_KEY
+
 # Optional
 NODE_ENV=development|production
 PORT=3000

@@ -79,7 +79,7 @@ async function hashRecoveryCodes(codes) {
 
 async function generateSetup(userId, username) {
     const secret = otplib.generateSecret();
-    const otpauthUrl = otplib.generateURI({ issuer: ISSUER, accountName: username, secret });
+    const otpauthUrl = otplib.generateURI({ issuer: ISSUER, label: username, secret });
     const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
 
     const plainRecoveryCodes = generateRecoveryCodes();
@@ -125,6 +125,11 @@ async function confirmSetup(userId, code) {
 
     if (!verification.valid) {
         throw new Error('Invalid TOTP code');
+    }
+
+    // SEC-106: apply anti-replay to setup confirmation path too
+    if (!markCodeUsed(userId, code)) {
+        throw new Error('TOTP code already used');
     }
 
     await db.query(

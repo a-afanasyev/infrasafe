@@ -9,8 +9,8 @@ module.exports = {
         const hash = crypto.createHmac('sha1', secret).update(String(time)).digest('hex');
         return String(parseInt(hash.slice(-6), 16) % 1000000).padStart(6, '0');
     },
-    generateURI: ({ issuer, accountName, secret }) =>
-        `otpauth://totp/${issuer}:${accountName}?secret=${secret}&issuer=${issuer}`,
+    generateURI: ({ issuer, label, secret }) =>
+        `otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}`,
     verifySync: ({ secret, token }) => {
         // In mock: accept any 6-digit code for test simplicity
         // Real verification is tested in the Docker container integration test
