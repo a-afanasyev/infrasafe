@@ -1,5 +1,6 @@
 const express = require('express');
 const metricController = require('../controllers/metricController');
+const { isAdmin } = require('../middleware/auth');
 const { applyCrudRateLimit } = require('../middleware/rateLimiter');
 const router = express.Router();
 
@@ -99,7 +100,7 @@ router.get('/latest', metricController.getLastMetricsForAllControllers);
  *       400:
  *         description: Неверный параметр days
  */
-router.delete('/cleanup', applyCrudRateLimit, metricController.cleanupOldMetrics);
+router.delete('/cleanup', isAdmin, applyCrudRateLimit, metricController.cleanupOldMetrics);
 
 /**
  * @swagger

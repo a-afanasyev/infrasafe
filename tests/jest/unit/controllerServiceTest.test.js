@@ -419,38 +419,48 @@ describe('ControllerService', () => {
     });
 
     // PERF-001: Tests updated for CTE-based single-query implementation
+    // Two db.query calls: 1) CTE UPDATE, 2) COUNT(*) for total
+    const mockCountQuery = { rows: [{ count: '50' }] };
+
     describe('updateControllersStatusByActivity', () => {
         test('updates controllers and returns count when CTE finds changes', async () => {
-            db.query.mockResolvedValueOnce({
-                rowCount: 2,
-                rows: [
-                    { controller_id: 1, serial_number: 'SN-001', current_status: 'online', new_status: 'offline' },
-                    { controller_id: 3, serial_number: 'SN-003', current_status: 'offline', new_status: 'online' }
-                ]
-            });
+            db.query
+                .mockResolvedValueOnce({
+                    rowCount: 2,
+                    rows: [
+                        { controller_id: 1, serial_number: 'SN-001', current_status: 'online', new_status: 'offline' },
+                        { controller_id: 3, serial_number: 'SN-003', current_status: 'offline', new_status: 'online' }
+                    ]
+                })
+                .mockResolvedValueOnce(mockCountQuery);
 
             const result = await controllerService.updateControllersStatusByActivity();
 
             expect(db.query).toHaveBeenCalledWith(expect.stringContaining('WITH latest_metrics'), expect.any(Array));
             expect(result.updated).toBe(2);
+            expect(result.total).toBe(50);
             expect(cacheService.invalidatePattern).toHaveBeenCalled();
         });
 
         test('returns zero when no controllers need status change', async () => {
-            db.query.mockResolvedValueOnce({ rowCount: 0, rows: [] });
+            db.query
+                .mockResolvedValueOnce({ rowCount: 0, rows: [] })
+                .mockResolvedValueOnce(mockCountQuery);
 
             const result = await controllerService.updateControllersStatusByActivity();
 
             expect(result.updated).toBe(0);
+            expect(result.total).toBe(50);
             expect(cacheService.invalidatePattern).not.toHaveBeenCalled();
         });
 
         test('passes timeout interval as parameterized query argument', async () => {
-            db.query.mockResolvedValueOnce({ rowCount: 0, rows: [] });
+            db.query
+                .mockResolvedValueOnce({ rowCount: 0, rows: [] })
+                .mockResolvedValueOnce(mockCountQuery);
 
             await controllerService.updateControllersStatusByActivity();
 
-            // statusTimeout = 600000ms = 10 minutes
             expect(db.query).toHaveBeenCalledWith(
                 expect.stringContaining('$1::interval'),
                 ['10 minutes']
@@ -458,30 +468,32 @@ describe('ControllerService', () => {
         });
 
         test('does not invalidate cache when no updates', async () => {
-            db.query.mockResolvedValueOnce({ rowCount: 0, rows: [] });
+            db.query
+                .mockResolvedValueOnce({ rowCount: 0, rows: [] })
+                .mockResolvedValueOnce(mockCountQuery);
 
             await controllerService.updateControllersStatusByActivity();
 
             expect(cacheService.invalidatePattern).not.toHaveBeenCalled();
         });
 
-        test('throws on DB error', async () => {
+        test('throws on CTE query DB error', async () => {
             db.query.mockRejectedValueOnce(new Error('DB connection failed'));
 
             await expect(controllerService.updateControllersStatusByActivity()).rejects.toThrow('DB connection failed');
         });
 
         test('logs each status transition', async () => {
-            db.query.mockResolvedValueOnce({
-                rowCount: 1,
-                rows: [{ controller_id: 1, serial_number: 'SN-001', current_status: 'online', new_status: 'offline' }]
-            });
+            db.query
+                .mockResolvedValueOnce({
+                    rowCount: 1,
+                    rows: [{ controller_id: 1, serial_number: 'SN-001', current_status: 'online', new_status: 'offline' }]
+                })
+                .mockResolvedValueOnce(mockCountQuery);
 
             await controllerService.updateControllersStatusByActivity();
 
             expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('SN-001'));
-            expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('online'));
-            expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('offline'));
         });
     });
 

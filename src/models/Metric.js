@@ -225,22 +225,33 @@ class Metric {
      * @returns {Promise<number>} - total rows deleted
      */
     static async deleteOlderThan(cutoffDate, batchSize = 10000) {
+        if (!(cutoffDate instanceof Date) || isNaN(cutoffDate.getTime())) {
+            throw new TypeError('cutoffDate must be a valid Date object');
+        }
+        const safeBatch = Number.isInteger(batchSize) && batchSize > 0 && batchSize <= 100000
+            ? batchSize : 10000;
+
         let totalDeleted = 0;
         let deleted;
 
-        do {
-            const result = await db.query(
-                `DELETE FROM metrics
-                 WHERE metric_id IN (
-                     SELECT metric_id FROM metrics
-                     WHERE timestamp < $1
-                     LIMIT $2
-                 )`,
-                [cutoffDate.toISOString(), batchSize]
-            );
-            deleted = result.rowCount;
-            totalDeleted += deleted;
-        } while (deleted === batchSize);
+        try {
+            do {
+                const result = await db.query(
+                    `DELETE FROM metrics
+                     WHERE metric_id IN (
+                         SELECT metric_id FROM metrics
+                         WHERE timestamp < $1
+                         LIMIT $2
+                     )`,
+                    [cutoffDate.toISOString(), safeBatch]
+                );
+                deleted = result.rowCount;
+                totalDeleted += deleted;
+            } while (deleted === safeBatch);
+        } catch (error) {
+            logger.error(`deleteOlderThan failed after deleting ${totalDeleted} rows: ${error.message}`);
+            throw error;
+        }
 
         return totalDeleted;
     }

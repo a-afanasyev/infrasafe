@@ -125,12 +125,13 @@ const getAggregatedMetrics = async (req, res, next) => {
     }
 };
 
-// Очистка старых метрик
+// Очистка старых метрик (admin-only, validated)
 const cleanupOldMetrics = async (req, res, next) => {
     try {
-        const { daysToKeep = 30 } = req.query;
+        const daysRaw = parseInt(req.query.daysToKeep, 10);
+        const daysToKeep = Number.isFinite(daysRaw) && daysRaw >= 7 ? daysRaw : 90;
 
-        const result = await metricService.cleanupOldMetrics(parseInt(daysToKeep));
+        const result = await metricService.cleanupOldMetrics(daysToKeep);
         return res.status(200).json(result);
     } catch (error) {
         logger.error(`Error in cleanupOldMetrics: ${error.message}`);

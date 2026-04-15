@@ -198,8 +198,8 @@ class ControllerService {
     // Удалить контроллер с проверкой связанных метрик
     async deleteController(id) {
         try {
-            // Проверяем наличие связанных метрик
-            const metrics = await Metric.findByControllerId(id);
+            // Проверяем наличие связанных метрик (limit 1 — existence check only)
+            const metrics = await Metric.findByControllerId(id, null, null, 1);
             if (metrics.length > 0) {
                 const error = new Error('Невозможно удалить контроллер с привязанными метриками');
                 error.code = 'CONTROLLER_HAS_METRICS';
@@ -302,8 +302,12 @@ class ControllerService {
                 await this.invalidateControllerListCache();
             }
 
-            logger.info(`Обновлено статусов контроллеров: ${updated}`);
-            return { updated, total: updated };
+            // Preserve original API contract: total = all controllers count
+            const countResult = await db.query('SELECT COUNT(*) FROM controllers');
+            const total = parseInt(countResult.rows[0].count, 10);
+
+            logger.info(`Обновлено статусов контроллеров: ${updated} из ${total}`);
+            return { updated, total };
         } catch (error) {
             logger.error(`Ошибка автоматического обновления статусов контроллеров: ${error.message}`);
             throw error;
