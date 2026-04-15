@@ -284,20 +284,19 @@ class MetricService {
         }
     }
 
-    // Очистка старых метрик (data retention)
-    async cleanupOldMetrics(daysToKeep = 30) {
+    // ARCH-103: Metrics retention — batched DELETE for old metrics
+    async cleanupOldMetrics(daysToKeep = 90) {
         try {
             const cutoffDate = new Date();
             cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
 
-            // Здесь должен быть метод в модели Metric для удаления старых записей
-            // const deletedCount = await Metric.deleteOlderThan(cutoffDate);
+            const deletedCount = await Metric.deleteOlderThan(cutoffDate);
 
-            // Пока используем заглушку
-            logger.info(`Cleanup старых метрик (старше ${daysToKeep} дней) - функция в разработке`);
+            logger.info(`Cleanup: deleted ${deletedCount} metrics older than ${daysToKeep} days (cutoff: ${cutoffDate.toISOString()})`);
 
             return {
-                message: `Удалены метрики старше ${daysToKeep} дней`,
+                message: `Deleted ${deletedCount} metrics older than ${daysToKeep} days`,
+                deletedCount,
                 cutoffDate: cutoffDate.toISOString()
             };
         } catch (error) {

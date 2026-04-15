@@ -1,5 +1,6 @@
 const Controller = require('../models/Controller');
 const Metric = require('../models/Metric');
+const db = require('../config/database');
 const logger = require('../utils/logger');
 const cacheService = require('./cacheService');
 
@@ -249,57 +250,60 @@ class ControllerService {
         }
     }
 
-    // Автоматическое определение статуса контроллеров по последним метрикам
+    // PERF-001: Single CTE query replaces N+1 loop (was 1 + 2N queries for N controllers)
+    // Logic: 10-min timeout, only online↔offline transitions, maintenance never touched
     async updateControllersStatusByActivity() {
         try {
-            const allControllers = await Controller.findAll(1, 10000, 'controller_id', 'asc');
-            const controllers = allControllers.data || [];
+            const timeoutMs = this.statusTimeout; // 600000ms = 10 minutes
+            const timeoutInterval = `${Math.floor(timeoutMs / 60000)} minutes`;
 
-            const now = new Date();
-            let updated = 0;
+            const result = await db.query(`
+                WITH latest_metrics AS (
+                    SELECT DISTINCT ON (controller_id)
+                        controller_id,
+                        timestamp
+                    FROM metrics
+                    ORDER BY controller_id, timestamp DESC
+                ),
+                status_calc AS (
+                    SELECT
+                        c.controller_id,
+                        c.serial_number,
+                        c.status AS current_status,
+                        CASE
+                            WHEN lm.timestamp IS NULL AND c.status != 'maintenance'
+                                THEN 'offline'
+                            WHEN lm.timestamp < NOW() - $1::interval
+                                 AND c.status != 'offline' AND c.status != 'maintenance'
+                                THEN 'offline'
+                            WHEN lm.timestamp >= NOW() - $1::interval
+                                 AND c.status = 'offline'
+                                THEN 'online'
+                            ELSE c.status
+                        END AS new_status
+                    FROM controllers c
+                    LEFT JOIN latest_metrics lm ON c.controller_id = lm.controller_id
+                )
+                UPDATE controllers c
+                SET status = sc.new_status, updated_at = NOW()
+                FROM status_calc sc
+                WHERE c.controller_id = sc.controller_id
+                  AND c.status IS DISTINCT FROM sc.new_status
+                RETURNING c.controller_id, sc.serial_number, sc.current_status, sc.new_status
+            `, [timeoutInterval]);
 
-            for (const controller of controllers) {
-                try {
-                    // Получаем последнюю метрику контроллера
-                    const lastMetrics = await Metric.findByControllerId(controller.controller_id, null, null, 1);
+            const updated = result.rowCount;
 
-                    if (lastMetrics.length === 0) {
-                        // Нет метрик - контроллер offline
-                        if (controller.status !== 'offline') {
-                            await Controller.updateStatus(controller.controller_id, 'offline');
-                            updated++;
-                        }
-                        continue;
-                    }
-
-                    const lastMetric = lastMetrics[0];
-                    const metricTime = new Date(lastMetric.timestamp);
-                    const timeDiff = now - metricTime;
-
-                    // Если последняя метрика старше timeout времени - контроллер offline
-                    if (timeDiff > this.statusTimeout && controller.status !== 'offline' && controller.status !== 'maintenance') {
-                        await Controller.updateStatus(controller.controller_id, 'offline');
-                        updated++;
-                        logger.info(`Контроллер ${controller.serial_number} переведен в offline (последняя метрика: ${lastMetric.timestamp})`);
-                    }
-                    // Если метрика свежая и контроллер был offline - переводим в online
-                    else if (timeDiff <= this.statusTimeout && controller.status === 'offline') {
-                        await Controller.updateStatus(controller.controller_id, 'online');
-                        updated++;
-                        logger.info(`Контроллер ${controller.serial_number} переведен в online`);
-                    }
-                } catch (error) {
-                    logger.warn(`Ошибка обновления статуса контроллера ${controller.controller_id}: ${error.message}`);
-                }
+            for (const row of result.rows) {
+                logger.info(`Контроллер ${row.serial_number} переведен из ${row.current_status} в ${row.new_status}`);
             }
 
             if (updated > 0) {
-                // Инвалидируем кэши списков
                 await this.invalidateControllerListCache();
             }
 
-            logger.info(`Обновлено статусов контроллеров: ${updated} из ${controllers.length}`);
-            return { updated, total: controllers.length };
+            logger.info(`Обновлено статусов контроллеров: ${updated}`);
+            return { updated, total: updated };
         } catch (error) {
             logger.error(`Ошибка автоматического обновления статусов контроллеров: ${error.message}`);
             throw error;

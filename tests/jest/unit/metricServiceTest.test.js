@@ -8,7 +8,8 @@ jest.mock('../../../src/models/Metric', () => ({
     findByControllerId: jest.fn(),
     findLastForAllControllers: jest.fn(),
     create: jest.fn(),
-    delete: jest.fn()
+    delete: jest.fn(),
+    deleteOlderThan: jest.fn()
 }));
 
 jest.mock('../../../src/models/Controller', () => ({
@@ -499,22 +500,31 @@ describe('MetricService', () => {
         });
     });
 
+    // ARCH-103: Tests updated for real batched DELETE implementation
     describe('cleanupOldMetrics', () => {
-        test('returns cleanup result with default 30 days', async () => {
+        test('returns cleanup result with default 90 days', async () => {
+            Metric.deleteOlderThan.mockResolvedValue(42);
+
             const result = await metricService.cleanupOldMetrics();
 
-            expect(result.message).toContain('30 дней');
+            expect(Metric.deleteOlderThan).toHaveBeenCalledWith(expect.any(Date));
+            expect(result.deletedCount).toBe(42);
+            expect(result.message).toContain('90 days');
             expect(result.cutoffDate).toBeTruthy();
         });
 
         test('returns cleanup result with custom days', async () => {
+            Metric.deleteOlderThan.mockResolvedValue(10);
+
             const result = await metricService.cleanupOldMetrics(7);
 
-            expect(result.message).toContain('7 дней');
-            expect(result.cutoffDate).toBeTruthy();
+            expect(result.message).toContain('7 days');
+            expect(result.deletedCount).toBe(10);
         });
 
         test('returns valid ISO date string as cutoffDate', async () => {
+            Metric.deleteOlderThan.mockResolvedValue(0);
+
             const result = await metricService.cleanupOldMetrics(10);
 
             expect(() => new Date(result.cutoffDate)).not.toThrow();
