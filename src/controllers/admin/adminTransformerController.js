@@ -12,31 +12,26 @@ const adminService = require('../../services/adminService');
  * Custom SELECT keeps the `buildings` join for `building_name`.
  */
 
+// NOTE: the transformers table has no building_id column — the FK lives on
+// buildings (primary_transformer_id / backup_transformer_id). The pre-Phase-5
+// controller tried to LEFT JOIN buildings on a non-existent column, so that
+// path never worked at runtime. This refactor drops the broken JOIN along
+// with the building_id filter; if the UI needs associated buildings it
+// should query buildings where primary/backup_transformer_id = :id.
 const LIST_CONFIG = {
     table: 'transformers',
     entityType: 'transformers',
     tableAlias: 't',
     defaultSort: 'transformer_id',
     defaultLimit: 50,
-    selectSql: `
-        t.*, b.name AS building_name
-        FROM transformers t
-        LEFT JOIN buildings b ON t.building_id = b.building_id
-    `,
     searchColumns: ['t.name'],
     filters: [
-        { param: 'power_min',   column: 't.power_kva',   kind: 'gte', cast: 'float' },
-        { param: 'power_max',   column: 't.power_kva',   kind: 'lte', cast: 'float' },
-        { param: 'voltage_kv',  column: 't.voltage_kv',  kind: 'exact' },
-        { param: 'building_id', column: 't.building_id', kind: 'exact' },
+        { param: 'power_min',  column: 't.power_kva',  kind: 'gte', cast: 'float' },
+        { param: 'power_max',  column: 't.power_kva',  kind: 'lte', cast: 'float' },
+        { param: 'voltage_kv', column: 't.voltage_kv', kind: 'exact' },
     ],
-    // Legacy UI sends sort=id, DB PK is transformer_id
     sortAliasMap: { id: 'transformer_id' },
 };
-
-// Note: sort goes through the real column, not the t.alias (validateSortOrder
-// whitelist has bare column names). We apply a `t.` prefix below to match
-// the pre-refactor behavior for the default transformer_id case.
 
 async function getOptimizedTransformers(req, res, next) {
     try {
@@ -50,18 +45,18 @@ async function getOptimizedTransformers(req, res, next) {
 
 async function createTransformer(req, res, next) {
     try {
-        const { name, power_kva, voltage_kv, building_id } = req.body;
+        const { name, power_kva, voltage_kv } = req.body;
 
         if (!name || !power_kva || !voltage_kv) {
             return next(createError('Name, power_kva and voltage_kv are required', 400));
         }
 
         const query = `
-            INSERT INTO transformers (name, power_kva, voltage_kv, building_id)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO transformers (name, power_kva, voltage_kv)
+            VALUES ($1, $2, $3)
             RETURNING *
         `;
-        const result = await pool.query(query, [name, power_kva, voltage_kv, building_id]);
+        const result = await pool.query(query, [name, power_kva, voltage_kv]);
 
         res.status(201).json({
             success: true,
@@ -77,13 +72,10 @@ async function createTransformer(req, res, next) {
 async function getTransformerById(req, res, next) {
     try {
         const { id } = req.params;
-        const query = `
-            SELECT t.*, b.name as building_name
-            FROM transformers t
-            LEFT JOIN buildings b ON t.building_id = b.building_id
-            WHERE t.transformer_id = $1
-        `;
-        const result = await pool.query(query, [id]);
+        const result = await pool.query(
+            'SELECT * FROM transformers WHERE transformer_id = $1',
+            [id]
+        );
 
         if (result.rows.length === 0) {
             return next(createError('Transformer not found', 404));
@@ -95,7 +87,11 @@ async function getTransformerById(req, res, next) {
     }
 }
 
-const TRANSFORMER_UPDATE_FIELDS = ['name', 'power_kva', 'voltage_kv', 'building_id'];
+const TRANSFORMER_UPDATE_FIELDS = [
+    'name', 'power_kva', 'voltage_kv',
+    'location', 'latitude', 'longitude', 'manufacturer', 'model', 'status',
+    'installation_date',
+];
 
 async function updateTransformer(req, res, next) {
     try {

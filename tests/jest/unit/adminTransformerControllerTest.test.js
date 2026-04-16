@@ -115,29 +115,12 @@ describe('AdminTransformerController', () => {
             expect(dataQuery).toContain('voltage_kv');
         });
 
-        test('applies building_id filter', async () => {
-            req.query = { building_id: '5' };
-            db.query
-                .mockResolvedValueOnce({ rows: [] })
-                .mockResolvedValueOnce({ rows: [{ count: '0' }] });
-
-            await getOptimizedTransformers(req, res, next);
-
-            const dataQuery = db.query.mock.calls[0][0];
-            expect(dataQuery).toContain('building_id');
-        });
-
-        test('joins with buildings table', async () => {
-            db.query
-                .mockResolvedValueOnce({ rows: [] })
-                .mockResolvedValueOnce({ rows: [{ count: '0' }] });
-
-            await getOptimizedTransformers(req, res, next);
-
-            const dataQuery = db.query.mock.calls[0][0];
-            expect(dataQuery).toContain('LEFT JOIN buildings');
-            expect(dataQuery).toContain('building_name');
-        });
+        // Phase 5 smoke surfaced that the transformers table has no
+        // building_id column (the FK lives on buildings.primary/backup_-
+        // transformer_id). The pre-Phase-5 controller JOINed on that
+        // non-existent column and filtered by it, so the endpoint was
+        // broken at runtime. The refactor drops both — tests updated to
+        // match reality.
 
         test('calls next on database error', async () => {
             db.query.mockRejectedValue(new Error('DB error'));
