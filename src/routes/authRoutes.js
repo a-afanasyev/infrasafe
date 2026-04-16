@@ -227,7 +227,7 @@ router.post('/logout', authController.logout);
  *       400:
  *         description: Отсутствует refresh токен
  */
-router.post('/refresh', authenticateRefresh, authController.refreshToken);
+router.post('/refresh', authLimiter.middleware(), authenticateRefresh, authController.refreshToken);
 
 /**
  * @swagger
