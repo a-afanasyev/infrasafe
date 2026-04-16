@@ -7,6 +7,9 @@ const IntegrationConfig = require('../../../src/models/IntegrationConfig');
 describe('IntegrationConfig Model', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        // Phase 11.5: in-memory 60s cache persists across test boundaries
+        // otherwise. Flush it so each test starts from a clean state.
+        IntegrationConfig._clearCache();
     });
 
     describe('get', () => {

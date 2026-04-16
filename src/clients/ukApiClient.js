@@ -14,13 +14,27 @@ class UKApiClient {
     constructor() {
         this._token = null;
         this._tokenExpiresAt = 0;
+        // Phase 11.4 (ARCH-110): dedup concurrent auth attempts. Under a
+        // burst of cached-alert-forwarding, N parallel callers previously
+        // fired N /auth/login requests. We now share one promise until it
+        // settles; all callers await the same in-flight auth.
+        this._authPromise = null;
     }
 
     async authenticate() {
         if (this._token && Date.now() < this._tokenExpiresAt) {
             return this._token;
         }
+        if (this._authPromise) {
+            return this._authPromise;
+        }
 
+        this._authPromise = this._doAuthenticate()
+            .finally(() => { this._authPromise = null; });
+        return this._authPromise;
+    }
+
+    async _doAuthenticate() {
         const apiUrl = await IntegrationConfig.get('uk_api_url');
         validateUKApiUrl(apiUrl);
         const username = process.env.UK_SERVICE_USER;
@@ -46,6 +60,7 @@ class UKApiClient {
     clearToken() {
         this._token = null;
         this._tokenExpiresAt = 0;
+        this._authPromise = null;
     }
 
     async createRequest(data) {

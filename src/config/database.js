@@ -8,16 +8,19 @@ let pool;
 // Инициализация подключения к базе данных
 const init = async () => {
     try {
+        // Phase 11.9 (ARCH-014): pool parameters are env-driven so ops can
+        // tune capacity per environment without code changes. Defaults
+        // match the prior hardcoded values.
         pool = new Pool({
             user: process.env.DB_USER,
             host: process.env.DB_HOST,
             database: process.env.DB_NAME,
             password: process.env.DB_PASSWORD,
             port: parseInt(process.env.DB_PORT || '5432'),
-            max: 20,
-            min: 2,
-            idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 5000,
+            max: parseInt(process.env.DB_POOL_MAX || '20', 10),
+            min: parseInt(process.env.DB_POOL_MIN || '2', 10),
+            idleTimeoutMillis: parseInt(process.env.DB_POOL_IDLE_TIMEOUT || '30000', 10),
+            connectionTimeoutMillis: parseInt(process.env.DB_POOL_CONNECT_TIMEOUT || '5000', 10),
         });
 
         // Обработка ошибок idle-клиентов
