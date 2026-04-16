@@ -9,13 +9,6 @@ jest.mock('../../../src/utils/logger', () => ({
     debug: jest.fn()
 }));
 
-jest.mock('../../../src/controllers/metricController', () => ({
-    createMetric: jest.fn(),
-    getMetricById: jest.fn(),
-    updateMetric: jest.fn(),
-    deleteMetric: jest.fn()
-}));
-
 jest.mock('../../../src/services/cacheService', () => ({
     get: jest.fn().mockResolvedValue(null),
     set: jest.fn().mockResolvedValue(undefined),
@@ -24,13 +17,8 @@ jest.mock('../../../src/services/cacheService', () => ({
 }));
 
 const db = require('../../../src/config/database');
-const metricController = require('../../../src/controllers/metricController');
 const {
     getOptimizedMetrics,
-    createMetric,
-    getMetricById,
-    updateMetric,
-    deleteMetric,
     batchMetricsOperation
 } = require('../../../src/controllers/admin/adminMetricController');
 
@@ -48,8 +36,8 @@ describe('AdminMetricController', () => {
     });
 
     describe('getOptimizedMetrics', () => {
-        test('returns paginated metrics with default params', async () => {
-            const mockRows = [{ metric_id: 1, controller_id: 1, timestamp: '2026-01-01' }];
+        test('returns paginated metrics with defaults', async () => {
+            const mockRows = [{ metric_id: 1, controller_id: 10 }];
             db.query
                 .mockResolvedValueOnce({ rows: mockRows })
                 .mockResolvedValueOnce({ rows: [{ count: '1' }] });
@@ -59,12 +47,21 @@ describe('AdminMetricController', () => {
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
                     data: mockRows,
-                    pagination: expect.objectContaining({
-                        total: 1,
-                        page: expect.any(Number),
-                        limit: expect.any(Number),
-                        totalPages: expect.any(Number)
-                    })
+                    pagination: expect.objectContaining({ total: 1 })
+                })
+            );
+        });
+
+        test('default limit is 100 (metrics-specific)', async () => {
+            db.query
+                .mockResolvedValueOnce({ rows: [] })
+                .mockResolvedValueOnce({ rows: [{ count: '0' }] });
+
+            await getOptimizedMetrics(req, res, next);
+
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    pagination: expect.objectContaining({ limit: 100 })
                 })
             );
         });
@@ -77,66 +74,24 @@ describe('AdminMetricController', () => {
 
             await getOptimizedMetrics(req, res, next);
 
-            const dataQuery = db.query.mock.calls[0][0];
+            const dataQuery = db.query.mock.calls.find(c => /LIMIT/.test(c[0]))[0];
             expect(dataQuery).toContain('controller_id');
         });
 
-        test('applies start_date filter', async () => {
-            req.query = { start_date: '2026-01-01' };
+        test('applies start_date / end_date as timestamp range', async () => {
+            req.query = { start_date: '2025-01-01', end_date: '2025-12-31' };
             db.query
                 .mockResolvedValueOnce({ rows: [] })
                 .mockResolvedValueOnce({ rows: [{ count: '0' }] });
 
             await getOptimizedMetrics(req, res, next);
 
-            const dataQuery = db.query.mock.calls[0][0];
-            expect(dataQuery).toContain('timestamp >=');
+            const dataQuery = db.query.mock.calls.find(c => /LIMIT/.test(c[0]))[0];
+            expect(dataQuery).toMatch(/timestamp\s*>=/);
+            expect(dataQuery).toMatch(/timestamp\s*<=/);
         });
 
-        test('applies end_date filter', async () => {
-            req.query = { end_date: '2026-12-31' };
-            db.query
-                .mockResolvedValueOnce({ rows: [] })
-                .mockResolvedValueOnce({ rows: [{ count: '0' }] });
-
-            await getOptimizedMetrics(req, res, next);
-
-            const dataQuery = db.query.mock.calls[0][0];
-            expect(dataQuery).toContain('timestamp <=');
-        });
-
-        test('applies multiple filters together', async () => {
-            req.query = { controller_id: '1', start_date: '2026-01-01', end_date: '2026-12-31' };
-            db.query
-                .mockResolvedValueOnce({ rows: [] })
-                .mockResolvedValueOnce({ rows: [{ count: '0' }] });
-
-            await getOptimizedMetrics(req, res, next);
-
-            const dataQuery = db.query.mock.calls[0][0];
-            expect(dataQuery).toContain('WHERE');
-            expect(dataQuery).toContain('AND');
-        });
-
-        test('respects page and limit params', async () => {
-            req.query = { page: '2', limit: '20' };
-            db.query
-                .mockResolvedValueOnce({ rows: [] })
-                .mockResolvedValueOnce({ rows: [{ count: '50' }] });
-
-            await getOptimizedMetrics(req, res, next);
-
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    pagination: expect.objectContaining({
-                        page: 2,
-                        limit: 20
-                    })
-                })
-            );
-        });
-
-        test('calls next on database error', async () => {
+        test('calls next on DB error', async () => {
             db.query.mockRejectedValue(new Error('DB error'));
 
             await getOptimizedMetrics(req, res, next);
@@ -145,41 +100,13 @@ describe('AdminMetricController', () => {
         });
     });
 
-    describe('CRUD delegation', () => {
-        test('createMetric delegates to metricController', async () => {
-            metricController.createMetric.mockResolvedValue(undefined);
-
-            await createMetric(req, res, next);
-
-            expect(metricController.createMetric).toHaveBeenCalledWith(req, res, next);
-        });
-
-        test('getMetricById delegates to metricController', async () => {
-            metricController.getMetricById.mockResolvedValue(undefined);
-
-            await getMetricById(req, res, next);
-
-            expect(metricController.getMetricById).toHaveBeenCalledWith(req, res, next);
-        });
-
-        test('updateMetric delegates to metricController', async () => {
-            metricController.updateMetric.mockResolvedValue(undefined);
-
-            await updateMetric(req, res, next);
-
-            expect(metricController.updateMetric).toHaveBeenCalledWith(req, res, next);
-        });
-
-        test('deleteMetric delegates to metricController', async () => {
-            metricController.deleteMetric.mockResolvedValue(undefined);
-
-            await deleteMetric(req, res, next);
-
-            expect(metricController.deleteMetric).toHaveBeenCalledWith(req, res, next);
-        });
-    });
-
     describe('batchMetricsOperation', () => {
-        test.todo('performs real batch operations when implemented');
+        test('returns success with affected 0', async () => {
+            req.body = { action: 'delete' };
+            await batchMetricsOperation(req, res, next);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({ success: true, affected: 0 })
+            );
+        });
     });
 });

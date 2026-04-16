@@ -2,6 +2,11 @@
  * Admin controller barrel file.
  * Re-exports every method with the EXACT names that adminRoutes.js expects,
  * so switching the require path is the only change needed in the router.
+ *
+ * Phase 5 (2026-04-17): for Buildings / Controllers / Metrics, CRUD
+ * methods (create / getById / update / delete) are sourced directly from
+ * the non-admin controllers rather than from dead-delegation proxies.
+ * Auth + rate-limit guards remain at the route layer in adminRoutes.js.
  */
 
 const adminBuildingController = require('./adminBuildingController');
@@ -14,29 +19,35 @@ const adminColdWaterSourceController = require('./adminColdWaterSourceController
 const adminHeatSourceController = require('./adminHeatSourceController');
 const adminGeneralController = require('./adminGeneralController');
 
+// Non-admin CRUD controllers (Phase 5 proxy removal)
+const buildingController = require('../buildingController');
+const controllerController = require('../controllerController');
+const metricController = require('../metricController');
+
 module.exports = {
     // Buildings
     getOptimizedBuildings: adminBuildingController.getOptimizedBuildings,
-    createBuilding: adminBuildingController.createBuilding,
-    getBuildingById: adminBuildingController.getBuildingById,
-    updateBuilding: adminBuildingController.updateBuilding,
-    deleteBuilding: adminBuildingController.deleteBuilding,
+    createBuilding: buildingController.createBuilding,
+    getBuildingById: buildingController.getBuildingById,
+    updateBuilding: buildingController.updateBuilding,
+    deleteBuilding: buildingController.deleteBuilding,
     batchBuildingsOperation: adminBuildingController.batchBuildingsOperation,
 
     // Controllers
     getOptimizedControllers: adminControllerController.getOptimizedControllers,
-    createController: adminControllerController.createController,
-    getControllerById: adminControllerController.getControllerById,
-    updateController: adminControllerController.updateController,
-    deleteController: adminControllerController.deleteController,
+    createController: controllerController.createController,
+    getControllerById: controllerController.getControllerById,
+    updateController: controllerController.updateController,
+    deleteController: controllerController.deleteController,
     batchControllersOperation: adminControllerController.batchControllersOperation,
 
-    // Metrics
+    // Metrics — note: non-admin metricController intentionally exposes no
+    // updateMetric; the prior admin proxy was dead-code (called undefined).
+    // PUT /admin/metrics/:id route is removed accordingly in Phase 5.
     getOptimizedMetrics: adminMetricController.getOptimizedMetrics,
-    createMetric: adminMetricController.createMetric,
-    getMetricById: adminMetricController.getMetricById,
-    updateMetric: adminMetricController.updateMetric,
-    deleteMetric: adminMetricController.deleteMetric,
+    createMetric: metricController.createMetric,
+    getMetricById: metricController.getMetricById,
+    deleteMetric: metricController.deleteMetric,
     batchMetricsOperation: adminMetricController.batchMetricsOperation,
 
     // Transformers

@@ -323,9 +323,10 @@ router.post('/controllers/batch', rateLimitStrict, adminController.batchControll
 router.get('/metrics', adminController.getOptimizedMetrics);
 
 // CRUD операции для метрик
+// NOTE: PUT intentionally absent — metricService has no update path
+// (metrics are append-only telemetry; the prior admin route was dead code).
 router.post('/metrics', rateLimitStrict, adminController.createMetric);
 router.get('/metrics/:id', adminController.getMetricById);
-router.put('/metrics/:id', rateLimitStrict, adminController.updateMetric);
 router.delete('/metrics/:id', rateLimitStrict, adminController.deleteMetric);
 
 /**

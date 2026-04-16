@@ -139,11 +139,18 @@ async function buildPaginatedList(pool, config, req) {
             params.push(`%${cleanValue}%`);
             whereConditions.push(`${column} ILIKE $${params.length}`);
         } else if (f.kind === 'gte' || f.kind === 'lte') {
-            let numericValue;
-            if (f.cast === 'int') numericValue = parseInt(value, 10);
-            else numericValue = Number(value);
-            if (!Number.isFinite(numericValue)) continue;
-            params.push(numericValue);
+            // Numeric casts are opt-in (cast: 'int' for integers, 'float' for floats).
+            // Without cast, the value is passed through as-is — PostgreSQL handles
+            // implicit coercion for timestamps, dates, etc.
+            let outValue = value;
+            if (f.cast === 'int') {
+                outValue = parseInt(value, 10);
+                if (!Number.isFinite(outValue)) continue;
+            } else if (f.cast === 'float') {
+                outValue = Number(value);
+                if (!Number.isFinite(outValue)) continue;
+            }
+            params.push(outValue);
             const op = f.kind === 'gte' ? '>=' : '<=';
             whereConditions.push(`${column} ${op} $${params.length}`);
         }

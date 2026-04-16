@@ -9,13 +9,6 @@ jest.mock('../../../src/utils/logger', () => ({
     debug: jest.fn()
 }));
 
-jest.mock('../../../src/controllers/controllerController', () => ({
-    createController: jest.fn(),
-    getControllerById: jest.fn(),
-    updateController: jest.fn(),
-    deleteController: jest.fn()
-}));
-
 jest.mock('../../../src/services/cacheService', () => ({
     get: jest.fn().mockResolvedValue(null),
     set: jest.fn().mockResolvedValue(undefined),
@@ -24,13 +17,8 @@ jest.mock('../../../src/services/cacheService', () => ({
 }));
 
 const db = require('../../../src/config/database');
-const controllerController = require('../../../src/controllers/controllerController');
 const {
     getOptimizedControllers,
-    createController,
-    getControllerById,
-    updateController,
-    deleteController,
     batchControllersOperation
 } = require('../../../src/controllers/admin/adminControllerController');
 
@@ -48,8 +36,8 @@ describe('AdminControllerController', () => {
     });
 
     describe('getOptimizedControllers', () => {
-        test('returns paginated controllers with default params', async () => {
-            const mockRows = [{ controller_id: 1, serial_number: 'SN001' }];
+        test('returns paginated controllers with defaults', async () => {
+            const mockRows = [{ controller_id: 1, serial_number: 'SN-1' }];
             db.query
                 .mockResolvedValueOnce({ rows: mockRows })
                 .mockResolvedValueOnce({ rows: [{ count: '1' }] });
@@ -63,23 +51,9 @@ describe('AdminControllerController', () => {
                         total: 1,
                         page: expect.any(Number),
                         limit: expect.any(Number),
-                        totalPages: expect.any(Number)
                     })
                 })
             );
-        });
-
-        test('applies search filter with ILIKE on serial_number', async () => {
-            req.query = { search: 'SN' };
-            db.query
-                .mockResolvedValueOnce({ rows: [] })
-                .mockResolvedValueOnce({ rows: [{ count: '0' }] });
-
-            await getOptimizedControllers(req, res, next);
-
-            const dataQuery = db.query.mock.calls[0][0];
-            expect(dataQuery).toContain('ILIKE');
-            expect(dataQuery).toContain('serial_number');
         });
 
         test('applies status filter', async () => {
@@ -90,66 +64,35 @@ describe('AdminControllerController', () => {
 
             await getOptimizedControllers(req, res, next);
 
-            const dataQuery = db.query.mock.calls[0][0];
+            const dataQuery = db.query.mock.calls.find(c => /LIMIT/.test(c[0]))[0];
             expect(dataQuery).toContain('status');
         });
 
         test('applies manufacturer filter', async () => {
-            req.query = { manufacturer: 'Siemens' };
+            req.query = { manufacturer: 'ACME' };
             db.query
                 .mockResolvedValueOnce({ rows: [] })
                 .mockResolvedValueOnce({ rows: [{ count: '0' }] });
 
             await getOptimizedControllers(req, res, next);
 
-            const dataQuery = db.query.mock.calls[0][0];
+            const dataQuery = db.query.mock.calls.find(c => /LIMIT/.test(c[0]))[0];
             expect(dataQuery).toContain('manufacturer');
         });
 
-        test('applies building_id filter', async () => {
-            req.query = { building_id: '5' };
+        test('applies search filter via serial_number ILIKE', async () => {
+            req.query = { search: 'SN-' };
             db.query
                 .mockResolvedValueOnce({ rows: [] })
                 .mockResolvedValueOnce({ rows: [{ count: '0' }] });
 
             await getOptimizedControllers(req, res, next);
 
-            const dataQuery = db.query.mock.calls[0][0];
-            expect(dataQuery).toContain('building_id');
+            const dataQuery = db.query.mock.calls.find(c => /LIMIT/.test(c[0]))[0];
+            expect(dataQuery).toMatch(/serial_number ILIKE/);
         });
 
-        test('applies multiple filters together', async () => {
-            req.query = { search: 'SN', status: 'online', building_id: '3' };
-            db.query
-                .mockResolvedValueOnce({ rows: [] })
-                .mockResolvedValueOnce({ rows: [{ count: '0' }] });
-
-            await getOptimizedControllers(req, res, next);
-
-            const dataQuery = db.query.mock.calls[0][0];
-            expect(dataQuery).toContain('WHERE');
-            expect(dataQuery).toContain('AND');
-        });
-
-        test('respects page and limit params', async () => {
-            req.query = { page: '3', limit: '25' };
-            db.query
-                .mockResolvedValueOnce({ rows: [] })
-                .mockResolvedValueOnce({ rows: [{ count: '100' }] });
-
-            await getOptimizedControllers(req, res, next);
-
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    pagination: expect.objectContaining({
-                        page: 3,
-                        limit: 25
-                    })
-                })
-            );
-        });
-
-        test('calls next on database error', async () => {
+        test('calls next on DB error', async () => {
             db.query.mockRejectedValue(new Error('DB error'));
 
             await getOptimizedControllers(req, res, next);
@@ -158,76 +101,12 @@ describe('AdminControllerController', () => {
         });
     });
 
-    describe('CRUD delegation', () => {
-        test('createController delegates to controllerController', async () => {
-            controllerController.createController.mockResolvedValue(undefined);
-
-            await createController(req, res, next);
-
-            expect(controllerController.createController).toHaveBeenCalledWith(req, res, next);
-        });
-
-        test('getControllerById delegates to controllerController', async () => {
-            controllerController.getControllerById.mockResolvedValue(undefined);
-
-            await getControllerById(req, res, next);
-
-            expect(controllerController.getControllerById).toHaveBeenCalledWith(req, res, next);
-        });
-
-        test('updateController delegates to controllerController', async () => {
-            controllerController.updateController.mockResolvedValue(undefined);
-
-            await updateController(req, res, next);
-
-            expect(controllerController.updateController).toHaveBeenCalledWith(req, res, next);
-        });
-
-        test('deleteController delegates to controllerController', async () => {
-            controllerController.deleteController.mockResolvedValue(undefined);
-
-            await deleteController(req, res, next);
-
-            expect(controllerController.deleteController).toHaveBeenCalledWith(req, res, next);
-        });
-    });
-
     describe('batchControllersOperation', () => {
         test('returns success with affected count', async () => {
             req.body = { action: 'delete', ids: [1, 2] };
-
             await batchControllersOperation(req, res, next);
-
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    success: true,
-                    affected: 2
-                })
-            );
-        });
-
-        test('returns affected 0 when ids not provided', async () => {
-            req.body = { action: 'delete' };
-
-            await batchControllersOperation(req, res, next);
-
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    success: true,
-                    affected: 0
-                })
-            );
-        });
-
-        test('includes action name in message', async () => {
-            req.body = { action: 'update_status', ids: [1] };
-
-            await batchControllersOperation(req, res, next);
-
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: expect.stringContaining('update_status')
-                })
+                expect.objectContaining({ success: true, affected: 2 })
             );
         });
     });

@@ -9,13 +9,6 @@ jest.mock('../../../src/utils/logger', () => ({
     debug: jest.fn()
 }));
 
-jest.mock('../../../src/controllers/buildingController', () => ({
-    createBuilding: jest.fn(),
-    getBuildingById: jest.fn(),
-    updateBuilding: jest.fn(),
-    deleteBuilding: jest.fn()
-}));
-
 jest.mock('../../../src/services/cacheService', () => ({
     get: jest.fn().mockResolvedValue(null),
     set: jest.fn().mockResolvedValue(undefined),
@@ -24,13 +17,8 @@ jest.mock('../../../src/services/cacheService', () => ({
 }));
 
 const db = require('../../../src/config/database');
-const buildingController = require('../../../src/controllers/buildingController');
 const {
     getOptimizedBuildings,
-    createBuilding,
-    getBuildingById,
-    updateBuilding,
-    deleteBuilding,
     batchBuildingsOperation
 } = require('../../../src/controllers/admin/adminBuildingController');
 
@@ -77,7 +65,8 @@ describe('AdminBuildingController', () => {
 
             await getOptimizedBuildings(req, res, next);
 
-            const dataQuery = db.query.mock.calls[0][0];
+            // find the data query (contains LIMIT/OFFSET; count does not)
+            const dataQuery = db.query.mock.calls.find(c => /LIMIT/.test(c[0]))[0];
             expect(dataQuery).toContain('ILIKE');
         });
 
@@ -89,7 +78,7 @@ describe('AdminBuildingController', () => {
 
             await getOptimizedBuildings(req, res, next);
 
-            const dataQuery = db.query.mock.calls[0][0];
+            const dataQuery = db.query.mock.calls.find(c => /LIMIT/.test(c[0]))[0];
             expect(dataQuery).toContain('town');
         });
 
@@ -101,7 +90,7 @@ describe('AdminBuildingController', () => {
 
             await getOptimizedBuildings(req, res, next);
 
-            const dataQuery = db.query.mock.calls[0][0];
+            const dataQuery = db.query.mock.calls.find(c => /LIMIT/.test(c[0]))[0];
             expect(dataQuery).toContain('region');
         });
 
@@ -113,7 +102,7 @@ describe('AdminBuildingController', () => {
 
             await getOptimizedBuildings(req, res, next);
 
-            const dataQuery = db.query.mock.calls[0][0];
+            const dataQuery = db.query.mock.calls.find(c => /LIMIT/.test(c[0]))[0];
             expect(dataQuery).toContain('management_company');
         });
 
@@ -125,7 +114,7 @@ describe('AdminBuildingController', () => {
 
             await getOptimizedBuildings(req, res, next);
 
-            const dataQuery = db.query.mock.calls[0][0];
+            const dataQuery = db.query.mock.calls.find(c => /LIMIT/.test(c[0]))[0];
             expect(dataQuery).toContain('WHERE');
             expect(dataQuery).toContain('AND');
         });
@@ -157,39 +146,8 @@ describe('AdminBuildingController', () => {
         });
     });
 
-    describe('CRUD delegation', () => {
-        test('createBuilding delegates to buildingController', async () => {
-            buildingController.createBuilding.mockResolvedValue(undefined);
-
-            await createBuilding(req, res, next);
-
-            expect(buildingController.createBuilding).toHaveBeenCalledWith(req, res, next);
-        });
-
-        test('getBuildingById delegates to buildingController', async () => {
-            buildingController.getBuildingById.mockResolvedValue(undefined);
-
-            await getBuildingById(req, res, next);
-
-            expect(buildingController.getBuildingById).toHaveBeenCalledWith(req, res, next);
-        });
-
-        test('updateBuilding delegates to buildingController', async () => {
-            buildingController.updateBuilding.mockResolvedValue(undefined);
-
-            await updateBuilding(req, res, next);
-
-            expect(buildingController.updateBuilding).toHaveBeenCalledWith(req, res, next);
-        });
-
-        test('deleteBuilding delegates to buildingController', async () => {
-            buildingController.deleteBuilding.mockResolvedValue(undefined);
-
-            await deleteBuilding(req, res, next);
-
-            expect(buildingController.deleteBuilding).toHaveBeenCalledWith(req, res, next);
-        });
-    });
+    // CRUD delegation block removed in Phase 5: proxies were dead-path
+    // and admin routes now call buildingController directly.
 
     describe('batchBuildingsOperation', () => {
         test('returns success with affected count', async () => {
