@@ -112,11 +112,29 @@ describe('PowerAnalyticsController', () => {
     });
 
     describe('getLinesPower', () => {
-        test.todo('returns real lines power data when implemented');
+        // Controller is a stub (returns empty array). Pinning the stub
+        // shape so a future real implementation breaks the test loudly.
+        test('stub returns empty array with count 0 and status 200', async () => {
+            const { getLinesPower } = require('../../../src/controllers/powerAnalyticsController');
+            await getLinesPower(req, res, next);
+            expect(res.status).toHaveBeenCalledWith(200);
+            expect(res.json).toHaveBeenCalledWith({
+                success: true, data: [], count: 0,
+            });
+        });
     });
 
     describe('getLinePower', () => {
-        test.todo('returns real line power data when implemented');
+        // Stub returns 404 unconditionally; pinning until implemented.
+        test('stub returns 404 not found', async () => {
+            const { getLinePower } = require('../../../src/controllers/powerAnalyticsController');
+            req.params.lineId = '1';
+            await getLinePower(req, res, next);
+            expect(res.status).toHaveBeenCalledWith(404);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({ success: false })
+            );
+        });
     });
 
     describe('getTransformersPower', () => {
@@ -194,7 +212,15 @@ describe('PowerAnalyticsController', () => {
     });
 
     describe('getPhaseImbalanceAnalysis', () => {
-        test.todo('returns real phase imbalance analysis when implemented');
+        // Stub returns empty array; pinning until implemented.
+        test('stub returns empty array with count 0', async () => {
+            const { getPhaseImbalanceAnalysis } = require('../../../src/controllers/powerAnalyticsController');
+            await getPhaseImbalanceAnalysis(req, res, next);
+            expect(res.status).toHaveBeenCalledWith(200);
+            expect(res.json).toHaveBeenCalledWith({
+                success: true, data: [], count: 0,
+            });
+        });
     });
 
     describe('refreshPowerViews', () => {
