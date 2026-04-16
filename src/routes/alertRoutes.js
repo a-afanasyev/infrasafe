@@ -308,7 +308,12 @@ router.post('/check/all-transformers', applyAdminRateLimit, isAdmin, alertContro
  *                 data:
  *                   $ref: '#/components/schemas/Alert'
  */
-router.post('/', applyCrudRateLimit, alertController.createAlert);
+// Phase 7 security: UK forwarding pipeline picks up `alert.created` events and
+// reaches out to the external UK management bot. A non-admin user who can
+// POST raw alerts here would be able to inject synthetic entries into that
+// outbound pipeline. Acknowledge / resolve / check-transformer are already
+// admin-only; create now joins them.
+router.post('/', applyCrudRateLimit, isAdmin, alertController.createAlert);
 
 /**
  * @swagger

@@ -5,6 +5,7 @@ const IntegrationConfig = require('../models/IntegrationConfig');
 const IntegrationLog = require('../models/IntegrationLog');
 const logger = require('../utils/logger');
 const Building = require('../models/Building');
+const AlertRequestMap = require('../models/AlertRequestMap');
 const { isValidBuildingEvent } = require('../utils/webhookValidation');
 const { validateUKApiUrl } = require('../utils/urlValidation');
 const alertEvents = require('../events/alertEvents');
@@ -434,10 +435,13 @@ class UKIntegrationService {
                 return;
             }
 
+            // Deferred emit so the integration log is marked 'success' BEFORE
+            // alertService reacts to UK_REQUEST_RESOLVED (preserves audit-trail
+            // ordering: integration log success precedes the alert resolution).
+            let deferredResolveAlertId = null;
+
             // For request.status_changed — check if terminal
             if (event === 'request.status_changed' && ukRequest.status) {
-                const AlertRequestMap = require('../models/AlertRequestMap');
-
                 // Find mapping by request number
                 const mapping = await AlertRequestMap.findByRequestNumber(ukRequest.request_number);
                 if (!mapping) {
@@ -449,25 +453,29 @@ class UKIntegrationService {
                 const newStatus = TERMINAL_STATUSES.includes(ukRequest.status) ? 'resolved' : 'active';
                 await AlertRequestMap.updateStatus(mapping.id, newStatus);
 
-                // If terminal — check if ALL requests for this alert are terminal
+                // If terminal — defer the UK_REQUEST_RESOLVED emit until after
+                // the integration log is updated. alertService's listener then
+                // calls resolveAlert with the system-initiated (null user) context.
                 if (TERMINAL_STATUSES.includes(ukRequest.status)) {
                     const allTerminal = await AlertRequestMap.areAllTerminal(mapping.infrasafe_alert_id);
                     if (allTerminal) {
-                        // Phase 7: emit an event instead of `require('./alertService')`.
-                        // alertService's listener (registered at module load) calls
-                        // resolveAlert with the system-initiated (null user) context.
-                        alertEvents.emit(
-                            alertEvents.EVENTS.UK_REQUEST_RESOLVED,
-                            { alertId: mapping.infrasafe_alert_id }
-                        );
+                        deferredResolveAlertId = mapping.infrasafe_alert_id;
                     }
                 }
 
                 logger.info(`handleRequestWebhook: updated mapping for request ${ukRequest.request_number} → status: ${newStatus}`);
             }
 
-            // Mark log entry as success
+            // Mark log entry as success — must happen before the alert resolution
+            // event so that audit trail shows the integration ack first.
             await IntegrationLog.updateStatus(logEntry.id, 'success').catch(() => {});
+
+            if (deferredResolveAlertId !== null) {
+                alertEvents.emit(
+                    alertEvents.EVENTS.UK_REQUEST_RESOLVED,
+                    { alertId: deferredResolveAlertId }
+                );
+            }
         } catch (error) {
             // Mark log entry as error
             if (logEntry) {
