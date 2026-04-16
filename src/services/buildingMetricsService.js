@@ -1,6 +1,13 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
 
+const DEFAULT_LIMIT = 5000;
+const MAX_LIMIT = 5000;
+
+/**
+ * Query with optional bbox filter and hard LIMIT.
+ * bbox params are nullable: when NULL the BETWEEN condition passes.
+ */
 const BUILDINGS_METRICS_QUERY = `
     SELECT
         b.building_id,
@@ -41,7 +48,10 @@ const BUILDINGS_METRICS_QUERY = `
         ORDER BY m2.timestamp DESC
         LIMIT 1
     ) m ON true
+    WHERE ($1::float8 IS NULL OR b.latitude  BETWEEN $1 AND $2)
+      AND ($3::float8 IS NULL OR b.longitude BETWEEN $3 AND $4)
     ORDER BY b.building_id
+    LIMIT $5
 `;
 
 const mapAuthenticatedRow = (row) => ({
@@ -86,24 +96,73 @@ const mapAnonymousRow = (row) => ({
     has_controller: !!row.controller_id
 });
 
-const getBuildingsWithMetrics = async (isAuthenticated) => {
-    const result = await db.query(BUILDINGS_METRICS_QUERY);
+/**
+ * Parse a bbox string "lat_min,lng_min,lat_max,lng_max" into tuple.
+ * Returns null if unset, throws Error on invalid format.
+ */
+const parseBbox = (raw) => {
+    if (!raw) return null;
+    const parts = String(raw).split(',').map(s => s.trim());
+    if (parts.length !== 4) {
+        throw new Error('bbox must be 4 comma-separated numbers: lat_min,lng_min,lat_max,lng_max');
+    }
+    const nums = parts.map(Number);
+    if (nums.some(n => !Number.isFinite(n))) {
+        throw new Error('bbox values must be finite numbers');
+    }
+    const [latMin, lngMin, latMax, lngMax] = nums;
+    if (latMin < -90 || latMax > 90 || latMin > latMax) {
+        throw new Error('bbox latitude out of range or inverted');
+    }
+    if (lngMin < -180 || lngMax > 180 || lngMin > lngMax) {
+        throw new Error('bbox longitude out of range or inverted');
+    }
+    return { latMin, lngMin, latMax, lngMax };
+};
+
+/**
+ * Clamp a limit param.
+ */
+const parseLimit = (raw) => {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return DEFAULT_LIMIT;
+    return Math.min(Math.floor(n), MAX_LIMIT);
+};
+
+const getBuildingsWithMetrics = async (isAuthenticated, options = {}) => {
+    const { bbox = null, limit = DEFAULT_LIMIT } = options;
+
+    const params = [
+        bbox ? bbox.latMin : null,
+        bbox ? bbox.latMax : null,
+        bbox ? bbox.lngMin : null,
+        bbox ? bbox.lngMax : null,
+        limit,
+    ];
+
+    const result = await db.query(BUILDINGS_METRICS_QUERY, params);
 
     const buildings = isAuthenticated
         ? result.rows.map(mapAuthenticatedRow)
         : result.rows.map(mapAnonymousRow);
 
-    logger.info(`Retrieved ${buildings.length} buildings with metrics for map`);
+    logger.info(`Retrieved ${buildings.length} buildings with metrics for map (limit=${limit}, bbox=${bbox ? 'set' : 'none'})`);
 
     return {
         data: buildings,
         pagination: {
             total: buildings.length,
             page: 1,
-            limit: buildings.length,
+            limit,
             totalPages: 1
         }
     };
 };
 
-module.exports = { getBuildingsWithMetrics };
+module.exports = {
+    getBuildingsWithMetrics,
+    parseBbox,
+    parseLimit,
+    DEFAULT_LIMIT,
+    MAX_LIMIT,
+};

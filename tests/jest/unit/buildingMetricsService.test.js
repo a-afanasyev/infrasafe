@@ -115,7 +115,7 @@ describe('buildingMetricsService', () => {
     });
 
     describe('pagination', () => {
-        test('includes pagination metadata', async () => {
+        test('includes pagination metadata with default limit', async () => {
             db.query.mockResolvedValue({ rows: [mockDbRow, mockDbRow] });
 
             const result = await getBuildingsWithMetrics(true);
@@ -123,9 +123,71 @@ describe('buildingMetricsService', () => {
             expect(result.pagination).toEqual({
                 total: 2,
                 page: 1,
-                limit: 2,
+                limit: 5000,
                 totalPages: 1
             });
+        });
+
+        test('respects explicit limit option', async () => {
+            db.query.mockResolvedValue({ rows: [mockDbRow] });
+
+            const result = await getBuildingsWithMetrics(true, { limit: 100 });
+
+            expect(result.pagination.limit).toBe(100);
+        });
+    });
+
+    describe('bbox helpers', () => {
+        const { parseBbox, parseLimit, DEFAULT_LIMIT, MAX_LIMIT } = require('../../../src/services/buildingMetricsService');
+
+        test('parseBbox returns null when unset', () => {
+            expect(parseBbox(null)).toBeNull();
+            expect(parseBbox(undefined)).toBeNull();
+            expect(parseBbox('')).toBeNull();
+        });
+
+        test('parseBbox parses 4 comma-separated values', () => {
+            expect(parseBbox('41.2,69.1,41.4,69.4')).toEqual({
+                latMin: 41.2, lngMin: 69.1, latMax: 41.4, lngMax: 69.4
+            });
+        });
+
+        test('parseBbox throws when fewer than 4 parts', () => {
+            expect(() => parseBbox('1,2,3')).toThrow(/4 comma-separated/);
+        });
+
+        test('parseBbox throws on invalid numbers', () => {
+            expect(() => parseBbox('a,b,c,d')).toThrow(/finite numbers/);
+        });
+
+        test('parseBbox throws on inverted ranges', () => {
+            expect(() => parseBbox('50,10,40,20')).toThrow(/latitude/);
+            expect(() => parseBbox('40,30,50,20')).toThrow(/longitude/);
+        });
+
+        test('parseLimit clamps to MAX_LIMIT and defaults', () => {
+            expect(parseLimit(undefined)).toBe(DEFAULT_LIMIT);
+            expect(parseLimit('abc')).toBe(DEFAULT_LIMIT);
+            expect(parseLimit(-5)).toBe(DEFAULT_LIMIT);
+            expect(parseLimit(100)).toBe(100);
+            expect(parseLimit(999999)).toBe(MAX_LIMIT);
+        });
+
+        test('service query uses 5-param array (bbox nullable + limit)', async () => {
+            db.query.mockResolvedValue({ rows: [] });
+            await getBuildingsWithMetrics(true, {
+                bbox: { latMin: 41, lngMin: 69, latMax: 42, lngMax: 70 },
+                limit: 500
+            });
+            const [, params] = db.query.mock.calls[0];
+            expect(params).toEqual([41, 42, 69, 70, 500]);
+        });
+
+        test('service query passes nulls when bbox omitted', async () => {
+            db.query.mockResolvedValue({ rows: [] });
+            await getBuildingsWithMetrics(true);
+            const [, params] = db.query.mock.calls[0];
+            expect(params).toEqual([null, null, null, null, 5000]);
         });
     });
 });

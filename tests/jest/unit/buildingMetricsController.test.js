@@ -1,6 +1,13 @@
-jest.mock('../../../src/services/buildingMetricsService', () => ({
-    getBuildingsWithMetrics: jest.fn()
-}));
+jest.mock('../../../src/services/buildingMetricsService', () => {
+    const actual = jest.requireActual('../../../src/services/buildingMetricsService');
+    return {
+        getBuildingsWithMetrics: jest.fn(),
+        parseBbox: actual.parseBbox,
+        parseLimit: actual.parseLimit,
+        DEFAULT_LIMIT: actual.DEFAULT_LIMIT,
+        MAX_LIMIT: actual.MAX_LIMIT,
+    };
+});
 
 jest.mock('../../../src/utils/logger', () => ({
     info: jest.fn(),
@@ -36,7 +43,7 @@ describe('BuildingMetricsController', () => {
 
             await getBuildingsWithMetrics(req, res, next);
 
-            expect(buildingMetricsService.getBuildingsWithMetrics).toHaveBeenCalledWith(true);
+            expect(buildingMetricsService.getBuildingsWithMetrics).toHaveBeenCalledWith(true, { bbox: null, limit: 5000 });
             expect(res.json).toHaveBeenCalledWith(mockResult);
         });
 
@@ -49,7 +56,7 @@ describe('BuildingMetricsController', () => {
 
             await getBuildingsWithMetrics(req, res, next);
 
-            expect(buildingMetricsService.getBuildingsWithMetrics).toHaveBeenCalledWith(false);
+            expect(buildingMetricsService.getBuildingsWithMetrics).toHaveBeenCalledWith(false, { bbox: null, limit: 5000 });
             expect(res.json).toHaveBeenCalledWith(mockResult);
         });
 
@@ -59,7 +66,7 @@ describe('BuildingMetricsController', () => {
 
             await getBuildingsWithMetrics(req, res, next);
 
-            expect(buildingMetricsService.getBuildingsWithMetrics).toHaveBeenCalledWith(false);
+            expect(buildingMetricsService.getBuildingsWithMetrics).toHaveBeenCalledWith(false, { bbox: null, limit: 5000 });
         });
 
         test('returns empty array when no buildings', async () => {
@@ -86,6 +93,39 @@ describe('BuildingMetricsController', () => {
 
             await getBuildingsWithMetrics(req, res, next);
 
+            expect(res.json).not.toHaveBeenCalled();
+        });
+
+        test('passes parsed bbox to service', async () => {
+            req.user = { user_id: 1 };
+            req.query = { bbox: '41.2,69.1,41.4,69.4' };
+            buildingMetricsService.getBuildingsWithMetrics.mockResolvedValue([]);
+
+            await getBuildingsWithMetrics(req, res, next);
+
+            expect(buildingMetricsService.getBuildingsWithMetrics).toHaveBeenCalledWith(true, {
+                bbox: { latMin: 41.2, lngMin: 69.1, latMax: 41.4, lngMax: 69.4 },
+                limit: 5000,
+            });
+        });
+
+        test('clamps limit to MAX_LIMIT', async () => {
+            req.user = { user_id: 1 };
+            req.query = { limit: '999999' };
+            buildingMetricsService.getBuildingsWithMetrics.mockResolvedValue([]);
+
+            await getBuildingsWithMetrics(req, res, next);
+
+            expect(buildingMetricsService.getBuildingsWithMetrics).toHaveBeenCalledWith(true, { bbox: null, limit: 5000 });
+        });
+
+        test('returns 400 on invalid bbox', async () => {
+            req.user = { user_id: 1 };
+            req.query = { bbox: '41.2,69.1' };
+
+            await getBuildingsWithMetrics(req, res, next);
+
+            expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
             expect(res.json).not.toHaveBeenCalled();
         });
     });
