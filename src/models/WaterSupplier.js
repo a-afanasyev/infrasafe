@@ -94,7 +94,7 @@ class WaterSupplier {
                     page: parseInt(page),
                     limit: parseInt(limit),
                     total,
-                    pages: Math.ceil(total / limit)
+                    totalPages: Math.ceil(total / limit)
                 }
             };
         } catch (error) {

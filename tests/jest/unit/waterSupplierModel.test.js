@@ -50,7 +50,7 @@ describe('WaterSupplier Model', () => {
                 page: 1,
                 limit: 10,
                 total: 2,
-                pages: 1
+                totalPages: 1
             });
             expect(db.query).toHaveBeenCalledTimes(2);
         });
@@ -113,7 +113,7 @@ describe('WaterSupplier Model', () => {
 
             const dataCall = db.query.mock.calls[1];
             expect(dataCall[1]).toEqual([10, 10]); // limit=10, offset=10
-            expect(result.pagination.pages).toBe(2);
+            expect(result.pagination.totalPages).toBe(2);
         });
 
         test('throws on database error', async () => {

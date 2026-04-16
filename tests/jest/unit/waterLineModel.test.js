@@ -51,7 +51,7 @@ describe('WaterLine Model', () => {
                 page: 1,
                 limit: 10,
                 total: 2,
-                pages: 1
+                totalPages: 1
             });
         });
 
@@ -100,7 +100,7 @@ describe('WaterLine Model', () => {
 
             const dataCall = db.query.mock.calls[1];
             expect(dataCall[1]).toEqual([10, 20]); // limit=10, offset=20
-            expect(result.pagination.pages).toBe(3);
+            expect(result.pagination.totalPages).toBe(3);
         });
 
         test('throws on database error', async () => {

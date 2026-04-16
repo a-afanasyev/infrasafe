@@ -84,7 +84,8 @@ describe('HeatSource Model', () => {
         test('throws on database error', async () => {
             db.query.mockRejectedValue(new Error('DB error'));
 
-            await expect(HeatSource.findAll()).rejects.toThrow('Failed to fetch heat sources');
+            // Phase 6: factory entityName is 'heat source' (singular).
+            await expect(HeatSource.findAll()).rejects.toThrow('Failed to fetch heat source');
         });
     });
 
@@ -160,7 +161,9 @@ describe('HeatSource Model', () => {
 
             expect(result.name).toBe('Updated Source');
             expect(db.query.mock.calls[0][0]).toContain('UPDATE heat_sources');
-            expect(db.query.mock.calls[0][1][0]).toBe(1); // id param
+            // Phase 6: buildUpdateQuery places id as the LAST param
+            const params = db.query.mock.calls[0][1];
+            expect(params[params.length - 1]).toBe(1);
         });
 
         test('returns null when not found', async () => {

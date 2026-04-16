@@ -55,7 +55,9 @@ describe('ColdWaterSource Model', () => {
         test('throws on database error', async () => {
             db.query.mockRejectedValue(new Error('DB error'));
 
-            await expect(ColdWaterSource.findAll()).rejects.toThrow('Failed to fetch water sources');
+            // Phase 6: factory-generated models use the entityName 'cold water source'
+            // in error messages (previously it was hand-written 'water sources').
+            await expect(ColdWaterSource.findAll()).rejects.toThrow('Failed to fetch cold water source');
         });
     });
 
@@ -68,10 +70,9 @@ describe('ColdWaterSource Model', () => {
             expect(result).toBeDefined();
             expect(result.id).toBe(1);
             expect(result.name).toBe('Source 1');
-            expect(db.query).toHaveBeenCalledWith(
-                'SELECT * FROM cold_water_sources WHERE id = $1',
-                [1]
-            );
+            expect(db.query.mock.calls[0][0]).toContain('SELECT * FROM cold_water_sources');
+            expect(db.query.mock.calls[0][0]).toContain('WHERE id = $1');
+            expect(db.query.mock.calls[0][1]).toEqual([1]);
         });
 
         test('returns null when not found', async () => {
@@ -84,7 +85,7 @@ describe('ColdWaterSource Model', () => {
         test('throws on database error', async () => {
             db.query.mockRejectedValue(new Error('DB error'));
 
-            await expect(ColdWaterSource.findById(1)).rejects.toThrow('Failed to fetch water source');
+            await expect(ColdWaterSource.findById(1)).rejects.toThrow('Failed to fetch cold water source');
         });
     });
 
@@ -104,14 +105,18 @@ describe('ColdWaterSource Model', () => {
 
             await ColdWaterSource.create({ ...mockRow, status: undefined });
 
+            // Phase 6: createColumns order is [id, name, address, latitude,
+            // longitude, source_type, capacity_m3_per_hour,
+            // operating_pressure_bar, installation_date, status, ...].
+            // status is index 9.
             const params = db.query.mock.calls[0][1];
-            expect(params[9]).toBe('active'); // status param
+            expect(params[9]).toBe('active');
         });
 
         test('throws on database error', async () => {
             db.query.mockRejectedValue(new Error('duplicate'));
 
-            await expect(ColdWaterSource.create(mockRow)).rejects.toThrow('Failed to create water source');
+            await expect(ColdWaterSource.create(mockRow)).rejects.toThrow('Failed to create cold water source');
         });
     });
 
@@ -124,7 +129,11 @@ describe('ColdWaterSource Model', () => {
 
             expect(result.name).toBe('Updated');
             expect(db.query.mock.calls[0][0]).toContain('UPDATE cold_water_sources');
-            expect(db.query.mock.calls[0][1][0]).toBe(1); // id param
+            // Phase 6: buildUpdateQuery emits SET $1..$N-1, WHERE id = $N
+            // (id is appended LAST to params). The value of the last param
+            // is the id.
+            const params = db.query.mock.calls[0][1];
+            expect(params[params.length - 1]).toBe(1);
         });
 
         test('returns null when not found', async () => {
