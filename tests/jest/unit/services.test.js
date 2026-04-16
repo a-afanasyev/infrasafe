@@ -37,6 +37,14 @@ jest.mock('../../../src/services/cacheService', () => ({
   invalidatePattern: jest.fn()
 }));
 
+// Мокаем persistent account lockout (Phase 12B.3 / SEC-NEW-004)
+jest.mock('../../../src/models/AccountLockout', () => ({
+  get: jest.fn().mockResolvedValue(null),
+  recordFailedAttempt: jest.fn().mockResolvedValue({ failed_attempts: 1, locked_until: null }),
+  clearAttempts: jest.fn().mockResolvedValue(undefined),
+  cleanup: jest.fn().mockResolvedValue(0),
+}));
+
 // Импортируем сервисы
 const buildingService = require('../../../src/services/buildingService');
 const controllerService = require('../../../src/services/controllerService');

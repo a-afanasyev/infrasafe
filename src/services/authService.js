@@ -5,6 +5,7 @@ const logger = require('../utils/logger');
 const cacheService = require('./cacheService');
 const db = require('../config/database');
 const { CircuitBreakerFactory } = require('../utils/circuitBreaker');
+const AccountLockout = require('../models/AccountLockout');
 
 class AuthService {
     constructor() {
@@ -433,47 +434,39 @@ class AuthService {
         }
     }
 
-    // Проверка блокировки аккаунта
+    // Проверка блокировки аккаунта (SEC-NEW-004: persistent via PostgreSQL)
     async checkAccountLockout(login) {
-        const cacheKey = `${this.cachePrefix}:lockout:${login}`;
-        const lockoutData = await cacheService.get(cacheKey);
+        const record = await AccountLockout.get(login);
+        if (!record || !record.locked_until) return;
 
-        if (lockoutData && Date.now() < lockoutData.lockedUntil) {
-            const error = new Error(`Аккаунт заблокирован до ${new Date(lockoutData.lockedUntil).toLocaleString()}`);
+        const lockedUntilMs = new Date(record.locked_until).getTime();
+        if (Date.now() < lockedUntilMs) {
+            const error = new Error(`Аккаунт заблокирован до ${new Date(lockedUntilMs).toLocaleString()}`);
             error.code = 'ACCOUNT_LOCKED';
             throw error;
         }
+
+        // Lockout expired — clean up so counters reset on next attempt
+        await AccountLockout.clearAttempts(login);
     }
 
-    // Запись неудачной попытки входа
+    // Запись неудачной попытки входа (atomic UPSERT, survives restart / scale-out)
     async recordFailedAttempt(login) {
-        const cacheKey = `${this.cachePrefix}:attempts:${login}`;
-        let attempts = await cacheService.get(cacheKey) || { count: 0, firstAttempt: Date.now() };
-
-        attempts.count++;
-        attempts.lastAttempt = Date.now();
-
-        if (attempts.count >= this.maxLoginAttempts) {
-            // Блокируем аккаунт
-            const lockoutKey = `${this.cachePrefix}:lockout:${login}`;
-            await cacheService.set(lockoutKey, {
-                lockedAt: Date.now(),
-                lockedUntil: Date.now() + this.lockoutDuration
-            }, { ttl: this.lockoutDuration / 1000 });
-
+        const result = await AccountLockout.recordFailedAttempt(
+            login,
+            this.maxLoginAttempts,
+            this.lockoutDuration
+        );
+        const failedAttempts = result?.failed_attempts ?? 0;
+        const lockedUntil = result?.locked_until ?? null;
+        if (lockedUntil && failedAttempts >= this.maxLoginAttempts) {
             logger.warn(`Аккаунт ${login} заблокирован из-за превышения лимита попыток входа`);
-        } else {
-            await cacheService.set(cacheKey, attempts, { ttl: this.lockoutDuration / 1000 });
         }
     }
 
-    // Очистка неудачных попыток
+    // Очистка неудачных попыток (после успешной аутентификации)
     async clearFailedAttempts(login) {
-        const attemptsKey = `${this.cachePrefix}:attempts:${login}`;
-        const lockoutKey = `${this.cachePrefix}:lockout:${login}`;
-
-        await cacheService.invalidate(attemptsKey);
-        await cacheService.invalidate(lockoutKey);
+        await AccountLockout.clearAttempts(login);
     }
 
     // Обновление времени последнего входа

@@ -20,10 +20,18 @@ jest.mock('../../../src/services/cacheService', () => ({
     invalidatePattern: jest.fn().mockResolvedValue(undefined)
 }));
 
+jest.mock('../../../src/models/AccountLockout', () => ({
+    get: jest.fn().mockResolvedValue(null),
+    recordFailedAttempt: jest.fn().mockResolvedValue({ failed_attempts: 1, locked_until: null }),
+    clearAttempts: jest.fn().mockResolvedValue(undefined),
+    cleanup: jest.fn().mockResolvedValue(0),
+}));
+
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const db = require('../../../src/config/database');
 const cacheService = require('../../../src/services/cacheService');
+const AccountLockout = require('../../../src/models/AccountLockout');
 const authService = require('../../../src/services/authService');
 
 describe('AuthService', () => {
@@ -270,9 +278,9 @@ describe('AuthService', () => {
         });
 
         test('throws ACCOUNT_LOCKED when account is locked', async () => {
-            cacheService.get.mockResolvedValueOnce({
-                lockedAt: Date.now(),
-                lockedUntil: Date.now() + 900000
+            AccountLockout.get.mockResolvedValueOnce({
+                failed_attempts: 5,
+                locked_until: new Date(Date.now() + 900000),
             });
 
             await expect(
@@ -514,15 +522,23 @@ describe('AuthService', () => {
     });
 
     describe('checkAccountLockout', () => {
-        test('does not throw when no lockout data', async () => {
-            cacheService.get.mockResolvedValueOnce(null);
+        test('does not throw when no lockout record', async () => {
+            AccountLockout.get.mockResolvedValueOnce(null);
+            await expect(authService.checkAccountLockout('user')).resolves.not.toThrow();
+        });
+
+        test('does not throw when record exists but locked_until is null', async () => {
+            AccountLockout.get.mockResolvedValueOnce({
+                failed_attempts: 2,
+                locked_until: null,
+            });
             await expect(authService.checkAccountLockout('user')).resolves.not.toThrow();
         });
 
         test('throws ACCOUNT_LOCKED when lockout is active', async () => {
-            cacheService.get.mockResolvedValueOnce({
-                lockedAt: Date.now(),
-                lockedUntil: Date.now() + 900000
+            AccountLockout.get.mockResolvedValueOnce({
+                failed_attempts: 5,
+                locked_until: new Date(Date.now() + 900000),
             });
 
             await expect(
@@ -530,52 +546,50 @@ describe('AuthService', () => {
             ).rejects.toMatchObject({ code: 'ACCOUNT_LOCKED' });
         });
 
-        test('does not throw when lockout has expired', async () => {
-            cacheService.get.mockResolvedValueOnce({
-                lockedAt: Date.now() - 1000000,
-                lockedUntil: Date.now() - 1
+        test('clears attempts and does not throw when lockout has expired', async () => {
+            AccountLockout.get.mockResolvedValueOnce({
+                failed_attempts: 5,
+                locked_until: new Date(Date.now() - 1000),
             });
 
             await expect(authService.checkAccountLockout('user')).resolves.not.toThrow();
+            expect(AccountLockout.clearAttempts).toHaveBeenCalledWith('user');
         });
     });
 
     describe('recordFailedAttempt', () => {
-        test('increments attempt count', async () => {
-            cacheService.get.mockResolvedValue(null);
+        test('delegates to AccountLockout.recordFailedAttempt with config', async () => {
+            AccountLockout.recordFailedAttempt.mockResolvedValueOnce({ failed_attempts: 1, locked_until: null });
 
             await authService.recordFailedAttempt('user1');
 
-            expect(cacheService.set).toHaveBeenCalled();
-            const setCall = cacheService.set.mock.calls[0];
-            expect(setCall[0]).toContain('attempts');
-            expect(setCall[1].count).toBe(1);
+            expect(AccountLockout.recordFailedAttempt).toHaveBeenCalledWith(
+                'user1',
+                5,               // maxLoginAttempts
+                15 * 60 * 1000   // lockoutDuration
+            );
         });
 
-        test('locks account after exceeding max attempts', async () => {
-            cacheService.get.mockResolvedValue({
-                count: 4, // One more will trigger lockout
-                firstAttempt: Date.now()
+        test('logs lockout warning when max attempts reached', async () => {
+            const logger = require('../../../src/utils/logger');
+            AccountLockout.recordFailedAttempt.mockResolvedValueOnce({
+                failed_attempts: 5,
+                locked_until: new Date(Date.now() + 900000),
             });
 
             await authService.recordFailedAttempt('user1');
 
-            // Should set lockout
-            const lockoutCall = cacheService.set.mock.calls.find(call =>
-                call[0].includes('lockout')
+            expect(logger.warn).toHaveBeenCalledWith(
+                expect.stringContaining('заблокирован')
             );
-            expect(lockoutCall).toBeTruthy();
         });
     });
 
     describe('clearFailedAttempts', () => {
-        test('invalidates both attempts and lockout keys', async () => {
+        test('calls AccountLockout.clearAttempts with login', async () => {
             await authService.clearFailedAttempts('user1');
 
-            expect(cacheService.invalidate).toHaveBeenCalledTimes(2);
-            const keys = cacheService.invalidate.mock.calls.map(c => c[0]);
-            expect(keys.some(k => k.includes('attempts'))).toBe(true);
-            expect(keys.some(k => k.includes('lockout'))).toBe(true);
+            expect(AccountLockout.clearAttempts).toHaveBeenCalledWith('user1');
         });
     });
 
