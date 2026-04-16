@@ -37,6 +37,21 @@ class AuthService {
         if (this.cleanupIntervalId && this.cleanupIntervalId.unref) {
             this.cleanupIntervalId.unref();
         }
+
+        // Phase 12B.3 follow-up: periodic cleanup of stale account_lockout rows
+        // (mitigates login-flood table growth DoS noted in code review).
+        this.lockoutCleanupIntervalId = setInterval(() => {
+            AccountLockout.cleanup().then(deleted => {
+                if (deleted > 0) {
+                    logger.info(`account_lockout cleanup: removed ${deleted} stale rows`);
+                }
+            }).catch(err => {
+                logger.error(`Ошибка очистки account_lockout: ${err.message}`);
+            });
+        }, 60 * 60 * 1000); // every hour
+        if (this.lockoutCleanupIntervalId && this.lockoutCleanupIntervalId.unref) {
+            this.lockoutCleanupIntervalId.unref();
+        }
     }
 
     // Регистрация нового пользователя
@@ -89,6 +104,13 @@ class AuthService {
     // Аутентификация пользователя
     async authenticateUser(login, password) {
         try {
+            // Phase 12 follow-up: input-length guard before touching DB/PK
+            if (typeof login !== 'string' || login.length === 0 || login.length > 255) {
+                const error = new Error('Неверное имя пользователя или пароль');
+                error.code = 'INVALID_CREDENTIALS';
+                throw error;
+            }
+
             // Проверяем блокировку аккаунта
             await this.checkAccountLockout(login);
 

@@ -102,7 +102,12 @@ const mapAnonymousRow = (row) => ({
  */
 const parseBbox = (raw) => {
     if (!raw) return null;
-    const parts = String(raw).split(',').map(s => s.trim());
+    // Phase 12 follow-up: guard against very long strings before allocating.
+    // A well-formed bbox fits in ~60 chars; 200 is a generous upper bound.
+    if (typeof raw !== 'string' || raw.length > 200) {
+        throw new Error('bbox value too long');
+    }
+    const parts = raw.split(',').map(s => s.trim());
     if (parts.length !== 4) {
         throw new Error('bbox must be 4 comma-separated numbers: lat_min,lng_min,lat_max,lng_max');
     }
