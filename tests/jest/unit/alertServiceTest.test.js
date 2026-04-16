@@ -501,22 +501,9 @@ describe('AlertService', () => {
         });
     });
 
-    describe('broadcastAlert', () => {
-        test('does not throw', () => {
-            expect(() => {
-                alertService.broadcastAlert({ type: 'TEST', severity: 'INFO' }, 1);
-            }).not.toThrow();
-        });
-    });
-
-    describe('getCriticalAlertRecipients', () => {
-        test('returns array of recipients', async () => {
-            const recipients = await alertService.getCriticalAlertRecipients();
-            expect(Array.isArray(recipients)).toBe(true);
-            expect(recipients.length).toBeGreaterThan(0);
-            expect(recipients[0]).toHaveProperty('type', 'log');
-        });
-    });
+    // Phase 9.3 (YAGNI-004 / YAGNI-010): broadcastAlert (WebSocket stub)
+    // and getCriticalAlertRecipients (hardcoded `[{type:'log'}]`) removed.
+    // Tests pinning those stubs removed with them.
 
     describe('initialize', () => {
         test('skips if already initialized', async () => {

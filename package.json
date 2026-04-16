@@ -2,10 +2,10 @@
   "name": "infrasafe",
   "version": "1.0.1",
   "description": "Система мониторинга зданий и контроллеров",
-  "main": "src/index.js",
+  "main": "src/server.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
     "lint": "eslint src/",
     "test": "jest --forceExit",
     "test:unit": "jest tests/jest/unit",
@@ -84,7 +84,7 @@
     ],
     "collectCoverageFrom": [
       "src/**/*.js",
-      "!src/index.js"
+      "!src/server.js"
     ],
     "coverageDirectory": "tests/reports/coverage",
     "coverageReporters": [

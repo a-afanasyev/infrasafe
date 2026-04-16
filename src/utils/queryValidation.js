@@ -231,47 +231,21 @@ function validateSearchString(searchString, maxLength = 100) {
     return cleanString;
 }
 
-/**
- * Создает безопасный SQL запрос с валидированными параметрами
- * 
- * @param {string} baseQuery - базовый SQL запрос
- * @param {string} entityType - тип сущности
- * @param {Object} params - параметры запроса
- * @returns {Object} объект с query и параметрами
- */
-function buildSecureQuery(baseQuery, entityType, params = {}) {
-    try {
-        const { sort, order, page, limit } = params;
-        
-        // Валидируем параметры
-        const { validSort, validOrder } = validateSortOrder(entityType, sort, order);
-        const { pageNum, limitNum, offset } = validatePagination(page, limit);
-        
-        // Строим безопасный запрос
-        const secureQuery = `${baseQuery} ORDER BY ${validSort} ${validOrder} LIMIT $${params.length || 1} OFFSET $${(params.length || 1) + 1}`;
-        
-        return {
-            query: secureQuery,
-            validSort,
-            validOrder,
-            pageNum,
-            limitNum,
-            offset,
-            queryParams: [limitNum, offset]
-        };
-        
-    } catch (error) {
-        logger.error(`Ошибка построения безопасного запроса: ${error.message}`);
-        throw new Error('Не удалось построить безопасный SQL запрос');
-    }
-}
+// Phase 9.2 (YAGNI-004): buildSecureQuery was a half-complete helper with
+// broken parameter math (`params.length` on a plain object) and zero
+// callers in production. Removed. The existing validateSortOrder /
+// validatePagination primitives, used by adminQueryBuilder and the
+// per-model pagination paths, cover the actual need.
 
 module.exports = {
     validateSortOrder,
     validatePagination,
     validateSearchString,
-    buildSecureQuery,
+    // Phase 9.2 (YAGNI-012): allowedSortColumns / allowedOrderDirections /
+    // defaultSortParams remain available as exports because adminQueryBuilder
+    // and the factory model layer document their existence via JSDoc
+    // (entityType keys). They are stable constants, not leaked internals.
     allowedSortColumns,
     allowedOrderDirections,
-    defaultSortParams
+    defaultSortParams,
 };

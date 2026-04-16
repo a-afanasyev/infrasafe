@@ -88,8 +88,7 @@ module.exports = {
     updateHeatSource: adminHeatSourceController.updateHeatSource,
     deleteHeatSource: adminHeatSourceController.deleteHeatSource,
 
-    // General (search, stats, export)
-    globalSearch: adminGeneralController.globalSearch,
+    // General (admin dashboard)
+    // Phase 9.3: globalSearch and exportData stubs removed (YAGNI-007/008).
     getAdminStats: adminGeneralController.getAdminStats,
-    exportData: adminGeneralController.exportData
 };

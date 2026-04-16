@@ -364,35 +364,9 @@ router.delete('/metrics/:id', rateLimitStrict, adminController.deleteMetric);
  */
 router.post('/metrics/batch', rateLimitStrict, adminController.batchMetricsOperation);
 
-/**
- * @swagger
- * /admin/search:
- *   get:
- *     summary: Глобальный поиск по всем сущностям
- *     tags: [Admin]
- *     parameters:
- *       - in: query
- *         name: query
- *         required: true
- *         schema:
- *           type: string
- *         description: Поисковый запрос
- *       - in: query
- *         name: types
- *         schema:
- *           type: string
- *           default: "buildings,controllers"
- *         description: Типы для поиска (через запятую)
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 20
- *     responses:
- *       200:
- *         description: Результаты глобального поиска
- */
-router.get('/search', adminController.globalSearch);
+// Phase 9.3 (YAGNI-007/008): /admin/search (globalSearch stub) and
+// /admin/export (exportData stub returning 501) removed. Per-entity
+// list endpoints already provide search and filter capabilities.
 
 /**
  * @swagger
@@ -405,33 +379,6 @@ router.get('/search', adminController.globalSearch);
  *         description: Общая статистика системы
  */
 router.get('/stats', adminController.getAdminStats);
-
-/**
- * @swagger
- * /admin/export:
- *   post:
- *     summary: Экспорт данных в различных форматах
- *     tags: [Admin]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               type:
- *                 type: string
- *                 enum: [buildings, controllers, metrics]
- *               format:
- *                 type: string
- *                 enum: [csv, xlsx, json]
- *               filters:
- *                 type: object
- *     responses:
- *       200:
- *         description: Файл для скачивания
- */
-router.post('/export', rateLimitStrict, adminController.exportData);
 
 /**
  * @swagger

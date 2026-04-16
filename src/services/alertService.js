@@ -300,19 +300,9 @@ class InfrastructureAlertService {
             }
         }
 
-        // WebSocket broadcast (fire-and-forget, non-critical). Wrapped to be
-        // defensive: broadcastAlert is a sync TODO stub today but future
-        // WS implementations may throw.
-        try {
-            this.broadcastAlert(alertData, alertId);
-        } catch (wsError) {
-            logger.warn(`Alert ${alertId} WebSocket broadcast failed: ${wsError.message}`);
-            failures.push({
-                channel: 'websocket',
-                error: wsError.message,
-                at: new Date().toISOString(),
-            });
-        }
+        // Phase 9.3 (YAGNI-010): the WebSocket broadcastAlert stub was
+        // removed. Re-add a real channel through alertEvents here when
+        // the WebSocket transport lands.
 
         // UK Integration: publish `alert.created` and let ukIntegrationService
         // (subscribed at module load) forward to UK. Failure-recording for
@@ -345,11 +335,9 @@ class InfrastructureAlertService {
         }
     }
 
-    // Немедленные уведомления для критических алертов
+    // Немедленные уведомления для критических алертов.
+    // Phase 9.5: dropped emoji prefix to keep log aggregators happy (SEC-004).
     async sendImmediateNotification(alertData, alertId) {
-        // Получаем список получателей критических уведомлений
-        await this.getCriticalAlertRecipients();
-
         const notificationData = {
             alert_id: alertId,
             type: alertData.type,
@@ -357,32 +345,14 @@ class InfrastructureAlertService {
             message: alertData.message,
             infrastructure: `${alertData.infrastructure_type}:${alertData.infrastructure_id}`,
             affected_buildings: alertData.affected_buildings,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
         };
 
-        // Пока реализуем только логирование
-        // В будущем здесь будет отправка email, SMS, Telegram
-        logger.warn(`🚨 КРИТИЧЕСКИЙ АЛЕРТ: ${alertData.message}`, notificationData);
-
-        // Можно добавить webhook уведомления
-        // await this.sendWebhookNotification(notificationData);
-    }
-
-    // WebSocket broadcast (заглушка для будущей реализации)
-    broadcastAlert(alertData, alertId) {
-        // TODO: Реализовать WebSocket broadcast
-        logger.info(`📡 Broadcast alert ${alertId}: ${alertData.type}`);
-    }
-
-    // Получение списка получателей критических уведомлений
-    async getCriticalAlertRecipients() {
-        // В будущем здесь будет запрос к БД пользователей с настройками уведомлений
-        // При добавлении async-вызовов обернуть в try-catch
-        return [
-            { type: 'log', level: 'critical' },
-            // { type: 'email', address: 'admin@infrasafe.com' },
-            // { type: 'telegram', chat_id: '123456789' }
-        ];
+        // Phase 9.3 (YAGNI-004): getCriticalAlertRecipients returned a
+        // hardcoded `[{type:'log'}]` with no consumer. Removed — when
+        // email/SMS/Telegram notification channels land, they should read
+        // recipients from a users table or notification_preferences.
+        logger.warn(`CRITICAL ALERT: ${alertData.message}`, notificationData);
     }
 
     // Подтверждение алерта

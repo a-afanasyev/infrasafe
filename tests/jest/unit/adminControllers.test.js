@@ -96,9 +96,10 @@ describe('Admin Controllers (barrel export)', () => {
     });
 
     test('exports general admin methods', () => {
-        expect(adminIndex.globalSearch).toBeDefined();
+        // Phase 9.3: globalSearch and exportData stubs removed (YAGNI-007/008).
         expect(adminIndex.getAdminStats).toBeDefined();
-        expect(adminIndex.exportData).toBeDefined();
+        expect(adminIndex.globalSearch).toBeUndefined();
+        expect(adminIndex.exportData).toBeUndefined();
     });
 });
 

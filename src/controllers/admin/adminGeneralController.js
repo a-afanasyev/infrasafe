@@ -1,20 +1,13 @@
 const { createError } = require('../../utils/helpers');
 const db = require('../../config/database');
 
-async function globalSearch(req, res, next) {
-    try {
-        const { query, type = 'all' } = req.query;
-        res.json({
-            results: [],
-            total: 0,
-            query,
-            type,
-            message: 'Search completed (stub)'
-        });
-    } catch (error) {
-        next(createError('Search failed', 500));
-    }
-}
+// Phase 9.3 (YAGNI-007 / YAGNI-008): globalSearch and exportData were
+// pure stubs — globalSearch returned an empty result with "Search
+// completed (stub)" and exportData returned HTTP 501. Both are removed
+// along with their routes; operators rely on the per-entity list
+// endpoints (/admin/buildings etc.) for filtering and the admin panel
+// does not expose a "export" button in production. Re-add when there
+// is a concrete use case.
 
 async function getAdminStats(req, res, next) {
     try {
@@ -36,19 +29,6 @@ async function getAdminStats(req, res, next) {
     }
 }
 
-async function exportData(req, res, next) {
-    try {
-        res.status(501).json({
-            success: false,
-            error: 'Export functionality not yet implemented',
-        });
-    } catch (error) {
-        next(createError('Export failed', 500));
-    }
-}
-
 module.exports = {
-    globalSearch,
     getAdminStats,
-    exportData
 };

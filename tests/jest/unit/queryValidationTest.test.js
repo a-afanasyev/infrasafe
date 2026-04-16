@@ -5,14 +5,15 @@ jest.mock('../../../src/utils/logger', () => ({
     debug: jest.fn()
 }));
 
+// Phase 9.2 (YAGNI-004): buildSecureQuery removed — no production callers
+// and the implementation was broken (params.length on a plain object).
 const {
     validateSortOrder,
     validatePagination,
     validateSearchString,
-    buildSecureQuery,
     allowedSortColumns,
     allowedOrderDirections,
-    defaultSortParams
+    defaultSortParams,
 } = require('../../../src/utils/queryValidation');
 
 describe('queryValidation', () => {
@@ -207,33 +208,6 @@ describe('queryValidation', () => {
 
         test('passes through safe strings unchanged', () => {
             expect(validateSearchString('Hello World')).toBe('Hello World');
-        });
-    });
-
-    describe('buildSecureQuery', () => {
-        test('builds query with validated sort and pagination', () => {
-            const result = buildSecureQuery('SELECT * FROM buildings', 'buildings', {
-                sort: 'name',
-                order: 'desc',
-                page: 1,
-                limit: 10
-            });
-            expect(result.query).toContain('ORDER BY name DESC');
-            expect(result.validSort).toBe('name');
-            expect(result.validOrder).toBe('DESC');
-            expect(result.pageNum).toBe(1);
-            expect(result.limitNum).toBe(10);
-            expect(result.offset).toBe(0);
-            expect(result.queryParams).toEqual([10, 0]);
-        });
-
-        test('falls back to defaults for invalid params', () => {
-            const result = buildSecureQuery('SELECT * FROM buildings', 'buildings', {
-                sort: 'malicious',
-                order: 'INVALID'
-            });
-            expect(result.validSort).toBe('building_id');
-            expect(result.validOrder).toBe('ASC');
         });
     });
 
