@@ -493,6 +493,10 @@ class AuthService {
     async blacklistToken(token) {
         try {
             const decoded = jwt.decode(token);
+            if (!decoded || typeof decoded.exp !== 'number') {
+                logger.warn('blacklistToken: invalid or malformed token, skip');
+                return;
+            }
             const expiry = decoded.exp * 1000; // Конвертируем в миллисекунды
             const ttl = Math.max(0, (expiry - Date.now()) / 1000); // TTL в секундах
 
