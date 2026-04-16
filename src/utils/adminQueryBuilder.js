@@ -34,7 +34,17 @@ const ALLOWED_TABLES = new Set([
     'water_suppliers',
 ]);
 
-const IDENT_RE = /^[a-zA-Z_][a-zA-Z0-9_.]*$/;
+// A bare SQL identifier, optionally qualified by a single alias/schema dot.
+// Matches 'foo', 'foo_bar', 't.name', 'wl.diameter_mm'. Does NOT match
+// 'a..b', 'a.b.c', 'a;b', '__proto__' (allowed but harmless),
+// or any Unicode homoglyph — the character classes are ASCII-only.
+const IDENT_RE = /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?$/;
+
+// GROUP BY clauses from config — just the verb + one or more comma-separated
+// qualified identifiers. Only hardcoded controller configs reach here;
+// the guard exists so a future change that makes groupBy config-driven
+// fails loudly instead of silently.
+const GROUP_BY_RE = /^GROUP BY [a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?(\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?)*$/;
 
 const FILTER_KINDS = new Set(['exact', 'like', 'gte', 'lte']);
 
@@ -95,8 +105,10 @@ async function buildPaginatedList(pool, config, req) {
         throw new Error(`adminQueryBuilder: unsupported table '${table}'`);
     }
     if (tableAlias) assertIdent(tableAlias, 'tableAlias');
-    if (groupBy && typeof groupBy !== 'string') {
-        throw new Error('adminQueryBuilder: groupBy must be a string');
+    if (groupBy !== undefined && groupBy !== null) {
+        if (typeof groupBy !== 'string' || !GROUP_BY_RE.test(groupBy)) {
+            throw new Error(`adminQueryBuilder: invalid groupBy '${groupBy}'`);
+        }
     }
 
     // Pull request params — only these come from the caller/user.

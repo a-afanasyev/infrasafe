@@ -607,14 +607,9 @@ test_endpoint "POST" "/api/admin/metrics" "$ADMIN_METRIC_DATA" "true" "Созд�
 
 test_endpoint "GET" "/api/admin/metrics/1" "" "true" "Получение метрики по ID через админ API"
 
-ADMIN_UPDATE_METRIC_DATA='{
-    "controller_id": 78,
-    "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'",
-    "electricity_ph1": 230.0,
-    "air_temp": 25.0,
-    "humidity": 50.0
-}'
-test_endpoint "PUT" "/api/admin/metrics/1" "$ADMIN_UPDATE_METRIC_DATA" "true" "Обновление метрики через админ API"
+# PUT /admin/metrics/:id intentionally removed in Phase 5 — metrics are
+# append-only telemetry; metricController exposes no update path. The
+# former admin proxy was dead code.
 
 # Batch операции с метриками
 echo -e "${CYAN}📦 Массовые операции с метриками${NC}"

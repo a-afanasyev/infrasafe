@@ -455,7 +455,7 @@ router.post('/export', rateLimitStrict, adminController.exportData);
  *         name: sort
  *         schema:
  *           type: string
- *           enum: [transformer_id, name, power_kva, voltage_kv, building_id]
+ *           enum: [transformer_id, name, power_kva, voltage_kv]
  *           default: transformer_id
  *       - in: query
  *         name: order
@@ -483,11 +483,6 @@ router.post('/export', rateLimitStrict, adminController.exportData);
  *         schema:
  *           type: number
  *         description: Фильтр по напряжению (кВ)
- *       - in: query
- *         name: building_id
- *         schema:
- *           type: integer
- *         description: Фильтр по зданию
  *     responses:
  *       200:
  *         description: Список трансформаторов с метаданными
@@ -511,8 +506,6 @@ router.post('/export', rateLimitStrict, adminController.exportData);
  *                 type: number
  *               voltage_kv:
  *                 type: number
- *               building_id:
- *                 type: integer
  *     responses:
  *       201:
  *         description: Трансформатор создан
@@ -559,8 +552,21 @@ router.post('/transformers', rateLimitStrict, adminController.createTransformer)
  *                 type: number
  *               voltage_kv:
  *                 type: number
- *               building_id:
- *                 type: integer
+ *               location:
+ *                 type: string
+ *               latitude:
+ *                 type: number
+ *               longitude:
+ *                 type: number
+ *               manufacturer:
+ *                 type: string
+ *               model:
+ *                 type: string
+ *               status:
+ *                 type: string
+ *               installation_date:
+ *                 type: string
+ *                 format: date
  *     responses:
  *       200:
  *         description: Трансформатор обновлен
