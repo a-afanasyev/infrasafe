@@ -305,31 +305,37 @@ class CoordinateEditor {
     }
 
     /**
-     * Сохранение координат
+     * Сохранение координат.
+     *
+     * Два режима работы:
+     *  1) objectId задан → PUT /api/<endpoint>/<id> (редактирование существующей записи)
+     *  2) objectId null/undefined → форма создания: только передаём lat/lng наружу
+     *     через onSave-callback. Без objectId PUT шёл на `/api/transformers/null`
+     *     и получал 500.
      */
     async save() {
         try {
-            // Получаем значения из полей
             const lat = parseFloat(document.getElementById('edit-latitude').value);
             const lng = parseFloat(document.getElementById('edit-longitude').value);
 
-            // Валидация
             const validation = this.validateCoordinates(lat, lng);
             if (!validation.valid) {
                 showToast(validation.error, 'error');
                 return;
             }
 
-            // Определяем API endpoint
+            // Add-form picker: no backend entity yet — fall through to the
+            // caller's callback, which writes lat/lng into the form fields.
+            if (this.objectId === null || this.objectId === undefined || this.objectId === '' || this.objectId === 'null') {
+                showToast('✅ Координаты выбраны', 'success');
+                this.close();
+                if (this.onSave) this.onSave(lat, lng);
+                return;
+            }
+
             const apiEndpoint = this.getAPIEndpoint();
+            const updateData = { latitude: lat, longitude: lng };
 
-            // Формируем данные для отправки
-            const updateData = {
-                latitude: lat,
-                longitude: lng
-            };
-
-            // Отправляем запрос
             const response = await fetch(`${apiEndpoint}/${this.objectId}`, {
                 method: 'PUT',
                 headers: {
@@ -341,18 +347,23 @@ class CoordinateEditor {
 
             const result = await response.json();
 
-            if (!response.ok || !result.success) {
-                throw new Error(result.error || result.message || 'Ошибка при обновлении');
+            if (!response.ok || result.success === false) {
+                // API envelope: { success:false, error: { message, status, stack } }
+                // or legacy: { error: '...string...' }. Extract a readable message.
+                const errMsg =
+                    (result && result.error && typeof result.error === 'object' && result.error.message) ||
+                    (typeof result.error === 'string' && result.error) ||
+                    result.message ||
+                    `HTTP ${response.status}`;
+                throw new Error(errMsg);
             }
 
-            // Показываем успех
             showToast('✅ Координаты успешно обновлены!', 'success');
-
-            // Закрываем modal
             this.close();
-
-            // Вызываем callback
             if (this.onSave) {
+                // Historical: legacy callers expect onSave(data); new callers
+                // (add-form picker above) expect onSave(lat, lng). The edit
+                // path receives both — pass the data object as before.
                 this.onSave(result.data);
             }
 
