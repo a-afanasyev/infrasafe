@@ -26,7 +26,7 @@
 ### DevOps & Инфраструктура
 - **Оркестрация:** Docker Compose (dev, prod, unified, generator)
 - **Reverse Proxy:** Nginx
-- **Тестирование:** Jest (175 тестов, 16 test suites)
+- **Тестирование:** Jest (1800+ unit/integration/security тестов, 57 E2E)
 - **Линтинг:** ESLint
 
 ## Структура проекта
@@ -191,12 +191,19 @@ npm run test:coverage     # С отчётом покрытия
 - **Администратор:** admin / admin123
 - **Тестовый пользователь:** testuser / TestPass123
 
-**Для production:** создайте `.env` с надёжными паролями:
+**Для production:** скопируйте шаблон и сгенерируйте секреты:
 
 ```bash
+cp .env.example .env
 openssl rand -base64 32    # DB_PASSWORD
 openssl rand -base64 64    # JWT_SECRET, JWT_REFRESH_SECRET
+openssl rand -base64 32    # TOTP_ENCRYPTION_KEY (2FA)
 ```
+
+Обязательные переменные в `.env`:
+`DB_*`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `TOTP_ENCRYPTION_KEY`,
+в production также `CORS_ORIGINS` и UK Integration (`UK_WEBHOOK_SECRET`,
+`UK_SERVICE_USER`, `UK_SERVICE_PASSWORD`, `UK_API_ALLOWED_HOSTS`).
 
 ## Ключевые функции
 

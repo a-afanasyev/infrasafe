@@ -83,8 +83,8 @@ router.post('/login', authLimiter.middleware(), authController.login);
  *                 description: Имя пользователя (уникальное)
  *               password:
  *                 type: string
- *                 minLength: 6
- *                 description: Пароль (минимум 6 символов)
+ *                 minLength: 8
+ *                 description: Пароль (минимум 8 символов, должен содержать буквы и цифры)
  *               email:
  *                 type: string
  *                 description: Email пользователя

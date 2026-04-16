@@ -463,7 +463,9 @@ class AuthService {
 
         const lockedUntilMs = new Date(record.locked_until).getTime();
         if (Date.now() < lockedUntilMs) {
-            const error = new Error(`Аккаунт заблокирован до ${new Date(lockedUntilMs).toLocaleString()}`);
+            // Phase 10.5 (DOC-015): use ISO-8601 to avoid server-locale
+            // dependent output (client displays as needed).
+            const error = new Error(`Аккаунт заблокирован до ${new Date(lockedUntilMs).toISOString()}`);
             error.code = 'ACCOUNT_LOCKED';
             throw error;
         }
