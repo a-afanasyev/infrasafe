@@ -39,16 +39,18 @@ app.use(helmet({
             scriptSrc: isProduction
                 ? ["'self'", "https://cdn.jsdelivr.net", "https://unpkg.com"]
                 : ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.jsdelivr.net", "https://unpkg.com"],
-            imgSrc: ["'self'", "data:", "https:"],
+            imgSrc: ["'self'", "data:", "https:", "https://*.tile.openstreetmap.org"],
             fontSrc: ["'self'", "https:", "data:"],
-            connectSrc: ["'self'"],
+            connectSrc: ["'self'", "https://*.tile.openstreetmap.org"],
             frameSrc: ["'none'"],
             objectSrc: ["'none'"],
             baseUri: ["'self'"],
             formAction: ["'self'"],
             frameAncestors: ["'self'"]
         }
-    }
+    },
+    // OpenStreetMap tile servers require Referer header — 'no-referrer' (helmet default) blocks it
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
 })); // Безопасность
 app.use(cors({
     origin: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : 'http://localhost:8080',
