@@ -21,8 +21,20 @@ jest.mock('../../../src/utils/circuitBreaker', () => ({
         createDatabaseBreaker: () => ({
             execute: jest.fn((fn) => fn()),
             getState: () => ({ state: 'CLOSED', failureCount: 0 })
+        }),
+        // Phase 7: analyticsService pulled in at top level; stub its breaker too.
+        createAnalyticsBreaker: () => ({
+            execute: jest.fn((fn) => fn()),
+            getState: () => ({ state: 'CLOSED', failureCount: 0 })
         })
     }
+}));
+
+// Mock analyticsService (required top-level by alertService post-Phase 7)
+jest.mock('../../../src/services/analyticsService', () => ({
+    getTransformerLoad: jest.fn().mockResolvedValue(null),
+    getAllTransformersWithAnalytics: jest.fn().mockResolvedValue([]),
+    checkForAlerts: jest.fn(),
 }));
 
 // Mock ukIntegrationService to avoid side effects

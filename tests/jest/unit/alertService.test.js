@@ -18,11 +18,26 @@ jest.mock('../../../src/services/cacheService', () => ({
 
 jest.mock('../../../src/utils/circuitBreaker', () => ({
   CircuitBreakerFactory: {
+    // Phase 7: analyticsService is now top-level required by alertService,
+    // so its createAnalyticsBreaker + createDatabaseBreaker must also be
+    // stubbed for the full module graph to load in this test.
     createDatabaseBreaker: () => ({
+      execute: (fn) => fn(),
+      getState: () => 'CLOSED'
+    }),
+    createAnalyticsBreaker: () => ({
       execute: (fn) => fn(),
       getState: () => 'CLOSED'
     })
   }
+}));
+
+// analyticsService is required top-level by alertService (Phase 7). Mock
+// it so the test does not pull in the real service's DB queries.
+jest.mock('../../../src/services/analyticsService', () => ({
+  getTransformerLoad: jest.fn().mockResolvedValue(null),
+  getAllTransformersWithAnalytics: jest.fn().mockResolvedValue([]),
+  checkForAlerts: jest.fn(),
 }));
 
 const db = require('../../../src/config/database');

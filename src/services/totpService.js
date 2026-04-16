@@ -4,6 +4,21 @@ const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const db = require('../config/database');
 const logger = require('../utils/logger');
+const cacheService = require('./cacheService');
+
+// Phase 7.2 (ARCH-113 mitigation): authService caches user rows by
+// `auth:user:${userId}` with a 5-minute TTL. totpService mutates the
+// users table directly (bypassing the User model / authService),
+// so every UPDATE here must invalidate that cache or the login flow
+// will read a stale `totp_enabled` value for up to 5 minutes.
+async function invalidateUserCache(userId) {
+    try {
+        await cacheService.invalidate(`auth:user:${userId}`);
+    } catch (err) {
+        // Best-effort: cache miss is worse than log spam. Never throw here.
+        logger.error(`Failed to invalidate auth:user:${userId} cache: ${err.message}`);
+    }
+}
 
 const ISSUER = 'InfraSafe';
 const RECOVERY_CODE_COUNT = 8;
@@ -92,6 +107,7 @@ async function generateSetup(userId, username) {
         `UPDATE users SET totp_secret = $1, recovery_codes = $2 WHERE user_id = $3`,
         [encryptedSecret, JSON.stringify(hashedRecoveryCodes), userId]
     );
+    await invalidateUserCache(userId);
 
     logger.info(`TOTP setup initiated for user ${userId}`);
 
@@ -136,6 +152,7 @@ async function confirmSetup(userId, code) {
         'UPDATE users SET totp_enabled = true WHERE user_id = $1',
         [userId]
     );
+    await invalidateUserCache(userId);
 
     logger.info(`TOTP 2FA enabled for user ${userId}`);
     return true;
@@ -180,6 +197,7 @@ async function verifyCode(userId, code) {
                 'UPDATE users SET recovery_codes = $1 WHERE user_id = $2',
                 [JSON.stringify(updatedCodes), userId]
             );
+            await invalidateUserCache(userId);
 
             logger.warn(`Recovery code used for user ${userId}, ${updatedCodes.length} remaining`);
             return { valid: true, method: 'recovery' };
@@ -208,6 +226,7 @@ async function disable(userId) {
         'UPDATE users SET totp_enabled = false, totp_secret = NULL, recovery_codes = NULL WHERE user_id = $1',
         [userId]
     );
+    await invalidateUserCache(userId);
 
     logger.info(`TOTP 2FA disabled for user ${userId}`);
     return true;

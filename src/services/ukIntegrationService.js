@@ -7,6 +7,7 @@ const logger = require('../utils/logger');
 const Building = require('../models/Building');
 const { isValidBuildingEvent } = require('../utils/webhookValidation');
 const { validateUKApiUrl } = require('../utils/urlValidation');
+const alertEvents = require('../events/alertEvents');
 
 const ALLOWED_CONFIG_KEYS = ['uk_integration_enabled', 'uk_api_url', 'uk_frontend_url'];
 const SENSITIVE_KEYS = ['uk_webhook_secret', 'uk_service_user', 'uk_service_password'];
@@ -452,14 +453,13 @@ class UKIntegrationService {
                 if (TERMINAL_STATUSES.includes(ukRequest.status)) {
                     const allTerminal = await AlertRequestMap.areAllTerminal(mapping.infrasafe_alert_id);
                     if (allTerminal) {
-                        try {
-                            const alertService = require('./alertService');
-                            // Use null for system-initiated auto-resolution (no human user)
-                            await alertService.resolveAlert(mapping.infrasafe_alert_id, null);
-                            logger.info(`handleRequestWebhook: auto-resolved alert ${mapping.infrasafe_alert_id} (all requests terminal)`);
-                        } catch (resolveError) {
-                            logger.error(`handleRequestWebhook: failed to resolve alert ${mapping.infrasafe_alert_id}: ${resolveError.message}`);
-                        }
+                        // Phase 7: emit an event instead of `require('./alertService')`.
+                        // alertService's listener (registered at module load) calls
+                        // resolveAlert with the system-initiated (null user) context.
+                        alertEvents.emit(
+                            alertEvents.EVENTS.UK_REQUEST_RESOLVED,
+                            { alertId: mapping.infrasafe_alert_id }
+                        );
                     }
                 }
 
@@ -528,4 +528,43 @@ class UKIntegrationService {
     }
 }
 
-module.exports = new UKIntegrationService();
+const singleton = new UKIntegrationService();
+
+// Phase 7: subscribe to `alert.created` so alertService can publish alerts
+// without a direct require. Phase 4.4 UK-failure recording (appending to
+// infrastructure_alerts.data.notification_failures) now lives inside this
+// listener so alertService stays fire-and-forget. The listener never
+// throws — it self-handles and logs.
+alertEvents.on(alertEvents.EVENTS.ALERT_CREATED, async ({ alertData, alertId }) => {
+    try {
+        if (!(await singleton.isEnabled())) return;
+        await singleton.sendAlertToUK({ ...alertData, alert_id: alertId });
+    } catch (ukError) {
+        logger.error(`Alert ${alertId} UK forwarding failed: ${ukError.message}`);
+        try {
+            const db = require('../config/database');
+            await db.query(
+                `UPDATE infrastructure_alerts
+                 SET data = jsonb_set(
+                     COALESCE(data::jsonb, '{}'::jsonb),
+                     '{notification_failures}',
+                     COALESCE(data::jsonb -> 'notification_failures', '[]'::jsonb)
+                         || $1::jsonb,
+                     true
+                 )
+                 WHERE alert_id = $2`,
+                [JSON.stringify([{
+                    channel: 'uk_integration',
+                    error: ukError.message,
+                    at: new Date().toISOString(),
+                }]), alertId]
+            );
+        } catch (dbErr) {
+            logger.error(
+                `Failed to record UK forwarding failure for alert ${alertId}: ${dbErr.message}`
+            );
+        }
+    }
+});
+
+module.exports = singleton;

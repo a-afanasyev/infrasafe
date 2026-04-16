@@ -21,6 +21,11 @@ jest.mock('../../../src/utils/circuitBreaker', () => ({
         createDatabaseBreaker: () => ({
             execute: (fn) => fn(),
             getState: () => 'CLOSED'
+        }),
+        // Phase 7: analyticsService at top level needs its breakers mocked too.
+        createAnalyticsBreaker: () => ({
+            execute: (fn) => fn(),
+            getState: () => 'CLOSED'
         })
     }
 }));
@@ -280,9 +285,16 @@ describe('AlertService — uncovered branches', () => {
             spy.mockRestore();
         });
 
-        test('forwards to UK when integration is enabled', async () => {
-            ukIntegrationService.isEnabled.mockResolvedValue(true);
-            ukIntegrationService.sendAlertToUK.mockResolvedValue(undefined);
+        // Phase 7: sendNotifications publishes `alert.created` on the
+        // central event bus instead of directly calling ukIntegrationService.
+        // The listener lives in ukIntegrationService and is registered at
+        // module load. These tests now assert the emitted payload rather
+        // than the downstream HTTP call — the listener itself is covered
+        // by ukIntegrationService integration tests.
+        test('emits alert.created on the event bus with alertId', async () => {
+            const alertEvents = require('../../../src/events/alertEvents');
+            const listener = jest.fn();
+            alertEvents.once(alertEvents.EVENTS.ALERT_CREATED, listener);
 
             const alertData = {
                 type: 'TRANSFORMER_OVERLOAD',
@@ -294,21 +306,20 @@ describe('AlertService — uncovered branches', () => {
 
             await alertService.sendNotifications(alertData, 201);
 
-            expect(ukIntegrationService.isEnabled).toHaveBeenCalled();
-            expect(ukIntegrationService.sendAlertToUK).toHaveBeenCalledWith(
+            expect(listener).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    ...alertData,
-                    alert_id: 201
+                    alertData: expect.objectContaining({
+                        infrastructure_id: 2, severity: 'WARNING',
+                    }),
+                    alertId: 201,
                 })
             );
         });
 
-        test('catches UK errors without throwing', async () => {
-            ukIntegrationService.isEnabled.mockResolvedValue(true);
-            ukIntegrationService.sendAlertToUK.mockRejectedValue(
-                new Error('UK API unavailable')
-            );
-
+        test('sendNotifications never throws even when listeners would fail', async () => {
+            // With the listener living outside this unit and failures
+            // self-contained there, sendNotifications itself is now a
+            // pure fire-and-forget emit. Verify it never throws.
             const alertData = {
                 type: 'TRANSFORMER_OVERLOAD',
                 severity: 'WARNING',
@@ -316,18 +327,9 @@ describe('AlertService — uncovered branches', () => {
                 infrastructure_id: 3,
                 message: 'Test alert'
             };
-
-            // Should not throw
             await expect(
                 alertService.sendNotifications(alertData, 202)
             ).resolves.not.toThrow();
-
-            // Phase 4.4: log message was reformatted to include alert_id
-            // and drop the second argument. Single-arg log now contains the
-            // original cause.
-            expect(logger.error).toHaveBeenCalledWith(
-                expect.stringContaining('UK forwarding failed: UK API unavailable')
-            );
         });
     });
 

@@ -2,6 +2,12 @@ const db = require('../config/database');
 const logger = require('../utils/logger');
 const { CircuitBreakerFactory } = require('../utils/circuitBreaker');
 const sharedThresholds = require('../config/thresholds');
+const alertEvents = require('../events/alertEvents');
+// Phase 7: top-level require is now safe. analyticsService no longer
+// requires alertService — the feedback edge goes through `transformer.check`
+// events instead. We still need analyticsService to PULL data (load numbers,
+// overloaded transformer list), which is a plain function call.
+const analyticsService = require('./analyticsService');
 
 class InfrastructureAlertService {
     constructor() {
@@ -143,8 +149,7 @@ class InfrastructureAlertService {
         }
 
         try {
-            // Получаем данные загрузки трансформатора
-            const analyticsService = require('./analyticsService');
+            // Phase 7: analyticsService now top-level required (no cycle).
             const loadData = await analyticsService.getTransformerLoad(transformerId);
 
             if (!loadData || typeof loadData.load_percent !== 'number') {
@@ -309,21 +314,12 @@ class InfrastructureAlertService {
             });
         }
 
-        // UK Integration: forward alert as UK request (still non-blocking,
-        // but failure is now recorded instead of silently logged).
-        try {
-            const ukIntegrationService = require('./ukIntegrationService');
-            if (await ukIntegrationService.isEnabled()) {
-                await ukIntegrationService.sendAlertToUK({ ...alertData, alert_id: alertId });
-            }
-        } catch (ukError) {
-            logger.error(`Alert ${alertId} UK forwarding failed: ${ukError.message}`);
-            failures.push({
-                channel: 'uk_integration',
-                error: ukError.message,
-                at: new Date().toISOString(),
-            });
-        }
+        // UK Integration: publish `alert.created` and let ukIntegrationService
+        // (subscribed at module load) forward to UK. Failure-recording for
+        // this channel now lives inside the listener (it appends its own
+        // entry to infrastructure_alerts.data.notification_failures) so
+        // alertService.sendNotifications stays fire-and-forget.
+        alertEvents.emit(alertEvents.EVENTS.ALERT_CREATED, { alertData, alertId });
 
         // Persist failures so operators can see them in the alert detail view.
         // Best-effort — a failure here is logged but never re-thrown so the
@@ -506,7 +502,7 @@ class InfrastructureAlertService {
         await this.ensureInitialized();
 
         try {
-            const analyticsService = require('./analyticsService');
+            // Phase 7: analyticsService top-level required (no more cycle).
             const transformers = await analyticsService.getAllTransformersWithAnalytics();
 
             const CONCURRENCY = 5;
@@ -591,4 +587,33 @@ class InfrastructureAlertService {
     }
 }
 
-module.exports = new InfrastructureAlertService();
+const singleton = new InfrastructureAlertService();
+
+// Phase 7 event subscriptions — registered once at module load.
+// These replace former inbound require() calls from analyticsService /
+// ukIntegrationService.
+alertEvents.on(alertEvents.EVENTS.TRANSFORMER_CHECK, (payload) => {
+    const { transformerId } = payload || {};
+    if (transformerId == null) return;
+    // Mirror the old fire-and-forget contract: background check, do not
+    // block the emitter. Errors are logged inside checkTransformerLoad.
+    Promise.resolve()
+        .then(() => singleton.checkTransformerLoad(transformerId))
+        .catch(err => logger.error(
+            `alertEvents transformer.check handler: ${err.message}`
+        ));
+});
+
+alertEvents.on(alertEvents.EVENTS.UK_REQUEST_RESOLVED, (payload) => {
+    const { alertId } = payload || {};
+    if (alertId == null) return;
+    singleton.resolveAlert(alertId, null)
+        .then(() => logger.info(
+            `alertEvents uk.request.resolved: auto-resolved alert ${alertId}`
+        ))
+        .catch(err => logger.error(
+            `alertEvents uk.request.resolved handler: failed to resolve alert ${alertId}: ${err.message}`
+        ));
+});
+
+module.exports = singleton;

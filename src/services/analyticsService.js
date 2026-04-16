@@ -3,6 +3,7 @@ const { CircuitBreakerFactory } = require('../utils/circuitBreaker');
 const PowerTransformer = require('../models/PowerTransformer');
 const db = require('../config/database');
 const logger = require('../utils/logger');
+const alertEvents = require('../events/alertEvents');
 
 class AnalyticsService {
     constructor() {
@@ -81,21 +82,15 @@ class AnalyticsService {
         });
     }
 
-    // Асинхронная проверка на алерты (не блокирует основной запрос)
+    // Асинхронная проверка на алерты (не блокирует основной запрос).
+    // Phase 7: publishes the request through alertEvents; alertService's
+    // listener picks it up via setImmediate internally. Analytics no longer
+    // imports alertService directly — breaking the previous cycle.
     async checkForAlerts(transformerId, _loadData) {
         try {
-            // Выполняем в фоне, чтобы не замедлять ответ API
-            setImmediate(async () => {
-                try {
-                    const alertService = require('./alertService');
-                    await alertService.checkTransformerLoad(transformerId);
-                } catch (error) {
-                    logger.error(`Ошибка фоновой проверки алертов для трансформатора ${transformerId}:`, error);
-                }
-            });
+            alertEvents.emit(alertEvents.EVENTS.TRANSFORMER_CHECK, { transformerId });
         } catch (error) {
-            // Игнорируем ошибки фоновых проверок, чтобы не влиять на основной API
-            logger.warn(`Не удалось запустить проверку алертов для трансформатора ${transformerId}:`, error.message);
+            logger.warn(`Не удалось опубликовать событие transformer.check для ${transformerId}:`, error.message);
         }
     }
 

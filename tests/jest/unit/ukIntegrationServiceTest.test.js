@@ -485,37 +485,45 @@ describe('UKIntegrationService — Phase 3-5', () => {
             expect(AlertRequestMap.updateStatus).toHaveBeenCalledWith(20, 'active');
         });
 
-        it('auto-resolves alert when all requests are terminal', async () => {
+        // Phase 7: instead of directly calling alertService.resolveAlert,
+        // ukIntegrationService now emits `uk.request.resolved` on the
+        // central event bus; alertService subscribes to that event at
+        // module-load time. These tests verify the event emission rather
+        // than the downstream resolveAlert invocation (the alertService
+        // listener is covered in alertServiceCoverage.test.js).
+        it('emits uk.request.resolved when all requests are terminal', async () => {
+            const alertEvents = require('../../../src/events/alertEvents');
             AlertRequestMap.findByRequestNumber.mockResolvedValue({
                 id: 20,
                 infrasafe_alert_id: 200
             });
             AlertRequestMap.updateStatus.mockResolvedValue({});
             AlertRequestMap.areAllTerminal.mockResolvedValue(true);
-            alertService.resolveAlert.mockResolvedValue({});
+
+            const listener = jest.fn();
+            alertEvents.once(alertEvents.EVENTS.UK_REQUEST_RESOLVED, listener);
 
             await service.handleRequestWebhook(basePayload);
 
-            expect(alertService.resolveAlert).toHaveBeenCalledWith(200, null);
-            expect(logger.info).toHaveBeenCalledWith(
-                expect.stringContaining('auto-resolved alert 200')
-            );
+            expect(listener).toHaveBeenCalledWith({ alertId: 200 });
         });
 
-        it('logs error but does not throw when auto-resolve fails', async () => {
+        it('does not emit uk.request.resolved when not all requests are terminal', async () => {
+            const alertEvents = require('../../../src/events/alertEvents');
             AlertRequestMap.findByRequestNumber.mockResolvedValue({
                 id: 20,
                 infrasafe_alert_id: 200
             });
             AlertRequestMap.updateStatus.mockResolvedValue({});
-            AlertRequestMap.areAllTerminal.mockResolvedValue(true);
-            alertService.resolveAlert.mockRejectedValue(new Error('Alert not found'));
+            AlertRequestMap.areAllTerminal.mockResolvedValue(false);
+
+            const listener = jest.fn();
+            alertEvents.on(alertEvents.EVENTS.UK_REQUEST_RESOLVED, listener);
 
             await service.handleRequestWebhook(basePayload);
+            alertEvents.off(alertEvents.EVENTS.UK_REQUEST_RESOLVED, listener);
 
-            expect(logger.error).toHaveBeenCalledWith(
-                expect.stringContaining('failed to resolve alert 200')
-            );
+            expect(listener).not.toHaveBeenCalled();
         });
 
         it('does nothing when no mapping found for request number (manual UK request)', async () => {
