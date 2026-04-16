@@ -322,9 +322,11 @@ describe('AlertService — uncovered branches', () => {
                 alertService.sendNotifications(alertData, 202)
             ).resolves.not.toThrow();
 
+            // Phase 4.4: log message was reformatted to include alert_id
+            // and drop the second argument. Single-arg log now contains the
+            // original cause.
             expect(logger.error).toHaveBeenCalledWith(
-                expect.stringContaining('UK integration sendAlertToUK error'),
-                expect.stringContaining('UK API unavailable')
+                expect.stringContaining('UK forwarding failed: UK API unavailable')
             );
         });
     });

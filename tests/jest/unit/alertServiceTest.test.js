@@ -391,6 +391,73 @@ describe('AlertService', () => {
             await alertService.loadActiveAlerts();
             expect(alertService.activeAlerts.size).toBe(0);
         });
+
+        // Phase 4.3 (ARCH-109): active alerts must also hydrate lastChecks
+        // so that a restart does not cause an alert burst.
+        test('restores cooldown timestamps from active alerts on load', async () => {
+            const alertTs = '2025-06-01T10:00:00.000Z';
+            db.query.mockResolvedValue({
+                rows: [
+                    {
+                        alert_id: 1,
+                        type: 'TRANSFORMER_OVERLOAD',
+                        infrastructure_id: 10,
+                        infrastructure_type: 'transformer',
+                        severity: 'WARNING',
+                        created_at: alertTs,
+                    },
+                ],
+            });
+
+            alertService.activeAlerts.clear();
+            alertService.lastChecks.clear();
+
+            await alertService.loadActiveAlerts();
+
+            const checkKey = 'transformer:10:load_check';
+            expect(alertService.lastChecks.has(checkKey)).toBe(true);
+            expect(alertService.lastChecks.get(checkKey)).toBe(new Date(alertTs).getTime());
+        });
+    });
+
+    // Phase 4.1 (ARCH-106): createAlert must catch UNIQUE-violation (23505)
+    // from the new partial index and return null, leaving the caller to treat
+    // the attempt as "already active" rather than an error.
+    describe('createAlert — DB UNIQUE dedup', () => {
+        test('returns null when DB raises 23505 UNIQUE violation', async () => {
+            const err = new Error('duplicate key value violates unique constraint');
+            err.code = '23505';
+            db.query.mockRejectedValueOnce(err);
+
+            const alertData = {
+                type: 'TRANSFORMER_OVERLOAD',
+                infrastructure_type: 'transformer',
+                infrastructure_id: 42,
+                severity: 'WARNING',
+                message: 'test dup',
+                data: { load_percent: 90 },
+            };
+
+            const result = await alertService.createAlert(alertData);
+            expect(result).toBeNull();
+        });
+
+        test('re-throws non-23505 DB errors', async () => {
+            const err = new Error('connection refused');
+            err.code = '57P03';
+            db.query.mockRejectedValueOnce(err);
+
+            const alertData = {
+                type: 'TRANSFORMER_OVERLOAD',
+                infrastructure_type: 'transformer',
+                infrastructure_id: 42,
+                severity: 'WARNING',
+                message: 'test',
+                data: {},
+            };
+
+            await expect(alertService.createAlert(alertData)).rejects.toThrow('connection refused');
+        });
     });
 
     describe('sendNotifications', () => {

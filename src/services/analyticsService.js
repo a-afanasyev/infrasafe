@@ -11,13 +11,15 @@ class AnalyticsService {
         this.databaseBreaker = CircuitBreakerFactory.createDatabaseBreaker('AnalyticsDB');
         this.materializedViewBreaker = CircuitBreakerFactory.createAnalyticsBreaker('MaterializedView');
 
-        // Пороги для алертов
+        // Phase 4.2 (KISS-008): thresholds come from the shared config module.
+        // Previously had transformer_overload=80 here — now unified at 85.
+        const sharedThresholds = require('../config/thresholds');
         this.thresholds = {
-            transformer_overload: 80, // % загрузки
-            transformer_critical: 95,
-            water_pressure_low: 2.0, // бар
-            water_pressure_critical: 1.5,
-            heating_temp_delta_low: 15 // °C разность температур
+            transformer_overload: sharedThresholds.transformer.overload,
+            transformer_critical: sharedThresholds.transformer.critical,
+            water_pressure_low: sharedThresholds.water.pressure_low,
+            water_pressure_critical: sharedThresholds.water.pressure_critical,
+            heating_temp_delta_low: sharedThresholds.heating.temp_delta_low,
         };
     }
 

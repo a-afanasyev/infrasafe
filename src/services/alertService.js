@@ -1,20 +1,22 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const { CircuitBreakerFactory } = require('../utils/circuitBreaker');
+const sharedThresholds = require('../config/thresholds');
 
 class InfrastructureAlertService {
     constructor() {
         // Circuit breaker для операций с БД
         this.dbBreaker = CircuitBreakerFactory.createDatabaseBreaker('AlertsDB');
 
-        // Пороги для алертов (можно выносить в конфигурацию)
+        // Phase 4.2 (KISS-008): thresholds come from the shared config module.
+        // Local copy kept for updateThresholds() compatibility (runtime overrides).
         this.thresholds = {
-            transformer_overload: 85, // % загрузки
-            transformer_critical: 95,
-            water_pressure_low: 2.0, // бар
-            water_pressure_critical: 1.5,
-            heating_temp_delta_low: 15, // °C разность температур
-            heating_temp_delta_critical: 10
+            transformer_overload: sharedThresholds.transformer.overload,
+            transformer_critical: sharedThresholds.transformer.critical,
+            water_pressure_low: sharedThresholds.water.pressure_low,
+            water_pressure_critical: sharedThresholds.water.pressure_critical,
+            heating_temp_delta_low: sharedThresholds.heating.temp_delta_low,
+            heating_temp_delta_critical: sharedThresholds.heating.temp_delta_critical,
         };
 
         // Активные алерты в памяти для быстрого доступа
@@ -100,7 +102,25 @@ class InfrastructureAlertService {
                 });
             }
 
-            logger.info(`Загружено ${this.activeAlerts.size} активных алертов`);
+            // Phase 4.3 (ARCH-109): restore cooldown timestamps from active alert
+            // created_at values so a process restart does not cause an alert burst.
+            // checkTransformerLoad et al. use a per-infrastructure cooldown keyed as
+            // `${infra_type}:${infra_id}:load_check`; we project active alerts onto
+            // the same key shape and keep the most recent timestamp.
+            for (const [alertKey, alertInfo] of this.activeAlerts.entries()) {
+                const parts = alertKey.split(':');
+                if (parts.length < 2) continue;
+                const checkKey = `${parts[0]}:${parts[1]}:load_check`;
+                const alertTime = new Date(alertInfo.created_at).getTime();
+                const existing = this.lastChecks.get(checkKey);
+                if (!existing || alertTime > existing) {
+                    this.lastChecks.set(checkKey, alertTime);
+                }
+            }
+
+            logger.info(
+                `Загружено ${this.activeAlerts.size} активных алертов; восстановлено ${this.lastChecks.size} cooldown-меток`
+            );
         } catch (error) {
             logger.error('Ошибка загрузки активных алертов:', error);
             // Не бросаем ошибку, чтобы не ломать инициализацию
@@ -214,7 +234,21 @@ class InfrastructureAlertService {
                 JSON.stringify(alertData.data)
             ];
 
-            const result = await db.query(query, values);
+            // Phase 4.1 (ARCH-106): DB-level dedup via partial UNIQUE index
+            // idx_active_alert_dedup. Catch the UNIQUE violation and return
+            // null instead of throwing — caller treats it as "already active".
+            let result;
+            try {
+                result = await db.query(query, values);
+            } catch (err) {
+                if (err.code === '23505') {
+                    logger.info(
+                        `Duplicate alert suppressed by DB (UNIQUE): ${alertData.type} for ${alertData.infrastructure_type}:${alertData.infrastructure_id}`
+                    );
+                    return null;
+                }
+                throw err;
+            }
             const alertId = result.rows[0].alert_id;
             const createdAt = result.rows[0].created_at;
 
@@ -242,28 +276,76 @@ class InfrastructureAlertService {
     }
 
     // Отправка уведомлений (базовая реализация)
+    // Phase 4.4 (ARCH-112): per-channel try/catch + persist failures into
+    // infrastructure_alerts.data.notification_failures for monitoring/retry.
     async sendNotifications(alertData, alertId) {
-        try {
-            // Критические алерты - немедленные уведомления
-            if (alertData.severity === 'CRITICAL') {
-                await this.sendImmediateNotification(alertData, alertId);
-            }
+        const failures = [];
 
-            // WebSocket уведомления для активных пользователей (если реализован)
-            this.broadcastAlert(alertData, alertId);
-
-            // UK Integration: forward alert as UK request (fire-and-forget, never throws)
+        // Критические алерты - немедленные уведомления
+        if (alertData.severity === 'CRITICAL') {
             try {
-                const ukIntegrationService = require('./ukIntegrationService');
-                if (await ukIntegrationService.isEnabled()) {
-                    await ukIntegrationService.sendAlertToUK({ ...alertData, alert_id: alertId });
-                }
-            } catch (ukError) {
-                logger.error('UK integration sendAlertToUK error (non-blocking):', ukError.message);
+                await this.sendImmediateNotification(alertData, alertId);
+            } catch (notifError) {
+                logger.error(`Alert ${alertId} immediate notification failed: ${notifError.message}`);
+                failures.push({
+                    channel: 'immediate',
+                    error: notifError.message,
+                    at: new Date().toISOString(),
+                });
             }
+        }
 
-        } catch (error) {
-            logger.error('Ошибка отправки уведомлений:', error);
+        // WebSocket broadcast (fire-and-forget, non-critical). Wrapped to be
+        // defensive: broadcastAlert is a sync TODO stub today but future
+        // WS implementations may throw.
+        try {
+            this.broadcastAlert(alertData, alertId);
+        } catch (wsError) {
+            logger.warn(`Alert ${alertId} WebSocket broadcast failed: ${wsError.message}`);
+            failures.push({
+                channel: 'websocket',
+                error: wsError.message,
+                at: new Date().toISOString(),
+            });
+        }
+
+        // UK Integration: forward alert as UK request (still non-blocking,
+        // but failure is now recorded instead of silently logged).
+        try {
+            const ukIntegrationService = require('./ukIntegrationService');
+            if (await ukIntegrationService.isEnabled()) {
+                await ukIntegrationService.sendAlertToUK({ ...alertData, alert_id: alertId });
+            }
+        } catch (ukError) {
+            logger.error(`Alert ${alertId} UK forwarding failed: ${ukError.message}`);
+            failures.push({
+                channel: 'uk_integration',
+                error: ukError.message,
+                at: new Date().toISOString(),
+            });
+        }
+
+        // Persist failures so operators can see them in the alert detail view.
+        // Best-effort — a failure here is logged but never re-thrown so the
+        // caller's main flow (alert creation) is not affected.
+        if (failures.length > 0) {
+            try {
+                await db.query(
+                    `UPDATE infrastructure_alerts
+                     SET data = jsonb_set(
+                         COALESCE(data::jsonb, '{}'::jsonb),
+                         '{notification_failures}',
+                         $1::jsonb,
+                         true
+                     )
+                     WHERE alert_id = $2`,
+                    [JSON.stringify(failures), alertId]
+                );
+            } catch (updateError) {
+                logger.error(
+                    `Failed to record notification_failures for alert ${alertId}: ${updateError.message}`
+                );
+            }
         }
     }
 

@@ -170,12 +170,15 @@ describe('AnalyticsService', () => {
         });
 
         test('fetches from DB with default threshold', async () => {
+            // Phase 4.2 (KISS-008): default transformer_overload is now 85
+            // (was 80 locally in analyticsService; unified with alertService
+            // via src/config/thresholds.js).
             const data = [{ id: 1, load_percent: 85 }];
             PowerTransformer.getOverloadedTransformers.mockResolvedValue(data);
 
             const result = await analyticsService.getOverloadedTransformers();
 
-            expect(PowerTransformer.getOverloadedTransformers).toHaveBeenCalledWith(80);
+            expect(PowerTransformer.getOverloadedTransformers).toHaveBeenCalledWith(85);
             expect(result).toEqual(data);
         });
 
@@ -306,7 +309,7 @@ describe('AnalyticsService', () => {
 
             expect(db.query).toHaveBeenCalledWith(
                 expect.stringContaining('GROUP BY b.town'),
-                [80] // default threshold
+                [85] // Phase 4.2: unified transformer_overload threshold
             );
             expect(result).toEqual(data);
         });
