@@ -1684,7 +1684,10 @@ document.addEventListener("DOMContentLoaded", function () {
                 onSave: async (data) => {
                     const updateResponse = await fetch(`/api/admin/controllers/${id}`, {
                         method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                        },
                         body: JSON.stringify(data)
                     });
 
@@ -1707,7 +1710,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
         try {
             const response = await fetch(`/api/admin/controllers/${id}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                }
             });
 
             if (!response.ok) throw new Error('Ошибка удаления контроллера');
@@ -1730,7 +1736,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
         try {
             const response = await fetch(`/api/admin/metrics/${id}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                }
             });
 
             if (!response.ok) throw new Error('Ошибка удаления метрики');
@@ -1790,7 +1799,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
         try {
             const response = await fetch(`/api/admin/water-lines/${id}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                }
             });
 
             if (!response.ok) {
@@ -1840,7 +1852,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
         try {
             const response = await fetch(`/api/transformers/${id}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                }
             });
 
             if (!response.ok) throw new Error('Ошибка удаления трансформатора');
@@ -1895,7 +1910,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
         try {
             const response = await fetch(`/api/lines/${id}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                }
             });
 
             if (!response.ok) throw new Error('Ошибка удаления линии');
@@ -1946,7 +1964,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
         try {
             const response = await fetch(`/api/cold-water-sources/${id}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                }
             });
 
             if (!response.ok) throw new Error('Ошибка удаления источника воды');
@@ -1997,7 +2018,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
         try {
             const response = await fetch(`/api/heat-sources/${id}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                }
             });
 
             if (!response.ok) throw new Error('Ошибка удаления источника тепла');
@@ -2031,7 +2055,10 @@ document.addEventListener("DOMContentLoaded", function () {
         try {
             const response = await fetch(`/api/transformers/${id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                },
                 body: JSON.stringify(data)
             });
 
@@ -2063,7 +2090,10 @@ document.addEventListener("DOMContentLoaded", function () {
         try {
             const response = await fetch(`/api/lines/${id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                },
                 body: JSON.stringify(data)
             });
 
@@ -2100,7 +2130,10 @@ document.addEventListener("DOMContentLoaded", function () {
         try {
             const response = await fetch(`/api/cold-water-sources/${id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                },
                 body: JSON.stringify(data)
             });
 
@@ -2137,7 +2170,10 @@ document.addEventListener("DOMContentLoaded", function () {
         try {
             const response = await fetch(`/api/heat-sources/${id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                },
                 body: JSON.stringify(data)
             });
 

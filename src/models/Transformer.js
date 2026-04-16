@@ -116,22 +116,44 @@ class Transformer {
         }
     }
 
-    // Создать новый трансформатор
+    // Создать новый трансформатор.
+    // Обязательные: name, power_kva, voltage_kv. Остальные поля — опциональны
+    // и записываются только если переданы (чтобы SQL дефолты и NOT NULL
+    // constraints не конфликтовали с "пустыми" значениями из форм).
     static async create(transformerData) {
         try {
-            const { name, power_kva, voltage_kv } = transformerData;
+            const fields = [];
+            const values = [];
+            const optionalFields = [
+                'name', 'power_kva', 'voltage_kv',
+                'location', 'latitude', 'longitude',
+                'installation_date', 'manufacturer', 'model', 'status',
+            ];
+            for (const key of optionalFields) {
+                const v = transformerData[key];
+                // Skip undefined/null/NaN so PG defaults apply
+                if (v === undefined || v === null) continue;
+                if (typeof v === 'number' && Number.isNaN(v)) continue;
+                fields.push(key);
+                values.push(v);
+            }
+            if (fields.length < 3) {
+                throw createError('name, power_kva and voltage_kv are required', 400);
+            }
 
+            const placeholders = fields.map((_, i) => `$${i + 1}`).join(', ');
             const { rows } = await db.query(
-                `INSERT INTO transformers (name, power_kva, voltage_kv)
-                VALUES ($1, $2, $3)
-                RETURNING *`,
-                [name, power_kva, voltage_kv]
+                `INSERT INTO transformers (${fields.join(', ')})
+                 VALUES (${placeholders})
+                 RETURNING *`,
+                values
             );
 
-            logger.info(`Created transformer: ${name}`);
+            logger.info(`Created transformer: ${transformerData.name}`);
             return new Transformer(rows[0]);
         } catch (error) {
             logger.error(`Error in Transformer.create: ${error.message}`);
+            if (error.statusCode) throw error;
             throw createError(`Failed to create transformer: ${error.message}`, 500);
         }
     }
