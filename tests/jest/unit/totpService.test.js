@@ -120,14 +120,18 @@ describe('totpService — generateSetup', () => {
     beforeEach(() => jest.clearAllMocks());
 
     test('stores encrypted secret and hashed recovery codes', async () => {
-        db.query.mockResolvedValue({ rows: [] });
+        // First call: SELECT for pending-secret check (no existing row state)
+        // Second call: UPDATE users SET ...
+        db.query
+            .mockResolvedValueOnce({ rows: [{ totp_secret: null, totp_enabled: false }] })
+            .mockResolvedValueOnce({ rows: [] });
         const result = await totpService.generateSetup(42, 'alice');
 
         expect(result.qrCodeUrl).toMatch(/^data:image\/png;base64,/);
         expect(result.recoveryCodes).toHaveLength(8);
         expect(typeof result.secret).toBe('string');
 
-        const [sql, params] = db.query.mock.calls[0];
+        const [sql, params] = db.query.mock.calls[1];
         expect(sql).toMatch(/UPDATE users SET totp_secret = \$1, recovery_codes = \$2 WHERE user_id = \$3/);
         // Encrypted secret → iv:tag:ct
         expect(params[0]).toMatch(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/);
@@ -138,9 +142,69 @@ describe('totpService — generateSetup', () => {
     });
 
     test('invalidates auth user cache after UPDATE (Phase 7.2)', async () => {
-        db.query.mockResolvedValue({ rows: [] });
+        db.query
+            .mockResolvedValueOnce({ rows: [{ totp_secret: null, totp_enabled: false }] })
+            .mockResolvedValueOnce({ rows: [] });
         await totpService.generateSetup(99, 'bob');
         expect(cacheService.invalidate).toHaveBeenCalledWith('auth:user:99');
+    });
+
+    test('throws "User not found" when user row missing', async () => {
+        db.query.mockResolvedValueOnce({ rows: [] });
+        await expect(totpService.generateSetup(404, 'ghost'))
+            .rejects.toThrow('User not found');
+    });
+});
+
+describe('totpService — generateSetup idempotency', () => {
+    beforeEach(() => jest.clearAllMocks());
+
+    test('pending setup returns the SAME secret on second call (QR stable)', async () => {
+        // First generateSetup: no prior secret → mint new
+        db.query
+            .mockResolvedValueOnce({ rows: [{ totp_secret: null, totp_enabled: false }] })
+            .mockResolvedValueOnce({ rows: [] });
+        const first = await totpService.generateSetup(77, 'carol');
+
+        // Second generateSetup: prior encrypted secret present, still not enabled
+        // → must reuse the SAME plaintext secret (otherwise user-perceived "different OTPs" bug)
+        const encryptedPending = totpService.encrypt(first.secret);
+        db.query
+            .mockResolvedValueOnce({ rows: [{ totp_secret: encryptedPending, totp_enabled: false }] })
+            .mockResolvedValueOnce({ rows: [] });
+        const second = await totpService.generateSetup(77, 'carol');
+
+        expect(second.secret).toBe(first.secret);
+    });
+
+    test('recovery codes DIFFER across calls (user must save latest set)', async () => {
+        db.query
+            .mockResolvedValueOnce({ rows: [{ totp_secret: null, totp_enabled: false }] })
+            .mockResolvedValueOnce({ rows: [] });
+        const first = await totpService.generateSetup(78, 'dave');
+
+        const encryptedPending = totpService.encrypt(first.secret);
+        db.query
+            .mockResolvedValueOnce({ rows: [{ totp_secret: encryptedPending, totp_enabled: false }] })
+            .mockResolvedValueOnce({ rows: [] });
+        const second = await totpService.generateSetup(78, 'dave');
+
+        expect(second.recoveryCodes).not.toEqual(first.recoveryCodes);
+        expect(second.recoveryCodes).toHaveLength(8);
+    });
+
+    test('after 2FA is enabled, a new generateSetup call mints a FRESH secret', async () => {
+        // Pretend the pending secret from a previous setup has been confirmed (totp_enabled=true).
+        // Calling generateSetup again (e.g. after an admin "reset 2FA" action) must NOT keep the
+        // old secret — it should generate a brand-new one.
+        const oldEncrypted = totpService.encrypt('OLDSECRETBASE32');
+        db.query
+            .mockResolvedValueOnce({ rows: [{ totp_secret: oldEncrypted, totp_enabled: true }] })
+            .mockResolvedValueOnce({ rows: [] });
+        const result = await totpService.generateSetup(79, 'erin');
+
+        expect(result.secret).not.toBe('OLDSECRETBASE32');
+        expect(typeof result.secret).toBe('string');
     });
 });
 

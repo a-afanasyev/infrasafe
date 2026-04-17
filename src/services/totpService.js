@@ -93,16 +93,35 @@ async function hashRecoveryCodes(codes) {
 }
 
 async function generateSetup(userId, username) {
-    const secret = otplib.generateSecret();
+    // Reuse the pending secret if setup is in-flight.
+    // Without this guard a user who opens the QR, refreshes, or re-logs-in
+    // before scanning ends up with a fresh overwritten secret and the first
+    // QR stops working — surfacing as "different OTPs" to the user.
+    const existing = await db.query(
+        'SELECT totp_secret, totp_enabled FROM users WHERE user_id = $1',
+        [userId]
+    );
+    if (!existing.rows.length) {
+        throw new Error('User not found');
+    }
+
+    let secret;
+    if (existing.rows[0].totp_secret && !existing.rows[0].totp_enabled) {
+        secret = decrypt(existing.rows[0].totp_secret);
+        logger.info(`TOTP setup resumed for user ${userId} — reusing pending secret`);
+    } else {
+        secret = otplib.generateSecret();
+    }
+
     const otpauthUrl = otplib.generateURI({ issuer: ISSUER, label: username, secret });
     const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
 
+    // Recovery codes are one-shot — always regenerate; user must save the latest set.
     const plainRecoveryCodes = generateRecoveryCodes();
     const hashedRecoveryCodes = await hashRecoveryCodes(plainRecoveryCodes);
 
     const encryptedSecret = encrypt(secret);
 
-    // Store secret (not yet enabled) — user must confirm with a valid code
     await db.query(
         `UPDATE users SET totp_secret = $1, recovery_codes = $2 WHERE user_id = $3`,
         [encryptedSecret, JSON.stringify(hashedRecoveryCodes), userId]
