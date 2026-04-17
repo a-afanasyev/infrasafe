@@ -18,7 +18,8 @@
     "test:watch": "jest --watch",
     "test:e2e": "jest --config tests/jest/e2e/jest.e2e.config.js --runInBand --testTimeout=15000",
     "build:frontend": "node build/esbuild.config.mjs",
-    "build:frontend:watch": "node build/esbuild.config.mjs --watch"
+    "build:frontend:watch": "node build/esbuild.config.mjs --watch",
+    "postinstall": "npm run build:frontend"
   },
   "keywords": [
     "monitoring",

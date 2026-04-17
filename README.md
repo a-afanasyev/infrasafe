@@ -176,6 +176,20 @@ docker compose -f docker-compose.unified.yml up --build -d
 | API | http://localhost:8080/api/ |
 | Health Check | http://localhost:3000/health |
 
+### Фронтенд-бандлинг
+
+Фронтенд (index.html, admin.html, login.html) загружает минифицированные
+бандлы из `public/dist/`. Эти файлы собираются esbuild'ом автоматически:
+
+```bash
+npm ci                         # postinstall собирает public/dist/
+npm run build:frontend         # пересобрать один раз
+npm run build:frontend:watch   # watch-режим: пересборка при каждом save
+```
+
+`public/dist/` в `.gitignore` — не коммитить. После `git clone` просто
+выполните `npm ci` перед запуском Docker, чтобы бандлы были на месте.
+
 ### Тестирование
 
 ```bash
