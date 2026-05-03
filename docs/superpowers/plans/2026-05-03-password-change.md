@@ -624,6 +624,8 @@ describe('authenticateRefresh — password_changed_at cutoff', () => {
 ```
 
 > Adjust the import line at top of the file if needed: `const { authenticateJWT, authenticateRefresh } = require('../../../src/middleware/auth')`. If the existing file already imports them, skip.
+>
+> **Mock cleanup tip:** if `authMiddleware.test.js` already has a `jest.mock('../../../src/services/authService', () => ({ ... }))` factory at the top, add `_isIssuedBeforeCutoff: jest.fn()` to that factory object. Cleaner than per-test stamping (and survives `jest.clearAllMocks()` properly).
 
 - [ ] **Step 3: Run tests to verify they fail**
 
@@ -1377,6 +1379,10 @@ describe('E2E: POST /api/auth/change-password', () => {
     const NEW_PWD = 'NewPass456';
 
     beforeAll(async () => {
+        // Reset rate limiters so previous suites don't exhaust the registerLimiter
+        const { resetAllRateLimits } = require('../../../src/middleware/rateLimiter');
+        if (typeof resetAllRateLimits === 'function') resetAllRateLimits();
+
         // Use a dedicated registered user — admin has 2FA mandatory which complicates flow
         const username = `pwtest_${Date.now()}`;
         const email = `${username}@test.local`;
