@@ -5,7 +5,19 @@
 ## Как применяются
 
 **Свежая БД (чистый volume):**
-PostgreSQL Docker-контейнер автоматически выполняет `../init/01_init_database.sql` и `../init/02_seed_data.sql` при первом запуске (стандартный `/docker-entrypoint-initdb.d`-механизм). Миграции `003–015` в этом случае **не нужны** — `01_init_database.sql` уже содержит итоговую схему.
+PostgreSQL Docker-контейнер автоматически выполняет все файлы из `../init/` в алфавитном порядке (стандартный `/docker-entrypoint-initdb.d`-механизм):
+
+| Init-файл | Источник | Что делает |
+| --- | --- | --- |
+| `01_init_database.sql` | стабильная итоговая схема (003–010 + 012_fix_mv интегрированы) | базовые таблицы, индексы, триггеры, MV |
+| `02_seed_data.sql` | дамп от 2025-11-15 | тестовые данные (17 buildings, 34 metrics, admin user) |
+| `03_uk_integration.sql` | копия `011_uk_integration.sql` | UK Integration Foundation |
+| `04_totp_2fa.sql` | копия `012_totp_2fa.sql` | 2FA-колонки в `users` |
+| `05_account_lockout.sql` | копия `013_account_lockout.sql` | persistent account lockout |
+| `06_performance_indexes.sql` | копия `014_performance_indexes.sql` | PERF-002 / PERF-010 |
+| `07_alert_dedup.sql` | `015_alert_dedup_constraint.sql` + idempotent pre-cleanup для seed-дубликатов | partial UNIQUE для активных alerts |
+
+После запуска `docker compose up` чистая БД будет полностью готова — никаких ручных шагов не нужно.
 
 **Существующая БД (живой volume, production):**
 Миграции применяются вручную в порядке нумерации:
@@ -20,7 +32,7 @@ docker exec infrasafe-postgres-1 psql -U postgres -d infrasafe \
 ## Список миграций
 
 | # | Файл | Дата | Назначение |
-|---|------|------|-----------|
+| --- | --- | --- | --- |
 | 003 | `003_power_calculation_system.sql` (+ `_fixed`, `_v2`) | 2025-11-02 | Система расчёта мощности (исторически — три файла, использовать только `_v2`) |
 | 004 | `004_add_coordinates_and_extended_fields.sql` | 2025-10-23 | Координаты зданий (PostGIS) и расширенные поля |
 | 005 | `005_add_paths_to_lines.sql` | 2025-10-23 | Геометрия путей для `power_lines` и `water_lines` |
