@@ -16,6 +16,7 @@ PostgreSQL Docker-контейнер автоматически выполняе
 | `05_account_lockout.sql` | копия `013_account_lockout.sql` | persistent account lockout |
 | `06_performance_indexes.sql` | копия `014_performance_indexes.sql` | PERF-002 / PERF-010 |
 | `07_alert_dedup.sql` | `015_alert_dedup_constraint.sql` + idempotent pre-cleanup для seed-дубликатов | partial UNIQUE для активных alerts |
+| `08_password_changed_at.sql` | копия `016_password_changed_at.sql` | колонка для аудита смены пароля и JWT-cutoff |
 
 После запуска `docker compose up` чистая БД будет полностью готова — никаких ручных шагов не нужно.
 
@@ -47,6 +48,7 @@ docker exec infrasafe-postgres-1 psql -U postgres -d infrasafe \
 | 013 | `013_account_lockout.sql` | 2026-04-17 | Persistent account lockout — таблица `account_lockout` (заменяет in-memory `Map`, Phase 12B.3) |
 | 014 | `014_performance_indexes.sql` | 2026-04-17 | PERF-002/PERF-010 — индексы на основе EXPLAIN ANALYZE (Phase 12C.2) |
 | 015 | `015_alert_dedup_constraint.sql` | 2026-04-17 | Phase 4.1 / ARCH-106 — partial UNIQUE index для дедупликации активных alerts |
+| 016 | `016_password_changed_at.sql` | 2026-05-03 | Phase 13 — `users.password_changed_at` column (fixes latent service bug + enables JWT-cutoff for bulk session invalidation) |
 
 ## Примечание про `003_*` и `012_*`
 
