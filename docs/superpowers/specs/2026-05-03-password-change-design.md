@@ -32,19 +32,20 @@ Add a password change flow for the `admin` role through the legacy admin panel (
 
 ```text
 admin.html [header]
-  ├─ existing #logout-btn
+  ├─ existing fixed #logout-btn
   └─ NEW button "🔑 Сменить пароль"
        └─ click → <dialog id="change-password-modal">
             └─ submit → POST /api/auth/change-password
                  ├─ 200 → green banner "Перенаправление…" 1.5s
                  │         → window.adminAuth.logout()
-                 │              → localStorage.removeItem('admin_token','refresh_token')
+                 │              → localStorage.removeItem('admin_token')
+                 │              → localStorage.removeItem('refresh_token')
                  │              → restore window.fetch
                  │              → window.location.replace('/login.html')
                  ├─ 400 INVALID_CURRENT_PASSWORD → inline under "Текущий пароль"
                  ├─ 400 INVALID_PASSWORD          → inline under "Новый пароль"
                  ├─ 401                            → existing 401-handler in admin-auth.js
-                 ├─ 429                            → toast + 30s cooldown on submit
+                 ├─ 429                            → toast + cooldown from Retry-After
                  └─ 500/network                    → toast "Не удалось…"
 ```
 
@@ -55,7 +56,7 @@ Refresh tokens in InfraSafe are **stateless JWTs** signed with `JWT_REFRESH_SECR
 The standard pattern for stateless JWT bulk invalidation is a per-user epoch: store a timestamp in the user row and reject any token whose `iat` (issued-at) precedes it. Since `password_changed_at` already needs to exist (Phase 13 fixes the latent bug), it becomes our cutoff:
 
 - On `changePassword`: `UPDATE users SET password_hash=$1, password_changed_at=NOW() WHERE user_id=$2`
-- In `verifyToken` (and `refreshToken`): if `decoded.iat * 1000 < user.password_changed_at - CLOCK_SKEW_MS` → throw `error.code = 'TOKEN_EXPIRED'`
+- In JWT auth middleware and refresh flow: if `decoded.iat * 1000 < user.password_changed_at - CLOCK_SKEW_MS` → reject the token as stale
 
 This is one UPDATE, no transaction needed, invalidates every access and refresh token for that user atomically. Access tokens remain valid for their natural lifetime (1h default) only when issued AFTER the password change.
 
@@ -80,8 +81,9 @@ Clock skew tolerance: 5 seconds (constant `JWT_CUTOFF_SKEW_MS = 5000`). Generous
 -- Migration 016 — password change audit timestamp + JWT invalidation cutoff
 -- Fixes a latent bug: src/services/authService.js#changePassword writes to
 -- users.password_changed_at, but the column was never declared. Phase 13
--- additionally repurposes the column as a per-user JWT-cutoff (verifyToken
--- rejects tokens whose iat precedes this timestamp), which is how we bulk-
+-- additionally repurposes the column as a per-user JWT-cutoff (auth
+-- middleware / refresh flow reject tokens whose iat precedes this
+-- timestamp), which is how we bulk-
 -- invalidate every access and refresh token for a user when their password
 -- changes.
 
@@ -120,15 +122,17 @@ No transaction needed — single UPDATE.
 
 **Note (verified 2026-05-03):** the project's db module is `src/config/database.js` and exports `{ init, query, getPool, close }` with no `transaction()` helper. The previous draft of this spec called for a transaction; that requirement is dropped because the bulk-invalidation no longer requires DELETE FROM.
 
-### 3. Service — `verifyToken` and `refreshToken` cutoff check
+### 3. Auth middleware + refresh flow — cutoff check
 
-**`src/services/authService.js`** — add the cutoff check inside both verification paths. The `findUserById` call already runs in `verifyToken` (line 241), so we just need to extend that lookup to fetch `password_changed_at` and compare:
+The actual request gate on `main` is `src/middleware/auth.js` (`authenticateJWT` for access tokens, `authenticateRefresh` for refresh), so the cutoff check must live there. `authService.refreshToken()` should repeat the same check after user lookup as defense in depth.
+
+**`src/middleware/auth.js`** and **`src/services/authService.js`** — add a shared cutoff helper:
 
 ```js
 // Constant near top of file
 const JWT_CUTOFF_SKEW_MS = 5000;
 
-// Helper, used by both verifyToken and refreshToken
+// Helper, used by authenticateJWT/authenticateRefresh/refreshToken
 _isIssuedBeforeCutoff(decoded, user) {
     if (!user.password_changed_at) return false;          // legacy users with no cutoff
     if (typeof decoded.iat !== 'number') return true;      // malformed token, reject
@@ -139,24 +143,27 @@ _isIssuedBeforeCutoff(decoded, user) {
 ```
 
 **Step 0 — extend `findUserById` SQL** (around line 393):
-The current SELECT excludes `password_changed_at`. Add it to the column list so the cached user object carries the cutoff timestamp. Cache TTL=300s, so combined with the post-UPDATE invalidate from §2 the new column is guaranteed fresh on the very next verify.
+The current SELECT excludes `password_changed_at`. Add it to the column list so the cached user object carries the cutoff timestamp. Cache TTL=300s, so combined with the post-UPDATE invalidate from §2 the new column is guaranteed fresh on the very next auth check.
 
-In `verifyToken` (around line 241, after `findUserById`):
+In `authenticateJWT` (middleware), after `findUserById`:
 
 ```js
-const user = await this.findUserById(decoded.user_id);
+const user = await authService.findUserById(decoded.user_id);
 if (!user || !user.is_active) { /* existing throw */ }
 
-if (this._isIssuedBeforeCutoff(decoded, user)) {
-    const error = new Error('Токен истек');
-    error.code = 'TOKEN_EXPIRED';
-    throw error;
+if (authService._isIssuedBeforeCutoff(decoded, user)) {
+    return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token'
+    });
 }
 ```
 
-In `refreshToken` (around line 265+) — same check, after JWT signature verification but before issuing new tokens. Lookup user by `decoded.user_id` (single SELECT), apply `_isIssuedBeforeCutoff`, throw `INVALID_REFRESH_TOKEN` if before cutoff.
+In `authenticateRefresh` (middleware) — same check, return 401 before the controller runs.
 
-**Caveat about `findUserById` cache:** the service caches user objects (line 503: `cacheService.invalidate(${this.cachePrefix}:user:${userId})`). After `changePassword`, we MUST invalidate that cache so the next verify sees the fresh `password_changed_at`. Add at the end of `changePassword`:
+In `refreshToken` (service) — repeat the same check after JWT signature verification but before issuing new tokens. Lookup user by `decoded.user_id` (single SELECT), apply `_isIssuedBeforeCutoff`, throw `INVALID_REFRESH_TOKEN` if before cutoff.
+
+**Caveat about `findUserById` cache:** the service caches user objects for 300 seconds. After `changePassword`, we MUST invalidate that cache so the next verify sees the fresh `password_changed_at`. Add at the end of `changePassword`:
 
 ```js
 await cacheService.invalidate(`${this.cachePrefix}:user:${userId}`);
@@ -214,10 +221,10 @@ router.post('/change-password', passwordChangeLimiter.middleware(), authControll
 
 ### 7. `admin.html` — header button + dialog
 
-In the `.admin-header` block, add **between** the panel title and the dynamically-injected `#logout-btn`:
+In the `.admin-header` block, add the button **after** the `<h1>`. Do not describe it as “between title and logout”: `#logout-btn` is injected later by `admin-auth.js` and positioned `fixed`.
 
 ```html
-<button id="btn-change-password" class="btn btn-secondary" type="button">
+<button id="btn-change-password" class="btn-secondary" type="button">
     🔑 Сменить пароль
 </button>
 ```
@@ -226,7 +233,7 @@ Append a `<dialog>` element near the bottom of `<body>` (before `</body>`):
 
 ```html
 <dialog id="change-password-modal" class="modal-dialog">
-    <form method="dialog" id="change-password-form">
+    <form id="change-password-form">
         <h3>Сменить пароль</h3>
         <label>Текущий пароль
             <input type="password" id="cp-current" autocomplete="current-password" required>
@@ -256,14 +263,14 @@ Append a `<dialog>` element near the bottom of `<body>` (before `</body>`):
         <p class="error-text" id="cp-server-error" hidden></p>
 
         <div class="modal-actions">
-            <button type="button" id="cp-cancel" class="btn btn-secondary">Отмена</button>
-            <button type="submit" id="cp-submit" class="btn btn-primary" disabled>Сменить пароль</button>
+            <button type="button" id="cp-cancel" class="btn-secondary">Отмена</button>
+            <button type="submit" id="cp-submit" class="btn-primary" disabled>Сменить пароль</button>
         </div>
     </form>
 </dialog>
 ```
 
-Inline `<style>` for `.modal-dialog`, `.password-rules`, `.error-text`, `.warning-text` reusing existing CSS variables.
+Add the supporting styles to `public/css/admin.css`, not inline in `admin.html`. The current admin panel already keeps button/toast/form styling there.
 
 ### 8. `public/admin-auth.js` — wire up the modal and reuse `logout()`
 
@@ -280,7 +287,7 @@ Extend the existing class with `setupChangePassword()`:
     - **`this.logout()` (already exists at line 50) clears `admin_token` and `refresh_token` from localStorage, restores `window.fetch`, then redirects.** This is what closes the gap that login.html re-redirects back to admin.html when the stale token is still in localStorage.
   - On 400 with body containing «Неверный текущий пароль» (Russian) or matching `error: ...`: show `#cp-current-error`, clear field, focus
   - On 400 with body containing password-rule message: show `#cp-server-error`
-  - On 429: toast + disable submit for 30s
+  - On 429: toast + disable submit for `retry_after_seconds` / `Retry-After` returned by the limiter
   - On other errors / abort: toast «Не удалось изменить пароль…»
 
 Bundle is rebuilt automatically by `npm run build:frontend`.
@@ -302,8 +309,8 @@ Bundle is rebuilt automatically by `npm run build:frontend`.
 | 200 | success | Green banner → `adminAuth.logout()` 1.5s later |
 | 400 | wrong current (`INVALID_CURRENT_PASSWORD`) | Inline under «Текущий пароль», field cleared, focus returned |
 | 400 | weak new (`INVALID_PASSWORD`) | Inline under server-error placeholder |
-| 401 | token expired | Existing `admin-auth.js` 401 interceptor → `redirectToLogin()` |
-| 429 | rate limit | Toast + 30s submit cooldown |
+| 401 | token expired / stale after password change | Existing `admin-auth.js` 401 interceptor → `redirectToLogin()` |
+| 429 | rate limit | Toast + disable submit for server-provided retry window |
 | 500 / network | unexpected | Toast «Не удалось изменить пароль. Попробуйте ещё раз.» |
 | Abort (10s timeout) | hung request | Toast «Превышено время ожидания» |
 
@@ -319,17 +326,19 @@ Add to existing `describe('changePassword')`:
 - `updates password_changed_at to NOW() in the UPDATE` (extend existing happy-path assertion)
 - `invalidates the user cache after success` — assert `cacheService.invalidate` called with `auth:user:${userId}`
 
-Add a new `describe('verifyToken — password_changed_at cutoff')`:
-
-- `accepts token whose iat is after password_changed_at`
-- `rejects token whose iat is before password_changed_at − 5s skew with TOKEN_EXPIRED`
-- `accepts token within 5s skew of cutoff` (boundary)
-- `accepts token when password_changed_at is NULL` (legacy user)
-- `rejects token with no iat field`
-
 Add a new `describe('refreshToken — password_changed_at cutoff')`:
 
-- Same five cases, throwing `INVALID_REFRESH_TOKEN`
+- accepts refresh token whose `iat` is after `password_changed_at`
+- rejects refresh token whose `iat` is before `password_changed_at − 5s skew`
+- accepts refresh token when `password_changed_at` is `NULL` (legacy user)
+- rejects refresh token with missing/invalid `iat`
+
+**`tests/jest/unit/authMiddleware.test.js`**:
+
+- `authenticateJWT` accepts token whose `iat` is after `password_changed_at`
+- `authenticateJWT` rejects token whose `iat` is before `password_changed_at − 5s skew`
+- `authenticateJWT` accepts token when `password_changed_at` is `NULL` (legacy user)
+- `authenticateRefresh` rejects stale refresh token before controller execution
 
 **`tests/jest/unit/authControllerTest.test.js`** (existing — `describe('changePassword')` at line 391):
 
@@ -338,9 +347,9 @@ Add:
 - `responds 400 when service throws INVALID_PASSWORD` (new branch)
 - Update existing happy-path assertion if response shape changes (it doesn't — still `{ success: true, message: 'Password changed successfully' }`)
 
-### 9.2 Integration — extend `tests/jest/integration/api.test.js`
+### 9.2 E2E — extend `tests/jest/e2e/auth.e2e.test.js`
 
-Existing `describe('Authentication Endpoints')` at line 45 currently covers login/register only. Extend with:
+Existing file already covers login/profile/refresh/logout against the real running stack. Extend it with:
 
 ```js
 describe('POST /api/auth/change-password', () => {
@@ -348,10 +357,11 @@ describe('POST /api/auth/change-password', () => {
         // 1. login → access1, refresh1
         // 2. POST /change-password (Bearer access1) { currentPassword, newPassword }
         //    → 200 success
-        // 3. GET /api/users (Bearer access1) → 401 (cutoff invalidated)
+        // 3. GET /api/auth/profile (Bearer access1) → 401 (cutoff invalidated)
         // 4. POST /refresh (refresh1) → 401
         // 5. login(old password) → 401
         // 6. login(new password) → 200
+        // 7. cleanup: restore the original password for the shared admin account
     });
 
     test('returns 400 for wrong current password', async () => { ... });
@@ -360,11 +370,9 @@ describe('POST /api/auth/change-password', () => {
 });
 ```
 
-Add `beforeEach(() => resetAllRateLimits())` inside the new `describe` block so the 429 test isn't order-sensitive across the suite.
-
 ### 9.3 Manual smoke (chrome-devtools MCP)
 
-Before merge, walk through 7 steps on the demo stack:
+Before merge, walk through the following steps on the demo stack:
 
 | Step | Expected |
 | --- | --- |
@@ -381,7 +389,7 @@ Document result in the implementation commit.
 
 ### 9.4 Coverage target
 
-≥ 80 % line coverage on `authService.changePassword`, `authService.verifyToken`, `authService.refreshToken` (project default).
+≥ 80 % line coverage on `authService.changePassword`, `authService.refreshToken`, and the new stale-token branches in `authMiddleware` (project default).
 
 ## Files modified / created
 
@@ -389,41 +397,45 @@ Document result in the implementation commit.
 | --- | --- | --- |
 | 🆕 | `database/migrations/016_password_changed_at.sql` | New |
 | 🆕 | `database/init/08_password_changed_at.sql` | New (mirror) |
-| ✏️ | `src/services/authService.js` | (a) tag validatePassword error with code, (b) UPDATE password_changed_at, (c) invalidate user cache, (d) cutoff-check helper, (e) wire helper into verifyToken + refreshToken |
+| ✏️ | `src/services/authService.js` | (a) tag validatePassword error with code, (b) UPDATE password_changed_at, (c) invalidate user cache, (d) cutoff-check helper, (e) wire helper into refreshToken + findUserById select list |
 | ✏️ | `src/controllers/authController.js` | Add `INVALID_PASSWORD` → 400 branch |
+| ✏️ | `src/middleware/auth.js` | Reject stale access/refresh tokens after password change |
 | ✏️ | `src/middleware/rateLimiter.js` | New `passwordChangeLimiter` + export |
 | ✏️ | `src/routes/authRoutes.js` | Apply `passwordChangeLimiter` to `/change-password` |
-| ✏️ | `admin.html` | Header button + `<dialog>` modal + inline styles |
+| ✏️ | `admin.html` | Header button + `<dialog>` modal |
+| ✏️ | `public/css/admin.css` | Header/modal/password-rule styles |
 | ✏️ | `public/admin-auth.js` | `setupChangePassword()` method/wiring |
 | ✏️ | `database/migrations/README.md` | Append 016 row, append init/08 row |
 | ✏️ | `tests/jest/unit/authServiceTest.test.js` | Extend describe('changePassword') + new describe blocks for cutoff |
 | ✏️ | `tests/jest/unit/authControllerTest.test.js` | New `INVALID_PASSWORD → 400` test |
-| ✏️ | `tests/jest/integration/api.test.js` | New `describe('POST /api/auth/change-password')` |
+| ✏️ | `tests/jest/unit/authMiddleware.test.js` | New stale-token cases |
+| ✏️ | `tests/jest/e2e/auth.e2e.test.js` | New `describe('POST /api/auth/change-password')` |
 
 ## Risks & Mitigations
 
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
-| Cutoff timestamp + cache returns stale `password_changed_at` | Old tokens still pass after change | `cacheService.invalidate` after UPDATE; cache TTL is short anyway. Integration test verifies token rejection. |
-| Clock skew between app replicas | Legitimate fresh tokens rejected | 5 s skew tolerance in helper. Integration test boundary case included. |
+| Cutoff timestamp + cache returns stale `password_changed_at` | Old tokens still pass after change | `cacheService.invalidate` after UPDATE; cache TTL is short anyway. E2E test verifies token rejection. |
+| Clock skew between app replicas | Legitimate fresh tokens rejected | 5 s skew tolerance in helper. Unit boundary case included. |
 | Token rotation race during password change | User sees a brief 401 spam | Acceptable — UI immediately redirects to login after success. |
-| Migration 016 missing on long-lived prod DB | `changePassword` UPDATE still works (column added by IF NOT EXISTS), but `verifyToken` cache pre-load may not include the new column | Models that fetch users via `SELECT *` pick it up; `findUserById` should be reviewed during implementation to confirm it returns the new column. |
+| `findUserById` not updated to select `password_changed_at` | Cutoff logic silently never triggers | Make the select-list change explicit in implementation and cover it with unit tests. |
 | `passwordChangeLimiter` per-user blocks legitimate retries | Admin who fat-fingers can lock self out for 15 min | Limit is 5 attempts/15 min — generous; toast tells admin how long to wait. |
 | `<dialog>` not supported in Safari < 15 | Modal won't open | Admin panel is internal; targets evergreen browsers (matches existing CLAUDE.md). |
-| Live-validation regex drifts from server | Green client, 400 from server | Same regex copy-pasted; integration test case for weak password catches drift. |
+| Live-validation regex drifts from server | Green client, 400 from server | Same regex copy-pasted; E2E test case for weak password catches drift. |
 
 ## Estimated effort
 
 - Migration 016 + init/08: 5 min
-- Service patch (`changePassword` + cutoff helper + verifyToken/refreshToken wiring + cache invalidate): 60 min
+- Service patch (`changePassword` + cutoff helper + refreshToken wiring + cache invalidate + findUserById select): 60 min
 - Controller patch: 5 min
+- Auth middleware patch: 20 min
 - Rate limiter (new export + apply): 10 min
 - Unit tests (cutoff cases + new INVALID_PASSWORD branch): 60 min
-- Integration tests: 45 min
+- E2E tests: 45 min
 - Frontend (HTML + JS + styles): 60 min
 - Manual smoke + bundle rebuild: 15 min
 - Commit + verification: 10 min
-- **Total: ~4.5 hours**
+- **Total: ~5 hours**
 
 ## Out of scope (explicit)
 
