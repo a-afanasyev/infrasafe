@@ -1,29 +1,32 @@
 # Password Change for Admin (Phase 13)
 
-**Status:** Draft (brainstormed 2026-05-03)
+**Status:** Draft v2 (revised after code-review 2026-05-03)
 **Owner:** Andrey Afanasyev
 **Scope:** Phase 13 — single feature, ~1 day of work
 
 ## Summary
 
-Add a password change flow for the `admin` role through the legacy admin panel (`admin.html`). Surfaces and fixes a latent backend bug (`password_changed_at` column referenced by service code but never declared in schema), adds the missing rate-limiter on the existing endpoint, and revokes all refresh tokens on success so password change forces re-authentication on every device.
+Add a password change flow for the `admin` role through the legacy admin panel (`admin.html`). Surfaces and fixes a latent backend bug (`password_changed_at` column referenced by service code but never declared in schema), wires global JWT invalidation to the new column (so a single `UPDATE` kills every previously-issued access and refresh token for that user), adds a dedicated rate limiter for the endpoint, and converts the bare `Error` from `validatePassword` into a proper 400 response.
 
 ## Goals
 
 - Admin can change their own password from `admin.html` without leaving the panel.
-- Successful change immediately invalidates all sessions (refresh tokens) for the user — admin is redirected to `/login.html` and must re-authenticate.
-- Strong client-side feedback on password rules (live checklist) — no round-trip required for the obvious failures.
-- Fix the broken `password_changed_at` column so the existing endpoint actually works.
-- Rate-limit `/api/auth/change-password` to match every other auth endpoint.
+- Successful change immediately invalidates **all** JWTs (access **and** refresh) issued before the change — admin is forced to re-login on every device.
+- The current device, where the change happened, also re-authenticates: `localStorage` is cleared and admin lands on `/login.html`.
+- Strong client-side feedback on password rules — no round-trip required for obvious failures.
+- Fix the broken `password_changed_at` column so the existing service code actually persists.
+- Use a dedicated `passwordChangeLimiter` (separate from login-limiter) so password-change attempts cannot exhaust the login-attempt budget.
+- Weak-password errors return 400, not 500.
 
 ## Non-goals
 
-- **Operator/user roles.** They do not have a UI on `main` (only `admin.html` and the public map). Their access path will land in the future `frontend-design/` profile page once that branch merges. The endpoint already accepts any authenticated JWT, so API-level support is unblocked.
-- **Forgot-password / email reset flow.** Out of scope — admin has direct DB access for recovery.
+- **Operator/user roles.** They have no UI on `main` (only `admin.html` and the public map). Future work after `frontend-design/` merges. Endpoint already accepts any authenticated JWT, so API-level support is unblocked.
+- **Forgot-password / email reset flow.** Out of scope.
 - **Force-change-on-first-login** flag.
-- **2FA re-verification at password change.** Login already requires TOTP; current-password is sufficient to authorize a change once a session exists.
-- **Password history (prevent reuse of last N).** YAGNI for demo.
+- **2FA re-verification at password change.** Login already requires TOTP; current password is sufficient inside an authenticated session.
+- **Password history (prevent reuse of last N).**
 - **Strength-meter beyond the 4-rule checklist.**
+- **Per-token blacklist** approach. Rejected: refresh tokens are stateless JWTs not stored in `refresh_tokens` (verified in authService.js#refreshToken); per-token blacklist would require iterating an unknown set of tokens. Replaced by `password_changed_at`-cutoff check.
 
 ## Architecture
 
@@ -33,21 +36,38 @@ admin.html [header]
   └─ NEW button "🔑 Сменить пароль"
        └─ click → <dialog id="change-password-modal">
             └─ submit → POST /api/auth/change-password
-                 ├─ 200 → green banner "Перенаправление…" 1.5s → location.replace('/login.html')
+                 ├─ 200 → green banner "Перенаправление…" 1.5s
+                 │         → window.adminAuth.logout()
+                 │              → localStorage.removeItem('admin_token','refresh_token')
+                 │              → restore window.fetch
+                 │              → window.location.replace('/login.html')
                  ├─ 400 INVALID_CURRENT_PASSWORD → inline under "Текущий пароль"
-                 ├─ 400 weak new password    → inline under "Новый пароль"
-                 ├─ 401                       → existing 401-handler in admin-auth.js
-                 ├─ 429                       → toast + 30s cooldown on submit
-                 └─ 500/network               → toast "Не удалось…"
+                 ├─ 400 INVALID_PASSWORD          → inline under "Новый пароль"
+                 ├─ 401                            → existing 401-handler in admin-auth.js
+                 ├─ 429                            → toast + 30s cooldown on submit
+                 └─ 500/network                    → toast "Не удалось…"
 ```
+
+### JWT invalidation strategy: `password_changed_at`-cutoff
+
+Refresh tokens in InfraSafe are **stateless JWTs** signed with `JWT_REFRESH_SECRET` (verified `authService.js:202–210`). They are not persisted to a server-side table for verification — `refresh_tokens` exists in schema but is unused in the auth flow. There is therefore no "list of tokens to delete" we could `DELETE FROM`. Per-token blacklist would require knowing every outstanding refresh hash, which we do not.
+
+The standard pattern for stateless JWT bulk invalidation is a per-user epoch: store a timestamp in the user row and reject any token whose `iat` (issued-at) precedes it. Since `password_changed_at` already needs to exist (Phase 13 fixes the latent bug), it becomes our cutoff:
+
+- On `changePassword`: `UPDATE users SET password_hash=$1, password_changed_at=NOW() WHERE user_id=$2`
+- In `verifyToken` (and `refreshToken`): if `decoded.iat * 1000 < user.password_changed_at - CLOCK_SKEW_MS` → throw `error.code = 'TOKEN_EXPIRED'`
+
+This is one UPDATE, no transaction needed, invalidates every access and refresh token for that user atomically. Access tokens remain valid for their natural lifetime (1h default) only when issued AFTER the password change.
+
+Clock skew tolerance: 5 seconds (constant `JWT_CUTOFF_SKEW_MS = 5000`). Generous enough for replica clock drift, short enough that a stolen token can't be replayed long after revocation.
 
 ## Decisions (from brainstorming)
 
 | Question | Decision | Rationale |
-|---|---|---|
+| --- | --- | --- |
 | Scope | Admin only, in `admin.html` | Demo audience is admin; operator/user UI lives in unmerged `frontend-design/`. |
-| Session handling on success | Revoke ALL refresh tokens, redirect to `/login.html` | Security: kills any stolen refresh; standard pattern (GitHub, Google). |
-| 2FA at change time | Not required (current password only) | Stronger defense already provided by mandatory 2FA at login + bcrypt verify. |
+| Session handling on success | Invalidate ALL JWTs via `password_changed_at` cutoff + force `logout()` on this device | Stateless JWTs cannot be deleted; cutoff-check is the standard pattern. |
+| 2FA at change time | Not required (current password only) | TOTP at login is the gate; bcrypt verify suffices for in-session step-up. |
 | Placement in UI | Single button in header (not dropdown, not new tab) | Minimal diff to existing layout. |
 
 ## Backend changes
@@ -57,62 +77,141 @@ admin.html [header]
 **`database/migrations/016_password_changed_at.sql`** (new):
 
 ```sql
--- Migration 016 — password change audit timestamp
--- Fixes a latent bug: src/services/authService.js#changePassword
--- writes to users.password_changed_at, but the column was never declared.
--- The endpoint has been broken since it was added. Phase 13 surfaces
--- this through the new UI and fixes it.
+-- Migration 016 — password change audit timestamp + JWT invalidation cutoff
+-- Fixes a latent bug: src/services/authService.js#changePassword writes to
+-- users.password_changed_at, but the column was never declared. Phase 13
+-- additionally repurposes the column as a per-user JWT-cutoff (verifyToken
+-- rejects tokens whose iat precedes this timestamp), which is how we bulk-
+-- invalidate every access and refresh token for a user when their password
+-- changes.
 
 ALTER TABLE users
     ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;
 
 COMMENT ON COLUMN users.password_changed_at IS
-    'Timestamp of last password change. NULL for accounts that never changed password.';
+    'Timestamp of last password change. Used as JWT-cutoff: tokens with iat earlier than this value are rejected as expired. NULL means no cutoff (column unset for legacy users).';
 ```
 
-**Mirror → `database/init/08_password_changed_at.sql`** (verbatim copy, follows the init/03–07 convention established in commit 04967f7).
+**Mirror → `database/init/08_password_changed_at.sql`** (verbatim copy, follows the init/03–07 convention from commit 04967f7).
 
-### 2. Service — atomic UPDATE + token revocation
+### 2. Service — `changePassword` simplification
 
-**`src/services/authService.js#changePassword()`** — wrap UPDATE password and DELETE refresh_tokens in one transaction so a failure in either rolls back both:
+**`src/services/authService.js#changePassword()`** — remove the (intended) DELETE FROM refresh_tokens. Single UPDATE is sufficient because invalidation now happens through the cutoff-check. Make sure validatePassword failure carries a `code` for the controller:
 
 ```js
-// Inside changePassword(), replace the standalone UPDATE with:
-await db.transaction(async (client) => {
-    await client.query(
-        'UPDATE users SET password_hash = $1, password_changed_at = NOW() WHERE user_id = $2',
-        [hashedNewPassword, userId]
-    );
-    // SEC: revoke all refresh tokens — force re-login on every device.
-    await client.query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
+// Inside the existing try/catch, after verifying current password:
+
+// Validate the new one and tag the error so the controller knows it's a 400
+try {
+    this.validatePassword(newPassword);
+} catch (err) {
+    err.code = 'INVALID_PASSWORD';
+    throw err;
+}
+
+const hashedNewPassword = await this.hashPassword(newPassword);
+await db.query(
+    'UPDATE users SET password_hash = $1, password_changed_at = NOW() WHERE user_id = $2',
+    [hashedNewPassword, userId]
+);
+```
+
+No transaction needed — single UPDATE.
+
+**Note (verified 2026-05-03):** the project's db module is `src/config/database.js` and exports `{ init, query, getPool, close }` with no `transaction()` helper. The previous draft of this spec called for a transaction; that requirement is dropped because the bulk-invalidation no longer requires DELETE FROM.
+
+### 3. Service — `verifyToken` and `refreshToken` cutoff check
+
+**`src/services/authService.js`** — add the cutoff check inside both verification paths. The `findUserById` call already runs in `verifyToken` (line 241), so we just need to extend that lookup to fetch `password_changed_at` and compare:
+
+```js
+// Constant near top of file
+const JWT_CUTOFF_SKEW_MS = 5000;
+
+// Helper, used by both verifyToken and refreshToken
+_isIssuedBeforeCutoff(decoded, user) {
+    if (!user.password_changed_at) return false;          // legacy users with no cutoff
+    if (typeof decoded.iat !== 'number') return true;      // malformed token, reject
+    const issuedAtMs = decoded.iat * 1000;
+    const cutoffMs = new Date(user.password_changed_at).getTime() - JWT_CUTOFF_SKEW_MS;
+    return issuedAtMs < cutoffMs;
+}
+```
+
+In `verifyToken` (around line 241, after `findUserById`):
+
+```js
+const user = await this.findUserById(decoded.user_id);
+if (!user || !user.is_active) { /* existing throw */ }
+
+if (this._isIssuedBeforeCutoff(decoded, user)) {
+    const error = new Error('Токен истек');
+    error.code = 'TOKEN_EXPIRED';
+    throw error;
+}
+```
+
+In `refreshToken` (around line 265+) — same check, after JWT signature verification but before issuing new tokens. Lookup user by `decoded.user_id` (single SELECT), apply `_isIssuedBeforeCutoff`, throw `INVALID_REFRESH_TOKEN` if before cutoff.
+
+**Caveat about `findUserById` cache:** the service caches user objects (line 503: `cacheService.invalidate(${this.cachePrefix}:user:${userId})`). After `changePassword`, we MUST invalidate that cache so the next verify sees the fresh `password_changed_at`. Add at the end of `changePassword`:
+
+```js
+await cacheService.invalidate(`${this.cachePrefix}:user:${userId}`);
+```
+
+### 4. Controller — handle `INVALID_PASSWORD`
+
+**`src/controllers/authController.js#changePassword`** (around line 209) — add the missing branch:
+
+```js
+// Existing branches:
+if (error.code === 'USER_NOT_FOUND')         return res.status(404).json({ error: error.message });
+if (error.code === 'INVALID_CURRENT_PASSWORD') return res.status(400).json({ error: error.message });
+// New:
+if (error.code === 'INVALID_PASSWORD')        return res.status(400).json({ error: error.message });
+```
+
+Without this branch, weak-password errors fall through to `next(error)` → `errorHandler` → 500 (verified `errorHandler.js:15`: `err.statusCode || 500`).
+
+### 5. Route — dedicated `passwordChangeLimiter`
+
+**`src/middleware/rateLimiter.js`** — add a new limiter scoped to the change-password endpoint, to avoid exhausting the login budget:
+
+```js
+const passwordChangeLimiter = new SimpleRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    message: 'Слишком много попыток смены пароля. Попробуйте через 15 минут.',
+    // Per-IP + per-user so two admins on the same NAT don't lock each other out
+    keyGenerator: (req) => {
+        const ip = req.ip || req.connection.remoteAddress;
+        const userId = req.user ? req.user.user_id : 'anonymous';
+        return `auth:change-password:${ip}:${userId}`;
+    }
 });
 ```
 
-**Note (verified 2026-05-03):** project's db module is `src/config/database.js` and exports `{ init, query, getPool, close }` with **no** `transaction()` helper. Implementation goes straight to the manual `BEGIN/COMMIT/ROLLBACK` pattern via `getPool().connect()` — see `src/models/Building.js:264-266` (`deleteCascade`) for the established convention.
+Export it from `module.exports` (line 370+).
 
-### 3. Route — apply rate limiter
-
-**`src/routes/authRoutes.js:276`**:
+**`src/routes/authRoutes.js`** — apply the new limiter:
 
 ```js
-// Before:
-router.post('/change-password', authController.changePassword);
-
-// After:
-router.post('/change-password', authLimiter.middleware(), authController.changePassword);
+const { authLimiter, registerLimiter, passwordChangeLimiter } = require('../middleware/rateLimiter');
+// ...
+router.post('/change-password', passwordChangeLimiter.middleware(), authController.changePassword);
 ```
 
-`authLimiter` is already imported and applied to every other auth endpoint — this was a single missed line.
+(Note: `req.user` is set by the authenticate middleware that runs before per-route middleware; the keyGenerator runs at request time, not router-build time, so this works.)
 
-### 4. Token blacklist — explicitly NOT done
+### 6. Token blacklist — explicitly NOT used
 
-The current access token (≤15 min lifetime) is not blacklisted. Rationale: revoking refresh_tokens prevents new access tokens; the existing one expires in minutes and the user is being redirected to /login anyway. Adding blacklist machinery here is not justified for the demo.
+`token_blacklist` table exists for `refreshToken` rotation (one-shot consume). We do **not** populate it on password change — the cutoff check covers all tokens uniformly without needing per-token bookkeeping.
 
 ## Frontend changes
 
-### 5. `admin.html` — header button + dialog
+### 7. `admin.html` — header button + dialog
 
-In the `.admin-header` block, add **between** the panel title and `#logout-btn` (which is created at runtime by `admin-auth.js`):
+In the `.admin-header` block, add **between** the panel title and the dynamically-injected `#logout-btn`:
 
 ```html
 <button id="btn-change-password" class="btn btn-secondary" type="button">
@@ -161,126 +260,167 @@ Append a `<dialog>` element near the bottom of `<body>` (before `</body>`):
 </dialog>
 ```
 
-Inline `<style>` (in `admin.html` for now, matching how other admin styles are structured) for `.modal-dialog`, `.password-rules`, `.error-text`, `.warning-text`. Tokens reused from existing CSS variables (`--color-primary`, `--space-md`, etc.).
+Inline `<style>` for `.modal-dialog`, `.password-rules`, `.error-text`, `.warning-text` reusing existing CSS variables.
 
-### 6. `public/admin-auth.js` — wire up the modal
+### 8. `public/admin-auth.js` — wire up the modal and reuse `logout()`
 
-Extend `AdminAuth` class (or as standalone `setupChangePassword()` method) with:
+Extend the existing class with `setupChangePassword()`:
 
 - `openModal()` — bind to `#btn-change-password` click; `dialog.showModal()`; focus on `#cp-current`
 - `validateLive(event)` — bound to `input` events on all 3 fields:
   - Update `<li>` checklist classes (`.rule-met` / `.rule-missing`) based on regex match
-  - Compute submit-disabled: all fields filled, new differs from current, new matches confirm, all 4 rules met
+  - Compute submit-disabled
 - `submit(event)` — bound to form submit:
-  - `preventDefault()`, disable button, show spinner-state «Меняем…»
+  - `preventDefault()`, disable button, show «Меняем…»
   - `fetch('/api/auth/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token }, body: JSON.stringify({ currentPassword, newPassword }), signal: AbortSignal.timeout(10000) })`
-  - On 200: replace form with green «Перенаправление…» banner; `setTimeout(() => location.replace('/login.html'), 1500)`
-  - On 400 with `error: 'Неверный текущий пароль'` (or matching `error.code` if backend returns it): show `#cp-current-error`, clear field, focus
-  - On 400 weak password: show `#cp-server-error` with the message text
-  - On 429: toast «Слишком много попыток. Попробуйте через минуту.»; disable submit for 30s
-  - On any other error / abort: toast «Не удалось изменить пароль. Попробуйте ещё раз.»
+  - On 200: replace form with green «Перенаправление…» banner; `setTimeout(() => this.logout(), 1500)`
+    - **`this.logout()` (already exists at line 50) clears `admin_token` and `refresh_token` from localStorage, restores `window.fetch`, then redirects.** This is what closes the gap that login.html re-redirects back to admin.html when the stale token is still in localStorage.
+  - On 400 with body containing «Неверный текущий пароль» (Russian) or matching `error: ...`: show `#cp-current-error`, clear field, focus
+  - On 400 with body containing password-rule message: show `#cp-server-error`
+  - On 429: toast + disable submit for 30s
+  - On other errors / abort: toast «Не удалось изменить пароль…»
 
-Bundle is rebuilt automatically by `npm run build:frontend` (postinstall and dev watch covered).
+Bundle is rebuilt automatically by `npm run build:frontend`.
 
 ## Validation rules
 
-| Field | Client rule | Server rule | Mismatch behaviour |
-|---|---|---|---|
-| Current password | non-empty | bcrypt verify | Server-only signal (we cannot pre-check). |
+| Field | Client rule | Server rule | Source of truth on mismatch |
+| --- | --- | --- | --- |
+| Current password | non-empty | bcrypt verify | Server-only (we cannot pre-check). |
 | New password length | ≥ 8 | ≥ 8 (`validatePassword`) | Both required for defense-in-depth. |
 | New password classes | lower + upper + digit | `(?=.*[a-z])(?=.*[A-Z])(?=.*\d)` | Identical regex on both sides. |
-| New ≠ Current | client check | not enforced server-side | Optional UX only — bcrypt would happily accept same-as-current; we choose to forbid client-side as a hint. |
+| New ≠ Current | client check | not enforced server-side | Client-only UX hint. |
 | Confirm == New | client only | n/a (server doesn't see confirm) | Inline error on confirm field. |
 
 ## Error handling matrix
 
 | HTTP | Cause | UI |
-|---|---|---|
-| 200 | success | Green banner + redirect 1.5s later |
-| 400 | wrong current | Inline under «Текущий пароль», field cleared, focus returned |
-| 400 | weak new | Inline under server-error placeholder |
-| 401 | token expired | Existing `admin-auth.js` 401 interceptor → redirect to /login.html |
+| --- | --- | --- |
+| 200 | success | Green banner → `adminAuth.logout()` 1.5s later |
+| 400 | wrong current (`INVALID_CURRENT_PASSWORD`) | Inline under «Текущий пароль», field cleared, focus returned |
+| 400 | weak new (`INVALID_PASSWORD`) | Inline under server-error placeholder |
+| 401 | token expired | Existing `admin-auth.js` 401 interceptor → `redirectToLogin()` |
 | 429 | rate limit | Toast + 30s submit cooldown |
 | 500 / network | unexpected | Toast «Не удалось изменить пароль. Попробуйте ещё раз.» |
 | Abort (10s timeout) | hung request | Toast «Превышено время ожидания» |
 
 ## Testing
 
-### Unit tests — `tests/jest/unit/authService.test.js`
+### 9.1 Unit — extend existing files (verified paths)
 
-Add `describe('changePassword')` block:
+**`tests/jest/unit/authServiceTest.test.js`** (existing — already has `describe('changePassword')` at line 434 and `describe('changePassword - password_hash row not found')` at line 754; mocks `src/config/database` at line 5):
 
-- rejects with INVALID_CURRENT_PASSWORD when current is wrong
-- rejects with USER_NOT_FOUND when user is missing
-- rejects with weak-password error when new < 8 chars
-- rejects when new password lacks upper/lower/digit
-- updates password_hash and password_changed_at on success
-- **deletes ALL refresh tokens for user on success** (new)
-- **rolls back password update if refresh token revocation fails** (new — verifies transaction atomicity)
+Add to existing `describe('changePassword')`:
 
-Mocks `src/utils/db` (or its transaction helper).
+- `tags weak-password error with code='INVALID_PASSWORD'` (new) — verify `err.code` is set so the controller can map to 400
+- `updates password_changed_at to NOW() in the UPDATE` (extend existing happy-path assertion)
+- `invalidates the user cache after success` — assert `cacheService.invalidate` called with `auth:user:${userId}`
 
-### Integration tests — `tests/jest/integration/auth.test.js`
+Add a new `describe('verifyToken — password_changed_at cutoff')`:
 
-New `describe('POST /api/auth/change-password')`:
+- `accepts token whose iat is after password_changed_at`
+- `rejects token whose iat is before password_changed_at − 5s skew with TOKEN_EXPIRED`
+- `accepts token within 5s skew of cutoff` (boundary)
+- `accepts token when password_changed_at is NULL` (legacy user)
+- `rejects token with no iat field`
+
+Add a new `describe('refreshToken — password_changed_at cutoff')`:
+
+- Same five cases, throwing `INVALID_REFRESH_TOKEN`
+
+**`tests/jest/unit/authControllerTest.test.js`** (existing — `describe('changePassword')` at line 391):
+
+Add:
+
+- `responds 400 when service throws INVALID_PASSWORD` (new branch)
+- Update existing happy-path assertion if response shape changes (it doesn't — still `{ success: true, message: 'Password changed successfully' }`)
+
+### 9.2 Integration — extend `tests/jest/integration/api.test.js`
+
+Existing `describe('Authentication Endpoints')` at line 45 currently covers login/register only. Extend with:
 
 ```
-1. login(admin/admin123)         → { accessToken, refreshToken }
-2. change-password(accessToken, "admin123", "NewPass123")
-                                 → 200 success
-3. refresh(old refreshToken)     → 401 (refresh tokens were revoked)
-4. login(admin/admin123)         → 401 (old password no longer works)
-5. login(admin/NewPass123)       → 200 (new password works)
+describe('POST /api/auth/change-password', () => {
+    test('changes password and invalidates old tokens', async () => {
+        // 1. login → access1, refresh1
+        // 2. POST /change-password (Bearer access1) { currentPassword, newPassword }
+        //    → 200 success
+        // 3. GET /api/users (Bearer access1) → 401 (cutoff invalidated)
+        // 4. POST /refresh (refresh1) → 401
+        // 5. login(old password) → 401
+        // 6. login(new password) → 200
+    });
+
+    test('returns 400 for wrong current password', async () => { ... });
+    test('returns 400 for weak new password', async () => { ... });
+    test('returns 429 after 6 rapid attempts (limit=5/15min)', async () => { ... });
+});
 ```
 
-Plus dedicated cases:
-- 6 rapid POSTs → last returns 429
-- weak new password → 400
-- wrong current → 400
+Reset rate-limiter state between tests via existing harness (or skip the 429 test if isolation cost is too high; document in the PR).
 
-### Manual smoke (chrome-devtools MCP)
+### 9.3 Manual smoke (chrome-devtools MCP)
 
-7-step manual test before commit (see "5.3 Frontend-тесты" of brainstorming notes — folded into this spec). Result documented in commit message.
+Before merge, walk through 7 steps on the demo stack:
 
-### Coverage target
+| Step | Expected |
+| --- | --- |
+| Login admin/admin123 → click «Сменить пароль» | Modal opens, focus on «Текущий пароль» |
+| Wrong current → submit | Inline error, field cleared, focus returned |
+| Weak new («short») | Checklist red, button disabled |
+| Mismatched confirm | Inline «Пароли не совпадают» |
+| Valid input → submit | Spinner → green «Перенаправление…» → `/login.html` after ≈1.5s |
+| `localStorage` after redirect | Empty (`admin_token` and `refresh_token` removed) |
+| Login with old password | 401 |
+| Login with new password | Success |
 
-≥ 80% line coverage on `authService.changePassword` (project default).
+Document result in the implementation commit.
+
+### 9.4 Coverage target
+
+≥ 80 % line coverage on `authService.changePassword`, `authService.verifyToken`, `authService.refreshToken` (project default).
 
 ## Files modified / created
 
 | Type | Path | Action |
-|---|---|---|
+| --- | --- | --- |
 | 🆕 | `database/migrations/016_password_changed_at.sql` | New |
 | 🆕 | `database/init/08_password_changed_at.sql` | New (mirror) |
-| ✏️ | `src/services/authService.js` | Wrap in transaction + DELETE refresh_tokens |
-| ✏️ | `src/routes/authRoutes.js` | Add `authLimiter.middleware()` to /change-password |
+| ✏️ | `src/services/authService.js` | (a) tag validatePassword error with code, (b) UPDATE password_changed_at, (c) invalidate user cache, (d) cutoff-check helper, (e) wire helper into verifyToken + refreshToken |
+| ✏️ | `src/controllers/authController.js` | Add `INVALID_PASSWORD` → 400 branch |
+| ✏️ | `src/middleware/rateLimiter.js` | New `passwordChangeLimiter` + export |
+| ✏️ | `src/routes/authRoutes.js` | Apply `passwordChangeLimiter` to `/change-password` |
 | ✏️ | `admin.html` | Header button + `<dialog>` modal + inline styles |
 | ✏️ | `public/admin-auth.js` | `setupChangePassword()` method/wiring |
 | ✏️ | `database/migrations/README.md` | Append 016 row, append init/08 row |
-| 🆕 | `tests/jest/unit/authService.test.js` (already exists; extend) | + 7 tests |
-| 🆕 | `tests/jest/integration/auth.test.js` (new — only `api.test.js` and `default-deny.test.js` exist today) | + change-password describe block |
+| ✏️ | `tests/jest/unit/authServiceTest.test.js` | Extend describe('changePassword') + new describe blocks for cutoff |
+| ✏️ | `tests/jest/unit/authControllerTest.test.js` | New `INVALID_PASSWORD → 400` test |
+| ✏️ | `tests/jest/integration/api.test.js` | New `describe('POST /api/auth/change-password')` |
 
 ## Risks & Mitigations
 
 | Risk | Impact | Mitigation |
-|---|---|---|
-| Transaction atomicity | Atomic UPDATE+DELETE required | Confirmed there is **no** `db.transaction()` helper in `src/config/database.js`. Implementation uses manual `BEGIN/COMMIT/ROLLBACK` via `getPool().connect()` — pattern matches `src/models/Building.js:264-266` (`deleteCascade`). |
-| Migration 016 ordering — if a long-lived prod DB never ran it, Phase 13 service code crashes | 500 on every change-password call | Both `migrations/016` (apply manually on long-lived DBs per migrations/README.md) and `init/08` (auto-apply on fresh installs) — covers both deployment topologies. |
-| Browser native `<dialog>` not supported in older Safari | Modal won't open | Project README already targets evergreen browsers; admin panel is internal tool. Verified Safari 15+ support. |
-| Live validation regex differs from server | UX shows green but server rejects | Identical regex copy-pasted into both files; integration test catches drift. |
-| Rate limiter triggers during demo | Admin can't change password during live demo | `authLimiter` is 5/15min by current config — fine for demo. Toast message tells admin to wait. |
-| Token revoke deletes mid-session of OTHER admin | Two admins logged in, one changes password — but it's their OWN session, not other admin's | DELETE is scoped to `WHERE user_id = $1` — only affects the user who changed their password. Other admins' sessions unaffected. |
+| --- | --- | --- |
+| Cutoff timestamp + cache returns stale `password_changed_at` | Old tokens still pass after change | `cacheService.invalidate` after UPDATE; cache TTL is short anyway. Integration test verifies token rejection. |
+| Clock skew between app replicas | Legitimate fresh tokens rejected | 5 s skew tolerance in helper. Integration test boundary case included. |
+| Token rotation race during password change | User sees a brief 401 spam | Acceptable — UI immediately redirects to login after success. |
+| Migration 016 missing on long-lived prod DB | `changePassword` UPDATE still works (column added by IF NOT EXISTS), but `verifyToken` cache pre-load may not include the new column | Models that fetch users via `SELECT *` pick it up; `findUserById` should be reviewed during implementation to confirm it returns the new column. |
+| `passwordChangeLimiter` per-user blocks legitimate retries | Admin who fat-fingers can lock self out for 15 min | Limit is 5 attempts/15 min — generous; toast tells admin how long to wait. |
+| `<dialog>` not supported in Safari < 15 | Modal won't open | Admin panel is internal; targets evergreen browsers (matches existing CLAUDE.md). |
+| Live-validation regex drifts from server | Green client, 400 from server | Same regex copy-pasted; integration test case for weak password catches drift. |
 
 ## Estimated effort
 
 - Migration 016 + init/08: 5 min
-- Service + route patch: 15 min
-- Unit tests (7): 30 min
-- Integration tests: 30 min
+- Service patch (`changePassword` + cutoff helper + verifyToken/refreshToken wiring + cache invalidate): 60 min
+- Controller patch: 5 min
+- Rate limiter (new export + apply): 10 min
+- Unit tests (cutoff cases + new INVALID_PASSWORD branch): 60 min
+- Integration tests: 45 min
 - Frontend (HTML + JS + styles): 60 min
 - Manual smoke + bundle rebuild: 15 min
 - Commit + verification: 10 min
-- **Total: ~3 hours**
+- **Total: ~4.5 hours**
 
 ## Out of scope (explicit)
 
@@ -288,19 +428,23 @@ Plus dedicated cases:
 - Forgot password flow
 - Email notification on password change
 - Password history / reuse prevention
-- Step-up auth on critical operations (would be a broader feature)
-- Audit log entry to `integration_log` or new `auth_audit` table — `password_changed_at` column already gives us the most-recent timestamp per user
+- Step-up auth for other critical operations
+- Per-token blacklist on password change (architecturally redundant once cutoff-check is in place)
 
 ## Acceptance criteria
 
 - [ ] Admin can open modal from `admin.html` header
 - [ ] Live validation reflects all 4 password rules
 - [ ] Submit disabled until form valid
-- [ ] Successful change → all refresh tokens for that user deleted (verified in DB)
-- [ ] Successful change → admin redirected to /login.html within 2s
-- [ ] Old password no longer accepted at login
-- [ ] New password accepted at login
-- [ ] 429 returned after 6th rapid attempt
+- [ ] On success: `users.password_changed_at` ≈ NOW() (verified via SQL)
+- [ ] On success: `localStorage.admin_token` and `refresh_token` are cleared (verified in DevTools)
+- [ ] On success: admin redirected to `/login.html` within 2 s
+- [ ] After redirect: visiting `/admin.html` does NOT bypass login (because token is gone)
+- [ ] Old access token (issued before change) → 401 on any authenticated route
+- [ ] Old refresh token (issued before change) → 401 on `/refresh`
+- [ ] Old password → 401 at login
+- [ ] New password → 200 at login
+- [ ] 6th rapid POST → 429
+- [ ] Weak new password → 400 (not 500)
 - [ ] Bundle rebuilt — `public/dist/admin-auth.js` reflects new code
 - [ ] All new tests pass; no existing tests regress
-- [ ] `password_changed_at` column populated after change (verified via SQL)
