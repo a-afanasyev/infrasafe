@@ -88,7 +88,7 @@ await db.transaction(async (client) => {
 });
 ```
 
-If `db.transaction()` helper does not exist, manually `BEGIN/COMMIT/ROLLBACK` via `pool.connect()` (verify in implementation phase; project's `src/utils/db.js` already has a transaction helper based on the model code patterns).
+**Note (verified 2026-05-03):** project's db module is `src/config/database.js` and exports `{ init, query, getPool, close }` with **no** `transaction()` helper. Implementation goes straight to the manual `BEGIN/COMMIT/ROLLBACK` pattern via `getPool().connect()` — see `src/models/Building.js:264-266` (`deleteCascade`) for the established convention.
 
 ### 3. Route — apply rate limiter
 
@@ -258,13 +258,13 @@ Plus dedicated cases:
 | ✏️ | `public/admin-auth.js` | `setupChangePassword()` method/wiring |
 | ✏️ | `database/migrations/README.md` | Append 016 row, append init/08 row |
 | 🆕 | `tests/jest/unit/authService.test.js` (already exists; extend) | + 7 tests |
-| 🆕 | `tests/jest/integration/auth.test.js` (likely new file or extend existing) | + change-password describe block |
+| 🆕 | `tests/jest/integration/auth.test.js` (new — only `api.test.js` and `default-deny.test.js` exist today) | + change-password describe block |
 
 ## Risks & Mitigations
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| `db.transaction()` helper does not exist or is stubbed | Atomic UPDATE+DELETE not actually atomic | Implementation phase verifies helper signature; falls back to manual BEGIN/COMMIT via `pool.connect()` if missing. |
+| Transaction atomicity | Atomic UPDATE+DELETE required | Confirmed there is **no** `db.transaction()` helper in `src/config/database.js`. Implementation uses manual `BEGIN/COMMIT/ROLLBACK` via `getPool().connect()` — pattern matches `src/models/Building.js:264-266` (`deleteCascade`). |
 | Migration 016 ordering — if a long-lived prod DB never ran it, Phase 13 service code crashes | 500 on every change-password call | Both `migrations/016` (apply manually on long-lived DBs per migrations/README.md) and `init/08` (auto-apply on fresh installs) — covers both deployment topologies. |
 | Browser native `<dialog>` not supported in older Safari | Modal won't open | Project README already targets evergreen browsers; admin panel is internal tool. Verified Safari 15+ support. |
 | Live validation regex differs from server | UX shows green but server rejects | Identical regex copy-pasted into both files; integration test catches drift. |
