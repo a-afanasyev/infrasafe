@@ -138,6 +138,9 @@ _isIssuedBeforeCutoff(decoded, user) {
 }
 ```
 
+**Step 0 — extend `findUserById` SQL** (around line 393):
+The current SELECT excludes `password_changed_at`. Add it to the column list so the cached user object carries the cutoff timestamp. Cache TTL=300s, so combined with the post-UPDATE invalidate from §2 the new column is guaranteed fresh on the very next verify.
+
 In `verifyToken` (around line 241, after `findUserById`):
 
 ```js
@@ -191,7 +194,7 @@ const passwordChangeLimiter = new SimpleRateLimiter({
 });
 ```
 
-Export it from `module.exports` (line 370+).
+Export it from `module.exports` (line 370+) AND register it with the existing aggregate helpers for consistency with the other limiters: `getAllRateLimitStats()` (line ≈330), `resetAllRateLimits()` (line ≈347), `destroyAllLimiters()` (line ≈359).
 
 **`src/routes/authRoutes.js`** — apply the new limiter:
 
@@ -357,7 +360,7 @@ describe('POST /api/auth/change-password', () => {
 });
 ```
 
-Reset rate-limiter state between tests via existing harness (or skip the 429 test if isolation cost is too high; document in the PR).
+Add `beforeEach(() => resetAllRateLimits())` inside the new `describe` block so the 429 test isn't order-sensitive across the suite.
 
 ### 9.3 Manual smoke (chrome-devtools MCP)
 
@@ -433,6 +436,7 @@ Document result in the implementation commit.
 
 ## Acceptance criteria
 
+- [ ] `users.password_changed_at` column present after migration 016 / init/08 applied
 - [ ] Admin can open modal from `admin.html` header
 - [ ] Live validation reflects all 4 password rules
 - [ ] Submit disabled until form valid
