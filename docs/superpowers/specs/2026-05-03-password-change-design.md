@@ -30,7 +30,7 @@ Add a password change flow for the `admin` role through the legacy admin panel (
 
 ## Architecture
 
-```
+```text
 admin.html [header]
   ├─ existing #logout-btn
   └─ NEW button "🔑 Сменить пароль"
@@ -339,7 +339,7 @@ Add:
 
 Existing `describe('Authentication Endpoints')` at line 45 currently covers login/register only. Extend with:
 
-```
+```js
 describe('POST /api/auth/change-password', () => {
     test('changes password and invalidates old tokens', async () => {
         // 1. login → access1, refresh1

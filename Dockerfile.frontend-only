@@ -1,48 +1,64 @@
+# ========================================
+# Stage 1: Builder — собирает bundle (Phase 12B.4)
+# ========================================
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Сначала зависимости — кэшируется отдельным слоем.
+# --ignore-scripts: postinstall (build:frontend) ещё не может запуститься,
+# т. к. build/ и public/ копируются позже. Bundle собираем явным шагом ниже.
+COPY package*.json ./
+RUN npm ci --include=dev --ignore-scripts
+
+# Исходники для бандлера
+COPY build/ ./build/
+COPY public/ ./public/
+
+# Сборка минифицированного bundle в public/dist/
+RUN npm run build:frontend
+
+# ========================================
+# Stage 2: Nginx — раздаёт статику
+# ========================================
 FROM nginx:alpine
 
-# Копируем конфигурацию Nginx (без API проксирования)
+# Конфигурация Nginx (с .map → 404 блоком)
 COPY nginx-frontend-only.conf /etc/nginx/nginx.conf
 
-# Создаем директорию для статических файлов
 WORKDIR /usr/share/nginx/html
 
-# Копируем HTML файлы
+# HTML страницы и статика
 COPY index.html .
 COPY *.html .
-
-# Копируем статические ресурсы
 COPY css/ ./css/
-COPY public/ ./public/
 COPY data/ ./data/
 
-# Явно копируем важные файлы слоев карты
+# Публичные ресурсы — забираем из builder, чтобы public/dist/ был свежим
+COPY --from=builder /app/public/ ./public/
+
+# Явно копируем критичные файлы слоев карты (legacy-маркер для отладки)
 COPY public/map-layers-control.js ./public/map-layers-control.js
 COPY public/css/map-layers.css ./public/css/map-layers.css
 
-# Добавляем curl для healthcheck
+# curl для healthcheck
 RUN apk add --no-cache curl
 
-# Создаем пользователя для безопасности
+# Безопасный пользователь
 RUN addgroup -g 1001 -S nginx-user && \
-    adduser -S nginx-user -u 1001
-
-# Устанавливаем права на файлы
-RUN chown -R nginx-user:nginx-user /usr/share/nginx/html && \
+    adduser -S nginx-user -u 1001 && \
+    chown -R nginx-user:nginx-user /usr/share/nginx/html && \
     chown -R nginx-user:nginx-user /var/cache/nginx && \
     chown -R nginx-user:nginx-user /var/log/nginx && \
-    chown -R nginx-user:nginx-user /etc/nginx/conf.d
-
-# Создаем директории для PID файлов
-RUN touch /var/run/nginx.pid && \
+    chown -R nginx-user:nginx-user /etc/nginx/conf.d && \
+    touch /var/run/nginx.pid && \
     chown nginx-user:nginx-user /var/run/nginx.pid
 
-# Добавляем информацию о версии
-RUN echo "Frontend with Map Layers (Frontend Only) - $(date)" > /usr/share/nginx/html/version.txt
+# Версионная метка (для диагностики)
+RUN echo "Frontend with esbuild bundle (Phase 12B.4) - $(date)" > /usr/share/nginx/html/version.txt
 
 USER nginx-user
 
-# Открываем порт
 EXPOSE 8080
 
-# Запускаем Nginx
-CMD ["nginx", "-g", "daemon off;"] 
+CMD ["nginx", "-g", "daemon off;"]

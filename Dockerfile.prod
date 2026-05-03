@@ -6,8 +6,10 @@ WORKDIR /app
 # Копируем только файлы для установки зависимостей
 COPY package*.json ./
 
-# Устанавливаем зависимости с exact versions и очищаем кэш
-RUN npm ci --omit=dev && \
+# Устанавливаем зависимости с exact versions и очищаем кэш.
+# --ignore-scripts: postinstall (build:frontend) использует esbuild из devDependencies,
+# а app-контейнеру bundle не нужен — статика собирается отдельно во frontend-образе.
+RUN npm ci --omit=dev --ignore-scripts && \
     npm cache clean --force
 
 # Production stage
