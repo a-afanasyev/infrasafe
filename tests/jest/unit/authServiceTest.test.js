@@ -970,7 +970,7 @@ describe('AuthService', () => {
 
             await expect(
                 authService.refreshToken(refreshToken)
-            ).rejects.toMatchObject({ code: expect.stringMatching(/REFRESH|EXPIRED/) });
+            ).rejects.toEqual(expect.objectContaining({ code: 'INVALID_REFRESH_TOKEN' }));
         });
     });
 });

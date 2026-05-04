@@ -302,9 +302,10 @@ class AuthService {
                 throw error;
             }
 
-            // Phase 13: defense-in-depth cutoff check (middleware also enforces).
+            // Phase 13: defense-in-depth cutoff check — generic message to avoid
+            // leaking that the password was changed (middleware also enforces).
             if (this._isIssuedBeforeCutoff(decoded, user)) {
-                const error = new Error('Refresh token issued before password change');
+                const error = new Error('Недействительный refresh токен');
                 error.code = 'INVALID_REFRESH_TOKEN';
                 throw error;
             }
