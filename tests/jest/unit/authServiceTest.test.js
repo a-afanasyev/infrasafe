@@ -328,6 +328,31 @@ describe('AuthService', () => {
         });
     });
 
+    describe('findUserById — password_changed_at', () => {
+        test('returns password_changed_at field from DB row', async () => {
+            const pca = '2026-05-03T12:00:00.000Z';
+            cacheService.get.mockResolvedValue(null);
+            db.query.mockResolvedValueOnce({ rows: [{
+                user_id: 1, username: 'u', email: 'u@b.com', role: 'admin',
+                is_active: true, account_locked_until: null,
+                created_at: '2026-01-01', updated_at: '2026-01-01',
+                password_changed_at: pca
+            }] });
+
+            const user = await authService.findUserById(1);
+            expect(user.password_changed_at).toBe(pca);
+        });
+
+        test('SELECT statement includes password_changed_at column', async () => {
+            cacheService.get.mockResolvedValue(null);
+            db.query.mockResolvedValueOnce({ rows: [] });
+
+            await authService.findUserById(999);
+            const sql = db.query.mock.calls[0][0];
+            expect(sql).toMatch(/password_changed_at/);
+        });
+    });
+
     describe('findUserByUsernameOrEmail', () => {
         test('finds user by username', async () => {
             db.query.mockResolvedValueOnce({
