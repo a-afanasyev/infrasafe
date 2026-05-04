@@ -942,4 +942,35 @@ describe('AuthService', () => {
             expect(authService._isIssuedBeforeCutoff(decoded, user)).toBe(true);
         });
     });
+
+    describe('refreshToken — password_changed_at cutoff', () => {
+        test('throws INVALID_REFRESH_TOKEN when iat precedes password_changed_at', async () => {
+            const userId = 1;
+            const oldIat = Math.floor((Date.now() - 60_000) / 1000);
+
+            // Sign a refresh token with old iat
+            const refreshToken = jwt.sign(
+                { user_id: userId, type: 'refresh', iat: oldIat },
+                process.env.JWT_REFRESH_SECRET,
+                { issuer: 'infrasafe-api', audience: 'infrasafe-client', expiresIn: '7d' }
+            );
+
+            cacheService.get.mockResolvedValue(null);
+            // Order of db.query calls in refreshToken (verified against authService.js:265+):
+            //   1. INSERT INTO token_blacklist (atomic consume)
+            //   2. SELECT ... FROM users (findUserById)
+            db.query
+                .mockResolvedValueOnce({ rowCount: 1 })  // INSERT (atomic consume succeeds)
+                .mockResolvedValueOnce({ rows: [{
+                    user_id: userId, username: 'admin', email: 'a@b.com', role: 'admin',
+                    is_active: true, account_locked_until: null,
+                    created_at: '2026-01-01', updated_at: '2026-01-01',
+                    password_changed_at: new Date().toISOString()
+                }] });
+
+            await expect(
+                authService.refreshToken(refreshToken)
+            ).rejects.toMatchObject({ code: expect.stringMatching(/REFRESH|EXPIRED/) });
+        });
+    });
 });
