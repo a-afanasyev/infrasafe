@@ -7,7 +7,8 @@ jest.mock('../../../src/utils/logger', () => ({
 }));
 jest.mock('../../../src/services/authService', () => ({
     isTokenBlacklisted: jest.fn(),
-    findUserById: jest.fn()
+    findUserById: jest.fn(),
+    _isIssuedBeforeCutoff: jest.fn()
 }));
 
 const jwt = require('jsonwebtoken');
@@ -492,6 +493,83 @@ describe('Auth Middleware', () => {
 
             expect(req.user).toBeNull();
             expect(next).toHaveBeenCalled();
+        });
+    });
+
+    describe('authenticateJWT — password_changed_at cutoff', () => {
+        const NOW = Math.floor(Date.now() / 1000);
+
+        function makeReq(token = 'eyJraW...stub.token') {
+            return { headers: { authorization: `Bearer ${token}` } };
+        }
+        function makeRes() {
+            return { status: jest.fn().mockReturnThis(), json: jest.fn() };
+        }
+
+        beforeEach(() => {
+            authService.isTokenBlacklisted.mockResolvedValue(false);
+            process.env.JWT_SECRET = 'test-secret';
+        });
+
+        test('rejects token whose iat is before password_changed_at', async () => {
+            const userPca = new Date().toISOString();
+            const decoded = { user_id: 1, iat: NOW - 3600 };  // 1h ago
+            jwt.verify.mockImplementation((tok, sec, opts, cb) => cb(null, decoded));
+            authService.findUserById.mockResolvedValue({
+                user_id: 1, username: 'admin', role: 'admin',
+                email: 'a@b.com', is_active: true, password_changed_at: userPca
+            });
+            authService._isIssuedBeforeCutoff.mockReturnValue(true);
+
+            const req = makeReq();
+            const res = makeRes();
+            const next = jest.fn();
+            await authenticateJWT(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(401);
+            expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Invalid or expired token' });
+            expect(next).not.toHaveBeenCalled();
+        });
+
+        test('passes when password_changed_at is null (legacy user)', async () => {
+            const decoded = { user_id: 1, iat: NOW };
+            jwt.verify.mockImplementation((tok, sec, opts, cb) => cb(null, decoded));
+            authService.findUserById.mockResolvedValue({
+                user_id: 1, username: 'admin', role: 'admin',
+                email: 'a@b.com', is_active: true, password_changed_at: null
+            });
+            authService._isIssuedBeforeCutoff.mockReturnValue(false);
+
+            const req = makeReq();
+            const res = makeRes();
+            const next = jest.fn();
+            await authenticateJWT(req, res, next);
+
+            expect(next).toHaveBeenCalled();
+        });
+    });
+
+    describe('authenticateRefresh — password_changed_at cutoff', () => {
+        test('rejects refresh token whose iat is before password_changed_at', async () => {
+            authService.isTokenBlacklisted.mockResolvedValue(false);
+            process.env.JWT_REFRESH_SECRET = 'test-refresh-secret';
+
+            const decoded = { user_id: 1, iat: Math.floor(Date.now() / 1000) - 3600 };
+            jwt.verify.mockImplementation((tok, sec, opts, cb) => cb(null, decoded));
+            authService.findUserById.mockResolvedValue({
+                user_id: 1, username: 'admin', role: 'admin', email: 'a@b.com',
+                is_active: true, password_changed_at: new Date().toISOString()
+            });
+            authService._isIssuedBeforeCutoff.mockReturnValue(true);
+
+            const req = { body: { refreshToken: 'stub.refresh.token' } };
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+            const next = jest.fn();
+            await authenticateRefresh(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(401);
+            expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Invalid or expired refresh token' });
+            expect(next).not.toHaveBeenCalled();
         });
     });
 });

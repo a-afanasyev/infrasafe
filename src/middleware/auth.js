@@ -69,6 +69,15 @@ const authenticateJWT = async (req, res, next) => {
             });
         }
 
+        // Phase 13: reject tokens issued before the user's most recent password change
+        if (authService._isIssuedBeforeCutoff(decoded, user)) {
+            logger.warn(`Stale token rejected for user ${user.user_id} — issued before password change`);
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid or expired token'
+            });
+        }
+
         if (user.account_locked_until && new Date(user.account_locked_until) > new Date()) {
             return res.status(401).json({
                 success: false,
@@ -146,6 +155,15 @@ const authenticateRefresh = async (req, res, next) => {
             return res.status(401).json({
                 success: false,
                 message: 'User not found'
+            });
+        }
+
+        // Phase 13: reject refresh tokens issued before the user's password change
+        if (authService._isIssuedBeforeCutoff(decoded, user)) {
+            logger.warn(`Stale refresh token rejected for user ${user.user_id}`);
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid or expired refresh token'
             });
         }
 
