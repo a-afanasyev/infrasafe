@@ -516,6 +516,35 @@ describe('AuthService', () => {
                 authService.changePassword(1, 'OldPass123', 'short')
             ).rejects.toMatchObject({ code: 'INVALID_PASSWORD' });
         });
+
+        test('UPDATE statement writes both password_hash and password_changed_at', async () => {
+            const oldHash = bcrypt.hashSync('OldPass123', 4);
+            cacheService.get.mockResolvedValue(null);
+            db.query
+                .mockResolvedValueOnce({ rows: [{ user_id: 1, username: 'u', is_active: true }] })
+                .mockResolvedValueOnce({ rows: [{ password_hash: oldHash }] })
+                .mockResolvedValueOnce({ rowCount: 1 });
+
+            await authService.changePassword(1, 'OldPass123', 'NewPass123');
+
+            const updateCall = db.query.mock.calls[2];
+            expect(updateCall[0]).toMatch(/password_hash/);
+            expect(updateCall[0]).toMatch(/password_changed_at\s*=\s*NOW\(\)/);
+            expect(updateCall[1]).toEqual([expect.any(String), 1]);  // [hash, userId]
+        });
+
+        test('invalidates user cache after successful change', async () => {
+            const oldHash = bcrypt.hashSync('OldPass123', 4);
+            cacheService.get.mockResolvedValue(null);
+            db.query
+                .mockResolvedValueOnce({ rows: [{ user_id: 1, username: 'u', is_active: true }] })
+                .mockResolvedValueOnce({ rows: [{ password_hash: oldHash }] })
+                .mockResolvedValueOnce({ rowCount: 1 });
+
+            await authService.changePassword(1, 'OldPass123', 'NewPass123');
+
+            expect(cacheService.invalidate).toHaveBeenCalledWith('auth:user:1');
+        });
     });
 
     describe('isTokenBlacklisted', () => {

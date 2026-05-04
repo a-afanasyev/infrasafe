@@ -368,6 +368,10 @@ class AuthService {
             `;
             await db.query(query, [hashedNewPassword, userId]);
 
+            // Phase 13: invalidate the cached user object so the next auth
+            // check sees the fresh password_changed_at (cutoff-comparison).
+            await cacheService.invalidate(`${this.cachePrefix}:user:${userId}`);
+
             logger.info(`Пароль изменен для пользователя ID: ${userId}`);
             return { message: 'Пароль успешно изменен' };
         } catch (error) {
