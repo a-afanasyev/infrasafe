@@ -290,6 +290,19 @@ const registerLimiter = new SimpleRateLimiter({
     keyGenerator: (req) => `auth:register:${req.ip || req.connection.remoteAddress}`
 });
 
+// Phase 13: dedicated limiter for password-change attempts so they
+// don't exhaust the login-limiter budget (separate key prefix).
+const passwordChangeLimiter = new SimpleRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    message: 'Слишком много попыток смены пароля. Попробуйте через 15 минут.',
+    keyGenerator: (req) => {
+        const ip = req.ip || req.connection.remoteAddress;
+        const userId = req.user ? req.user.user_id : 'anonymous';
+        return `auth:change-password:${ip}:${userId}`;
+    }
+});
+
 // Ограничения для телеметрии (публичный эндпоинт)
 const telemetryLimiter = new SimpleRateLimiter({
     windowMs: 60 * 1000, // 1 минута
@@ -339,7 +352,8 @@ function getAllRateLimitStats() {
         crud: crudLimiter.getStats(),
         telemetry: telemetryLimiter.getStats(),
         auth: authLimiter.getStats(),
-        register: registerLimiter.getStats()
+        register: registerLimiter.getStats(),
+        password_change: passwordChangeLimiter.getStats()
     };
 }
 
@@ -352,6 +366,7 @@ function resetAllRateLimits() {
     telemetryLimiter.reset();
     authLimiter.reset();
     registerLimiter.reset();
+    passwordChangeLimiter.reset();
     logger.info('Все rate limiter\'ы сброшены');
 }
 
@@ -364,6 +379,7 @@ function destroyAllLimiters() {
     telemetryLimiter.destroy();
     authLimiter.destroy();
     registerLimiter.destroy();
+    passwordChangeLimiter.destroy();
     logger.info('Все rate limiter таймеры остановлены');
 }
 
@@ -383,5 +399,6 @@ module.exports = {
     telemetryLimiter,
     authLimiter,
     registerLimiter,
+    passwordChangeLimiter,
     rateLimitStrict: adminLimiter.middleware()
 };
