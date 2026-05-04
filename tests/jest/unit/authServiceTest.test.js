@@ -905,4 +905,41 @@ describe('AuthService', () => {
             expect(result).toBe(false);
         });
     });
+
+    describe('_isIssuedBeforeCutoff', () => {
+        const NOW = 1700000000000;  // arbitrary fixed ms
+        const IAT_AFTER  = Math.floor(NOW / 1000);
+        const IAT_BEFORE = Math.floor((NOW - 60_000) / 1000);
+
+        test('returns false when password_changed_at is null (legacy user)', () => {
+            const user = { password_changed_at: null };
+            const decoded = { iat: IAT_AFTER };
+            expect(authService._isIssuedBeforeCutoff(decoded, user)).toBe(false);
+        });
+
+        test('returns false when iat is after password_changed_at', () => {
+            const user = { password_changed_at: new Date(NOW - 60_000).toISOString() };
+            const decoded = { iat: IAT_AFTER };
+            expect(authService._isIssuedBeforeCutoff(decoded, user)).toBe(false);
+        });
+
+        test('returns true when iat is before password_changed_at minus skew', () => {
+            const user = { password_changed_at: new Date(NOW).toISOString() };
+            const decoded = { iat: IAT_BEFORE };
+            expect(authService._isIssuedBeforeCutoff(decoded, user)).toBe(true);
+        });
+
+        test('returns false when iat is within 5s skew of cutoff (boundary)', () => {
+            // iat exactly 5s before cutoff: cutoffMs = NOW - 5000 → iatMs = NOW - 5000 → not before
+            const user = { password_changed_at: new Date(NOW).toISOString() };
+            const decoded = { iat: Math.floor((NOW - 5000) / 1000) };
+            expect(authService._isIssuedBeforeCutoff(decoded, user)).toBe(false);
+        });
+
+        test('returns true when iat is missing (malformed token)', () => {
+            const user = { password_changed_at: new Date(NOW).toISOString() };
+            const decoded = {};
+            expect(authService._isIssuedBeforeCutoff(decoded, user)).toBe(true);
+        });
+    });
 });

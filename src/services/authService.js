@@ -7,6 +7,9 @@ const db = require('../config/database');
 const { CircuitBreakerFactory } = require('../utils/circuitBreaker');
 const AccountLockout = require('../models/AccountLockout');
 
+// Phase 13: clock-skew tolerance for JWT-cutoff comparison
+const JWT_CUTOFF_SKEW_MS = 5000;
+
 class AuthService {
     constructor() {
         this.saltRounds = 12;
@@ -383,6 +386,20 @@ class AuthService {
     // Хэширование пароля
     async hashPassword(password) {
         return await bcrypt.hash(password, this.saltRounds);
+    }
+
+    /**
+     * Returns true if the given token was issued strictly before the user's
+     * password_changed_at (with 5 s clock-skew tolerance). Used by auth
+     * middleware and refreshToken to bulk-invalidate every JWT after a
+     * password change without per-token blacklisting.
+     */
+    _isIssuedBeforeCutoff(decoded, user) {
+        if (!user.password_changed_at) return false;
+        if (typeof decoded.iat !== 'number') return true;
+        const issuedAtMs = decoded.iat * 1000;
+        const cutoffMs = new Date(user.password_changed_at).getTime() - JWT_CUTOFF_SKEW_MS;
+        return issuedAtMs < cutoffMs;
     }
 
     // Проверка пароля
