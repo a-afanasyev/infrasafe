@@ -438,6 +438,24 @@ describe('AuthController', () => {
             expect(res.status).toHaveBeenCalledWith(400);
         });
 
+        test('responds 400 when service throws INVALID_PASSWORD', async () => {
+            const req = {
+                user: { user_id: 1 },
+                body: { currentPassword: 'OldPass123', newPassword: 'short' }
+            };
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+            const next = jest.fn();
+            const err = new Error('Пароль должен содержать минимум 8 символов');
+            err.code = 'INVALID_PASSWORD';
+            authService.changePassword.mockRejectedValueOnce(err);
+
+            await authController.changePassword(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith({ error: 'Пароль должен содержать минимум 8 символов' });
+            expect(next).not.toHaveBeenCalled();
+        });
+
         test('calls next for unexpected errors', async () => {
             req.body = { currentPassword: 'OldPass1', newPassword: 'NewPass1' };
             authService.changePassword.mockRejectedValue(new Error('Unexpected'));

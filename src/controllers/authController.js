@@ -212,6 +212,9 @@ const changePassword = async (req, res, next) => {
         if (error.code === 'INVALID_CURRENT_PASSWORD') {
             return res.status(400).json({ error: error.message });
         }
+        if (error.code === 'INVALID_PASSWORD') {
+            return res.status(400).json({ error: error.message });
+        }
 
         logger.error(`Change password error: ${error.message}`);
         next(error);
