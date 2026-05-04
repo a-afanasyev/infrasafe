@@ -479,6 +479,18 @@ describe('AuthService', () => {
                 authService.changePassword(1, 'WrongPass123', 'NewPass123')
             ).rejects.toMatchObject({ code: 'INVALID_CURRENT_PASSWORD' });
         });
+
+        test('tags weak-password error with code=INVALID_PASSWORD so controller maps to 400', async () => {
+            const oldHash = bcrypt.hashSync('OldPass123', 4);
+            cacheService.get.mockResolvedValue(null);
+            db.query
+                .mockResolvedValueOnce({ rows: [{ user_id: 1, username: 'u', is_active: true }] })
+                .mockResolvedValueOnce({ rows: [{ password_hash: oldHash }] });
+
+            await expect(
+                authService.changePassword(1, 'OldPass123', 'short')
+            ).rejects.toMatchObject({ code: 'INVALID_PASSWORD' });
+        });
     });
 
     describe('isTokenBlacklisted', () => {

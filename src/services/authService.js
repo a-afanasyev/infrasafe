@@ -349,7 +349,13 @@ class AuthService {
             }
 
             // Валидируем новый пароль
-            this.validatePassword(newPassword);
+            // Phase 13: tag validatePassword failures so controller maps them to 400
+            try {
+                this.validatePassword(newPassword);
+            } catch (err) {
+                err.code = 'INVALID_PASSWORD';
+                throw err;
+            }
 
             // Хэшируем новый пароль
             const hashedNewPassword = await this.hashPassword(newPassword);
