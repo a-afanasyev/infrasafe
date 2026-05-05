@@ -77,13 +77,6 @@ describe('E2E: POST /api/auth/change-password', () => {
   const NEW_PWD = 'NewPass456';
 
   beforeAll(async () => {
-    // Reset host-side rate limiters (no-op against the live container, but
-    // documents intent and works for in-process e2e modes).
-    try {
-      const { resetAllRateLimits } = require('../../../src/middleware/rateLimiter');
-      if (typeof resetAllRateLimits === 'function') resetAllRateLimits();
-    } catch (_) { /* ignore — module not loadable in some envs */ }
-
     // Use a dedicated registered user — admin has 2FA mandatory which complicates flow.
     const username = `pwtest_${Date.now()}`;
     const email = `${username}@test.local`;
@@ -94,13 +87,6 @@ describe('E2E: POST /api/auth/change-password', () => {
       throw new Error(`register failed: ${reg.status} ${JSON.stringify(reg.body)}`);
     }
     testUser = { username, email };
-  });
-
-  afterAll(async () => {
-    try {
-      const { resetAllRateLimits } = require('../../../src/middleware/rateLimiter');
-      if (typeof resetAllRateLimits === 'function') resetAllRateLimits();
-    } catch (_) { /* ignore */ }
   });
 
   test('changes password and invalidates old tokens', async () => {
@@ -154,6 +140,7 @@ describe('E2E: POST /api/auth/change-password', () => {
       .post('/api/auth/change-password')
       .send({ currentPassword: 'wrong', newPassword: 'AnotherNew123' });
     expect(resp.status).toBe(400);
+    expect(resp.body.error || resp.body.message || '').toMatch(/Неверный текущий пароль|current/i);
   });
 
   test('returns 400 for weak new password (INVALID_PASSWORD branch)', async () => {
@@ -167,12 +154,6 @@ describe('E2E: POST /api/auth/change-password', () => {
 
   test('rate-limits after 5 attempts within 15 min', async () => {
     // Use a fresh user so the per-user rate-limit bucket is empty.
-    // (resetAllRateLimits on host doesn't affect the live container.)
-    try {
-      const { resetAllRateLimits } = require('../../../src/middleware/rateLimiter');
-      if (typeof resetAllRateLimits === 'function') resetAllRateLimits();
-    } catch (_) { /* ignore */ }
-
     const rlUsername = `pwtest_rl_${Date.now()}`;
     const rlEmail = `${rlUsername}@test.local`;
     const rlPwd = 'TestPass123';
