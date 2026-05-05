@@ -1,7 +1,7 @@
 const express = require('express');
 const authController = require('../controllers/authController');
 const { authenticateRefresh, authenticateTempToken } = require('../middleware/auth');
-const { authLimiter, registerLimiter } = require('../middleware/rateLimiter');
+const { authLimiter, registerLimiter, passwordChangeLimiter } = require('../middleware/rateLimiter');
 const router = express.Router();
 
 /**
@@ -273,7 +273,7 @@ router.post('/refresh', authLimiter.middleware(), authenticateRefresh, authContr
  *       403:
  *         description: Недействительный токен
  */
-router.post('/change-password', authController.changePassword);
+router.post('/change-password', passwordChangeLimiter.middleware(), authController.changePassword);
 
 // 2FA routes (public — use tempToken for auth, rate limited)
 router.post('/verify-2fa', authLimiter.middleware(), authenticateTempToken, authController.verify2FA);
