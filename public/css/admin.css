@@ -872,3 +872,128 @@ form {
 .horizontal-form .form-row .form-group {
     flex: 1;
 }
+
+/* ============================================
+   Phase 13 — Password change modal
+   ============================================ */
+
+#btn-change-password {
+    margin-left: 1rem;
+}
+
+.modal-dialog {
+    border: none;
+    border-radius: 8px;
+    padding: 0;
+    max-width: 480px;
+    width: 90%;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.modal-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.modal-dialog form {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.modal-dialog h3 {
+    margin: 0 0 0.5rem 0;
+}
+
+.modal-dialog label {
+    font-weight: 500;
+    margin-top: 0.5rem;
+}
+
+.modal-dialog input[type="password"] {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+.input-with-toggle {
+    display: flex;
+    gap: 0.25rem;
+    align-items: center;
+}
+
+.input-with-toggle input {
+    flex: 1;
+}
+
+#cp-toggle-visibility {
+    background: none;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+}
+
+.password-rules {
+    list-style: none;
+    padding: 0.5rem 0.75rem;
+    margin: 0;
+    background: #f7f7f7;
+    border-radius: 4px;
+    font-size: 0.85em;
+}
+
+.password-rules li {
+    padding: 0.15rem 0;
+}
+
+.password-rules li.rule-met {
+    color: #2e7d32;
+}
+
+.password-rules li.rule-met::before {
+    content: '✓ ';
+    font-weight: bold;
+}
+
+.password-rules li.rule-missing {
+    color: #888;
+}
+
+.password-rules li.rule-missing::before {
+    content: '○ ';
+}
+
+.error-text {
+    color: #c62828;
+    font-size: 0.85em;
+    margin: 0.25rem 0 0 0;
+}
+
+.warning-text {
+    background: #fff3cd;
+    border-left: 3px solid #ffc107;
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.85em;
+    margin: 0.5rem 0;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.cp-success-banner {
+    background: #c8e6c9;
+    color: #1b5e20;
+    padding: 1rem;
+    border-radius: 4px;
+    text-align: center;
+    font-weight: 500;
+    margin-top: 1rem;
+}

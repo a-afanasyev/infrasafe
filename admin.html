@@ -11,6 +11,9 @@
 <body>
     <div class="admin-header">
         <h1>🏢 InfraSafe - Администрирование</h1>
+                <button id="btn-change-password" class="btn-secondary" type="button">
+                    🔑 Сменить пароль
+                </button>
     </div>
 
     <div class="admin-container" style="display: none;">
@@ -1482,5 +1485,45 @@
     <!-- Основной скрипт админки -->
     <script src="public/dist/admin.js"></script>
 
+<dialog id="change-password-modal" class="modal-dialog">
+    <form id="change-password-form">
+        <h3>Сменить пароль</h3>
+
+        <label for="cp-current">Текущий пароль</label>
+        <input type="password" id="cp-current" autocomplete="current-password" required>
+        <p class="error-text" id="cp-current-error" hidden></p>
+
+        <label for="cp-new">Новый пароль</label>
+        <div class="input-with-toggle">
+            <input type="password" id="cp-new" autocomplete="new-password" required minlength="8">
+            <button type="button" id="cp-toggle-visibility" aria-label="Показать пароль">👁</button>
+        </div>
+        <ul class="password-rules" id="cp-rules">
+            <li data-rule="length" class="rule-missing">≥ 8 символов</li>
+            <li data-rule="lower" class="rule-missing">есть строчная буква</li>
+            <li data-rule="upper" class="rule-missing">есть заглавная буква</li>
+            <li data-rule="digit" class="rule-missing">есть цифра</li>
+        </ul>
+
+        <label for="cp-confirm">Подтвердите новый пароль</label>
+        <input type="password" id="cp-confirm" autocomplete="new-password" required>
+        <p class="error-text" id="cp-confirm-error" hidden></p>
+
+        <p class="warning-text">
+            ⚠ После смены пароля все сессии будут завершены — войдите заново.
+        </p>
+
+        <p class="error-text" id="cp-server-error" hidden></p>
+
+        <div class="modal-actions">
+            <button type="button" id="cp-cancel" class="btn-secondary">Отмена</button>
+            <button type="submit" id="cp-submit" class="btn-primary" disabled>Сменить пароль</button>
+        </div>
+
+        <div id="cp-success-banner" class="cp-success-banner" hidden>
+            ✓ Пароль изменён. Перенаправление…
+        </div>
+    </form>
+</dialog>
 </body>
 </html>
