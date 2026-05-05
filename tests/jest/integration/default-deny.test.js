@@ -53,6 +53,7 @@ jest.mock('../../../src/middleware/rateLimiter', () => {
         rateLimitStrict: passThrough,
         authLimiter: limiterObj,
         registerLimiter: limiterObj,
+        passwordChangeLimiter: limiterObj,
     };
 });
 
