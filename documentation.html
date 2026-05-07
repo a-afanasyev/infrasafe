@@ -3,27 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="InfraSafe - Документация системы мониторинга">
-    <meta name="keywords" content="InfraSafe, monitoring, infrastructure, safety, documentation, HabitatITIQ">
+    <meta name="description" content="Документация платформы InfraSafe — инструкции для пользователей, администраторов и интеграторов.">
+    <meta name="keywords" content="InfraSafe, документация, мониторинг, ЖКХ, инструкции">
     <meta name="author" content="InfraSafe Team">
     <meta name="theme-color" content="#0F1E25">
 
-    <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="public/images/favicon.svg">
 
-    <!-- Стили -->
-    <!-- Версионируем CSS, чтобы браузеры не использовали старый кеш -->
-    <link rel="stylesheet" href="css/style.css?v=20260323">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=20260507d">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-    <title>InfraSafe - Документация</title>
+    <title>InfraSafe — Документация</title>
 </head>
-<body class="content-page">
-    <div class="header">
+<body class="content-page docs-page">
+    <div class="header neomorph">
         <div class="logo-container">
-            <a href="index.html" style="display: flex; align-items: center; text-decoration: none;">
+            <a href="index.html" style="display: flex; align-items: center; text-decoration: none; color: inherit;">
                 <img src="public/images/infrasafe-logo.svg" alt="InfraSafe Logo" id="logo">
-                <span>INFRASAFE - МОНИТОРИНГ ИНФРАСТРУКТУРЫ</span>
+                <span>INFRASAFE — МОНИТОРИНГ ИНФРАСТРУКТУРЫ</span>
             </a>
         </div>
         <div class="header-controls">
@@ -31,17 +28,137 @@
                 <ul>
                     <li><a href="about.html">О системе</a></li>
                     <li><a href="documentation.html" class="active">Документация</a></li>
-                    <li><a href="https://www.aisolutions.uz/aboutus" target="_blank">Контакты</a></li>
+                    <li><a href="https://www.aisolutions.uz/aboutus" target="_blank" rel="noopener">Контакты</a></li>
                 </ul>
             </nav>
+            <button class="theme-toggle" id="theme-toggle" aria-label="Переключить тему">
+                <svg id="theme-icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                </svg>
+                <svg id="theme-icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                </svg>
+            </button>
         </div>
     </div>
 
-    <div class="content">
-        <h1>Документация</h1>
-        <p>В настоящее время данный раздел пополняется.</p>
-        <!-- Добавьте сюда подробное описание, инструкции, руководства и т.д. -->
-    </div>
+    <main class="about-main">
+
+        <!-- ===== MINI HERO ===== -->
+        <section class="about-hero">
+            <div class="about-hero__bg" aria-hidden="true">
+                <svg class="about-hero__grid" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" preserveAspectRatio="none">
+                    <defs>
+                        <pattern id="dots-docs" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
+                            <circle cx="2" cy="2" r="1.2" fill="rgba(255,255,255,0.18)"/>
+                        </pattern>
+                    </defs>
+                    <rect width="600" height="600" fill="url(#dots-docs)"/>
+                </svg>
+                <div class="about-hero__glow about-hero__glow--a"></div>
+                <div class="about-hero__glow about-hero__glow--b"></div>
+            </div>
+
+            <div class="about-hero__inner">
+                <span class="about-hero__eyebrow">Документация</span>
+                <h1 class="about-hero__title">Руководства и справочные материалы</h1>
+                <p class="about-hero__lead">
+                    Раздел разделён по аудиториям: жителю, оператору управляющей компании и техническому
+                    интегратору. Подробные руководства публикуются по мере готовности — сейчас доступны
+                    краткие описания и контакт для запросов.
+                </p>
+            </div>
+        </section>
+
+        <!-- ===== NOTICE ===== -->
+        <div class="docs-notice" role="status">
+            <span class="docs-notice__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+            </span>
+            <div>
+                <strong>Раздел в разработке</strong>
+                <p>Полная документация публикуется поэтапно. Если нужны материалы прямо сейчас — напишите нам, мы пришлём актуальный комплект под вашу задачу.</p>
+            </div>
+        </div>
+
+        <!-- ===== CATEGORIES ===== -->
+        <section class="docs-categories" aria-label="Разделы документации">
+
+            <article class="docs-card">
+                <div class="docs-card__icon docs-card__icon--user" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                        <circle cx="12" cy="7" r="4"/>
+                    </svg>
+                </div>
+                <h3>Для пользователей</h3>
+                <p>Жителям и наблюдателям — как читать карту, понимать статусы и работать с уведомлениями.</p>
+                <ul class="docs-card__list">
+                    <li>Знакомство с интерфейсом карты <span class="docs-status docs-status--soon">скоро</span></li>
+                    <li>Чтение статусов зданий <span class="docs-status docs-status--soon">скоро</span></li>
+                    <li>Работа с уведомлениями <span class="docs-status docs-status--soon">скоро</span></li>
+                    <li>Часто задаваемые вопросы <span class="docs-status docs-status--ondemand">по запросу</span></li>
+                </ul>
+            </article>
+
+            <article class="docs-card">
+                <div class="docs-card__icon docs-card__icon--admin" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                </div>
+                <h3>Для администраторов</h3>
+                <p>Операторам УК и системным администраторам — управление зданиями, пользователями, алертами и интеграциями.</p>
+                <ul class="docs-card__list">
+                    <li>Управление зданиями и контроллерами <span class="docs-status docs-status--ondemand">по запросу</span></li>
+                    <li>Настройка правил алертов <span class="docs-status docs-status--ondemand">по запросу</span></li>
+                    <li>Двухфакторная авторизация (2FA) <span class="docs-status docs-status--ondemand">по запросу</span></li>
+                    <li>Интеграция с системой УК <span class="docs-status docs-status--ondemand">по запросу</span></li>
+                </ul>
+            </article>
+
+            <article class="docs-card">
+                <div class="docs-card__icon docs-card__icon--dev" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="16 18 22 12 16 6"/>
+                        <polyline points="8 6 2 12 8 18"/>
+                    </svg>
+                </div>
+                <h3>Для разработчиков</h3>
+                <p>Партнёрам и интеграторам — описание API, форматы данных и сценарии подключения.</p>
+                <ul class="docs-card__list">
+                    <li>Описание REST API <span class="docs-status docs-status--ondemand">по запросу</span></li>
+                    <li>Авторизация и токены <span class="docs-status docs-status--ondemand">по запросу</span></li>
+                    <li>Webhook-интеграции <span class="docs-status docs-status--ondemand">по запросу</span></li>
+                    <li>Развёртывание и эксплуатация <span class="docs-status docs-status--ondemand">по запросу</span></li>
+                </ul>
+            </article>
+
+        </section>
+
+        <!-- ===== CONTACT ===== -->
+        <section class="docs-contact">
+            <h2>Нужны конкретные материалы прямо сейчас?</h2>
+            <p>Опишите вашу задачу — пришлём подходящий комплект документации, инструкций или примеров кода под ваш сценарий.</p>
+            <div class="docs-contact__buttons">
+                <a href="mailto:info@infrasafe.uz?subject=Запрос%20документации%20InfraSafe" class="about-btn about-btn--primary">Написать запрос</a>
+                <a href="https://www.aisolutions.uz/aboutus" target="_blank" rel="noopener" class="about-btn about-btn--ghost">Связаться с командой</a>
+            </div>
+        </section>
+
+    </main>
 
     <div class="footer">
         <div class="footer-content">
@@ -52,7 +169,7 @@
                 <div class="footer-info">
                     <p>© 2026 InfraSafe</p>
                     <p>Версия: 1.0.1</p>
-                    <p><a href="https://www.infrasafe.uz" target="_blank">www.infrasafe.uz</a></p>
+                    <p><a href="https://www.infrasafe.uz" target="_blank" rel="noopener">www.infrasafe.uz</a></p>
                 </div>
             </div>
             <div class="footer-section center">
@@ -63,21 +180,48 @@
             </div>
             <div class="footer-section right">
                 <div class="footer-info text-right">
-                    <p><a href="https://www.aisolutions.uz" target="_blank">www.aisolutions.uz</a></p>
+                    <p><a href="https://www.aisolutions.uz" target="_blank" rel="noopener">www.aisolutions.uz</a></p>
                     <p>Разработано компанией</p>
                 </div>
                 <div class="footer-logo">
-                    <a href="https://www.aisolutions.uz" target="_blank" class="serendipity-link">
+                    <a href="https://www.aisolutions.uz" target="_blank" rel="noopener" class="serendipity-link">
                         <img src="public/images/serendipity-logo.png" alt="SERENDIPITY" id="serendipity-logo">
                         <span class="serendipity-text">SERENDIPITY</span>
                     </a>
                 </div>
-
             </div>
         </div>
     </div>
 
-    <!-- Скрипты, если они понадобятся для страницы "Документация", можно добавить сюда -->
-    <!-- <script src="..."></script> -->
+    <script>
+        (function () {
+            const html = document.documentElement;
+            const toggle = document.getElementById('theme-toggle');
+            const sun = document.getElementById('theme-icon-sun');
+            const moon = document.getElementById('theme-icon-moon');
+
+            function apply(theme) {
+                if (theme === 'dark') {
+                    html.classList.add('dark');
+                    sun.style.display = 'block';
+                    moon.style.display = 'none';
+                } else {
+                    html.classList.remove('dark');
+                    sun.style.display = 'none';
+                    moon.style.display = 'block';
+                }
+            }
+
+            apply(localStorage.getItem('theme') || 'light');
+
+            if (toggle) {
+                toggle.addEventListener('click', function () {
+                    const next = html.classList.contains('dark') ? 'light' : 'dark';
+                    localStorage.setItem('theme', next);
+                    apply(next);
+                });
+            }
+        })();
+    </script>
 </body>
 </html>

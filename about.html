@@ -3,27 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="InfraSafe - Система мониторинга инфраструктуры и безопасности">
-    <meta name="keywords" content="InfraSafe, monitoring, infrastructure, safety, map, visualization, HabitatITIQ">
+    <meta name="description" content="InfraSafe — цифровая платформа мониторинга инженерных систем многоквартирных домов: электричество, вода, тепло, безопасность и интеграция с УК.">
+    <meta name="keywords" content="InfraSafe, мониторинг, инфраструктура, ЖКХ, IoT, SCADA, многоквартирные дома, УК">
     <meta name="author" content="InfraSafe Team">
     <meta name="theme-color" content="#0F1E25">
 
-    <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="public/images/favicon.svg">
 
-    <!-- Стили -->
-    <!-- Параметр версии заставляет браузер заново загрузить обновлённый style.css -->
-    <link rel="stylesheet" href="css/style.css?v=20260323">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=20260507b">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-    <title>InfraSafe - О системе</title>
+    <title>InfraSafe — О системе</title>
 </head>
-<body class="content-page">
-    <div class="header">
+<body class="content-page about-page">
+    <div class="header neomorph">
         <div class="logo-container">
-            <a href="index.html" style="display: flex; align-items: center; text-decoration: none;">
+            <a href="index.html" style="display: flex; align-items: center; text-decoration: none; color: inherit;">
                 <img src="public/images/infrasafe-logo.svg" alt="InfraSafe Logo" id="logo">
-                <span>INFRASAFE - МОНИТОРИНГ ИНФРАСТРУКТУРЫ</span>
+                <span>INFRASAFE — МОНИТОРИНГ ИНФРАСТРУКТУРЫ</span>
             </a>
         </div>
         <div class="header-controls">
@@ -31,68 +28,358 @@
                 <ul>
                     <li><a href="about.html" class="active">О системе</a></li>
                     <li><a href="documentation.html">Документация</a></li>
-                    <li><a href="https://www.aisolutions.uz/aboutus" target="_blank">Контакты</a></li>
+                    <li><a href="https://www.aisolutions.uz/aboutus" target="_blank" rel="noopener">Контакты</a></li>
                 </ul>
             </nav>
+            <button class="theme-toggle" id="theme-toggle" aria-label="Переключить тему">
+                <svg id="theme-icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                </svg>
+                <svg id="theme-icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                </svg>
+            </button>
         </div>
     </div>
 
-    <div class="content">
-        <p><b>Infrasafe</b> — это цифровая платформа мониторинга и управления многоквартирными домами на базе облачной платформы нового поколения, предназначенная для непрерывного мониторинга состояния инженерных систем жилых зданий, с возможностью масштабируемого расширения за счёт дополнительных цифровых сервисов.</p>
-        <p>В основе каждого узла системы — интеллектуальный контроллер на базе промышленного ПК, способный работать с различными типами датчиков и интерфейсов. Контроллер собирает данные с объектов, обрабатывает их локально и передаёт в централизованное резервированное облако по защищённым каналам связи (Ethernet, мобильная сеть, VPN).</p>
-        <div class="features-container">
-            <div class="feature-column">
-                <h3>Ключевые функции платформы:</h3>
-                <ul>
-                    <li>
-                        <strong>⚡ Контроль электроснабжения:</strong>
-                        <ul>
-                            <li>Мониторинг напряжения и токов на вводе и (опционально по подъездам)</li>
-                            <li>Историческое хранение данных, выявление перекосов и перегрузок</li>
-                            <li>Возможность балансировки нагрузки и повышения надёжности сети</li>
-                        </ul>
-                    </li>
-                    <li>
-                        <strong>💧 Мониторинг водоснабжения:</strong>
-                        <ul>
-                            <li>Холодная вода: давление, температура, (опционально — качество воды)</li>
-                            <li>Горячая вода и отопление: подача/обратка, температурный баланс</li>
-                            <li>Возможность подключения калориметров для расчёта потреблённого тепла</li>
-                        </ul>
-                    </li>
-                    <li>
-                        <strong>🌡 Безопасность и окружающая среда:</strong>
-                        <ul>
-                            <li>Контроль утечек воды в подвале</li>
-                            <li>(опционально)Температура, влажность, загазованность (CH₄, CO), загрязнение воздуха (PM2.5)</li>
-                            <li>Настройка оповещений для экстренных служб</li>
-                        </ul>
-                    </li>
-                </ul>
+    <main class="about-main">
+
+        <!-- ===== HERO ===== -->
+        <section class="about-hero">
+            <div class="about-hero__bg" aria-hidden="true">
+                <svg class="about-hero__grid" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" preserveAspectRatio="none">
+                    <defs>
+                        <pattern id="dots" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
+                            <circle cx="2" cy="2" r="1.2" fill="rgba(255,255,255,0.18)"/>
+                        </pattern>
+                    </defs>
+                    <rect width="600" height="600" fill="url(#dots)"/>
+                </svg>
+                <div class="about-hero__glow about-hero__glow--a"></div>
+                <div class="about-hero__glow about-hero__glow--b"></div>
             </div>
 
-            <div class="feature-column">
-                <h3> Возможная расширяемость платформы — дополнительные модули:</h3>
-                <ul>
-                    <li> Цифровой видеодомофон — управление доступом и видеосвязь через контроллер</li>
-                    <li> Распознавание лиц и поиск — интеграция с МВД и службами правопорядка</li>
-                    <li> Видеонаблюдение — контроль за общим имуществом, лифтами, подъездами</li>
-                    <li> Цифровая доска объявлений — коммуникация УК с жильцами, встроенная реклама</li>
-                    <li> Помощь пожилым и одиноким жителям — передача тревожных сигналов в социальные службы</li>
-                </ul>
+            <div class="about-hero__inner">
+                <span class="about-hero__eyebrow">Цифровой мониторинг ЖКХ</span>
+                <h1 class="about-hero__title">
+                    Нервная система<br>
+                    многоквартирного дома
+                </h1>
+                <p class="about-hero__lead">
+                    InfraSafe — облачная платформа нового поколения для непрерывного мониторинга
+                    инженерных систем жилых зданий: электричества, воды, тепла и безопасности.
+                    Масштабируется от одного дома до района и города, расширяется цифровыми
+                    сервисами для жителей и управляющих компаний.
+                </p>
+                <div class="about-hero__pills">
+                    <span class="about-pill"><span class="about-pill__dot"></span>Real-time мониторинг</span>
+                    <span class="about-pill"><span class="about-pill__dot"></span>Открытое API</span>
+                    <span class="about-pill"><span class="about-pill__dot"></span>От 1 дома до мегаполиса</span>
+                </div>
+                <div class="about-hero__cta">
+                    <a href="index.html" class="about-btn about-btn--primary">Открыть карту</a>
+                    <a href="documentation.html" class="about-btn about-btn--ghost">Документация</a>
+                </div>
             </div>
-        </div>
+        </section>
 
-        <b>Infrasafe — это:</b>
-        <ul>
-            <li>Полная цифровизация жилого фонда без дорогостоящей реконструкции</li>
-            <li>Централизованный мониторинг за инженерной инфраструктурой района или города</li>
-            <li>Возможсность интеграции с госслужбами, управляющими компаниями и другими платформами через открытое API</li>
-            <li>Масштабируемое решение от 1 дома до мегаполиса</li>
-        </ul>
+        <!-- ===== STATS STRIP ===== -->
+        <section class="about-stats" aria-label="Ключевые показатели">
+            <div class="about-stat">
+                <div class="about-stat__value">24<span>/ 7</span></div>
+                <div class="about-stat__label">Непрерывный мониторинг инженерных систем дома</div>
+            </div>
+            <div class="about-stat">
+                <div class="about-stat__value">4<span>системы</span></div>
+                <div class="about-stat__label">Электричество, холодная и горячая вода, отопление, безопасность</div>
+            </div>
+            <div class="about-stat">
+                <div class="about-stat__value">3<span>канала</span></div>
+                <div class="about-stat__label">Защищённая связь по Ethernet, мобильной сети и VPN</div>
+            </div>
+            <div class="about-stat">
+                <div class="about-stat__value">1<span>дом → город</span></div>
+                <div class="about-stat__label">Единая платформа от одного объекта до района и города</div>
+            </div>
+        </section>
 
-        <!-- Старая ссылка "На главную" удалена, так как навигация есть в шапке -->
-    </div>
+        <!-- ===== HOW IT WORKS ===== -->
+        <section class="about-section">
+            <div class="about-section__head">
+                <span class="about-section__eyebrow">Архитектура</span>
+                <h2 class="about-section__title">Как работает система</h2>
+                <p class="about-section__sub">
+                    От датчика до экрана дежурного — четыре звена, каждое из которых работает автономно
+                    и переживает обрыв связи без потери данных.
+                </p>
+            </div>
+
+            <div class="about-pipeline">
+                <div class="about-step">
+                    <div class="about-step__num">1</div>
+                    <div class="about-step__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"/></svg>
+                    </div>
+                    <h3>Сенсоры</h3>
+                    <p>Датчики напряжения, тока, давления, температуры, утечек, газа и качества воздуха на инженерных узлах дома.</p>
+                </div>
+
+                <div class="about-pipeline__arrow" aria-hidden="true">→</div>
+
+                <div class="about-step">
+                    <div class="about-step__num">2</div>
+                    <div class="about-step__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M7 20h10M9 16v4M15 16v4M7 9h.01M11 9h6"/></svg>
+                    </div>
+                    <h3>Контроллер</h3>
+                    <p>Промышленный ПК на узле обрабатывает сигналы локально, буферизует данные и работает офлайн при потере связи.</p>
+                </div>
+
+                <div class="about-pipeline__arrow" aria-hidden="true">→</div>
+
+                <div class="about-step">
+                    <div class="about-step__num">3</div>
+                    <div class="about-step__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/><path d="M12 11v6M9 14l3 3 3-3"/></svg>
+                    </div>
+                    <h3>Защищённый канал</h3>
+                    <p>Передача в централизованное резервированное облако через Ethernet, мобильную сеть или VPN — с шифрованием и подписями.</p>
+                </div>
+
+                <div class="about-pipeline__arrow" aria-hidden="true">→</div>
+
+                <div class="about-step">
+                    <div class="about-step__num">4</div>
+                    <div class="about-step__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M3 9h18M8 21h8M12 17v4"/></svg>
+                    </div>
+                    <h3>Облако и UI</h3>
+                    <p>Интерактивная карта, аналитика, алерты с правилами эскалации и интеграция с управляющей компанией.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== KEY FEATURES ===== -->
+        <section class="about-section">
+            <div class="about-section__head">
+                <span class="about-section__eyebrow">Что мониторим</span>
+                <h2 class="about-section__title">Ключевые функции платформы</h2>
+                <p class="about-section__sub">Четыре направления, которые покрывают весь жизненный цикл инженерных систем здания.</p>
+            </div>
+
+            <div class="about-features">
+                <article class="about-feature">
+                    <div class="about-feature__icon about-feature__icon--power" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    </div>
+                    <h3>Контроль электроснабжения</h3>
+                    <p>Непрерывный мониторинг напряжения и токов на вводе и (опционально) по подъездам, поиск перекосов и перегрузок.</p>
+                    <ul class="about-feature__list">
+                        <li>Историческое хранение измерений и трендов</li>
+                        <li>Балансировка нагрузки между фазами</li>
+                        <li>Автоматическое выявление аварий и перенапряжений</li>
+                    </ul>
+                </article>
+
+                <article class="about-feature">
+                    <div class="about-feature__icon about-feature__icon--water" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5s7 8 7 13a7 7 0 0 1-14 0c0-5 7-13 7-13z"/></svg>
+                    </div>
+                    <h3>Вода и отопление</h3>
+                    <p>Холодная и горячая вода, отопление: давление, температуры подачи и обратки, температурный баланс.</p>
+                    <ul class="about-feature__list">
+                        <li>Опциональный контроль качества воды</li>
+                        <li>Подключение калориметров для расчёта тепла</li>
+                        <li>Расщепление учёта по подъездам и стоякам</li>
+                    </ul>
+                </article>
+
+                <article class="about-feature">
+                    <div class="about-feature__icon about-feature__icon--safety" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.5 9.5 8 10 4.5-.5 8-5 8-10V6l-8-4z"/></svg>
+                    </div>
+                    <h3>Безопасность и среда</h3>
+                    <p>Защита от ЧП в подвале и контроль воздуха в общих помещениях с эскалацией экстренным службам.</p>
+                    <ul class="about-feature__list">
+                        <li>Контроль утечек воды в подвале</li>
+                        <li>Опционально: температура, влажность, CH₄ / CO, PM2.5</li>
+                        <li>Маршруты оповещений для аварийных служб</li>
+                    </ul>
+                </article>
+
+                <article class="about-feature">
+                    <div class="about-feature__icon about-feature__icon--map" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21 1 6"/><line x1="8" y1="3" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="21"/></svg>
+                    </div>
+                    <h3>Карта и аналитика</h3>
+                    <p>Все объекты на интерактивной карте с группировкой и слоями, графики и алерты с историей событий.</p>
+                    <ul class="about-feature__list">
+                        <li>Слои: здания, трансформаторные подстанции, ВЗУ, ИТП</li>
+                        <li>Аналитические разрезы по нагрузке, потреблению, температурам</li>
+                        <li>Жизненный цикл алертов: создание → подтверждение → закрытие</li>
+                    </ul>
+                </article>
+            </div>
+        </section>
+
+        <!-- ===== INTEGRATION + SECURITY ===== -->
+        <section class="about-section about-section--dual">
+            <div class="about-section__head">
+                <span class="about-section__eyebrow">Платформа</span>
+                <h2 class="about-section__title">Интеграции и безопасность</h2>
+                <p class="about-section__sub">Открытое API для госслужб и УК; безопасность встроена на всех слоях, а не прикручена сверху.</p>
+            </div>
+
+            <div class="about-dual">
+                <article class="about-card about-card--accent">
+                    <div class="about-card__head">
+                        <div class="about-card__icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
+                        </div>
+                        <h3>Интеграция с УК</h3>
+                    </div>
+                    <p>Двусторонняя синхронизация с системой управляющей компании по защищённым каналам.</p>
+                    <ul class="about-list">
+                        <li>Криптографическая подпись каждого запроса и защита от повторов</li>
+                        <li>Алерт InfraSafe автоматически создаёт заявку в УК — без дублей</li>
+                        <li>Закрытие заявки в УК автоматически снимает алерт в системе</li>
+                        <li>Полный аудит-журнал событий синхронизации</li>
+                    </ul>
+                </article>
+
+                <article class="about-card about-card--accent">
+                    <div class="about-card__head">
+                        <div class="about-card__icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        </div>
+                        <h3>Безопасность</h3>
+                    </div>
+                    <p>Закрытый по умолчанию доступ и многослойная защита от атак и утечек данных.</p>
+                    <ul class="about-list">
+                        <li>Безопасные сессии с возможностью мгновенного отзыва доступа</li>
+                        <li>Двухфакторная авторизация для администраторов</li>
+                        <li>Защита от подбора паролей, переживающая перезапуск сервиса</li>
+                        <li>Ограничение частоты запросов и защита от инъекций</li>
+                    </ul>
+                </article>
+            </div>
+        </section>
+
+        <!-- ===== EXTENSIONS ===== -->
+        <section class="about-section">
+            <div class="about-section__head">
+                <span class="about-section__eyebrow">Расширяемость</span>
+                <h2 class="about-section__title">Дополнительные модули</h2>
+                <p class="about-section__sub">Платформа спроектирована как ядро. Бизнес-сценарии подключаются модулями без переделки железа.</p>
+            </div>
+
+            <div class="about-modules">
+                <div class="about-module">
+                    <div class="about-module__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+                    </div>
+                    <h4>Видеодомофон</h4>
+                    <p>Цифровой домофон с видеосвязью и управлением доступом через тот же контроллер.</p>
+                </div>
+                <div class="about-module">
+                    <div class="about-module__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg>
+                    </div>
+                    <h4>Распознавание лиц</h4>
+                    <p>Поиск и верификация в интеграции с МВД и службами правопорядка.</p>
+                </div>
+                <div class="about-module">
+                    <div class="about-module__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M22 8l-10 7L2 8"/></svg>
+                    </div>
+                    <h4>Видеонаблюдение</h4>
+                    <p>Контроль за общим имуществом, лифтами и подъездами с архивацией в облаке.</p>
+                </div>
+                <div class="about-module">
+                    <div class="about-module__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 8h18M7 13h6"/></svg>
+                    </div>
+                    <h4>Цифровая доска</h4>
+                    <p>Канал коммуникации УК с жильцами и встроенная контекстная реклама.</p>
+                </div>
+                <div class="about-module">
+                    <div class="about-module__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                    </div>
+                    <h4>Помощь жителям</h4>
+                    <p>Тревожные сигналы от пожилых и одиноких жителей в социальные службы.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== BENEFITS ===== -->
+        <section class="about-section">
+            <div class="about-section__head">
+                <span class="about-section__eyebrow">Итог</span>
+                <h2 class="about-section__title">Почему InfraSafe</h2>
+            </div>
+
+            <ul class="about-benefits">
+                <li>
+                    <span class="about-benefits__check" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    </span>
+                    <div>
+                        <strong>Полная цифровизация без реконструкции</strong>
+                        <span>Контроллеры ставятся в существующие узлы, не требуется переделка инженерных систем дома.</span>
+                    </div>
+                </li>
+                <li>
+                    <span class="about-benefits__check" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    </span>
+                    <div>
+                        <strong>Централизованный мониторинг района и города</strong>
+                        <span>Все объекты на единой карте, общий язык метрик и алертов для оператора.</span>
+                    </div>
+                </li>
+                <li>
+                    <span class="about-benefits__check" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    </span>
+                    <div>
+                        <strong>Открытое API для интеграций</strong>
+                        <span>Госслужбы, управляющие компании и сторонние платформы подключаются без вендор-локина.</span>
+                    </div>
+                </li>
+                <li>
+                    <span class="about-benefits__check" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    </span>
+                    <div>
+                        <strong>Масштабируется от 1 дома до мегаполиса</strong>
+                        <span>Архитектура спроектирована под горизонтальный рост: можно начать с одного дома и расширяться до района и города.</span>
+                    </div>
+                </li>
+            </ul>
+        </section>
+
+        <!-- ===== CTA ===== -->
+        <section class="about-cta">
+            <div class="about-cta__inner">
+                <h2>Готовы посмотреть платформу в работе?</h2>
+                <p>Интерактивная карта с реальными зданиями и метриками — открывается без регистрации.</p>
+                <div class="about-cta__buttons">
+                    <a href="index.html" class="about-btn about-btn--primary">Открыть карту</a>
+                    <a href="documentation.html" class="about-btn about-btn--ghost">Перейти к документации</a>
+                </div>
+            </div>
+        </section>
+
+    </main>
 
     <div class="footer">
         <div class="footer-content">
@@ -103,7 +390,7 @@
                 <div class="footer-info">
                     <p>© 2026 InfraSafe</p>
                     <p>Версия: 1.0.1</p>
-                    <p><a href="https://www.infrasafe.uz" target="_blank">www.infrasafe.uz</a></p>
+                    <p><a href="https://www.infrasafe.uz" target="_blank" rel="noopener">www.infrasafe.uz</a></p>
                 </div>
             </div>
             <div class="footer-section center">
@@ -114,21 +401,48 @@
             </div>
             <div class="footer-section right">
                 <div class="footer-info text-right">
-                    <p><a href="https://www.aisolutions.uz" target="_blank">www.aisolutions.uz</a></p>
+                    <p><a href="https://www.aisolutions.uz" target="_blank" rel="noopener">www.aisolutions.uz</a></p>
                     <p>Разработано компанией</p>
                 </div>
                 <div class="footer-logo">
-                    <a href="https://www.aisolutions.uz" target="_blank" class="serendipity-link">
+                    <a href="https://www.aisolutions.uz" target="_blank" rel="noopener" class="serendipity-link">
                         <img src="public/images/serendipity-logo.png" alt="SERENDIPITY" id="serendipity-logo">
                         <span class="serendipity-text">SERENDIPITY</span>
                     </a>
                 </div>
-
             </div>
         </div>
     </div>
 
-    <!-- Скрипты, если они понадобятся для страницы "О системе", можно добавить сюда -->
-    <!-- <script src="..."></script> -->
+    <script>
+        (function () {
+            const html = document.documentElement;
+            const toggle = document.getElementById('theme-toggle');
+            const sun = document.getElementById('theme-icon-sun');
+            const moon = document.getElementById('theme-icon-moon');
+
+            function apply(theme) {
+                if (theme === 'dark') {
+                    html.classList.add('dark');
+                    sun.style.display = 'block';
+                    moon.style.display = 'none';
+                } else {
+                    html.classList.remove('dark');
+                    sun.style.display = 'none';
+                    moon.style.display = 'block';
+                }
+            }
+
+            apply(localStorage.getItem('theme') || 'light');
+
+            if (toggle) {
+                toggle.addEventListener('click', function () {
+                    const next = html.classList.contains('dark') ? 'light' : 'dark';
+                    localStorage.setItem('theme', next);
+                    apply(next);
+                });
+            }
+        })();
+    </script>
 </body>
 </html>
