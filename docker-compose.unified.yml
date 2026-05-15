@@ -41,7 +41,11 @@ services:
       postgres:
         condition: service_healthy
     networks:
+      # leaflet-network — обращение к postgres и frontend
       - leaflet-network
+      # uk-network — приём webhook'ов от UK (uk-management-bot → infrasafe-app:3000)
+      # external network создаётся при поднятии UK-стека первым.
+      - uk-network
     restart: unless-stopped
 
   # База данных PostgreSQL с PostGIS
@@ -157,6 +161,9 @@ services:
   #   restart: unless-stopped
 
   # Nginx Production - Reverse Proxy с SSL
+  # Подключён к двум сетям:
+  #   - leaflet-network: app, frontend, postgres (InfraSafe stack)
+  #   - uk-network: uk-frontend, uk-management-api (UK stack, external)
   nginx:
     image: nginx:alpine
     ports:
@@ -167,10 +174,15 @@ services:
       # ВАЖНО: Файл должен находиться в корне проекта
       # Альтернатива: используйте абсолютный путь /home/infrasafe/nginx-docker/nginx.production.conf
       - ./nginx.production.conf:/etc/nginx/nginx.conf:ro
-      # SSL сертификаты (монтируем отдельные файлы)
-      - /etc/letsencrypt/live/infrasafe.aisolutions.uz/fullchain.pem:/etc/nginx/ssl/fullchain.pem:ro
-      - /etc/letsencrypt/live/infrasafe.aisolutions.uz/privkey.pem:/etc/nginx/ssl/privkey.pem:ro
-      - /etc/letsencrypt/live/infrasafe.aisolutions.uz/chain.pem:/etc/nginx/ssl/chain.pem:ro
+      # SSL сертификаты — SAN-сертификат на infrasafe.uz + infrasafe.aisolutions.uz
+      # Создать на сервере: sudo certbot certonly --webroot -w ~/infrasafe/certbot-webroot
+      #                      -d infrasafe.uz -d infrasafe.aisolutions.uz
+      # Live-папка certbot по primary-домену (-d первым):
+      - /etc/letsencrypt/live/infrasafe.uz/fullchain.pem:/etc/nginx/ssl/fullchain.pem:ro
+      - /etc/letsencrypt/live/infrasafe.uz/privkey.pem:/etc/nginx/ssl/privkey.pem:ro
+      - /etc/letsencrypt/live/infrasafe.uz/chain.pem:/etc/nginx/ssl/chain.pem:ro
+      # ACME webroot для certbot renew без downtime (см. nginx server { listen 80 })
+      - ./certbot-webroot:/var/www/certbot:rw
       # Статические файлы из frontend контейнера
       - ./index.html:/usr/share/nginx/html/index.html:ro
       - ./admin.html:/usr/share/nginx/html/admin.html:ro
@@ -180,11 +192,14 @@ services:
       - ./css:/usr/share/nginx/html/css:ro
       - ./public:/usr/share/nginx/html/public:ro
       - ./data:/usr/share/nginx/html/data:ro
+      # UK fallback page (graceful degradation, plan § 10.9)
+      - ./uk-unavailable.html:/usr/share/nginx/html/uk-unavailable.html:ro
     depends_on:
       - app
       - frontend
     networks:
       - leaflet-network
+      - uk-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "nginx", "-t"]
@@ -200,3 +215,10 @@ volumes:
 networks:
   leaflet-network:
     driver: bridge
+  # uk-network создаётся UK-стеком (docker-compose.production.yml в репо UK).
+  # external: true → этот compose ожидает, что сеть уже существует.
+  # Поэтому ПЕРЕД поднятием InfraSafe нужно поднять UK-стек:
+  #   docker compose -f ~/uk/docker-compose.production.yml up -d
+  uk-network:
+    external: true
+    name: uk-network
