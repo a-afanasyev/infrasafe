@@ -93,6 +93,11 @@ const mapAnonymousRow = (row) => ({
     town: row.town,
     latitude: row.latitude ? parseFloat(row.latitude) : null,
     longitude: row.longitude ? parseFloat(row.longitude) : null,
+    // external_id is a non-PII identifier (deterministic UUID-formatted SHA-256
+    // hash of "uk-building-{ukId}", see ukIntegrationService._generateExternalId).
+    // Exposed for UK reconciliation worker which needs to diff its inventory
+    // against InfraSafe's known set without requiring a JWT.
+    external_id: row.external_id || null,
     has_controller: !!row.controller_id
 });
 

@@ -23,6 +23,7 @@ describe('buildingMetricsService', () => {
         longitude: '69.2797',
         region: 'Yunusabad',
         management_company: 'MC1',
+        external_id: '1603f2c9-6dd8-2593-7852-9c16ad4f440b',
         has_hot_water: true,
         controller_id: 10,
         controller_serial: 'SN001',
@@ -111,6 +112,30 @@ describe('buildingMetricsService', () => {
 
             const result = await getBuildingsWithMetrics(false);
             expect(result.data[0].has_controller).toBe(false);
+        });
+
+        test('exposes external_id for UK reconciliation (non-PII)', async () => {
+            db.query.mockResolvedValue({ rows: [mockDbRow] });
+
+            const result = await getBuildingsWithMetrics(false);
+            expect(result.data[0].external_id).toBe('1603f2c9-6dd8-2593-7852-9c16ad4f440b');
+        });
+
+        test('external_id is null when building is local-only (no UK link)', async () => {
+            const localOnly = { ...mockDbRow, external_id: null };
+            db.query.mockResolvedValue({ rows: [localOnly] });
+
+            const result = await getBuildingsWithMetrics(false);
+            expect(result.data[0].external_id).toBeNull();
+        });
+    });
+
+    describe('authenticated external_id', () => {
+        test('authenticated response also includes external_id', async () => {
+            db.query.mockResolvedValue({ rows: [mockDbRow] });
+
+            const result = await getBuildingsWithMetrics(true);
+            expect(result.data[0].external_id).toBe('1603f2c9-6dd8-2593-7852-9c16ad4f440b');
         });
     });
 
