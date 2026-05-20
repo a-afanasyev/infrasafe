@@ -41,6 +41,10 @@ describe('Auth Middleware', () => {
         req = {
             headers: {},
             body: {},
+            // [P1-2] cookie-parser populates this in the real app;
+            // mocked empty so extractAccessToken / extractRefreshToken
+            // don't blow up on `req.cookies` access.
+            cookies: {},
             originalUrl: '/api/test'
         };
         res = {
@@ -68,15 +72,19 @@ describe('Auth Middleware', () => {
             expect(next).not.toHaveBeenCalled();
         });
 
-        test('returns 401 when token format is invalid (no token after Bearer)', async () => {
+        test('returns 401 when "Bearer " has no token after it and no cookie fallback', async () => {
             req.headers.authorization = 'Bearer ';
+            // [P1-2] cookie fallback consolidation — "Bearer " with an
+            // empty token now drops through to the cookie path. With no
+            // cookie either, the response is the unified "Access token
+            // is missing" rather than the old "Invalid token format".
 
             await authenticateJWT(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(401);
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    message: expect.stringContaining('Invalid token format')
+                    message: expect.stringContaining('Access token is missing')
                 })
             );
         });

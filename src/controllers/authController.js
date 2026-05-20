@@ -2,6 +2,9 @@ const jwt = require('jsonwebtoken');
 const authService = require('../services/authService');
 const totpService = require('../services/totpService');
 const logger = require('../utils/logger');
+// [P1-2] HttpOnly cookie helpers — emit alongside the existing body
+// fields so the client transition can land in a follow-up PR.
+const { setAuthCookies, clearAuthCookies, extractRefreshToken } = require('../utils/authCookies');
 
 // Логин пользователя
 const login = async (req, res, next) => {
@@ -42,6 +45,9 @@ const login = async (req, res, next) => {
 
         // Обычный пользователь без 2FA — стандартный JWT
         const tokens = authService.generateTokens(user);
+
+        // [P1-2] Emit HttpOnly cookies in parallel to the body fields.
+        setAuthCookies(res, tokens);
 
         res.json({
             success: true,
@@ -141,19 +147,29 @@ const getProfile = async (req, res, next) => {
 // Выход из системы
 const logout = async (req, res, next) => {
     try {
-        const token = req.headers.authorization?.replace('Bearer ', '');
+        // [P1-2] Read access token from Authorization header OR access_token
+        // cookie. clearAuthCookies runs at the end regardless of the path
+        // taken so the browser stops sending stale tokens on next request.
+        const headerToken = req.headers.authorization?.replace('Bearer ', '');
+        const cookieToken = req.cookies && typeof req.cookies.access_token === 'string'
+            ? req.cookies.access_token
+            : null;
+        const token = headerToken || cookieToken;
 
         if (!token) {
+            // Even without an access token we clear any orphan refresh
+            // cookie so the client doesn't keep replaying it.
+            clearAuthCookies(res);
             return res.status(400).json({ error: 'Token required' });
         }
 
         // [P1-V1] Blacklist the access token AND any refresh token the
         // client volunteers in the body. Without this, a stolen refresh
         // token survives the entire 7-day TTL post-logout.
+        // [P1-2] extractRefreshToken also picks the value out of the
+        // refresh_token cookie when the client didn't send one in the body.
         // Best-effort: refresh-token blacklist failure must not block logout.
-        const refresh = typeof req.body?.refreshToken === 'string'
-            ? req.body.refreshToken
-            : null;
+        const refresh = extractRefreshToken(req);
 
         await authService.logout(token);
 
@@ -191,6 +207,10 @@ const logout = async (req, res, next) => {
             }
         }
 
+        // [P1-2] Clear both HttpOnly cookies. Browser sends a matching
+        // Set-Cookie with Max-Age=0 → cookies removed immediately.
+        clearAuthCookies(res);
+
         res.json({
             success: true,
             message: 'Logout successful'
@@ -205,13 +225,18 @@ const logout = async (req, res, next) => {
 // Обновление токена
 const refreshToken = async (req, res, next) => {
     try {
-        const { refreshToken: refresh } = req.body;
+        // [P1-2] Accept refresh token from cookie OR body.
+        const refresh = extractRefreshToken(req);
 
         if (!refresh) {
             return res.status(400).json({ error: 'Refresh token required' });
         }
 
         const tokens = await authService.refreshToken(refresh);
+
+        // [P1-2] Rotate cookies as part of the refresh — the new access
+        // token and (rotated) refresh token become the active cookies.
+        setAuthCookies(res, tokens);
 
         res.json({
             success: true,
@@ -288,6 +313,9 @@ const verify2FA = async (req, res, next) => {
         // Генерация полных токенов
         const tokens = authService.generateTokens(user);
 
+        // [P1-2] Emit HttpOnly cookies alongside the body fields.
+        setAuthCookies(res, tokens);
+
         res.json({
             success: true,
             message: result.method === 'recovery'
@@ -349,6 +377,9 @@ const confirm2FA = async (req, res, next) => {
 
         // 2FA активирована — выдаём полные токены
         const tokens = authService.generateTokens(user);
+
+        // [P1-2] Emit HttpOnly cookies alongside the body fields.
+        setAuthCookies(res, tokens);
 
         res.json({
             success: true,

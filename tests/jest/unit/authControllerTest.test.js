@@ -43,11 +43,19 @@ describe('AuthController', () => {
         req = {
             body: {},
             headers: {},
+            // [P1-2] cookies populated by cookie-parser in the real app;
+            // mocked here as an empty object so extractAccessToken /
+            // extractRefreshToken don't blow up on `req.cookies` access.
+            cookies: {},
             user: { user_id: 1, userId: 1 }
         };
         res = {
             json: jest.fn(),
-            status: jest.fn().mockReturnThis()
+            status: jest.fn().mockReturnThis(),
+            // [P1-2] Cookie helpers stubbed — controllers call res.cookie
+            // on token-emitting endpoints and res.clearCookie on logout.
+            cookie: jest.fn(),
+            clearCookie: jest.fn()
         };
         next = jest.fn();
         jest.clearAllMocks();

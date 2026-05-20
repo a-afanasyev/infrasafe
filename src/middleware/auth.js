@@ -2,6 +2,8 @@ const jwt = require('jsonwebtoken');
 const { promisify } = require('util');
 const logger = require('../utils/logger');
 const authService = require('../services/authService');
+// [P1-2] Read access/refresh tokens from cookies if header/body absent.
+const { extractAccessToken, extractRefreshToken } = require('../utils/authCookies');
 
 // KISS-003: promisified jwt.verify — single try/catch catches all errors
 const verifyJwt = promisify(jwt.verify);
@@ -20,21 +22,13 @@ function mapUserToReqUser(user) {
 // Проверка JWT токена с проверкой черного списка
 const authenticateJWT = async (req, res, next) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader) {
-            return res.status(401).json({
-                success: false,
-                message: 'Access token is missing'
-            });
-        }
-
-        const token = authHeader.split(' ')[1];
+        // [P1-2] Pull from Authorization header OR access_token cookie.
+        const token = extractAccessToken(req);
 
         if (!token) {
             return res.status(401).json({
                 success: false,
-                message: 'Invalid token format'
+                message: 'Access token is missing'
             });
         }
 
@@ -120,7 +114,8 @@ const isAdmin = (req, res, next) => {
 // Проверка refresh токена
 const authenticateRefresh = async (req, res, next) => {
     try {
-        const { refreshToken } = req.body;
+        // [P1-2] Pull from req.body.refreshToken OR refresh_token cookie.
+        const refreshToken = extractRefreshToken(req);
 
         if (!refreshToken) {
             return res.status(400).json({
@@ -198,14 +193,8 @@ const authenticateRefresh = async (req, res, next) => {
 // Опциональная аутентификация
 const optionalAuth = async (req, res, next) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader) {
-            req.user = null;
-            return next();
-        }
-
-        const token = authHeader.split(' ')[1];
+        // [P1-2] Pull from Authorization header OR access_token cookie.
+        const token = extractAccessToken(req);
 
         if (!token) {
             req.user = null;
