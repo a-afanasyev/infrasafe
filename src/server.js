@@ -3,6 +3,7 @@ const { validateEnv } = require('./config/env');
 validateEnv();
 
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -65,6 +66,10 @@ app.use(express.json({
     limit: '1mb',
     verify: (req, res, buf) => { req.rawBody = buf.toString(); }
 })); // Парсинг JSON (rawBody preserved for HMAC webhook verification)
+// [P1-2] cookie-parser populates req.cookies — auth middleware reads
+// access_token / refresh_token from HttpOnly cookies as a fallback to
+// the Authorization header / req.body.refreshToken paths.
+app.use(cookieParser());
 app.use(correlationId); // Correlation ID для трейсинга запросов
 morgan.token('safepath', (req) => req.path); // path without query string
 morgan.token('correlationId', (req) => req.correlationId || '-');
