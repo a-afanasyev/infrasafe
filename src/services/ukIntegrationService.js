@@ -307,7 +307,10 @@ class UKIntegrationService {
                         payload: { alert_id: alertData.alert_id, building_id: building.building_id },
                         status: 'error',
                         error_message: buildingError.message
-                    }).catch(() => {});
+                    }).catch(logErr => logger.warn(
+                        `sendAlertToUK: integration_log write failed for alert ${alertData.alert_id} ` +
+                        `building ${building.building_id}: ${logErr.message}`
+                    ));
                 }
             }
         } catch (error) {
@@ -481,7 +484,9 @@ class UKIntegrationService {
 
             // Mark log entry as success — must happen before the alert resolution
             // event so that audit trail shows the integration ack first.
-            await IntegrationLog.updateStatus(logEntry.id, 'success').catch(() => {});
+            await IntegrationLog.updateStatus(logEntry.id, 'success').catch(logErr => logger.warn(
+                `handleRequestWebhook: failed to mark integration_log ${logEntry.id} as success: ${logErr.message}`
+            ));
 
             if (deferredResolveAlertId !== null) {
                 alertEvents.emit(
@@ -492,7 +497,9 @@ class UKIntegrationService {
         } catch (error) {
             // Mark log entry as error
             if (logEntry) {
-                await IntegrationLog.updateStatus(logEntry.id, 'error', error.message).catch(() => {});
+                await IntegrationLog.updateStatus(logEntry.id, 'error', error.message).catch(logErr => logger.warn(
+                    `handleRequestWebhook: failed to mark integration_log ${logEntry.id} as error: ${logErr.message}`
+                ));
             }
             logger.error(`handleRequestWebhook error: ${error.message}`);
             throw error;
