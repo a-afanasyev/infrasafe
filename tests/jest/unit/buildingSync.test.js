@@ -37,7 +37,7 @@ describe('Building UK Sync Methods', () => {
     });
 
     describe('createFromUK()', () => {
-        it('creates building with external_id and UK fields, lat/lng NULL', async () => {
+        it('creates building with external_id and UK fields, lat/lng NULL when omitted', async () => {
             const ukData = {
                 external_id: 'ext-uuid-123',
                 name: 'Дом 42',
@@ -49,10 +49,28 @@ describe('Building UK Sync Methods', () => {
 
             const result = await Building.createFromUK(ukData);
             expect(result).toEqual(created);
-            expect(db.query).toHaveBeenCalledWith(
-                expect.stringContaining('INSERT INTO buildings'),
-                expect.arrayContaining(['ext-uuid-123', 'Дом 42', 'ул. Навои, 42', 'Ташкент'])
-            );
+            const [sql, params] = db.query.mock.calls[0];
+            expect(sql).toContain('INSERT INTO buildings');
+            expect(sql).toContain('latitude');
+            expect(sql).toContain('longitude');
+            expect(params).toEqual(['ext-uuid-123', 'Дом 42', 'ул. Навои, 42', 'Ташкент', null, null]);
+        });
+
+        it('creates building with latitude/longitude when provided (PR PR-F/CR-4)', async () => {
+            const ukData = {
+                external_id: 'ext-uuid-456',
+                name: 'Дом 14V',
+                address: 'Olmazor 14V',
+                town: 'Ташкент',
+                latitude: 41.349151,
+                longitude: 69.246436
+            };
+            db.query.mockResolvedValue({ rows: [{ building_id: 19, ...ukData }] });
+
+            await Building.createFromUK(ukData);
+            const params = db.query.mock.calls[0][1];
+            expect(params[4]).toBe(41.349151);  // latitude
+            expect(params[5]).toBe(69.246436);  // longitude
         });
 
         it('throws on database error', async () => {
@@ -63,7 +81,7 @@ describe('Building UK Sync Methods', () => {
     });
 
     describe('updateFromUK()', () => {
-        it('updates only UK-owned fields (name, address, town)', async () => {
+        it('updates UK-owned fields (name, address, town) + coords (PR PR-F/CR-4)', async () => {
             const updated = { building_id: 5, name: 'New Name', address: 'New Addr', town: 'Ташкент' };
             db.query.mockResolvedValue({ rows: [updated] });
 
@@ -77,9 +95,29 @@ describe('Building UK Sync Methods', () => {
             expect(sql).toContain('name = $1');
             expect(sql).toContain('address = $2');
             expect(sql).toContain('town = $3');
-            expect(sql).not.toContain('latitude');
-            expect(sql).not.toContain('longitude');
+            // PR-F/CR-4: coords now part of SQL (with COALESCE to preserve existing on null)
+            expect(sql).toContain('latitude = COALESCE');
+            expect(sql).toContain('longitude = COALESCE');
             expect(sql).not.toContain('management_company');
+        });
+
+        it('passes latitude/longitude to UPDATE when provided', async () => {
+            db.query.mockResolvedValue({ rows: [{ building_id: 5 }] });
+            await Building.updateFromUK(5, {
+                name: 'X', address: 'Y', town: 'Z',
+                latitude: 41.5, longitude: 69.5
+            });
+            const params = db.query.mock.calls[0][1];
+            expect(params[3]).toBe(41.5);   // latitude
+            expect(params[4]).toBe(69.5);   // longitude
+        });
+
+        it('passes nulls when coords omitted (COALESCE preserves existing in DB)', async () => {
+            db.query.mockResolvedValue({ rows: [{ building_id: 5 }] });
+            await Building.updateFromUK(5, { name: 'X', address: 'Y', town: 'Z' });
+            const params = db.query.mock.calls[0][1];
+            expect(params[3]).toBeNull();
+            expect(params[4]).toBeNull();
         });
 
         it('clears uk_deleted_at on update (un-soft-delete)', async () => {

@@ -330,12 +330,14 @@ class Building {
 
     static async createFromUK(data) {
         try {
-            const { external_id, name, address, town } = data;
+            const { external_id, name, address, town, latitude, longitude } = data;
+            // PostGIS trigger trig_buildings_geom auto-derives geom from
+            // latitude/longitude on INSERT. We never set geom directly.
             const { rows } = await db.query(
-                `INSERT INTO buildings (external_id, name, address, town)
-                 VALUES ($1, $2, $3, $4)
+                `INSERT INTO buildings (external_id, name, address, town, latitude, longitude)
+                 VALUES ($1, $2, $3, $4, $5, $6)
                  RETURNING *`,
-                [external_id, name, address, town]
+                [external_id, name, address, town, latitude ?? null, longitude ?? null]
             );
             logger.info(`Created building from UK with ID: ${rows[0].building_id}, external_id: ${external_id}`);
             return rows[0];
@@ -347,16 +349,27 @@ class Building {
 
     static async updateFromUK(id, ukFields) {
         try {
-            const { name, address, town } = ukFields;
+            const { name, address, town, latitude, longitude } = ukFields;
             if (name === undefined || address === undefined || town === undefined) {
                 throw createError('UK sync requires name, address, and town fields', 400);
             }
+            // COALESCE keeps existing latitude/longitude when the new payload
+            // omits them (older UK builds or replay of pre-PR-F events).
+            // To explicitly clear a coordinate, UK must send `null` AND we'd
+            // need a sentinel — not supported now; out of scope.
+            // PostGIS geom recomputes via trig_buildings_geom on every UPDATE
+            // that touches latitude or longitude columns.
             const { rows } = await db.query(
                 `UPDATE buildings
-                 SET name = $1, address = $2, town = $3, uk_deleted_at = NULL
-                 WHERE building_id = $4
+                 SET name = $1,
+                     address = $2,
+                     town = $3,
+                     latitude = COALESCE($4, latitude),
+                     longitude = COALESCE($5, longitude),
+                     uk_deleted_at = NULL
+                 WHERE building_id = $6
                  RETURNING *`,
-                [name, address, town, id]
+                [name, address, town, latitude ?? null, longitude ?? null, id]
             );
             if (!rows.length) return null;
             logger.info(`Updated building ${id} from UK sync`);

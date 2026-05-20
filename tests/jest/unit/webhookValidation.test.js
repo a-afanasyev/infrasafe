@@ -1,6 +1,6 @@
 'use strict';
 
-const { isValidUUID, isValidDirection, isValidStatus, isValidEntityType, isValidBuildingEvent } = require('../../../src/utils/webhookValidation');
+const { isValidUUID, isValidDirection, isValidStatus, isValidEntityType, isValidBuildingEvent, validateCoordinate } = require('../../../src/utils/webhookValidation');
 
 describe('webhookValidation', () => {
     describe('isValidUUID', () => {
@@ -68,6 +68,37 @@ describe('webhookValidation', () => {
         });
         it('rejects unknown event', () => {
             expect(isValidBuildingEvent('building.unknown')).toBe(false);
+        });
+    });
+
+    describe('validateCoordinate', () => {
+        it('accepts null/undefined as "not set"', () => {
+            expect(validateCoordinate(null, 'latitude').ok).toBe(true);
+            expect(validateCoordinate(undefined, 'longitude').ok).toBe(true);
+        });
+        it('accepts valid latitude in range', () => {
+            expect(validateCoordinate(41.349151, 'latitude').ok).toBe(true);
+            expect(validateCoordinate(-90, 'latitude').ok).toBe(true);
+            expect(validateCoordinate(90, 'latitude').ok).toBe(true);
+        });
+        it('accepts valid longitude in range', () => {
+            expect(validateCoordinate(69.246436, 'longitude').ok).toBe(true);
+            expect(validateCoordinate(-180, 'longitude').ok).toBe(true);
+            expect(validateCoordinate(180, 'longitude').ok).toBe(true);
+        });
+        it('rejects latitude out of range', () => {
+            const r = validateCoordinate(91, 'latitude');
+            expect(r.ok).toBe(false);
+            expect(r.message).toMatch(/\[-90, 90\]/);
+        });
+        it('rejects longitude out of range', () => {
+            expect(validateCoordinate(-181, 'longitude').ok).toBe(false);
+            expect(validateCoordinate(181, 'longitude').ok).toBe(false);
+        });
+        it('rejects non-number values', () => {
+            expect(validateCoordinate('41.3', 'latitude').ok).toBe(false);
+            expect(validateCoordinate(NaN, 'latitude').ok).toBe(false);
+            expect(validateCoordinate(Infinity, 'longitude').ok).toBe(false);
         });
     });
 });

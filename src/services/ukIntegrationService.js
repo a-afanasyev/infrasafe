@@ -6,7 +6,7 @@ const IntegrationLog = require('../models/IntegrationLog');
 const logger = require('../utils/logger');
 const Building = require('../models/Building');
 const AlertRequestMap = require('../models/AlertRequestMap');
-const { isValidBuildingEvent } = require('../utils/webhookValidation');
+const { isValidBuildingEvent, validateCoordinate } = require('../utils/webhookValidation');
 const { validateUKApiUrl } = require('../utils/urlValidation');
 const alertEvents = require('../events/alertEvents');
 
@@ -367,10 +367,23 @@ class UKIntegrationService {
                 // Note: UK webhook also sends `contacts` but InfraSafe's buildings table
                 // does not have a contacts column — contacts are managed via management_company.
                 // The contacts field is intentionally not stored.
+                //
+                // Coords (optional): UK PR-F (2026-05-20) added latitude/longitude
+                // to the payload. PostGIS trigger trig_buildings_geom recomputes
+                // geom from latitude/longitude on every INSERT/UPDATE — we don't
+                // touch geom directly. Validated upfront so bad data fails fast
+                // before DB roundtrip.
+                const latCheck = validateCoordinate(ukBuilding.latitude, 'latitude');
+                if (!latCheck.ok) throw new Error(latCheck.message);
+                const lngCheck = validateCoordinate(ukBuilding.longitude, 'longitude');
+                if (!lngCheck.ok) throw new Error(lngCheck.message);
+
                 const ukFields = {
                     name: ukBuilding.name,
                     address: ukBuilding.address,
-                    town: ukBuilding.town
+                    town: ukBuilding.town,
+                    latitude: ukBuilding.latitude ?? null,
+                    longitude: ukBuilding.longitude ?? null
                 };
 
                 if (existing) {
