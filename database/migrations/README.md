@@ -34,7 +34,7 @@ docker exec infrasafe-postgres-1 psql -U postgres -d infrasafe \
 
 | # | Файл | Дата | Назначение |
 | --- | --- | --- | --- |
-| 003 | `003_power_calculation_system.sql` (+ `_fixed`, `_v2`) | 2025-11-02 | Система расчёта мощности (исторически — три файла, использовать только `_v2`) |
+| 003 | `003_power_calculation_v2.sql` | 2025-11-02 | Система расчёта мощности — каноническая итерация. Исторические `_system` и `_system_fixed` варианты перемещены в [`_superseded/`](./_superseded/README.md) (см. P1-V4). |
 | 004 | `004_add_coordinates_and_extended_fields.sql` | 2025-10-23 | Координаты зданий (PostGIS) и расширенные поля |
 | 005 | `005_add_paths_to_lines.sql` | 2025-10-23 | Геометрия путей для `power_lines` и `water_lines` |
 | 006 | `006_cleanup_infrastructure_lines.sql` | 2025-10-23 | Очистка дублей в `infrastructure_lines` |
@@ -52,8 +52,8 @@ docker exec infrasafe-postgres-1 psql -U postgres -d infrasafe \
 
 ## Примечание про `003_*` и `012_*`
 
-- **003** существует в трёх вариантах (`_system`, `_system_fixed`, `_v2`). Использовать только `003_power_calculation_v2.sql`; остальные сохранены для истории и не применяются в новых окружениях.
-- **012** имеет два независимых файла с одинаковым номером (`_totp_2fa`, `_fix_materialized_view`) — оба должны быть применены, порядок между ними не важен.
+- **003** — каноническая версия `003_power_calculation_v2.sql`. Исторические попытки (`_system`, `_system_fixed`) перенесены в [`_superseded/`](./_superseded/README.md) и **не должны** применяться. Перенос сделан в P1-V4, чтобы будущий автоматический миграционный раннер не выполнил все три файла подряд.
+- **012** имеет два независимых файла с одинаковым номером (`_totp_2fa`, `_fix_materialized_view`) — оба должны быть применены, порядок между ними не важен. (Раздельная проблема — `[P2-11]`, escalated to P1.)
 
 ## Добавление новой миграции
 
