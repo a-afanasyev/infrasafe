@@ -57,6 +57,7 @@ const authenticateJWT = async (req, res, next) => {
         }
 
         const decoded = await verifyJwt(token, process.env.JWT_SECRET, {
+            algorithms: ['HS256'],
             issuer: 'infrasafe-api',
             audience: 'infrasafe-client'
         });
@@ -146,6 +147,7 @@ const authenticateRefresh = async (req, res, next) => {
         }
 
         const decoded = await verifyJwt(refreshToken, process.env.JWT_REFRESH_SECRET, {
+            algorithms: ['HS256'],
             issuer: 'infrasafe-api',
             audience: 'infrasafe-client'
         });
@@ -222,6 +224,7 @@ const optionalAuth = async (req, res, next) => {
         }
 
         const decoded = await verifyJwt(token, process.env.JWT_SECRET, {
+            algorithms: ['HS256'],
             issuer: 'infrasafe-api',
             audience: 'infrasafe-client'
         });

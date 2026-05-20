@@ -177,6 +177,7 @@ class AuthService {
     // Верификация временного токена для 2FA
     verifyTempToken(token) {
         const decoded = jwt.verify(token, this.jwtSecret, {
+            algorithms: ['HS256'],
             issuer: 'infrasafe-api',
             audience: 'infrasafe-client'
         });
@@ -228,6 +229,7 @@ class AuthService {
     async verifyToken(token) {
         try {
             const decoded = jwt.verify(token, this.jwtSecret, {
+                algorithms: ['HS256'],
                 issuer: 'infrasafe-api',
                 audience: 'infrasafe-client'
             });
@@ -268,6 +270,7 @@ class AuthService {
     async refreshToken(refreshToken) {
         try {
             const decoded = jwt.verify(refreshToken, this.jwtRefreshSecret, {
+                algorithms: ['HS256'],
                 issuer: 'infrasafe-api',
                 audience: 'infrasafe-client'
             });
