@@ -6,7 +6,9 @@ jest.mock('../../../src/services/authService', () => ({
     findUserById: jest.fn(),
     logout: jest.fn(),
     refreshToken: jest.fn(),
-    changePassword: jest.fn()
+    changePassword: jest.fn(),
+    // [P1-V1] logout now best-effort blacklists the refresh token too
+    blacklistToken: jest.fn()
 }));
 
 jest.mock('../../../src/services/totpService', () => ({
@@ -321,6 +323,60 @@ describe('AuthController', () => {
             await authController.logout(req, res, next);
 
             expect(next).toHaveBeenCalled();
+        });
+
+        // [P1-V1] Refresh-token blacklist on logout
+        test('blacklists refresh token when client sends it in body', async () => {
+            req.headers = { authorization: 'Bearer access-tok' };
+            req.body = { refreshToken: 'refresh-tok' };
+            authService.logout.mockResolvedValue({ message: 'OK' });
+            authService.blacklistToken.mockResolvedValue(undefined);
+
+            await authController.logout(req, res, next);
+
+            expect(authService.logout).toHaveBeenCalledWith('access-tok');
+            expect(authService.blacklistToken).toHaveBeenCalledWith('refresh-tok');
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({ success: true })
+            );
+        });
+
+        test('does NOT call blacklistToken when refreshToken is absent', async () => {
+            req.headers = { authorization: 'Bearer access-tok' };
+            req.body = {};
+            authService.logout.mockResolvedValue({ message: 'OK' });
+
+            await authController.logout(req, res, next);
+
+            expect(authService.logout).toHaveBeenCalledWith('access-tok');
+            expect(authService.blacklistToken).not.toHaveBeenCalled();
+        });
+
+        test('refresh blacklist failure does not abort logout (best-effort)', async () => {
+            req.headers = { authorization: 'Bearer access-tok' };
+            req.body = { refreshToken: 'refresh-tok' };
+            authService.logout.mockResolvedValue({ message: 'OK' });
+            authService.blacklistToken.mockRejectedValue(new Error('db down'));
+
+            await authController.logout(req, res, next);
+
+            expect(authService.logout).toHaveBeenCalledWith('access-tok');
+            expect(authService.blacklistToken).toHaveBeenCalledWith('refresh-tok');
+            // Logout still completes with 200, not 5xx
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({ success: true })
+            );
+            expect(next).not.toHaveBeenCalled();
+        });
+
+        test('ignores non-string refreshToken value (defensive)', async () => {
+            req.headers = { authorization: 'Bearer access-tok' };
+            req.body = { refreshToken: { malicious: 'object' } };
+            authService.logout.mockResolvedValue({ message: 'OK' });
+
+            await authController.logout(req, res, next);
+
+            expect(authService.blacklistToken).not.toHaveBeenCalled();
         });
     });
 

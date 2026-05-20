@@ -49,6 +49,29 @@ class AdminAuth {
     }
 
     logout() {
+        // [P1-V1] Best-effort server-side blacklist of BOTH access and
+        // refresh tokens before clearing local state. We don't await —
+        // network failures must not block the redirect — but we send the
+        // request so the server can revoke before the refresh window
+        // (7d) elapses. Uses _originalFetch to skip the 401-intercept
+        // self-recursion that the patched window.fetch would trigger.
+        const accessToken = this.token || localStorage.getItem('admin_token');
+        const refreshToken = localStorage.getItem('refresh_token');
+        const fetchFn = window._originalFetch || window.fetch;
+        if (accessToken) {
+            try {
+                fetchFn.call(window, '/api/auth/logout', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: refreshToken ? JSON.stringify({ refreshToken }) : undefined,
+                    keepalive: true
+                }).catch(() => { /* network failure must not block redirect */ });
+            } catch (_) { /* eslint-disable-line no-unused-vars */ }
+        }
+
         this.token = null;
         this.isAuthenticated = false;
         localStorage.removeItem('admin_token');

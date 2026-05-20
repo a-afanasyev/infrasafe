@@ -2132,13 +2132,20 @@ document.addEventListener('DOMContentLoaded', async function () {
             const token = localStorage.getItem('admin_token');
             if (token) {
                 // Выход — отзываем токен на сервере
+                // [P1-V1] также отправляем refreshToken чтобы сервер мог его блэклистнуть
                 try {
+                    const refreshToken = localStorage.getItem('refresh_token');
                     await fetch(`${window.BACKEND_URL}/auth/logout`, {
                         method: 'POST',
-                        headers: { 'Authorization': `Bearer ${token}` }
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: refreshToken ? JSON.stringify({ refreshToken }) : undefined
                     });
                 } catch (e) { /* продолжаем logout в любом случае */ }
                 localStorage.removeItem('admin_token');
+                localStorage.removeItem('refresh_token');
                 apiClient.setToken(null);
                 updateAuthButton();
                 // Перезагружаем карту (анонимные данные)

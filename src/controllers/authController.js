@@ -146,7 +146,23 @@ const logout = async (req, res, next) => {
             return res.status(400).json({ error: 'Token required' });
         }
 
+        // [P1-V1] Blacklist the access token AND any refresh token the
+        // client volunteers in the body. Without this, a stolen refresh
+        // token survives the entire 7-day TTL post-logout.
+        // Best-effort: refresh-token blacklist failure must not block logout.
+        const refresh = typeof req.body?.refreshToken === 'string'
+            ? req.body.refreshToken
+            : null;
+
         await authService.logout(token);
+
+        if (refresh) {
+            try {
+                await authService.blacklistToken(refresh);
+            } catch (refreshErr) {
+                logger.warn(`logout: refresh token blacklist failed: ${refreshErr.message}`);
+            }
+        }
 
         res.json({
             success: true,
