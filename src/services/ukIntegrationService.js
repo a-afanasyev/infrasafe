@@ -160,9 +160,24 @@ class UKIntegrationService {
             // Lazy cleanup when the map grows past the soft cap. O(n) sweep
             // amortized across many requests; expected map size is small
             // (only the last ~310s of signatures).
+            // [Sprint 0.1 / HIGH-1] If the sweep frees nothing (all entries
+            // still within TTL — sustained legitimate load), evict the oldest
+            // entry so the map cannot grow unbounded. Insertion-order Map
+            // iteration gives us oldest-first for free.
             if (this._seenSignatures.size >= SEEN_SIGNATURE_MAX_ENTRIES) {
                 for (const [k, v] of this._seenSignatures) {
                     if (v <= nowMs) this._seenSignatures.delete(k);
+                }
+                if (this._seenSignatures.size >= SEEN_SIGNATURE_MAX_ENTRIES) {
+                    const oldestKey = this._seenSignatures.keys().next().value;
+                    if (oldestKey !== undefined) {
+                        this._seenSignatures.delete(oldestKey);
+                        logger.warn(
+                            `ukIntegrationService.verifyWebhookSignature: nonce map at hard cap ` +
+                            `(${SEEN_SIGNATURE_MAX_ENTRIES}); evicted oldest entry. ` +
+                            `Sustained load — consider Phase 11.1 Redis migration.`
+                        );
+                    }
                 }
             }
 

@@ -1,3 +1,4 @@
+const jwt = require('jsonwebtoken');
 const authService = require('../services/authService');
 const totpService = require('../services/totpService');
 const logger = require('../utils/logger');
@@ -157,10 +158,36 @@ const logout = async (req, res, next) => {
         await authService.logout(token);
 
         if (refresh) {
+            // [Sprint 0.1 / HIGH-3] Verify the refresh token belongs to the
+            // authenticated user before blacklisting. Without this, any
+            // authenticated user can pass an arbitrary refresh token and
+            // force-blacklist it — a DoS against other users' sessions.
+            // jwt.decode is non-throwing; mismatch results in a skipped
+            // blacklist (logged) rather than an error response, preserving
+            // the best-effort contract.
+            let ownsRefresh = true;
             try {
-                await authService.blacklistToken(refresh);
-            } catch (refreshErr) {
-                logger.warn(`logout: refresh token blacklist failed: ${refreshErr.message}`);
+                const decoded = jwt.decode(refresh);
+                const decodedSub = decoded?.sub ?? decoded?.user_id;
+                const actorId = req.user?.user_id ?? req.user?.id;
+                if (decodedSub != null && actorId != null && String(decodedSub) !== String(actorId)) {
+                    ownsRefresh = false;
+                    logger.warn(
+                        `logout: refresh token sub mismatch — skipping blacklist ` +
+                        `(decoded.sub=${decodedSub}, actor=${actorId})`
+                    );
+                }
+            } catch (decodeErr) {
+                // Malformed token — let blacklistToken decide whether to accept it
+                logger.warn(`logout: refresh token decode failed: ${decodeErr.message}`);
+            }
+
+            if (ownsRefresh) {
+                try {
+                    await authService.blacklistToken(refresh);
+                } catch (refreshErr) {
+                    logger.warn(`logout: refresh token blacklist failed: ${refreshErr.message}`);
+                }
             }
         }
 
