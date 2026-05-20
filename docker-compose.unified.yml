@@ -189,6 +189,9 @@ services:
       - ./about.html:/usr/share/nginx/html/about.html:ro
       - ./contacts.html:/usr/share/nginx/html/contacts.html:ro
       - ./documentation.html:/usr/share/nginx/html/documentation.html:ro
+      # [P0-1] admin-auth.js redirects to /login.html when token missing;
+      # без этого mount-а получаем 404 → admin не может залогиниться.
+      - ./public/login.html:/usr/share/nginx/html/login.html:ro
       - ./css:/usr/share/nginx/html/css:ro
       - ./public:/usr/share/nginx/html/public:ro
       - ./data:/usr/share/nginx/html/data:ro
