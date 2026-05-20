@@ -195,35 +195,7 @@
         </div>
     </div>
 
-    <script>
-        (function () {
-            const html = document.documentElement;
-            const toggle = document.getElementById('theme-toggle');
-            const sun = document.getElementById('theme-icon-sun');
-            const moon = document.getElementById('theme-icon-moon');
-
-            function apply(theme) {
-                if (theme === 'dark') {
-                    html.classList.add('dark');
-                    sun.style.display = 'block';
-                    moon.style.display = 'none';
-                } else {
-                    html.classList.remove('dark');
-                    sun.style.display = 'none';
-                    moon.style.display = 'block';
-                }
-            }
-
-            apply(localStorage.getItem('theme') || 'light');
-
-            if (toggle) {
-                toggle.addEventListener('click', function () {
-                    const next = html.classList.contains('dark') ? 'light' : 'dark';
-                    localStorage.setItem('theme', next);
-                    apply(next);
-                });
-            }
-        })();
-    </script>
+    <!-- [P1-3] Inline theme toggle extracted to public/theme-toggle.js so CSP can drop 'unsafe-inline' -->
+    <script src="public/theme-toggle.js"></script>
 </body>
 </html>
