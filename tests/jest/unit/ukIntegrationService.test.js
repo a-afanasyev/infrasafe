@@ -165,6 +165,9 @@ describe('UKIntegrationService', () => {
 
         beforeEach(() => {
             originalSecret = process.env.UK_WEBHOOK_SECRET;
+            // [P0-2] Clear nonce-dedup state between tests so deterministic
+            // payloads with the same timestamp don't get rejected as replays.
+            service._resetSeenSignatures();
         });
 
         afterEach(() => {
@@ -212,6 +215,82 @@ describe('UKIntegrationService', () => {
             process.env.UK_WEBHOOK_SECRET = SECRET;
             const timestamp = Math.floor(Date.now() / 1000);
             expect(service.verifyWebhookSignature(BODY, `t=${timestamp}`)).toBe(false);
+        });
+
+        // [P0-2] Nonce/replay protection cases
+        describe('[P0-2] replay protection within timestamp window', () => {
+            it('rejects a second submission of the same valid signature', () => {
+                process.env.UK_WEBHOOK_SECRET = SECRET;
+                const header = buildHeader(BODY, SECRET);
+
+                // First time → valid
+                expect(service.verifyWebhookSignature(BODY, header)).toBe(true);
+                // Replay → reject even though HMAC + timestamp are still good
+                expect(service.verifyWebhookSignature(BODY, header)).toBe(false);
+            });
+
+            it('logs a warn on replay attempt', () => {
+                process.env.UK_WEBHOOK_SECRET = SECRET;
+                const header = buildHeader(BODY, SECRET);
+
+                service.verifyWebhookSignature(BODY, header);
+                logger.warn.mockClear();
+                service.verifyWebhookSignature(BODY, header);
+
+                expect(logger.warn).toHaveBeenCalled();
+                const msgs = logger.warn.mock.calls.map(c => c[0]);
+                expect(msgs.some(m => typeof m === 'string' && m.includes('replay'))).toBe(true);
+            });
+
+            it('accepts a different signature with the same timestamp', () => {
+                process.env.UK_WEBHOOK_SECRET = SECRET;
+                const ts = Math.floor(Date.now() / 1000);
+                const body1 = JSON.stringify({ event: 'a' });
+                const body2 = JSON.stringify({ event: 'b' });
+                const sig1 = crypto.createHmac('sha256', SECRET).update(`${ts}.${body1}`).digest('hex');
+                const sig2 = crypto.createHmac('sha256', SECRET).update(`${ts}.${body2}`).digest('hex');
+
+                expect(service.verifyWebhookSignature(body1, `t=${ts},v1=${sig1}`)).toBe(true);
+                expect(service.verifyWebhookSignature(body2, `t=${ts},v1=${sig2}`)).toBe(true);
+            });
+
+            it('accepts a replay once the recorded entry has expired', () => {
+                process.env.UK_WEBHOOK_SECRET = SECRET;
+                const header = buildHeader(BODY, SECRET);
+
+                expect(service.verifyWebhookSignature(BODY, header)).toBe(true);
+
+                // Force-expire the recorded sig by rewriting its expireAt
+                // to a moment in the past. Simulates TTL elapsing without
+                // needing jest.useFakeTimers (which would also impact
+                // timestamp window arithmetic).
+                const seen = service._seenSignatures;
+                for (const [k] of seen) {
+                    seen.set(k, Date.now() - 1);
+                }
+
+                expect(service.verifyWebhookSignature(BODY, header)).toBe(true);
+            });
+
+            it('does not record a signature when timestamp window check fails', () => {
+                process.env.UK_WEBHOOK_SECRET = SECRET;
+                const sizeBefore = service._seenSignatures.size;
+                const expired = Math.floor(Date.now() / 1000) - 600;
+                const header = buildHeader(BODY, SECRET, expired);
+
+                expect(service.verifyWebhookSignature(BODY, header)).toBe(false);
+                // Stale-timestamp rejects must not pollute the dedup map
+                expect(service._seenSignatures.size).toBe(sizeBefore);
+            });
+
+            it('does not record a signature when HMAC verification fails', () => {
+                process.env.UK_WEBHOOK_SECRET = SECRET;
+                const sizeBefore = service._seenSignatures.size;
+                const header = buildHeader(BODY, 'wrong-secret');
+
+                expect(service.verifyWebhookSignature(BODY, header)).toBe(false);
+                expect(service._seenSignatures.size).toBe(sizeBefore);
+            });
         });
     });
 

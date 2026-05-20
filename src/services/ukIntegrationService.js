@@ -14,10 +14,28 @@ const ALLOWED_CONFIG_KEYS = ['uk_integration_enabled', 'uk_api_url', 'uk_fronten
 const SENSITIVE_KEYS = ['uk_webhook_secret', 'uk_service_user', 'uk_service_password'];
 const WEBHOOK_TIMESTAMP_TOLERANCE_SEC = 300;
 
+// [P0-2] Nonce/replay dedup. We retain seen-signature hashes for slightly
+// longer than the timestamp tolerance — a sig with t=(now-299) could
+// otherwise be re-played at t=(now+1) without being recognized.
+const SEEN_SIGNATURE_TTL_MS = (WEBHOOK_TIMESTAMP_TOLERANCE_SEC + 10) * 1000;
+const SEEN_SIGNATURE_MAX_ENTRIES = 10000; // soft cap; triggers full sweep
+
 class UKIntegrationService {
     _requestCountsCache = null;
     _requestCountsCacheTime = 0;
     _CACHE_TTL_MS = 60 * 1000; // 60 seconds
+
+    // [P0-2] sigHash → expireAt(ms). All-in-memory; single-replica today.
+    // Phase 11.1 (Redis rate-limiter) will replace with a shared store.
+    _seenSignatures = new Map();
+
+    /**
+     * Test helper — clears the nonce-dedup map so unit tests with deterministic
+     * timestamps don't collide across cases. Not part of the production API.
+     */
+    _resetSeenSignatures() {
+        this._seenSignatures.clear();
+    }
 
     /**
      * Check if UK integration is enabled.
@@ -120,7 +138,36 @@ class UKIntegrationService {
                 return false;
             }
 
-            return crypto.timingSafeEqual(sigBuf, expBuf);
+            if (!crypto.timingSafeEqual(sigBuf, expBuf)) {
+                return false;
+            }
+
+            // [P0-2] Replay/nonce dedup. A signed payload is reusable for up
+            // to WEBHOOK_TIMESTAMP_TOLERANCE_SEC seconds without this check.
+            // Track sig hashes with TTL; reject if seen before.
+            // Single-threaded JS makes has+set atomic per call.
+            const nowMs = Date.now();
+            const sigHash = crypto.createHash('sha256').update(signature).digest('hex');
+            const prevExpireAt = this._seenSignatures.get(sigHash);
+            if (prevExpireAt !== undefined && prevExpireAt > nowMs) {
+                logger.warn(
+                    `ukIntegrationService.verifyWebhookSignature: replay attempt detected ` +
+                    `for signature ${sigHash.slice(0, 16)}... (timestamp ${timestamp})`
+                );
+                return false;
+            }
+
+            // Lazy cleanup when the map grows past the soft cap. O(n) sweep
+            // amortized across many requests; expected map size is small
+            // (only the last ~310s of signatures).
+            if (this._seenSignatures.size >= SEEN_SIGNATURE_MAX_ENTRIES) {
+                for (const [k, v] of this._seenSignatures) {
+                    if (v <= nowMs) this._seenSignatures.delete(k);
+                }
+            }
+
+            this._seenSignatures.set(sigHash, nowMs + SEEN_SIGNATURE_TTL_MS);
+            return true;
         } catch (error) {
             logger.error(`ukIntegrationService.verifyWebhookSignature error: ${error.message}`);
             return false;
