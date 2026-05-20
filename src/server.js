@@ -29,16 +29,21 @@ const PORT = process.env.PORT || 3000;
 // Настройка helmet с CSP: строгий режим в production, мягкий в development (для Swagger UI)
 const isProduction = process.env.NODE_ENV === 'production';
 
+// [P1-3] Helmet CSP — production drops 'unsafe-inline' / 'unsafe-eval'
+// from script-src (inline <script> blocks were extracted in this PR).
+// Development needs 'unsafe-inline' on style-src for Swagger UI styling,
+// but no longer needs 'unsafe-eval' — Swagger UI 5.x doesn't use eval.
+// 'unsafe-inline' on style-src is kept in both modes because the
+// existing HTML uses `style="..."` attributes extensively; removing it
+// is tracked as a separate item (CSS-only refactor, low security ROI).
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            styleSrc: isProduction
-                ? ["'self'", "https:"]
-                : ["'self'", "'unsafe-inline'", "https:"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https:"],
             scriptSrc: isProduction
                 ? ["'self'", "https://cdn.jsdelivr.net", "https://unpkg.com"]
-                : ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.jsdelivr.net", "https://unpkg.com"],
+                : ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://unpkg.com"],
             imgSrc: ["'self'", "data:", "https:", "https://*.tile.openstreetmap.org"],
             fontSrc: ["'self'", "https:", "data:"],
             connectSrc: ["'self'", "https://*.tile.openstreetmap.org"],

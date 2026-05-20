@@ -25,20 +25,8 @@
     <title>InfraSafe - Система мониторинга</title>
     
     <!-- Настройка базового URL для API (если нужно) -->
-    <script>
-        // Настройка базового URL для API - в production используем относительный путь через Nginx прокси
-        // Nginx проксирует /api/ к app:3000 через Docker сеть
-        window.BACKEND_URL = "/api";
-        
-        // Логирование для отладки
-        window.addEventListener('error', function(e) {
-            console.error('Global error:', e.error, e.message, e.filename, e.lineno);
-        });
-        
-        window.addEventListener('unhandledrejection', function(e) {
-            console.error('Unhandled promise rejection:', e.reason);
-        });
-    </script>
+    <!-- [P1-3] Inline bootstrap extracted to public/api-config.js so CSP can drop 'unsafe-inline' -->
+    <script src="public/api-config.js"></script>
 </head>
 <body>
     <div class="header neomorph">
@@ -259,8 +247,11 @@
 
     <script src="public/libs/leaflet/leaflet.js"></script>
     <script src="public/libs/leaflet/leaflet.icon-fallback.js"></script>
-    <!-- Подключение DOMPurify для защиты от XSS -->
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.7/dist/purify.min.js"></script>
+    <!-- Подключение DOMPurify для защиты от XSS — SRI sha384 закрепляет содержимое CDN-пакета [P1-3] -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.7/dist/purify.min.js"
+            integrity="sha384-qJNkHwhlYywDHfyoEe1np+1lYvX/8x+3gHCKFhSSBMQyCFlvFnn+zXmaebXl21rV"
+            crossorigin="anonymous"
+            referrerpolicy="no-referrer"></script>
     
     <!-- Подключение утилит безопасности -->
     <script src="public/dist/utils/domSecurity.js"></script>
