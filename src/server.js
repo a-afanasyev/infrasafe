@@ -132,6 +132,22 @@ app.use(errorHandler);
 // Инициализация базы данных и запуск сервера
 let server;
 
+// [Sprint 0.1 / MEDIUM-5] Multi-replica nonce-dedup warning.
+// P0-2 webhook replay protection uses an in-memory Map per process.
+// If horizontally scaled (REPLICA_COUNT>1 or running behind a load
+// balancer with REPLICAS env), a captured signature can be replayed
+// against a different replica within the 300s timestamp tolerance.
+// Phase 11.1 (Redis-backed dedup) is the proper fix; this warning
+// makes the limitation visible to operators today.
+const replicaCount = parseInt(process.env.REPLICA_COUNT || '1', 10);
+if (process.env.NODE_ENV === 'production' && replicaCount > 1 && !process.env.REDIS_URL) {
+    logger.warn(
+        'P0-2: webhook nonce dedup is per-process — replay protection ' +
+        `is broken in multi-replica mode (REPLICA_COUNT=${replicaCount}, ` +
+        'no REDIS_URL). Plan Phase 11.1 (Redis-backed dedup) before scaling out.'
+    );
+}
+
 db.init()
     .then(() => {
         server = app.listen(PORT, () => {

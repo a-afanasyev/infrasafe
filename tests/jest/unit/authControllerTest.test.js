@@ -378,6 +378,52 @@ describe('AuthController', () => {
 
             expect(authService.blacklistToken).not.toHaveBeenCalled();
         });
+
+        // [Sprint 0.1 / HIGH-3] sub-claim ownership check on refresh blacklist
+        test('blacklists refresh token when sub matches authenticated user', async () => {
+            const jwt = require('jsonwebtoken');
+            // Sign a JWT with sub=1 matching req.user.user_id=1 (set in beforeEach)
+            const refresh = jwt.sign({ sub: 1 }, 'test-secret');
+            req.headers = { authorization: 'Bearer access-tok' };
+            req.body = { refreshToken: refresh };
+            authService.logout.mockResolvedValue({ message: 'OK' });
+            authService.blacklistToken.mockResolvedValue(undefined);
+
+            await authController.logout(req, res, next);
+
+            expect(authService.blacklistToken).toHaveBeenCalledWith(refresh);
+        });
+
+        test('does NOT blacklist refresh token when sub mismatches actor (HIGH-3 DoS guard)', async () => {
+            const jwt = require('jsonwebtoken');
+            // sub=99 — different user; actor is user_id=1 per beforeEach
+            const refresh = jwt.sign({ sub: 99 }, 'test-secret');
+            req.headers = { authorization: 'Bearer access-tok' };
+            req.body = { refreshToken: refresh };
+            authService.logout.mockResolvedValue({ message: 'OK' });
+
+            await authController.logout(req, res, next);
+
+            // Critical assertion: foreign refresh token must NOT be blacklisted
+            expect(authService.blacklistToken).not.toHaveBeenCalled();
+            // Logout still succeeds (best-effort)
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({ success: true })
+            );
+        });
+
+        test('blacklists non-JWT refresh token string (graceful — decode returns null)', async () => {
+            // Legacy clients may send opaque tokens. jwt.decode returns null;
+            // sub mismatch check is skipped; blacklist still runs.
+            req.headers = { authorization: 'Bearer access-tok' };
+            req.body = { refreshToken: 'opaque-token' };
+            authService.logout.mockResolvedValue({ message: 'OK' });
+            authService.blacklistToken.mockResolvedValue(undefined);
+
+            await authController.logout(req, res, next);
+
+            expect(authService.blacklistToken).toHaveBeenCalledWith('opaque-token');
+        });
     });
 
     describe('refreshToken', () => {

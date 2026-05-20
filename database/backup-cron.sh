@@ -39,6 +39,25 @@
 
 set -euo pipefail
 
+# [Sprint 0.1 / LOW-2] Force mode 600 on all files created by this script.
+# pg_dump's gzip > "$tmp" redirection inherits the shell umask, which on
+# most Linux systems is 022 (644 = world-readable). A dump file contains
+# bcrypt password hashes and encrypted TOTP secrets — restrict to owner.
+umask 0077
+
+# [Sprint 0.1 / LOW-3] Concurrency guard: prevent parallel cron runs when
+# a slow upload overlaps the next scheduled tick. Without the lock, two
+# pg_dump processes hammer the DB and may interleave their S3 uploads.
+# Exits 0 (not an error) if another instance holds the lock — cron should
+# stay quiet in that case.
+_LOCKFILE="${BACKUP_LOCKFILE:-/tmp/infrasafe-backup.lock}"
+exec 9>"$_LOCKFILE"
+if ! flock -n 9; then
+    printf '%s backup-cron[%d]: another backup is running (lock held on %s); exiting.\n' \
+        "$(date -Iseconds)" "$$" "$_LOCKFILE" >&2
+    exit 0
+fi
+
 # ---- Config ----------------------------------------------------------------
 
 : "${DB_HOST:=postgres}"

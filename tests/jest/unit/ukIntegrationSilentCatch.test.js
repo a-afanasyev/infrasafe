@@ -34,8 +34,17 @@ jest.mock('../../../src/models/IntegrationLog', () => ({
 }));
 jest.mock('../../../src/models/AlertRequestMap', () => ({
     findByRequestNumber: jest.fn(),
+    findByAlertAndBuilding: jest.fn(),
+    create: jest.fn(),
+    markSent: jest.fn(),
     updateStatus: jest.fn(),
     areAllTerminal: jest.fn()
+}));
+jest.mock('../../../src/models/AlertRule', () => ({
+    findByTypeAndSeverity: jest.fn()
+}));
+jest.mock('../../../src/clients/ukApiClient', () => ({
+    createRequest: jest.fn()
 }));
 jest.mock('../../../src/events/alertEvents', () => ({
     emit: jest.fn(),
@@ -108,6 +117,49 @@ describe("[P1-5] integration_log catches no longer silent", () => {
             msg.includes(String(logEntryId)) &&
             msg.includes('audit table locked')
         )).toBe(true);
+    });
+
+    test('[Sprint 0.1 / HIGH-2] sendAlertToUK: logEvent failure inside catch → logger.warn', async () => {
+        // Force the per-building loop to enter the catch block, then make
+        // the audit-log write fail. The catch attaches `.catch(logErr => warn)`.
+        const IntegrationConfig = require('../../../src/models/IntegrationConfig');
+        const AlertRule = require('../../../src/models/AlertRule');
+        const ukApiClient = require('../../../src/clients/ukApiClient');
+
+        IntegrationConfig.isEnabled.mockResolvedValue(true);
+        AlertRule.findByTypeAndSeverity.mockResolvedValue({
+            uk_category: 'electrical',
+            uk_urgency: 'high'
+        });
+        // resolveBuildingIds is on the service prototype — stub via spy
+        jest.spyOn(service, 'resolveBuildingIds').mockResolvedValue([{
+            building_id: 99, external_id: 'ext-uuid-99'
+        }]);
+        AlertRequestMap.findByAlertAndBuilding.mockResolvedValue(null);
+        AlertRequestMap.create.mockResolvedValue({ id: 1, idempotency_key: 'idem-1' });
+        // Force the UK API call to throw → enter the catch block
+        ukApiClient.createRequest.mockRejectedValueOnce(new Error('UK API 503'));
+        // Then the integration_log write also fails → triggers logger.warn
+        IntegrationLog.create.mockRejectedValueOnce(new Error('audit unreachable'));
+
+        await service.sendAlertToUK({
+            alert_id: 555,
+            type: 'voltage_low',
+            severity: 'high',
+            infrastructure_type: 'building',
+            infrastructure_id: 99,
+            message: 'voltage out of band'
+        });
+
+        const warnCalls = logger.warn.mock.calls.map(c => c[0]);
+        expect(warnCalls.some(msg =>
+            typeof msg === 'string' &&
+            msg.includes('555') &&            // alert_id
+            msg.includes('99') &&             // building_id
+            msg.includes('audit unreachable') // root cause
+        )).toBe(true);
+
+        service.resolveBuildingIds.mockRestore();
     });
 
     test('no remaining `.catch(() => {})` patterns in source', () => {

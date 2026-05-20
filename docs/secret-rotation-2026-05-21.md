@@ -79,31 +79,26 @@ history (`history -c` after).
 
 Rotating this key re-encrypts every row in `users.totp_secret`. If you
 just swap the env var without a migration, **every admin loses their
-2FA** (decryption fails → fall back to "set up 2FA again"). You have
-two options:
+2FA** (decryption fails → fall back to "set up 2FA again").
 
-### Option A — re-encrypt in place (preferred)
+> **⚠️ Current state (Sprint 0.1 / M-1):** `src/services/totpService.js` does
+> **NOT** support a `_NEW` dual-decrypt key. **Use Option B below as the
+> default rotation path.** Option A is described at the bottom as the
+> *target* design — it requires a code change tracked separately.
 
-1. Generate the new key and put it in `.env.prod` as a *secondary*:
+### ✅ Option B — force re-enrollment (USE THIS ONE TODAY)
+
+Acceptable when admin count is small (≤ 5). Disruptive but executable
+with current code.
+
+1. Notify all admins ahead of time — they must be available to re-enroll.
+2. Rotate `TOTP_ENCRYPTION_KEY` in `.env.prod`:
+   ```bash
+   cp .env.prod .env.prod.bak.$(date +%Y%m%d-%H%M%S)
+   NEW_KEY=$(openssl rand -base64 32)
+   sed -i "s|^TOTP_ENCRYPTION_KEY=.*|TOTP_ENCRYPTION_KEY=$NEW_KEY|" .env.prod
    ```
-   TOTP_ENCRYPTION_KEY=<old key — keep>
-   TOTP_ENCRYPTION_KEY_NEW=<new key>
-   ```
-2. Add a one-shot migration script that, for each user:
-   - decrypts `totp_secret` with the old key
-   - re-encrypts with the new key
-   - writes back atomically
-3. Swap `TOTP_ENCRYPTION_KEY` to the new value, drop `_NEW`.
-4. Restart app.
-
-**Important:** the code in `src/services/totpService.js` does not
-currently support a `_NEW` key. Schedule a tracked code change before
-attempting Option A.
-
-### Option B — force re-enrollment (simpler, more disruptive)
-
-1. Rotate `TOTP_ENCRYPTION_KEY` in `.env.prod`.
-2. Run a SQL migration to clear all 2FA columns:
+3. Run a SQL migration to clear all 2FA columns (admins only):
    ```sql
    UPDATE users
       SET totp_secret = NULL,
@@ -111,10 +106,30 @@ attempting Option A.
           recovery_codes = NULL
     WHERE role = 'admin';
    ```
-3. Restart app.
-4. Notify all admins to re-enroll 2FA via the standard flow.
+4. Restart app: `docker compose up -d --force-recreate app`.
+5. Each admin logs in (password only), gets routed to TOTP setup, scans
+   the new QR. Old authenticator entries can be deleted.
+6. Verify with `curl /api/auth/verify-2fa` flow per the Verification
+   section below.
 
-This is acceptable when the admin count is small (≤ 5).
+### ⏸ Option A — re-encrypt in place (FUTURE DESIGN — not currently usable)
+
+Target design after a code change adds `TOTP_ENCRYPTION_KEY_NEW`
+dual-decrypt support to `src/services/totpService.js`.
+
+1. Generate the new key and add as a *secondary*:
+   ```
+   TOTP_ENCRYPTION_KEY=<old key — keep>
+   TOTP_ENCRYPTION_KEY_NEW=<new key>
+   ```
+2. Run a one-shot migration script that for each user decrypts with the
+   old key and re-encrypts with the new.
+3. Swap `TOTP_ENCRYPTION_KEY` to the new value, drop `_NEW`.
+4. Restart app.
+
+**Blocker:** code does not yet read `TOTP_ENCRYPTION_KEY_NEW` and there
+is no dual-decrypt fallback in `totpService.encryptSecret/decryptSecret`.
+Track the enablement work as its own issue before attempting this path.
 
 ## Verification
 
