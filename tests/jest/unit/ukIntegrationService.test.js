@@ -27,7 +27,8 @@ jest.mock('../../../src/models/Building', () => ({
     softDelete: jest.fn()
 }));
 jest.mock('../../../src/utils/webhookValidation', () => ({
-    isValidBuildingEvent: jest.fn()
+    isValidBuildingEvent: jest.fn(),
+    validateCoordinate: jest.fn(() => ({ ok: true }))
 }));
 
 // Require after mocks are set up
@@ -37,7 +38,7 @@ const logger = require('../../../src/utils/logger');
 const service = require('../../../src/services/ukIntegrationService');
 
 const Building = require('../../../src/models/Building');
-const { isValidBuildingEvent } = require('../../../src/utils/webhookValidation');
+const { isValidBuildingEvent, validateCoordinate } = require('../../../src/utils/webhookValidation');
 
 describe('UKIntegrationService', () => {
     beforeEach(() => {
@@ -262,6 +263,7 @@ describe('UKIntegrationService', () => {
             isValidBuildingEvent.mockImplementation(e =>
                 ['building.created', 'building.updated', 'building.deleted'].includes(e)
             );
+            validateCoordinate.mockReturnValue({ ok: true });
         });
 
         it('creates a new building on building.created when not exists', async () => {
@@ -323,6 +325,62 @@ describe('UKIntegrationService', () => {
             await service.handleBuildingWebhook(payload);
 
             expect(Building.softDelete).not.toHaveBeenCalled();
+        });
+
+        it('passes latitude/longitude to createFromUK when provided in payload', async () => {
+            const payload = {
+                ...basePayload,
+                building: { ...basePayload.building, latitude: 41.349151, longitude: 69.246436 }
+            };
+            Building.findByExternalId.mockResolvedValue(null);
+            Building.createFromUK.mockResolvedValue({ building_id: 18 });
+
+            await service.handleBuildingWebhook(payload);
+
+            expect(Building.createFromUK).toHaveBeenCalledWith(
+                expect.objectContaining({ latitude: 41.349151, longitude: 69.246436 })
+            );
+        });
+
+        it('passes null coords when payload omits them (backward compat)', async () => {
+            // basePayload has no latitude/longitude
+            Building.findByExternalId.mockResolvedValue(null);
+            Building.createFromUK.mockResolvedValue({ building_id: 18 });
+
+            await service.handleBuildingWebhook(basePayload);
+
+            expect(Building.createFromUK).toHaveBeenCalledWith(
+                expect.objectContaining({ latitude: null, longitude: null })
+            );
+        });
+
+        it('passes coords to updateFromUK on building.updated', async () => {
+            const payload = {
+                ...basePayload,
+                event: 'building.updated',
+                building: { ...basePayload.building, latitude: 42.0, longitude: 70.0 }
+            };
+            Building.findByExternalId.mockResolvedValue({ building_id: 5 });
+            Building.updateFromUK.mockResolvedValue({ building_id: 5 });
+
+            await service.handleBuildingWebhook(payload);
+
+            expect(Building.updateFromUK).toHaveBeenCalledWith(
+                5,
+                expect.objectContaining({ latitude: 42.0, longitude: 70.0 })
+            );
+        });
+
+        it('rejects payload with out-of-range latitude (validateCoordinate fails)', async () => {
+            validateCoordinate.mockImplementationOnce(() => ({ ok: false, message: 'Invalid latitude: must be in [-90, 90]' }));
+            const payload = {
+                ...basePayload,
+                building: { ...basePayload.building, latitude: 999, longitude: 0 }
+            };
+            Building.findByExternalId.mockResolvedValue(null);
+
+            await expect(service.handleBuildingWebhook(payload)).rejects.toThrow(/Invalid latitude/);
+            expect(Building.createFromUK).not.toHaveBeenCalled();
         });
 
         it('creates pending log entry then updates to success', async () => {

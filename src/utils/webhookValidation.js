@@ -32,6 +32,23 @@ function isValidRequestEvent(value) {
     return VALID_REQUEST_EVENTS.includes(value);
 }
 
+/**
+ * Validate optional GPS coordinate. Accepts null/undefined (means "not set").
+ * Returns { ok: boolean, message?: string }.
+ * Range: latitude -90..90, longitude -180..180.
+ */
+function validateCoordinate(value, axis) {
+    if (value === undefined || value === null) return { ok: true };
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return { ok: false, message: `Invalid ${axis}: must be a finite number` };
+    }
+    const max = axis === 'latitude' ? 90 : 180;
+    if (value < -max || value > max) {
+        return { ok: false, message: `Invalid ${axis}: must be in [-${max}, ${max}]` };
+    }
+    return { ok: true };
+}
+
 module.exports = {
     isValidUUID,
     isValidDirection,
@@ -39,6 +56,7 @@ module.exports = {
     isValidEntityType,
     isValidBuildingEvent,
     isValidRequestEvent,
+    validateCoordinate,
     UUID_REGEX,
     VALID_DIRECTIONS,
     VALID_STATUSES,
