@@ -865,3 +865,23 @@
 - 96 suites, 1935 tests passing (+2 regression тестов на DB-H1/H2)
 - npm run lint: clean
 - Commit: TBD on `fix/sprint1.0.1-followups`
+
+---
+
+# ⊕ Sprint 1.0.3 — post-deploy hygiene (2026-05-21)
+
+Found during/after P0-5 production rollout. Three independent issues bundled.
+
+## ⚡ Closed (PR #16 + PR #17)
+
+| ID | Issue | Status |
+|---|---|---|
+| `1A-FU3-S-H1` | nginx `add_header` inheritance pitfall — security headers silently dropped on HTML responses by `location ~* \.(html|htm)$` block | **fixed** PR #16 commit `806232d` |
+| `1A-FU3-S-M2` | `docker-compose.unified.yml` `environment:` block hardcoded `DB_USER`, `DB_PASSWORD`, `NODE_ENV=development`, `JWT_SECRET=${VAR:-fallback}` — all override `env_file`, broke P0-5 + Helmet CSP + JWT rotation | **fixed** PR #17 commit `b279dd6` |
+
+## 🟡 Carry-over
+
+| ID | Issue | Action |
+|---|---|---|
+| `1A-FU3-S-M1` | Helmet CSP in `src/server.js` had `'unsafe-inline'` in script-src on prod — root cause was `NODE_ENV=development` (M2 above). Now that NODE_ENV moves to `.env.prod`, this auto-resolves once operator sets `NODE_ENV=production`. | Operator: set `NODE_ENV=production` in `.env.prod`, restart app, verify `/api/health` response no longer has `'unsafe-inline'` in CSP. |
+| `1A-FU3-S-M3` | Switching NODE_ENV=production triggers additional env-var requirements (`CORS_ORIGINS`). Operator should verify `.env.prod` has all `PRODUCTION_REQUIRED_VARS` before flipping. | Pre-flight check before flipping NODE_ENV. |
