@@ -74,7 +74,10 @@
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const username = document.getElementById('username').value.trim();
-                const password = document.getElementById('password').value.trim();
+                // [1A-FU2-C-H1] Do NOT trim password — bcrypt compare is exact;
+                // trimming silently rejects valid passwords with leading/trailing
+                // whitespace (uncommon but possible).
+                const password = document.getElementById('password').value;
                 if (!username || !password) { this.showError('error-container', 'Заполните все поля'); return; }
 
                 this.setLoading('login-button', 'loading', true);
@@ -214,10 +217,13 @@
         // was supposed to close — Phase 1 left it in for transitional
         // backward-compat; this PR finishes the job.
         completeLogin(data) {
-            const token = data.accessToken || data.token;
-            if (!token) throw new Error('Токен не получен');
-            // Note: server has already set the cookies before this body
-            // arrived. We deliberately do NOT touch localStorage.
+            // [1A-FU2-C-H2] Cookie-first invariant: by the time this body has
+            // arrived, the server has already issued Set-Cookie. The presence
+            // of `accessToken`/`token` in the body is a transitional artefact
+            // (kept for legacy clients) — its absence does NOT mean login
+            // failed. The /admin.html load-time profile probe is the source
+            // of truth for "are we logged in". Do NOT throw on missing body
+            // token, do NOT touch localStorage.
             this.showSuccess('success-container', 'Вход выполнен! Перенаправление...');
             setTimeout(() => { window.location.href = '/admin.html'; }, 1000);
         }

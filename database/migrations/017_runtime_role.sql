@@ -89,13 +89,22 @@ GRANT SELECT, INSERT, UPDATE, DELETE
     ON ALL TABLES IN SCHEMA public
     TO infrasafe_runtime;
 
-GRANT USAGE, SELECT, UPDATE
+-- [1A-FU2-DB-H2] USAGE + SELECT only — DO NOT grant UPDATE on sequences.
+-- UPDATE allows setval() which can rewind / fast-forward a PK sequence
+-- and produce duplicate primary keys. USAGE+SELECT is enough for
+-- nextval() / currval() which is the only operation INSERT needs.
+GRANT USAGE, SELECT
     ON ALL SEQUENCES IN SCHEMA public
     TO infrasafe_runtime;
 
--- EXECUTE on existing functions — needed for find_nearest_buildings_to_transformer
--- and trigger helpers. Note: refresh_transformer_analytics is also covered here,
--- but it carries SECURITY DEFINER (step 5) so it runs with elevated rights.
+-- [1A-FU2-DB-H1] EXECUTE is granted on the snapshot of functions that
+-- exist at migration time (needed for refresh_transformer_analytics,
+-- find_nearest_buildings_to_transformer, and trigger helpers). We
+-- deliberately do NOT auto-grant EXECUTE on FUTURE functions via
+-- ALTER DEFAULT PRIVILEGES (step 4 below) — every new function added
+-- by a later migration must be granted EXECUTE explicitly, so any
+-- SECURITY DEFINER function added by accident does not auto-leak
+-- elevated rights to the runtime role.
 GRANT EXECUTE
     ON ALL FUNCTIONS IN SCHEMA public
     TO infrasafe_runtime;
@@ -108,11 +117,15 @@ GRANT EXECUTE
 ALTER DEFAULT PRIVILEGES FOR ROLE infrasafe_app IN SCHEMA public
     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES    TO infrasafe_runtime;
 
+-- [1A-FU2-DB-H2] USAGE+SELECT only for future sequences too. No UPDATE.
 ALTER DEFAULT PRIVILEGES FOR ROLE infrasafe_app IN SCHEMA public
-    GRANT USAGE, SELECT, UPDATE          ON SEQUENCES TO infrasafe_runtime;
+    GRANT USAGE, SELECT                  ON SEQUENCES TO infrasafe_runtime;
 
-ALTER DEFAULT PRIVILEGES FOR ROLE infrasafe_app IN SCHEMA public
-    GRANT EXECUTE                        ON FUNCTIONS TO infrasafe_runtime;
+-- [1A-FU2-DB-H1] Intentionally NO `GRANT EXECUTE ON FUNCTIONS` default.
+-- Future migrations must `GRANT EXECUTE ON FUNCTION public.<name>(...)
+-- TO infrasafe_runtime` explicitly for each function the app calls. This
+-- prevents a future SECURITY DEFINER function from being auto-callable
+-- by the runtime role.
 
 -- =============================================================================
 -- 5. Materialized-view refresh: SECURITY DEFINER wrapper.

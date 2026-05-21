@@ -41,20 +41,24 @@ GRANT SELECT, INSERT, UPDATE, DELETE
     ON ALL TABLES IN SCHEMA public
     TO infrasafe_runtime;
 
-GRANT USAGE, SELECT, UPDATE
+-- [1A-FU2-DB-H2] USAGE+SELECT only — no UPDATE, which would allow setval().
+GRANT USAGE, SELECT
     ON ALL SEQUENCES IN SCHEMA public
     TO infrasafe_runtime;
 
+-- [1A-FU2-DB-H1] Snapshot grant on existing functions. Future functions
+-- must be granted EXECUTE explicitly per migration to prevent accidental
+-- SECURITY DEFINER auto-leak.
 GRANT EXECUTE
     ON ALL FUNCTIONS IN SCHEMA public
     TO infrasafe_runtime;
 
 ALTER DEFAULT PRIVILEGES FOR ROLE infrasafe_app IN SCHEMA public
     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES    TO infrasafe_runtime;
+-- [1A-FU2-DB-H2] USAGE+SELECT only for future sequences.
 ALTER DEFAULT PRIVILEGES FOR ROLE infrasafe_app IN SCHEMA public
-    GRANT USAGE, SELECT, UPDATE          ON SEQUENCES TO infrasafe_runtime;
-ALTER DEFAULT PRIVILEGES FOR ROLE infrasafe_app IN SCHEMA public
-    GRANT EXECUTE                        ON FUNCTIONS TO infrasafe_runtime;
+    GRANT USAGE, SELECT                  ON SEQUENCES TO infrasafe_runtime;
+-- [1A-FU2-DB-H1] No EXECUTE auto-grant. Each future function explicit.
 
 DO $sec_def_09$
 BEGIN

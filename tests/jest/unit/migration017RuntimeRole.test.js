@@ -169,4 +169,57 @@ describe('[P0-5] migration 017 — runtime role contract', () => {
             /IF EXISTS[\s\S]*?pg_proc[\s\S]*?refresh_transformer_analytics[\s\S]*?ALTER FUNCTION/i
         );
     });
+
+    // [1A-FU2-DB-H2] sequence grant must not include UPDATE — setval() lets
+    // a compromised runtime role rewind / fast-forward a PK sequence and
+    // produce duplicate primary keys.
+    test('SEQUENCES grant — no UPDATE (setval) privilege', () => {
+        function stripComments(sql) {
+            return sql
+                .replace(/--[^\n]*/g, '')
+                .replace(/\/\*[\s\S]*?\*\//g, '');
+        }
+        // Split into individual statements so a regex on one cannot bleed
+        // into another (TABLES grant uses UPDATE; SEQUENCES grant must not).
+        function seqStatements(sql) {
+            return stripComments(sql)
+                .split(';')
+                .map(s => s.trim())
+                .filter(s => /\bON\s+(?:ALL\s+)?SEQUENCES\b/i.test(s));
+        }
+        const migStmts = seqStatements(MIGRATION);
+        const initStmts = seqStatements(INIT_MIRROR);
+        // We expect at least: direct grant + ALTER DEFAULT PRIVILEGES grant
+        expect(migStmts.length).toBeGreaterThanOrEqual(2);
+        expect(initStmts.length).toBeGreaterThanOrEqual(2);
+        for (const stmt of migStmts) {
+            expect(stmt).not.toMatch(/\bUPDATE\b/i);
+        }
+        for (const stmt of initStmts) {
+            expect(stmt).not.toMatch(/\bUPDATE\b/i);
+        }
+    });
+
+    // [1A-FU2-DB-H1] No ALTER DEFAULT PRIVILEGES ... GRANT EXECUTE on FUNCTIONS.
+    // Existing functions get EXECUTE via the snapshot grant; future ones must
+    // be granted explicitly per-migration so a stray SECURITY DEFINER cannot
+    // auto-leak elevated rights.
+    test('No ALTER DEFAULT PRIVILEGES GRANT EXECUTE on FUNCTIONS', () => {
+        // Strip line + block comments and string literals so the assertion
+        // doesn't match the explanatory comment that mentions the pattern.
+        function stripCommentsAndStringLiterals(sql) {
+            return sql
+                .replace(/--[^\n]*/g, '')
+                .replace(/\/\*[\s\S]*?\*\//g, '')
+                .replace(/'[^']*'/g, "''");
+        }
+        const migrationStripped = stripCommentsAndStringLiterals(MIGRATION);
+        const initStripped = stripCommentsAndStringLiterals(INIT_MIRROR);
+        expect(migrationStripped).not.toMatch(
+            /ALTER\s+DEFAULT\s+PRIVILEGES[\s\S]*?GRANT\s+EXECUTE[\s\S]*?ON\s+FUNCTIONS/i
+        );
+        expect(initStripped).not.toMatch(
+            /ALTER\s+DEFAULT\s+PRIVILEGES[\s\S]*?GRANT\s+EXECUTE[\s\S]*?ON\s+FUNCTIONS/i
+        );
+    });
 });
