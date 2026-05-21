@@ -16,6 +16,8 @@ const waterSupplierRoutes = require('./waterSupplierRoutes');
 const powerAnalyticsRoutes = require('./powerAnalyticsRoutes');
 const webhookRoutes = require('./webhookRoutes');
 const integrationRoutes = require('./integrationRoutes');
+// [1A-FU-S-M2] CSP violation reports — public, rate-limited, log-only.
+const cspReportRoutes = require('./cspReportRoutes');
 const metricController = require('../controllers/metricController');
 const { authenticateJWT } = require('../middleware/auth');
 const { applyTelemetryRateLimit } = require('../middleware/rateLimiter');
@@ -77,6 +79,11 @@ const router = express.Router();
 // Маршрут телеметрии должен быть доступен без аутентификации
 router.post('/metrics/telemetry', applyTelemetryRateLimit, metricController.receiveTelemetry);
 
+// [1A-FU-S-M2] CSP violation sink. MUST be mounted BEFORE the
+// default-deny authenticateJWT middleware below — the browser cannot
+// attach an Authorization header to report-uri POSTs by spec.
+router.use('/csp-report', cspReportRoutes);
+
 // Default-deny: все маршруты требуют JWT, кроме явного allowlist
 const PUBLIC_ROUTES = [
     { method: 'POST', path: '/auth/login' },
@@ -90,6 +97,7 @@ const PUBLIC_ROUTES = [
     { method: 'GET',  path: '/' },
     { method: 'POST', path: '/webhooks/uk/building' },
     { method: 'POST', path: '/webhooks/uk/request' },
+    { method: 'POST', path: '/csp-report' },
 ];
 
 const isPublicRoute = (method, path) => {

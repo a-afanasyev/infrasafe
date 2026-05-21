@@ -49,6 +49,7 @@ docker exec infrasafe-postgres-1 psql -U postgres -d infrasafe \
 | 014 | `014_performance_indexes.sql` | 2026-04-17 | PERF-002/PERF-010 — индексы на основе EXPLAIN ANALYZE (Phase 12C.2) |
 | 015 | `015_alert_dedup_constraint.sql` | 2026-04-17 | Phase 4.1 / ARCH-106 — partial UNIQUE index для дедупликации активных alerts |
 | 016 | `016_password_changed_at.sql` | 2026-05-03 | Phase 13 — `users.password_changed_at` column (fixes latent service bug + enables JWT-cutoff for bulk session invalidation) |
+| 017 | `017_runtime_role.sql` | 2026-05-21 | [P0-5] Least-privilege `infrasafe_runtime` role + SECURITY DEFINER on `refresh_transformer_analytics()`. Operator runbook: [`../../docs/p0-5-runtime-role-2026-05-21.md`](../../docs/p0-5-runtime-role-2026-05-21.md). |
 
 ## Примечание про `003_*` и `012_*`
 

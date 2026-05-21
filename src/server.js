@@ -3,6 +3,7 @@ const { validateEnv } = require('./config/env');
 validateEnv();
 
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -29,16 +30,21 @@ const PORT = process.env.PORT || 3000;
 // Настройка helmet с CSP: строгий режим в production, мягкий в development (для Swagger UI)
 const isProduction = process.env.NODE_ENV === 'production';
 
+// [P1-3] Helmet CSP — production drops 'unsafe-inline' / 'unsafe-eval'
+// from script-src (inline <script> blocks were extracted in this PR).
+// Development needs 'unsafe-inline' on style-src for Swagger UI styling,
+// but no longer needs 'unsafe-eval' — Swagger UI 5.x doesn't use eval.
+// 'unsafe-inline' on style-src is kept in both modes because the
+// existing HTML uses `style="..."` attributes extensively; removing it
+// is tracked as a separate item (CSS-only refactor, low security ROI).
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            styleSrc: isProduction
-                ? ["'self'", "https:"]
-                : ["'self'", "'unsafe-inline'", "https:"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https:"],
             scriptSrc: isProduction
                 ? ["'self'", "https://cdn.jsdelivr.net", "https://unpkg.com"]
-                : ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.jsdelivr.net", "https://unpkg.com"],
+                : ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://unpkg.com"],
             imgSrc: ["'self'", "data:", "https:", "https://*.tile.openstreetmap.org"],
             fontSrc: ["'self'", "https:", "data:"],
             connectSrc: ["'self'", "https://*.tile.openstreetmap.org"],
@@ -46,7 +52,10 @@ app.use(helmet({
             objectSrc: ["'none'"],
             baseUri: ["'self'"],
             formAction: ["'self'"],
-            frameAncestors: ["'self'"]
+            frameAncestors: ["'self'"],
+            // [1A-FU-S-M2] CSP violations POST to /api/csp-report so a
+            // bypass/misconfig becomes observable instead of silent.
+            reportUri: ['/api/csp-report']
         }
     },
     // OpenStreetMap tile servers require Referer header — 'no-referrer' (helmet default) blocks it
@@ -60,6 +69,10 @@ app.use(express.json({
     limit: '1mb',
     verify: (req, res, buf) => { req.rawBody = buf.toString(); }
 })); // Парсинг JSON (rawBody preserved for HMAC webhook verification)
+// [P1-2] cookie-parser populates req.cookies — auth middleware reads
+// access_token / refresh_token from HttpOnly cookies as a fallback to
+// the Authorization header / req.body.refreshToken paths.
+app.use(cookieParser());
 app.use(correlationId); // Correlation ID для трейсинга запросов
 morgan.token('safepath', (req) => req.path); // path without query string
 morgan.token('correlationId', (req) => req.correlationId || '-');

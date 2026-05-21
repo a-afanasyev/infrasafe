@@ -170,32 +170,32 @@ document.addEventListener('click', function(e) {
 });
 
 document.addEventListener('DOMContentLoaded', async function () {
-    // API Client для работы с JWT токенами
+    // [1A-FU-C-M1] Phase 2: localStorage cleanup.
+    // The HttpOnly access_token cookie set by the server on /auth/login
+    // is the only auth credential. APIClient no longer stores or sets
+    // a token; `credentials: 'same-origin'` on each fetch makes the
+    // browser attach the cookie automatically.
+    //
+    // The `isAuthenticated` boolean is in-memory UI state only — its
+    // purpose is to drive the "Войти / Выйти" button label. Source of
+    // truth on initialization is a GET /api/auth/profile probe.
     class APIClient {
         constructor(baseURL) {
             this.baseURL = baseURL;
-            // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Используем валидацию токена при инициализации
-            this.token = window.DOMSecurity && window.DOMSecurity.getValidToken ? window.DOMSecurity.getValidToken() : localStorage.getItem('admin_token');
+            this.isAuthenticated = false;
+            // One-shot migration hygiene: scrub any leftover legacy entries
+            // so an XSS payload reading localStorage finds nothing.
+            try {
+                localStorage.removeItem('admin_token');
+                localStorage.removeItem('refresh_token');
+            } catch (_) { /* private mode etc — non-fatal */ }
         }
 
-        // Обновить токен
+        // [1A-FU-C-M1] setToken kept as no-op for backward-compat with
+        // callers that still invoke `apiClient.setToken(null)` on logout.
+        // It now just flips the UI flag.
         setToken(token) {
-            // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Валидируем токен перед сохранением
-            if (token && window.DOMSecurity && window.DOMSecurity.validateToken) {
-                const validation = window.DOMSecurity.validateToken(token);
-                if (!validation.valid) {
-                    console.error('Попытка установить невалидный токен:', validation.error);
-                    this.token = null;
-                    localStorage.removeItem('admin_token');
-                    return;
-                }
-            }
-            this.token = token;
-            if (token) {
-                localStorage.setItem('admin_token', token);
-            } else {
-                localStorage.removeItem('admin_token');
-            }
+            this.isAuthenticated = !!token;
         }
 
         // Выполнить fetch запрос с автоматическим добавлением авторизации
@@ -216,22 +216,10 @@ document.addEventListener('DOMContentLoaded', async function () {
                 ...options.headers
             };
 
-            // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Проверяем и валидируем токен перед использованием
-            if (this.token) {
-                // Проверяем токен перед каждым запросом
-                if (window.DOMSecurity && window.DOMSecurity.validateToken) {
-                    const validation = window.DOMSecurity.validateToken(this.token);
-                    if (!validation.valid) {
-                        console.warn('Токен невалиден, удаляем:', validation.error);
-                        this.setToken(null);
-                    } else {
-                        headers['Authorization'] = `Bearer ${this.token}`;
-                    }
-                } else {
-                    // Fallback если DOMSecurity еще не загружен
-                    headers['Authorization'] = `Bearer ${this.token}`;
-                }
-            }
+            // [1A-FU-C-M1] No Authorization header injection — the
+            // HttpOnly cookie set by /auth/login carries auth.
+            // credentials: 'same-origin' (set below on the fetch call)
+            // ensures the cookie is sent.
 
             // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Добавляем CSRF защиту для изменяющих запросов
             const method = (options.method || 'GET').toUpperCase();
@@ -246,6 +234,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             try {
                 const response = await fetch(fullURL, {
                     ...options,
+                    credentials: options.credentials || 'same-origin',
                     headers
                 });
 
@@ -2079,13 +2068,15 @@ document.addEventListener('DOMContentLoaded', async function () {
     // АВТОРИЗАЦИЯ НА КАРТЕ (кнопка + модальное окно)
     // ============================================================
 
+    // [1A-FU-C-M1] UI state derived from apiClient.isAuthenticated
+    // (in-memory). Initial value is set by an early /api/auth/profile
+    // probe in the boot sequence below.
     function updateAuthButton() {
         const btn = document.getElementById('map-auth-btn');
         const btnText = document.getElementById('map-auth-btn-text');
         if (!btn || !btnText) return;
 
-        const token = localStorage.getItem('admin_token');
-        if (token) {
+        if (apiClient && apiClient.isAuthenticated) {
             btn.classList.add('authenticated');
             btnText.textContent = 'Выйти';
             btn.setAttribute('aria-label', 'Выйти');
@@ -2125,27 +2116,37 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
     }
 
+    // [1A-FU-C-M1] Initial auth probe — runs once at boot to set the
+    // UI state. HttpOnly cookie can't be read by JS so we ask the
+    // server. Failure (401/network) → treat as logged-out.
+    (async () => {
+        try {
+            const res = await fetch(`${window.BACKEND_URL}/auth/profile`, {
+                method: 'GET',
+                credentials: 'same-origin'
+            });
+            apiClient.isAuthenticated = res.ok;
+        } catch (_) {
+            apiClient.isAuthenticated = false;
+        }
+        updateAuthButton();
+    })();
+
     // Кнопка "Войти"/"Выйти" в header
     const authBtn = document.getElementById('map-auth-btn');
     if (authBtn) {
         authBtn.addEventListener('click', async () => {
-            const token = localStorage.getItem('admin_token');
-            if (token) {
-                // Выход — отзываем токен на сервере
-                // [P1-V1] также отправляем refreshToken чтобы сервер мог его блэклистнуть
+            if (apiClient.isAuthenticated) {
+                // Выход — server clears HttpOnly cookies and blacklists tokens.
+                // [P1-V1 / 1A-FU-C-M1] No more refreshToken in body — the
+                // refresh_token cookie is sent automatically with credentials.
                 try {
-                    const refreshToken = localStorage.getItem('refresh_token');
                     await fetch(`${window.BACKEND_URL}/auth/logout`, {
                         method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: refreshToken ? JSON.stringify({ refreshToken }) : undefined
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin'
                     });
                 } catch (e) { /* продолжаем logout в любом случае */ }
-                localStorage.removeItem('admin_token');
-                localStorage.removeItem('refresh_token');
                 apiClient.setToken(null);
                 updateAuthButton();
                 // Перезагружаем карту (анонимные данные)

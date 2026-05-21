@@ -1463,8 +1463,11 @@
 
     </div><!-- /.admin-container -->
 
-    <!-- Подключение DOMPurify для защиты от XSS -->
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.7/dist/purify.min.js"></script>
+    <!-- Подключение DOMPurify для защиты от XSS — SRI sha384 закрепляет содержимое CDN-пакета [P1-3] -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.7/dist/purify.min.js"
+            integrity="sha384-qJNkHwhlYywDHfyoEe1np+1lYvX/8x+3gHCKFhSSBMQyCFlvFnn+zXmaebXl21rV"
+            crossorigin="anonymous"
+            referrerpolicy="no-referrer"></script>
     
     <!-- Leaflet для мини-карт -->
     <link rel="stylesheet" href="public/libs/leaflet/leaflet.css" />

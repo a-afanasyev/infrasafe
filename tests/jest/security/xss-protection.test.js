@@ -248,17 +248,26 @@ describe('XSS Protection Tests', () => {
             });
         });
         
-        test('login.html should use safe DOM methods for error messages', () => {
-            const content = fs.readFileSync(
+        test('login flow should use safe DOM methods for error messages', () => {
+            // [P1-3] Inline <script> in public/login.html was extracted to
+            // public/login.js so the production CSP can drop 'unsafe-inline'.
+            // The safe-DOM assertion now reads BOTH files and passes if
+            // either contains textContent / DOMSecurity (the JS is what
+            // matters; the HTML is the loader).
+            const html = fs.readFileSync(
                 path.join(__dirname, '../../../public/login.html'),
                 'utf8'
             );
+            const js = fs.readFileSync(
+                path.join(__dirname, '../../../public/login.js'),
+                'utf8'
+            );
+            const combined = `${html}\n${js}`;
 
-            // Проверяем использование безопасных методов (textContent или DOMSecurity)
-            const usesSafeDOM = content.includes('textContent') || content.includes('DOMSecurity.showSecureErrorMessage');
+            const usesSafeDOM = combined.includes('textContent') || combined.includes('DOMSecurity.showSecureErrorMessage');
             expect(usesSafeDOM).toBe(true);
             // Не должно быть innerHTML для пользовательских данных
-            expect(content).not.toMatch(/innerHTML\s*=\s*[^'"`]*message/);
+            expect(combined).not.toMatch(/innerHTML\s*=\s*[^'"`]*message/);
         });
     });
     
