@@ -69,8 +69,9 @@ describe('[P1-2] authCookies utility', () => {
             );
         });
 
-        test('secure flag is false outside production', () => {
+        test('secure flag is false outside production by default', () => {
             process.env.NODE_ENV = 'development';
+            delete process.env.SECURE_COOKIES;
 
             setAuthCookies(res, { accessToken: 'A' });
 
@@ -80,6 +81,29 @@ describe('[P1-2] authCookies utility', () => {
             // unrelated to the HTTPS-vs-HTTP distinction.
             expect(opts.httpOnly).toBe(true);
             expect(opts.sameSite).toBe('strict');
+        });
+
+        // [1A-FU-C-L1] staging override: TLS terminates at nginx but
+        // NODE_ENV stays "development" — operator opts into Secure=true
+        // with SECURE_COOKIES=true.
+        test('secure flag honors SECURE_COOKIES=true even when NODE_ENV !== production', () => {
+            process.env.NODE_ENV = 'staging';
+            process.env.SECURE_COOKIES = 'true';
+
+            setAuthCookies(res, { accessToken: 'A' });
+
+            const [, , opts] = res.cookie.mock.calls[0];
+            expect(opts.secure).toBe(true);
+        });
+
+        test('SECURE_COOKIES values other than "true" leave secure off', () => {
+            process.env.NODE_ENV = 'development';
+            process.env.SECURE_COOKIES = '1';   // not the canonical string
+
+            setAuthCookies(res, { accessToken: 'A' });
+
+            const [, , opts] = res.cookie.mock.calls[0];
+            expect(opts.secure).toBe(false);
         });
 
         test('skips refresh cookie when refreshToken is absent', () => {
@@ -115,8 +139,19 @@ describe('[P1-2] authCookies utility', () => {
     });
 
     describe('extractAccessToken', () => {
-        test('returns header token when Authorization Bearer is present', () => {
-            const req = { headers: { authorization: 'Bearer header-tok' }, cookies: { [COOKIE_NAMES.access]: 'cookie-tok' } };
+        // [1A-FU-S-L4] cookie-first precedence — browser-set HttpOnly
+        // cookie is the trusted source; Authorization header is only
+        // for programmatic API clients (curl, service-to-service).
+        test('returns cookie token when BOTH cookie and header present (cookie wins)', () => {
+            const req = {
+                headers: { authorization: 'Bearer header-tok' },
+                cookies: { [COOKIE_NAMES.access]: 'cookie-tok' }
+            };
+            expect(extractAccessToken(req)).toBe('cookie-tok');
+        });
+
+        test('returns header token when cookie is missing', () => {
+            const req = { headers: { authorization: 'Bearer header-tok' }, cookies: {} };
             expect(extractAccessToken(req)).toBe('header-tok');
         });
 
@@ -131,25 +166,37 @@ describe('[P1-2] authCookies utility', () => {
             expect(extractAccessToken({})).toBeNull();
         });
 
+        test('empty-string cookie value falls through to header', () => {
+            const req = {
+                headers: { authorization: 'Bearer header-tok' },
+                cookies: { [COOKIE_NAMES.access]: '' }
+            };
+            expect(extractAccessToken(req)).toBe('header-tok');
+        });
+
         test('returns null for "Bearer " with empty token (falls through, no cookie)', () => {
             const req = { headers: { authorization: 'Bearer ' }, cookies: {} };
             expect(extractAccessToken(req)).toBeNull();
         });
 
-        test('returns cookie when header is "Bearer " (empty token) — graceful fallback', () => {
-            const req = { headers: { authorization: 'Bearer ' }, cookies: { [COOKIE_NAMES.access]: 'cookie-tok' } };
-            expect(extractAccessToken(req)).toBe('cookie-tok');
-        });
-
-        test('is case-insensitive on the "Bearer" scheme', () => {
+        test('is case-insensitive on the "Bearer" scheme (header path)', () => {
             const req = { headers: { authorization: 'bearer header-tok' }, cookies: {} };
             expect(extractAccessToken(req)).toBe('header-tok');
         });
     });
 
     describe('extractRefreshToken', () => {
-        test('returns body refreshToken when present', () => {
-            const req = { body: { refreshToken: 'body-tok' }, cookies: { [COOKIE_NAMES.refresh]: 'cookie-tok' } };
+        // [1A-FU-S-L4] cookie-first precedence — same rationale.
+        test('returns cookie value when BOTH cookie and body present (cookie wins)', () => {
+            const req = {
+                body: { refreshToken: 'body-tok' },
+                cookies: { [COOKIE_NAMES.refresh]: 'cookie-tok' }
+            };
+            expect(extractRefreshToken(req)).toBe('cookie-tok');
+        });
+
+        test('returns body refreshToken when cookie missing', () => {
+            const req = { body: { refreshToken: 'body-tok' }, cookies: {} };
             expect(extractRefreshToken(req)).toBe('body-tok');
         });
 

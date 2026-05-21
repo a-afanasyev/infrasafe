@@ -27,11 +27,21 @@ const COOKIE_NAMES = Object.freeze({
 const ACCESS_TOKEN_MAX_AGE_MS = 60 * 60 * 1000;            // 1h
 const REFRESH_TOKEN_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;  // 7d
 
+// [1A-FU-C-L1] `secure` flag must be ON behind staging TLS too.
+// Staging environments often run NODE_ENV=development with nginx
+// terminating TLS in front — without this override, cookies are sent
+// over plain HTTP and the Set-Cookie's `Secure` attribute is missing,
+// so an HTTP-side observer (man-in-the-middle in transit) sees them.
+function isCookieSecure() {
+    if (process.env.NODE_ENV === 'production') return true;
+    if (process.env.SECURE_COOKIES === 'true') return true;
+    return false;
+}
+
 function baseOpts() {
-    const isProduction = process.env.NODE_ENV === 'production';
     return {
         httpOnly: true,
-        secure: isProduction,
+        secure: isCookieSecure(),
         sameSite: 'strict',
         path: '/'
     };
@@ -60,8 +70,23 @@ function clearAuthCookies(res) {
     res.clearCookie(COOKIE_NAMES.refresh, opts);
 }
 
-// [P1-2] Extraction helpers used by middleware.
+// [P1-2 / 1A-FU-S-L4] Extraction helpers used by middleware.
+//
+// Cookie comes FIRST in the precedence. With localStorage now removed
+// from the in-browser clients (P1-2 Phase 2, [1A-FU-C-M1]), JS can no
+// longer set an Authorization header on its own behalf — anything in
+// the Authorization slot is either a programmatic API client (curl,
+// service-to-service) or an XSS-injected header. The browser-set
+// HttpOnly cookie is the trusted source.
+//
+// The header path stays as a fallback specifically for those
+// non-browser clients. If a future feature wants to disable header
+// auth entirely, that's a single conditional here.
 function extractAccessToken(req) {
+    if (req.cookies && typeof req.cookies[COOKIE_NAMES.access] === 'string'
+        && req.cookies[COOKIE_NAMES.access].length > 0) {
+        return req.cookies[COOKIE_NAMES.access];
+    }
     const authHeader = req.headers && req.headers.authorization;
     if (authHeader) {
         const parts = authHeader.split(' ');
@@ -69,18 +94,20 @@ function extractAccessToken(req) {
             return parts[1];
         }
     }
-    if (req.cookies && typeof req.cookies[COOKIE_NAMES.access] === 'string') {
-        return req.cookies[COOKIE_NAMES.access];
-    }
     return null;
 }
 
 function extractRefreshToken(req) {
+    // Same precedence inversion as extractAccessToken — cookie first.
+    // req.body.refreshToken stays as a fallback for the legacy
+    // payload-based refresh flow (used by older clients during the
+    // transitional window and by programmatic refresh callers).
+    if (req.cookies && typeof req.cookies[COOKIE_NAMES.refresh] === 'string'
+        && req.cookies[COOKIE_NAMES.refresh].length > 0) {
+        return req.cookies[COOKIE_NAMES.refresh];
+    }
     if (req.body && typeof req.body.refreshToken === 'string' && req.body.refreshToken.length > 0) {
         return req.body.refreshToken;
-    }
-    if (req.cookies && typeof req.cookies[COOKIE_NAMES.refresh] === 'string') {
-        return req.cookies[COOKIE_NAMES.refresh];
     }
     return null;
 }

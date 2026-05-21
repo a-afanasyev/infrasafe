@@ -1,36 +1,47 @@
 // Admin-panel auth guard.
 // Responsibilities:
-//   1. On load, validate the JWT from localStorage against /api/auth/profile.
-//   2. If there is no token, or the token is invalid/expired, redirect to /login.html —
-//      where the full 2FA flow (verify-2fa, setup-2fa, confirm-2fa) lives.
-//   3. Intercept window.fetch to attach Authorization: Bearer <token> to /api/* calls
-//      and to force logout on the first 401 response.
+//   1. On load, validate the current session against /api/auth/profile.
+//      Authentication is via the HttpOnly access_token cookie that the
+//      server set on /auth/login; the browser sends it automatically.
+//   2. If the session is invalid/expired, redirect to /login.html — where
+//      the full 2FA flow (verify-2fa, setup-2fa, confirm-2fa) lives.
+//   3. Intercept window.fetch to apply CSRF tokens to mutating /api/* calls
+//      and to force logout on the first 401 response. (Authorization header
+//      is no longer injected — cookies handle that.)
 //
 // This file intentionally does NOT render a login form or speak the 2FA protocol.
 // Duplicating that here historically caused the "different OTP" bug: POST /api/auth/login
 // returned { requires2FASetup:true, tempToken:'...' } (no accessToken), and the old
 // flow stored the literal string "undefined" as admin_token.
+//
+// [1A-FU-C-M1] Phase 2 of P1-2: localStorage cleanup. The class no
+// longer reads or writes admin_token / refresh_token in localStorage;
+// the HttpOnly cookie set by the server is the single source of truth.
+// Any leftover localStorage entries from prior versions are cleared
+// once on load to prevent confusion (no security gain, just hygiene).
 
 class AdminAuth {
     constructor() {
-        this.token = localStorage.getItem('admin_token');
         this.isAuthenticated = false;
         this.fetchIntercepted = false;
+        // One-shot migration hygiene: scrub leftover legacy entries.
+        try {
+            localStorage.removeItem('admin_token');
+            localStorage.removeItem('refresh_token');
+        } catch (_) { /* private mode etc — non-fatal */ }
         this.init();
     }
 
     init() {
-        if (this.token && this.token !== 'undefined' && this.token !== 'null') {
-            this.validateToken();
-        } else {
-            this.redirectToLogin();
-        }
+        // No client-side token state. Ask the server.
+        this.validateToken();
     }
 
     async validateToken() {
         try {
             const response = await fetch('/api/auth/profile', {
-                headers: { 'Authorization': `Bearer ${this.token}` }
+                method: 'GET',
+                credentials: 'same-origin'   // [1A-FU-C-M1] cookie carries auth
             });
 
             if (response.ok) {
@@ -49,33 +60,22 @@ class AdminAuth {
     }
 
     logout() {
-        // [P1-V1] Best-effort server-side blacklist of BOTH access and
-        // refresh tokens before clearing local state. We don't await —
-        // network failures must not block the redirect — but we send the
-        // request so the server can revoke before the refresh window
-        // (7d) elapses. Uses _originalFetch to skip the 401-intercept
-        // self-recursion that the patched window.fetch would trigger.
-        const accessToken = this.token || localStorage.getItem('admin_token');
-        const refreshToken = localStorage.getItem('refresh_token');
+        // [P1-V1 / 1A-FU-C-M1] Best-effort server-side blacklist + cookie clear.
+        // No localStorage to clean — cookies are the only token store now.
+        // We don't await; network failures must not block the redirect.
+        // _originalFetch skips the 401-intercept self-recursion that the
+        // patched window.fetch would trigger.
         const fetchFn = window._originalFetch || window.fetch;
-        if (accessToken) {
-            try {
-                fetchFn.call(window, '/api/auth/logout', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: refreshToken ? JSON.stringify({ refreshToken }) : undefined,
-                    keepalive: true
-                }).catch(() => { /* network failure must not block redirect */ });
-            } catch (_) { /* eslint-disable-line no-unused-vars */ }
-        }
+        try {
+            fetchFn.call(window, '/api/auth/logout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                keepalive: true
+            }).catch(() => { /* network failure must not block redirect */ });
+        } catch (_) { /* eslint-disable-line no-unused-vars */ }
 
-        this.token = null;
         this.isAuthenticated = false;
-        localStorage.removeItem('admin_token');
-        localStorage.removeItem('refresh_token');
         this.restoreFetch();
         this.redirectToLogin();
     }
@@ -93,6 +93,14 @@ class AdminAuth {
     }
 
     setupAuthHeaders() {
+        // [1A-FU-C-M1] Renamed for clarity but kept the symbol — admin.js
+        // doesn't call it directly. The interceptor no longer injects
+        // Authorization headers (the browser-set cookie handles that
+        // automatically). It still:
+        //   • applies CSRF tokens to mutating /api/* requests
+        //   • forces logout on the first 401 from /api/*
+        //   • ensures `credentials: 'same-origin'` is set so the cookie
+        //     reaches the server even on calls that started without it
         if (this.fetchIntercepted) {
             console.warn('Fetch уже перехвачен, пропускаем повторную установку');
             return;
@@ -113,8 +121,12 @@ class AdminAuth {
             const isApiRequest = typeof url === 'string' &&
                                  (url.startsWith('/api/') || url.includes('/api/'));
 
-            if (self.token && isApiRequest) {
-                options.headers['Authorization'] = `Bearer ${self.token}`;
+            // Ensure credentials are included on every /api/* call so the
+            // HttpOnly cookie reaches the server. Default is 'same-origin'
+            // which works for same-host requests; we set it explicitly to
+            // survive callers that pass `credentials: 'omit'` accidentally.
+            if (isApiRequest && !options.credentials) {
+                options.credentials = 'same-origin';
             }
 
             const method = (options.method || 'GET').toUpperCase();
@@ -132,7 +144,7 @@ class AdminAuth {
         };
 
         this.fetchIntercepted = true;
-        console.log('✅ Fetch перехвачен для авторизации');
+        console.log('✅ Fetch перехвачен для CSRF + 401-handling (auth — через cookie)');
     }
 
     showAdminPanel() {
@@ -273,12 +285,12 @@ class AdminAuth {
             hideError(serverError);
 
             try {
+                // [1A-FU-C-M1] Authorization header removed — the
+                // intercepted fetch sets credentials: 'same-origin' so
+                // the HttpOnly cookie reaches the server.
                 const response = await fetch('/api/auth/change-password', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + this.token
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         currentPassword: current.value,
                         newPassword: newPwd.value
@@ -354,9 +366,9 @@ class AdminAuth {
         document.head.insertAdjacentHTML('beforeend', styles);
     }
 
-    getToken() {
-        return this.token;
-    }
+    // [1A-FU-C-M1] getToken() removed — no JS-readable token exists.
+    // Any consumer that needs to call /api/* should simply make the
+    // request; the HttpOnly cookie carries auth automatically.
 
     isAuthorized() {
         return this.isAuthenticated;

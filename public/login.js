@@ -150,11 +150,18 @@
         }
 
         // --- Helpers ---
+        // [1A-FU-C-M1] Phase 2 — no more localStorage.setItem on the access
+        // token. The server's Set-Cookie response on /auth/login (and the
+        // 2FA endpoints) installs HttpOnly+Secure+SameSite=Strict cookies
+        // that the browser sends automatically on subsequent requests.
+        // Storing the token in localStorage was the XSS hole that P1-2
+        // was supposed to close — Phase 1 left it in for transitional
+        // backward-compat; this PR finishes the job.
         completeLogin(data) {
             const token = data.accessToken || data.token;
             if (!token) throw new Error('Токен не получен');
-            localStorage.setItem('admin_token', token);
-            if (data.refreshToken) localStorage.setItem('refresh_token', data.refreshToken);
+            // Note: server has already set the cookies before this body
+            // arrived. We deliberately do NOT touch localStorage.
             this.showSuccess('success-container', 'Вход выполнен! Перенаправление...');
             setTimeout(() => { window.location.href = '/admin.html'; }, 1000);
         }
@@ -196,9 +203,24 @@
         }
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
-        const existingToken = localStorage.getItem('admin_token');
-        if (existingToken) { window.location.href = '/admin.html'; return; }
+    document.addEventListener('DOMContentLoaded', async () => {
+        // [1A-FU-C-M1] Phase 2 — page-load "already logged in?" check
+        // can no longer read localStorage. Probe the cookie session by
+        // calling /api/auth/profile; if it returns 200 the cookie is
+        // valid and we redirect to admin. Anything else (401/network)
+        // → user is not logged in, render the form.
+        try {
+            const res = await fetch('/api/auth/profile', {
+                method: 'GET',
+                credentials: 'same-origin'   // browser must send the cookie
+            });
+            if (res.ok) {
+                window.location.href = '/admin.html';
+                return;
+            }
+        } catch (_) {
+            // Network error — fall through to render the form.
+        }
         new LoginHandler();
     });
 }());
