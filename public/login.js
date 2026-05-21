@@ -12,6 +12,52 @@
 (function () {
     'use strict';
 
+    // [1A-FU-C-L2] Normalize server error messages before displaying them.
+    //
+    // Raw server messages can leak internal state — e.g.
+    //   "Аккаунт заблокирован до 2026-05-22T10:00:00.000Z"
+    // tells an attacker exactly when their brute-force attempt locked
+    // the account, which is useful for timing follow-up attacks.
+    //
+    // Map known patterns to short user-friendly strings; fall through
+    // to the original message only if it's plausibly safe (≤80 chars,
+    // no ISO timestamp, no email/IP-like substrings).
+    const ERROR_PATTERNS = [
+        // Auth — invalid credentials / account state
+        { match: /Неверн|invalid (credentials|username|password)|user not found/i,
+          message: 'Неверный логин или пароль' },
+        { match: /заблокирован|locked|too many (attempts|requests)/i,
+          message: 'Аккаунт временно заблокирован. Повторите позже.' },
+        { match: /деактивирован|disabled|inactive/i,
+          message: 'Аккаунт деактивирован. Обратитесь к администратору.' },
+
+        // 2FA
+        { match: /(invalid|incorrect|wrong)\s*(2fa|totp|code)|неверный (код|tot)/i,
+          message: 'Неверный код 2FA' },
+        { match: /token (expired|invalid)|истёк|истек/i,
+          message: 'Сессия истекла. Войдите заново.' },
+
+        // Generic / network
+        { match: /network|timeout|fetch (failed|error)/i,
+          message: 'Проблема с сетью. Попробуйте снова.' }
+    ];
+
+    function normalizeError(rawMessage) {
+        const msg = String(rawMessage || '').trim();
+        if (!msg) return 'Не удалось войти. Проверьте данные и попробуйте снова.';
+        for (const pattern of ERROR_PATTERNS) {
+            if (pattern.match.test(msg)) return pattern.message;
+        }
+        // Plausibly-safe fall-through: short and free of obvious
+        // leak markers (timestamps, emails, IPs).
+        const looksSafe =
+            msg.length <= 80 &&
+            !/\d{4}-\d{2}-\d{2}/.test(msg) &&   // ISO date
+            !/\b\d{1,3}(?:\.\d{1,3}){3}\b/.test(msg) &&  // IPv4
+            !/[\w.+-]+@[\w-]+\.[a-z]{2,}/i.test(msg);   // email
+        return looksSafe ? msg : 'Не удалось войти. Проверьте данные и попробуйте снова.';
+    }
+
     class LoginHandler {
         constructor() {
             this.tempToken = null;
@@ -58,7 +104,7 @@
                         this.completeLogin(data);
                     }
                 } catch (err) {
-                    this.showError('error-container', err.message);
+                    this.showError('error-container', normalizeError(err.message));
                 } finally {
                     this.setLoading('login-button', 'loading', false);
                 }
@@ -92,7 +138,7 @@
                     if (!res.ok) throw new Error(data.message || data.error || 'Неверный код');
                     this.completeLogin(data);
                 } catch (err) {
-                    this.showError('totp-error-container', err.message);
+                    this.showError('totp-error-container', normalizeError(err.message));
                     document.getElementById('totp-code').value = '';
                     document.getElementById('totp-code').focus();
                 } finally {
@@ -112,13 +158,23 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.message || data.error || 'Ошибка настройки 2FA');
 
-                document.getElementById('qr-code-img').src = data.qrCodeUrl;
+                // [1A-FU-C-M3] Defence-in-depth: validate qrCodeUrl
+                // scheme before assigning to img.src. Server controls it
+                // today, but a regression could send `javascript:` or a
+                // hostile origin — the prefix check makes the failure
+                // mode "image doesn't render" instead of "XSS executes".
+                const qrUrl = String(data.qrCodeUrl || '');
+                const qrOk = qrUrl.startsWith('data:image/') || qrUrl.startsWith('https://');
+                if (!qrOk) {
+                    throw new Error('Сервер вернул некорректный QR-код');
+                }
+                document.getElementById('qr-code-img').src = qrUrl;
                 document.getElementById('totp-secret-display').textContent = data.secret;
                 document.getElementById('recovery-codes-display').textContent = data.recoveryCodes.join('\n');
                 this.showStep('totp-setup');
                 document.getElementById('confirm-code').focus();
             } catch (err) {
-                this.showError('error-container', err.message);
+                this.showError('error-container', normalizeError(err.message));
             }
         }
 
@@ -140,7 +196,7 @@
                     if (!res.ok) throw new Error(data.message || data.error || 'Неверный код');
                     this.completeLogin(data);
                 } catch (err) {
-                    this.showError('setup-error-container', err.message);
+                    this.showError('setup-error-container', normalizeError(err.message));
                     document.getElementById('confirm-code').value = '';
                     document.getElementById('confirm-code').focus();
                 } finally {
