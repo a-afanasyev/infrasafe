@@ -26,17 +26,24 @@ services:
       - /app/node_modules
       # Named volume для логов, чтобы избежать проблем с правами доступа
       - app_logs:/app/logs
+    # [1A-FU3-S-M2] DB credentials moved to .env (gitignored). `environment:`
+    # would override env_file in docker-compose precedence, so credentials
+    # are NOT listed here. Fresh checkout: `cp .env.example .env` and edit.
+    # Production: .env.prod is the source. P0-5 requires DB_USER=infrasafe_runtime
+    # in production (.env.prod); dev uses DB_USER=infrasafe_app to match
+    # POSTGRES_USER bootstrap.
+    env_file:
+      - .env
     environment:
-      - NODE_ENV=development
+      # [1A-FU3-S-M2] NODE_ENV also moved to .env so production deploys can
+      # actually run in production mode. Hardcoding NODE_ENV=development here
+      # caused Helmet CSP to ship with 'unsafe-inline' in script-src on the
+      # production server, and Swagger UI was exposed publicly. Dev .env keeps
+      # NODE_ENV=development; .env.prod sets NODE_ENV=production.
       - PORT=3000
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=infrasafe
-      - DB_USER=infrasafe_app
-      - DB_PASSWORD=@ppl1c@ti0n
-      # JWT секреты (для production используйте надежные значения из .env)
-      - JWT_SECRET=${JWT_SECRET:-dev-secret-key-change-in-production}
-      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-dev-refresh-secret-key-change-in-production}
     depends_on:
       postgres:
         condition: service_healthy
