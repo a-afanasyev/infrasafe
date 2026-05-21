@@ -1,51 +1,32 @@
 const logger = require('../utils/logger');
+const redisClient = require('../utils/redisClient');
+
+// [Sprint 4] Cache namespace prefix — avoids key collisions when this
+// Redis is shared (e.g. with the rate-limiter under `ratelimit:*`).
+const CACHE_PREFIX = 'cache:';
 
 class CacheService {
     constructor() {
-        this.defaultTTL = 300; // 5 минут
-        this.analyticsCache = new Map(); // In-memory cache для критических данных
-        this.memoryTTL = 60000; // 1 минута в памяти
-        this.maxMemoryItems = 1000; // Максимум элементов в памяти
+        this.defaultTTL = 300; // 5 минут (seconds; Redis TTL)
+        this.analyticsCache = new Map(); // L1 in-memory
+        this.memoryTTL = 60000; // 1 минута (ms; L1 TTL)
+        this.maxMemoryItems = 1000;
 
-        // Инициализация Redis (опционально)
-        this.redisClient = null;
-        this.redisAvailable = false;
-
-        this.initRedis();
+        // [Sprint 4] Use shared redisClient instead of an own connection.
+        // L2 (Redis) is consulted only when isReady() — call sites stay
+        // unchanged through degraded mode.
         this.startCleanupTimer();
     }
 
-    // Инициализация Redis (если доступен)
-    async initRedis() {
-        try {
-            // Пытаемся подключиться к Redis, если он указан в конфигурации
-            if (process.env.REDIS_URL) {
-                const Redis = require('redis');
-                this.redisClient = Redis.createClient({
-                    url: process.env.REDIS_URL,
-                    retry_unfulfilled_commands: false,
-                    socket: {
-                        connectTimeout: 5000,
-                        lazyConnect: true
-                    }
-                });
-
-                this.redisClient.on('error', (err) => {
-                    logger.warn('Redis недоступен:', err.message);
-                    this.redisAvailable = false;
-                });
-
-                this.redisClient.on('connect', () => {
-                    logger.info('Redis подключен успешно');
-                    this.redisAvailable = true;
-                });
-
-                await this.redisClient.connect();
-            }
-        } catch (error) {
-            logger.warn('Redis не настроен, используется только memory cache:', error.message);
-            this.redisAvailable = false;
-        }
+    // [Sprint 4] Helpers — single source of truth for L2 availability.
+    get redisAvailable() {
+        return redisClient.isReady();
+    }
+    get redisClient() {
+        return redisClient.getClient();
+    }
+    _k(key) {
+        return `${CACHE_PREFIX}${key}`;
     }
 
     // Очистка устаревших записей из memory cache
@@ -103,7 +84,7 @@ class CacheService {
         // Затем проверяем Redis
         if (this.redisAvailable) {
             try {
-                const redisData = await this.redisClient.get(cacheKey);
+                const redisData = await this.redisClient.get(this._k(cacheKey));
                 if (redisData) {
                     const parsed = JSON.parse(redisData);
 
@@ -136,7 +117,7 @@ class CacheService {
         // Redis cache
         if (this.redisAvailable) {
             try {
-                await this.redisClient.setEx(cacheKey, this.defaultTTL, JSON.stringify(data));
+                await this.redisClient.setex(this._k(cacheKey), this.defaultTTL, JSON.stringify(data));
                 logger.debug(`Cache set (Redis) для ${cacheKey}`);
             } catch (error) {
                 logger.warn('Не удалось сохранить в Redis:', error.message);
@@ -156,7 +137,7 @@ class CacheService {
         // Удаляем из Redis
         if (this.redisAvailable) {
             try {
-                await this.redisClient.del(cacheKey);
+                await this.redisClient.del(this._k(cacheKey));
                 logger.debug(`Cache invalidated (Redis) для ${cacheKey}`);
             } catch (error) {
                 logger.warn('Не удалось очистить Redis:', error.message);
@@ -183,7 +164,7 @@ class CacheService {
         // Redis cache
         if (this.redisAvailable) {
             try {
-                const redisData = await this.redisClient.get(key);
+                const redisData = await this.redisClient.get(this._k(key));
                 if (redisData) {
                     const parsed = JSON.parse(redisData);
                     this.analyticsCache.set(key, {
@@ -213,7 +194,7 @@ class CacheService {
         // Redis cache
         if (this.redisAvailable) {
             try {
-                await this.redisClient.setEx(key, ttl, JSON.stringify(data));
+                await this.redisClient.setex(this._k(key), ttl, JSON.stringify(data));
             } catch (error) {
                 logger.warn('Не удалось сохранить в Redis:', error.message);
             }
@@ -227,7 +208,7 @@ class CacheService {
         // Redis cache
         if (this.redisAvailable) {
             try {
-                await this.redisClient.del(key);
+                await this.redisClient.del(this._k(key));
             } catch (error) {
                 logger.warn('Не удалось очистить Redis:', error.message);
             }
@@ -243,10 +224,12 @@ class CacheService {
             }
         }
 
-        // Redis cache - используем SCAN для поиска по паттерну (KEYS блокирует Redis)
+        // Redis cache — SCAN avoids blocking on large keysets (vs KEYS).
+        // Match within our cache namespace only (don't wipe rate-limiter
+        // keys etc. that share the same Redis instance).
         if (this.redisAvailable) {
             try {
-                const matchPattern = `*${pattern}*`;
+                const matchPattern = `${CACHE_PREFIX}*${pattern}*`;
                 const keysToDelete = [];
                 let cursor = '0';
                 do {
@@ -274,16 +257,26 @@ class CacheService {
         };
     }
 
-    // Очистка всего кэша
+    // Очистка всего кэша. [Sprint 4] Only deletes keys in our namespace
+    // — never flushdb (would wipe rate-limiter / dedup keys too).
     async clearAll() {
         // Memory cache
         this.analyticsCache.clear();
 
-        // Redis cache
+        // Redis cache — scoped deletion via SCAN over CACHE_PREFIX.
         if (this.redisAvailable) {
             try {
-                await this.redisClient.flushDb();
-                logger.info('Redis cache очищен');
+                let cursor = '0';
+                const keys = [];
+                do {
+                    const result = await this.redisClient.scan(cursor, 'MATCH', `${CACHE_PREFIX}*`, 'COUNT', 200);
+                    cursor = result[0];
+                    keys.push(...result[1]);
+                } while (cursor !== '0');
+                if (keys.length > 0) {
+                    await this.redisClient.del(keys);
+                }
+                logger.info(`Redis cache очищен (${keys.length} keys)`);
             } catch (error) {
                 logger.warn('Не удалось очистить Redis:', error.message);
             }
@@ -292,20 +285,14 @@ class CacheService {
         logger.info('Memory cache очищен');
     }
 
-    // Закрытие соединений
+    // Закрытие соединений. [Sprint 4] redisClient is a shared singleton —
+    // closing here would break other consumers (rate-limiter, dedup).
+    // The server.js graceful-shutdown handler is responsible for closing
+    // the Redis connection once.
     async close() {
         if (this.cleanupTimer) {
             clearInterval(this.cleanupTimer);
             this.cleanupTimer = null;
-        }
-
-        if (this.redisClient) {
-            try {
-                await this.redisClient.quit();
-                logger.info('Redis соединение закрыто');
-            } catch (error) {
-                logger.warn('Ошибка закрытия Redis:', error.message);
-            }
         }
     }
 }

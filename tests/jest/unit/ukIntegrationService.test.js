@@ -178,71 +178,71 @@ describe('UKIntegrationService', () => {
             }
         });
 
-        it('returns true for a valid signature', () => {
+        // [Sprint 4] verifyWebhookSignature is async.
+        it('returns true for a valid signature', async () => {
             process.env.UK_WEBHOOK_SECRET = SECRET;
             const header = buildHeader(BODY, SECRET);
-            expect(service.verifyWebhookSignature(BODY, header)).toBe(true);
+            await expect(service.verifyWebhookSignature(BODY, header)).resolves.toBe(true);
         });
 
-        it('returns false for an invalid (tampered) signature', () => {
+        it('returns false for an invalid (tampered) signature', async () => {
             process.env.UK_WEBHOOK_SECRET = SECRET;
             const header = buildHeader(BODY, 'wrong-secret');
-            expect(service.verifyWebhookSignature(BODY, header)).toBe(false);
+            await expect(service.verifyWebhookSignature(BODY, header)).resolves.toBe(false);
         });
 
-        it('returns false when timestamp is older than 5 minutes', () => {
+        it('returns false when timestamp is older than 5 minutes', async () => {
             process.env.UK_WEBHOOK_SECRET = SECRET;
             const expiredTimestamp = Math.floor(Date.now() / 1000) - 301;
             const header = buildHeader(BODY, SECRET, expiredTimestamp);
-            expect(service.verifyWebhookSignature(BODY, header)).toBe(false);
+            await expect(service.verifyWebhookSignature(BODY, header)).resolves.toBe(false);
         });
 
-        it('returns false when UK_WEBHOOK_SECRET is not configured', () => {
+        it('returns false when UK_WEBHOOK_SECRET is not configured', async () => {
             delete process.env.UK_WEBHOOK_SECRET;
             const header = buildHeader(BODY, SECRET);
-            expect(service.verifyWebhookSignature(BODY, header)).toBe(false);
+            await expect(service.verifyWebhookSignature(BODY, header)).resolves.toBe(false);
             expect(logger.error).toHaveBeenCalled();
         });
 
-        it('returns false when header is missing t field', () => {
+        it('returns false when header is missing t field', async () => {
             process.env.UK_WEBHOOK_SECRET = SECRET;
             const timestamp = Math.floor(Date.now() / 1000);
             const sig = crypto.createHmac('sha256', SECRET).update(`${timestamp}.${BODY}`).digest('hex');
-            expect(service.verifyWebhookSignature(BODY, `v1=${sig}`)).toBe(false);
+            await expect(service.verifyWebhookSignature(BODY, `v1=${sig}`)).resolves.toBe(false);
         });
 
-        it('returns false when header is missing v1 field', () => {
+        it('returns false when header is missing v1 field', async () => {
             process.env.UK_WEBHOOK_SECRET = SECRET;
             const timestamp = Math.floor(Date.now() / 1000);
-            expect(service.verifyWebhookSignature(BODY, `t=${timestamp}`)).toBe(false);
+            await expect(service.verifyWebhookSignature(BODY, `t=${timestamp}`)).resolves.toBe(false);
         });
 
-        // [P0-2] Nonce/replay protection cases
+        // [P0-2] Nonce/replay protection cases — in-memory branch
+        // (Redis not configured in test env → falls through to Map).
         describe('[P0-2] replay protection within timestamp window', () => {
-            it('rejects a second submission of the same valid signature', () => {
+            it('rejects a second submission of the same valid signature', async () => {
                 process.env.UK_WEBHOOK_SECRET = SECRET;
                 const header = buildHeader(BODY, SECRET);
 
-                // First time → valid
-                expect(service.verifyWebhookSignature(BODY, header)).toBe(true);
-                // Replay → reject even though HMAC + timestamp are still good
-                expect(service.verifyWebhookSignature(BODY, header)).toBe(false);
+                await expect(service.verifyWebhookSignature(BODY, header)).resolves.toBe(true);
+                await expect(service.verifyWebhookSignature(BODY, header)).resolves.toBe(false);
             });
 
-            it('logs a warn on replay attempt', () => {
+            it('logs a warn on replay attempt', async () => {
                 process.env.UK_WEBHOOK_SECRET = SECRET;
                 const header = buildHeader(BODY, SECRET);
 
-                service.verifyWebhookSignature(BODY, header);
+                await service.verifyWebhookSignature(BODY, header);
                 logger.warn.mockClear();
-                service.verifyWebhookSignature(BODY, header);
+                await service.verifyWebhookSignature(BODY, header);
 
                 expect(logger.warn).toHaveBeenCalled();
                 const msgs = logger.warn.mock.calls.map(c => c[0]);
                 expect(msgs.some(m => typeof m === 'string' && m.includes('replay'))).toBe(true);
             });
 
-            it('accepts a different signature with the same timestamp', () => {
+            it('accepts a different signature with the same timestamp', async () => {
                 process.env.UK_WEBHOOK_SECRET = SECRET;
                 const ts = Math.floor(Date.now() / 1000);
                 const body1 = JSON.stringify({ event: 'a' });
@@ -250,45 +250,40 @@ describe('UKIntegrationService', () => {
                 const sig1 = crypto.createHmac('sha256', SECRET).update(`${ts}.${body1}`).digest('hex');
                 const sig2 = crypto.createHmac('sha256', SECRET).update(`${ts}.${body2}`).digest('hex');
 
-                expect(service.verifyWebhookSignature(body1, `t=${ts},v1=${sig1}`)).toBe(true);
-                expect(service.verifyWebhookSignature(body2, `t=${ts},v1=${sig2}`)).toBe(true);
+                await expect(service.verifyWebhookSignature(body1, `t=${ts},v1=${sig1}`)).resolves.toBe(true);
+                await expect(service.verifyWebhookSignature(body2, `t=${ts},v1=${sig2}`)).resolves.toBe(true);
             });
 
-            it('accepts a replay once the recorded entry has expired', () => {
+            it('accepts a replay once the recorded entry has expired', async () => {
                 process.env.UK_WEBHOOK_SECRET = SECRET;
                 const header = buildHeader(BODY, SECRET);
 
-                expect(service.verifyWebhookSignature(BODY, header)).toBe(true);
+                await expect(service.verifyWebhookSignature(BODY, header)).resolves.toBe(true);
 
-                // Force-expire the recorded sig by rewriting its expireAt
-                // to a moment in the past. Simulates TTL elapsing without
-                // needing jest.useFakeTimers (which would also impact
-                // timestamp window arithmetic).
                 const seen = service._seenSignatures;
                 for (const [k] of seen) {
                     seen.set(k, Date.now() - 1);
                 }
 
-                expect(service.verifyWebhookSignature(BODY, header)).toBe(true);
+                await expect(service.verifyWebhookSignature(BODY, header)).resolves.toBe(true);
             });
 
-            it('does not record a signature when timestamp window check fails', () => {
+            it('does not record a signature when timestamp window check fails', async () => {
                 process.env.UK_WEBHOOK_SECRET = SECRET;
                 const sizeBefore = service._seenSignatures.size;
                 const expired = Math.floor(Date.now() / 1000) - 600;
                 const header = buildHeader(BODY, SECRET, expired);
 
-                expect(service.verifyWebhookSignature(BODY, header)).toBe(false);
-                // Stale-timestamp rejects must not pollute the dedup map
+                await expect(service.verifyWebhookSignature(BODY, header)).resolves.toBe(false);
                 expect(service._seenSignatures.size).toBe(sizeBefore);
             });
 
-            it('does not record a signature when HMAC verification fails', () => {
+            it('does not record a signature when HMAC verification fails', async () => {
                 process.env.UK_WEBHOOK_SECRET = SECRET;
                 const sizeBefore = service._seenSignatures.size;
                 const header = buildHeader(BODY, 'wrong-secret');
 
-                expect(service.verifyWebhookSignature(BODY, header)).toBe(false);
+                await expect(service.verifyWebhookSignature(BODY, header)).resolves.toBe(false);
                 expect(service._seenSignatures.size).toBe(sizeBefore);
             });
         });

@@ -202,6 +202,16 @@ const gracefulShutdown = async (signal) => {
     try { destroyAllLimiters(); } catch (e) { logger.error('Rate limiter cleanup error:', e.message); }
     try { await cacheService.close(); } catch (e) { logger.error('Cache close error:', e.message); }
 
+    // [Sprint 4] Close Redis after all consumers (rate-limiter / cache /
+    // dedup) have stopped issuing commands.
+    try {
+        const redisClient = require('./utils/redisClient');
+        await redisClient.close();
+        logger.info('Redis connection closed');
+    } catch (e) {
+        logger.error('Redis close error:', e.message);
+    }
+
     try {
         await db.close();
         logger.info('Database connection closed');
