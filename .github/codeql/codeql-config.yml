@@ -1,0 +1,35 @@
+# CodeQL configuration — query tuning for InfraSafe.
+#
+# The default `security-and-quality` query set raises three persistent
+# false-positives on `src/routes/webhookRoutes.js`:
+#
+# 1. `js/user-controlled-bypass` — flags an early-return on missing
+#    webhook signature header. The check IS the security gate (returning
+#    401 on missing header), not a bypass. Downstream HMAC verification
+#    (timing-safe comparison + replay protection) is the actual auth.
+#
+# 2. `js/missing-rate-limiting` (x2) — flags POST /building and POST
+#    /request handlers. Rate-limiting IS applied via
+#    `router.use(webhookLimiter.middleware())` (60 req/min/IP),
+#    but CodeQL doesn't follow the router.use chain.
+#
+# These three are suppressed via path-query exclusion. All other queries
+# in security-and-quality remain active. Real findings (log injection,
+# SQL injection, etc.) still fire.
+#
+# When the webhookRoutes.js architecture changes (e.g. moves to a
+# dedicated middleware stack per-route), reconsider removing these
+# suppressions to surface the original alerts again.
+
+name: InfraSafe CodeQL config
+
+queries:
+  - uses: security-and-quality
+
+query-filters:
+  - exclude:
+      id:
+        - js/user-controlled-bypass
+        - js/missing-rate-limiting
+      paths:
+        - src/routes/webhookRoutes.js
