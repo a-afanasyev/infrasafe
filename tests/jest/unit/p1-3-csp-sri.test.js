@@ -109,6 +109,33 @@ describe('[P1-3] nginx production CSP no longer permits unsafe-inline on script-
         const scriptSrc = cspMatch[1].match(/script-src([^;]+);/)[1];
         expect(scriptSrc).toMatch(/https:\/\/cdn\.jsdelivr\.net/);
     });
+
+    // [1A-FU-S-L1] fonts.googleapis.com serves CSS, not JS, so it has
+    // no business being in script-src.
+    test('script-src does NOT list fonts.googleapis.com (style-only origin)', () => {
+        const cspMatch = nginxConf.match(
+            /add_header\s+Content-Security-Policy\s+"([^"]+)"/
+        );
+        const scriptSrc = cspMatch[1].match(/script-src([^;]+);/)[1];
+        expect(scriptSrc).not.toMatch(/fonts\.googleapis\.com/);
+    });
+
+    test('style-src still allows fonts.googleapis.com (CSS source)', () => {
+        const cspMatch = nginxConf.match(
+            /add_header\s+Content-Security-Policy\s+"([^"]+)"/
+        );
+        const styleSrc = cspMatch[1].match(/style-src([^;]+);/)[1];
+        expect(styleSrc).toMatch(/fonts\.googleapis\.com/);
+    });
+
+    // [1A-FU-S-M2] CSP violations are POSTed to /api/csp-report so
+    // bypass / misconfig is observable instead of silent.
+    test('CSP includes report-uri pointing at the API endpoint', () => {
+        const cspMatch = nginxConf.match(
+            /add_header\s+Content-Security-Policy\s+"([^"]+)"/
+        );
+        expect(cspMatch[1]).toMatch(/report-uri\s+\/api\/csp-report/);
+    });
 });
 
 describe('[P1-3] helmet CSP no longer carries unsafe-eval anywhere', () => {
@@ -137,5 +164,13 @@ describe('[P1-3] helmet CSP no longer carries unsafe-eval anywhere', () => {
         const prodArr = ternaryMatch[1];
         expect(prodArr).not.toMatch(/'unsafe-inline'/);
         expect(prodArr).not.toMatch(/'unsafe-eval'/);
+    });
+
+    // [1A-FU-S-M2] helmet config also routes CSP violations to the API.
+    test('helmet directives include reportUri pointing at /api/csp-report', () => {
+        const helmetStart = serverJs.indexOf('helmet({');
+        const helmetEnd = serverJs.indexOf("}));", helmetStart);
+        const helmetBlock = serverJs.slice(helmetStart, helmetEnd);
+        expect(helmetBlock).toMatch(/reportUri:\s*\[\s*['"]\/api\/csp-report['"]\s*\]/);
     });
 });

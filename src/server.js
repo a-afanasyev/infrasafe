@@ -52,7 +52,10 @@ app.use(helmet({
             objectSrc: ["'none'"],
             baseUri: ["'self'"],
             formAction: ["'self'"],
-            frameAncestors: ["'self'"]
+            frameAncestors: ["'self'"],
+            // [1A-FU-S-M2] CSP violations POST to /api/csp-report so a
+            // bypass/misconfig becomes observable instead of silent.
+            reportUri: ['/api/csp-report']
         }
     },
     // OpenStreetMap tile servers require Referer header — 'no-referrer' (helmet default) blocks it
