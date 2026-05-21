@@ -15,18 +15,27 @@
 DO $init_09$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'infrasafe_runtime') THEN
-        CREATE ROLE infrasafe_runtime
-            LOGIN
-            PASSWORD 'CHANGE_ME_VIA_OPERATOR_RUNBOOK_DO_NOT_USE_IN_PROD';
+        -- [1A-FU-C-L3] NOLOGIN — operator runbook sets LOGIN + password.
+        CREATE ROLE infrasafe_runtime NOLOGIN;
         COMMENT ON ROLE infrasafe_runtime IS
-            'Least-privilege runtime role (P0-5). Operator must ALTER ROLE '
-            'with a strong password and pass it via DB_PASSWORD env to the app.';
+            'Least-privilege runtime role (P0-5). Created NOLOGIN — operator '
+            'must `ALTER ROLE infrasafe_runtime LOGIN PASSWORD ...` and pass it '
+            'via DB_PASSWORD env to the app.';
     END IF;
 END
 $init_09$;
 
-GRANT CONNECT ON DATABASE infrasafe TO infrasafe_runtime;
-GRANT USAGE  ON SCHEMA   public      TO infrasafe_runtime;
+-- [1A-FU-C-M2] current_database() handles renamed staging DBs.
+DO $init_09_grant_connect$
+BEGIN
+    EXECUTE format(
+        'GRANT CONNECT ON DATABASE %I TO infrasafe_runtime',
+        current_database()
+    );
+END
+$init_09_grant_connect$;
+
+GRANT USAGE ON SCHEMA public TO infrasafe_runtime;
 
 GRANT SELECT, INSERT, UPDATE, DELETE
     ON ALL TABLES IN SCHEMA public
@@ -57,7 +66,8 @@ BEGIN
     ) THEN
         ALTER FUNCTION public.refresh_transformer_analytics()
             SECURITY DEFINER
-            SET search_path = public, pg_temp;
+            SET search_path = pg_catalog, public;
+        -- [1A-FU-S-L2] canonical pg_catalog-first ordering
     END IF;
 END
 $sec_def_09$;

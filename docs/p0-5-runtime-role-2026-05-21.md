@@ -23,6 +23,26 @@
 2. **Maintenance window.** Step 5 below restarts the API container.
    For the demo box this is ~10s downtime — for production schedule a
    3-minute window so you can rollback cleanly.
+3. **[1A-FU-S-M1] Verify pg_hba.conf does NOT use `trust` auth** for the
+   `infrasafe_runtime` role. The migration now creates the role NOLOGIN
+   (see § "Apply the migration"), but `trust` auth bypasses password
+   verification entirely — a misconfigured pg_hba would mean any local
+   connection could log in as `infrasafe_runtime` once we flip it to LOGIN.
+
+   ```bash
+   docker exec infrasafe-postgres-1 cat /var/lib/postgresql/data/pg_hba.conf \
+     | grep -vE '^\s*#|^\s*$' \
+     | awk '{print $1, $2, $3, $4, $5}'
+
+   # Expect every entry's METHOD column to be `scram-sha-256` or `md5`.
+   # If you see `trust` for any line that matches infrasafe_runtime
+   # (or `all`), do NOT proceed — fix pg_hba first.
+   ```
+
+   If pg_hba uses `trust` for local connections (common in dev), require
+   the operator to either:
+   - flip the METHOD column to `scram-sha-256` and `pg_ctl reload`, OR
+   - explicitly scope the runtime role's HBA entries to require a password.
 
 ## Generate the runtime password
 
@@ -47,9 +67,9 @@ docker exec -i infrasafe-postgres-1 \
     < database/migrations/017_runtime_role.sql
 ```
 
-Expected output: `DO`, `GRANT`, `GRANT`, `ALTER DEFAULT PRIVILEGES` × 3, `DO`, `REVOKE`.
+Expected output: `DO`, `DO`, `GRANT`, `GRANT`, `GRANT`, `GRANT`, `ALTER DEFAULT PRIVILEGES` × 3, `DO`, `REVOKE`.
 
-Verify the role landed:
+Verify the role landed — and confirm it cannot log in yet:
 
 ```bash
 docker exec infrasafe-postgres-1 \
@@ -57,23 +77,31 @@ docker exec infrasafe-postgres-1 \
     -c "\du infrasafe_runtime"
 
 # Should show:
-#  Role name         | Attributes        | Member of
-#  ------------------+-------------------+-----------
-#  infrasafe_runtime | (none — LOGIN)    | {}
+#  Role name         | Attributes               | Member of
+#  ------------------+--------------------------+-----------
+#  infrasafe_runtime | Cannot login             | {}
 ```
 
-## Set the runtime password
+The "Cannot login" attribute is the new [1A-FU-C-L3] design — the
+role exists but is unusable until the operator flips it on with the
+password in one atomic step (next).
+
+## Flip the role to LOGIN + set the password (atomic)
 
 ```bash
 NEW_PASSWORD='Z9hDk7nFp2qWvxLm3RsTuYbAc1eQ4XGi'   # from the openssl step
 
 docker exec -i infrasafe-postgres-1 \
     psql -U infrasafe_app -d infrasafe \
-    -c "ALTER ROLE infrasafe_runtime PASSWORD '${NEW_PASSWORD}';"
+    -c "ALTER ROLE infrasafe_runtime LOGIN PASSWORD '${NEW_PASSWORD}';"
 ```
 
-> The migration set a known-rejected placeholder; pg_hba uses scram/md5
-> so connections fail until the ALTER ROLE above runs.
+> [1A-FU-C-L3] The previous design committed a placeholder password and
+> relied on pg_hba scram/md5 enforcement to keep it inert. The current
+> design makes that unconditionally true: the role is created NOLOGIN,
+> so even a misconfigured `trust` pg_hba can't grant access until the
+> operator explicitly flips it to LOGIN — at which point a strong
+> password is set in the same statement.
 
 Spot-check the connection BEFORE swapping the app's env:
 

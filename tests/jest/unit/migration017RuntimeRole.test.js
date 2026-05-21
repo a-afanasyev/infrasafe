@@ -62,6 +62,37 @@ describe('[P0-5] migration 017 — runtime role contract', () => {
         expect(createRoleStmt).not.toMatch(/\bBYPASSRLS\b/i);
     });
 
+    // [1A-FU-C-L3] Role is NOLOGIN at creation — operator flips it ON
+    // atomically with the password.
+    test('role is created NOLOGIN (operator runbook flips to LOGIN with password)', () => {
+        const createRoleMatch = MIGRATION.match(
+            /CREATE ROLE\s+infrasafe_runtime\s+(\w+)/i
+        );
+        expect(createRoleMatch).toBeTruthy();
+        expect(createRoleMatch[1].toUpperCase()).toBe('NOLOGIN');
+
+        const initMatch = INIT_MIRROR.match(
+            /CREATE ROLE\s+infrasafe_runtime\s+(\w+)/i
+        );
+        expect(initMatch).toBeTruthy();
+        expect(initMatch[1].toUpperCase()).toBe('NOLOGIN');
+    });
+
+    test('no committed PASSWORD literal in executable SQL — eliminates placeholder-credential risk', () => {
+        // The old design carried a placeholder password in source.
+        // NOLOGIN-first design forbids any PASSWORD literal in executable
+        // statements (comments and COMMENT ON text may mention the
+        // operator runbook command, which is acceptable documentation).
+        function stripCommentsAndStringLiterals(sql) {
+            return sql
+                .replace(/--[^\n]*/g, '')                  // line comments
+                .replace(/\/\*[\s\S]*?\*\//g, '')          // block comments
+                .replace(/'[^']*'/g, "''");                 // strings (incl COMMENT bodies)
+        }
+        expect(stripCommentsAndStringLiterals(MIGRATION)).not.toMatch(/\bPASSWORD\b/i);
+        expect(stripCommentsAndStringLiterals(INIT_MIRROR)).not.toMatch(/\bPASSWORD\b/i);
+    });
+
     test('GRANT DML (S/I/U/D) on ALL TABLES IN SCHEMA public', () => {
         expect(MIGRATION).toMatch(
             /GRANT\s+SELECT,\s*INSERT,\s*UPDATE,\s*DELETE[\s\S]*?ON\s+ALL\s+TABLES\s+IN\s+SCHEMA\s+public[\s\S]*?TO\s+infrasafe_runtime/i
@@ -98,17 +129,37 @@ describe('[P0-5] migration 017 — runtime role contract', () => {
         );
     });
 
+    // [1A-FU-S-L2] Canonical search_path is pg_catalog-first so built-in
+    // functions cannot be shadowed by an attacker-controlled schema.
+    test('SECURITY DEFINER search_path starts with pg_catalog (canonical)', () => {
+        const setMatch = MIGRATION.match(
+            /SET\s+search_path\s*=\s*([^;]+?)(?:;|$)/i
+        );
+        expect(setMatch).toBeTruthy();
+        const path = setMatch[1].trim();
+        expect(path).toMatch(/^pg_catalog\b/i);
+        expect(path).toMatch(/public/i);
+        // pg_temp deliberately omitted — function takes no args, no
+        // temp-table use case.
+        expect(path).not.toMatch(/pg_temp/i);
+    });
+
+    // [1A-FU-C-M2] Migration must work on staging / custom-named DBs.
+    test('GRANT CONNECT uses current_database() — not a hardcoded DB name', () => {
+        expect(MIGRATION).toMatch(
+            /EXECUTE\s+format[\s\S]*?GRANT\s+CONNECT\s+ON\s+DATABASE\s+%I[\s\S]*?current_database\(\)/i
+        );
+        expect(INIT_MIRROR).toMatch(
+            /EXECUTE\s+format[\s\S]*?GRANT\s+CONNECT\s+ON\s+DATABASE\s+%I[\s\S]*?current_database\(\)/i
+        );
+        // Sanity: no leftover hardcoded literal
+        expect(MIGRATION).not.toMatch(/GRANT\s+CONNECT\s+ON\s+DATABASE\s+infrasafe\s/i);
+    });
+
     test('REVOKE CREATE ON SCHEMA public FROM PUBLIC — belt-and-braces', () => {
         expect(MIGRATION).toMatch(
             /REVOKE\s+CREATE\s+ON\s+SCHEMA\s+public\s+FROM\s+PUBLIC/i
         );
-    });
-
-    test('placeholder password is the literal documented in the operator runbook', () => {
-        // Anyone reading the migration must be unable to confuse the
-        // placeholder for a real prod password.
-        expect(MIGRATION).toMatch(/CHANGE_ME_VIA_OPERATOR_RUNBOOK_DO_NOT_USE_IN_PROD/);
-        expect(INIT_MIRROR).toMatch(/CHANGE_ME_VIA_OPERATOR_RUNBOOK_DO_NOT_USE_IN_PROD/);
     });
 
     test('SECURITY DEFINER alter is wrapped in EXISTS guard (idempotent + safe across migration order)', () => {

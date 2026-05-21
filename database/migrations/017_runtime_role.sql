@@ -37,33 +37,48 @@
 
 -- =============================================================================
 -- 1. Create role with a known-rejected placeholder password.
---    Operator MUST `ALTER ROLE infrasafe_runtime PASSWORD '<strong>'`
+--    Operator MUST `ALTER ROLE infrasafe_runtime LOGIN PASSWORD '<strong>'`
 --    before the app can connect.
+--
+-- 2026-05-21 follow-up [1A-FU-C-L3]: role is created NOLOGIN so a
+-- developer who forgets the runbook cannot log in with a placeholder
+-- password. The operator's atomic step is the single source of truth
+-- that turns LOGIN on AND sets the real password.
 -- =============================================================================
 
 DO $migration_017$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'infrasafe_runtime') THEN
-        -- The literal here is a placeholder; pg_hba in prod allows md5/scram
-        -- which makes this useless without an explicit ALTER ROLE. We rely
-        -- on the operator runbook for the real password.
-        CREATE ROLE infrasafe_runtime
-            LOGIN
-            PASSWORD 'CHANGE_ME_VIA_OPERATOR_RUNBOOK_DO_NOT_USE_IN_PROD';
+        -- [1A-FU-C-L3] NOLOGIN by design. Operator does:
+        --   ALTER ROLE infrasafe_runtime LOGIN PASSWORD '<strong>';
+        -- in one atomic step. No placeholder credential ever lives in
+        -- a usable state.
+        CREATE ROLE infrasafe_runtime NOLOGIN;
         COMMENT ON ROLE infrasafe_runtime IS
             'Least-privilege runtime role for the InfraSafe app (P0-5). '
-            'Password is set by the operator via `ALTER ROLE infrasafe_runtime '
-            'PASSWORD ''<strong>''` — see docs/p0-5-runtime-role-2026-05-21.md';
+            'Created NOLOGIN — operator must `ALTER ROLE infrasafe_runtime '
+            'LOGIN PASSWORD ''<strong>''` before the app can use it. See '
+            'docs/p0-5-runtime-role-2026-05-21.md.';
     END IF;
 END
 $migration_017$;
 
 -- =============================================================================
 -- 2. Connect + schema usage
+--    [1A-FU-C-M2]: use current_database() so the migration works on staging
+--    /custom-named DBs without silent no-op.
 -- =============================================================================
 
-GRANT CONNECT ON DATABASE infrasafe TO infrasafe_runtime;
-GRANT USAGE  ON SCHEMA   public      TO infrasafe_runtime;
+DO $grant_connect$
+BEGIN
+    EXECUTE format(
+        'GRANT CONNECT ON DATABASE %I TO infrasafe_runtime',
+        current_database()
+    );
+END
+$grant_connect$;
+
+GRANT USAGE ON SCHEMA public TO infrasafe_runtime;
 
 -- =============================================================================
 -- 3. DML on every existing table and sequence in public.
@@ -117,10 +132,13 @@ BEGIN
     ) THEN
         ALTER FUNCTION public.refresh_transformer_analytics()
             SECURITY DEFINER
-            SET search_path = public, pg_temp;
-        -- search_path lock-down: protects against `SET search_path` attacks
-        -- where a privileged SECURITY DEFINER function could be tricked into
-        -- calling a shadowed function from an attacker-controlled schema.
+            SET search_path = pg_catalog, public;
+        -- [1A-FU-S-L2] Canonical search_path order — pg_catalog first
+        -- so built-in operators / functions cannot be shadowed by an
+        -- attacker-controlled schema. `public` last because that is
+        -- where our own functions live. pg_temp deliberately omitted —
+        -- the function takes zero arguments, has no temp-table use
+        -- case, and including it widens the resolution surface.
     END IF;
 END
 $set_security_definer$;
