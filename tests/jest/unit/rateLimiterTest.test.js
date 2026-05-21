@@ -51,30 +51,32 @@ describe('SimpleRateLimiter', () => {
             next = jest.fn();
         });
 
-        test('allows requests under the limit', () => {
+        // [Sprint 4] middleware() now returns an async function — Redis-aware.
+        // All call sites must await it.
+        test('allows requests under the limit', async () => {
             const mw = limiter.middleware();
-            mw(req, res, next);
+            await mw(req, res, next);
             expect(next).toHaveBeenCalled();
             expect(res.status).not.toHaveBeenCalled();
         });
 
-        test('sets rate limit headers', () => {
+        test('sets rate limit headers', async () => {
             const mw = limiter.middleware();
-            mw(req, res, next);
+            await mw(req, res, next);
             expect(res.set).toHaveBeenCalledWith('X-RateLimit-Limit', 3);
             expect(res.set).toHaveBeenCalledWith('X-RateLimit-Remaining', 2);
         });
 
-        test('blocks requests over the limit', () => {
+        test('blocks requests over the limit', async () => {
             const mw = limiter.middleware();
-            mw(req, res, next); // 1
-            mw(req, res, next); // 2
-            mw(req, res, next); // 3
+            await mw(req, res, next);
+            await mw(req, res, next);
+            await mw(req, res, next);
 
             next.mockClear();
             res.status.mockClear();
 
-            mw(req, res, next); // 4 - exceeds limit of 3
+            await mw(req, res, next); // exceeds limit
             expect(res.status).toHaveBeenCalledWith(429);
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -85,78 +87,75 @@ describe('SimpleRateLimiter', () => {
             expect(next).not.toHaveBeenCalled();
         });
 
-        test('sets Retry-After header when limit exceeded', () => {
+        test('sets Retry-After header when limit exceeded', async () => {
             const mw = limiter.middleware();
-            mw(req, res, next);
-            mw(req, res, next);
-            mw(req, res, next);
-            mw(req, res, next); // exceeds
+            await mw(req, res, next);
+            await mw(req, res, next);
+            await mw(req, res, next);
+            await mw(req, res, next); // exceeds
 
             expect(res.set).toHaveBeenCalledWith('Retry-After', expect.any(Number));
         });
 
-        test('tracks different IPs separately', () => {
+        test('tracks different IPs separately', async () => {
             const mw = limiter.middleware();
             const req2 = { ip: '192.168.1.1' };
 
-            // Max out first IP
-            mw(req, res, next);
-            mw(req, res, next);
-            mw(req, res, next);
+            await mw(req, res, next);
+            await mw(req, res, next);
+            await mw(req, res, next);
 
-            // Second IP should still work
             const next2 = jest.fn();
-            mw(req2, res, next2);
+            await mw(req2, res, next2);
             expect(next2).toHaveBeenCalled();
         });
 
-        test('skips rate limiting when skip function returns true', () => {
+        test('skips rate limiting when skip function returns true', async () => {
             limiter = new SimpleRateLimiter({
                 max: 1,
                 skip: () => true
             });
             const mw = limiter.middleware();
 
-            mw(req, res, next);
-            mw(req, res, next);
-            mw(req, res, next); // All should pass
+            await mw(req, res, next);
+            await mw(req, res, next);
+            await mw(req, res, next);
 
             expect(next).toHaveBeenCalledTimes(3);
             expect(res.status).not.toHaveBeenCalledWith(429);
         });
 
-        test('uses custom keyGenerator', () => {
+        test('uses custom keyGenerator', async () => {
             limiter = new SimpleRateLimiter({
                 max: 2,
                 keyGenerator: (r) => `custom:${r.ip}`
             });
             const mw = limiter.middleware();
 
-            mw(req, res, next);
-            mw(req, res, next);
+            await mw(req, res, next);
+            await mw(req, res, next);
 
             expect(limiter.store.has('custom:127.0.0.1')).toBe(true);
         });
 
-        test('resets counter when window expires', () => {
+        test('resets counter when window expires', async () => {
             limiter = new SimpleRateLimiter({ windowMs: 1, max: 1 });
             const mw = limiter.middleware();
 
-            mw(req, res, next); // 1 - allowed
+            await mw(req, res, next);
 
-            // Manually expire the window
             const entry = limiter.store.get('127.0.0.1');
             entry.resetTime = Date.now() - 1;
 
             next.mockClear();
-            mw(req, res, next); // should be allowed (window expired)
+            await mw(req, res, next);
             expect(next).toHaveBeenCalled();
         });
 
-        test('sets legacy headers when enabled', () => {
+        test('sets legacy headers when enabled', async () => {
             limiter = new SimpleRateLimiter({ max: 10, legacyHeaders: true });
             const mw = limiter.middleware();
-            mw(req, res, next);
+            await mw(req, res, next);
             expect(res.set).toHaveBeenCalledWith('X-RateLimit-Window', 60000);
             expect(res.set).toHaveBeenCalledWith('X-RateLimit-Current', 1);
         });
@@ -226,14 +225,14 @@ describe('SimpleRateLimiter', () => {
     });
 
     describe('getStats', () => {
-        test('returns correct statistics', () => {
+        test('returns correct statistics', async () => {
             limiter = new SimpleRateLimiter({ windowMs: 60000, max: 100 });
             const mw = limiter.middleware();
             const req = { ip: '1.1.1.1' };
             const res = { set: jest.fn(), status: jest.fn().mockReturnThis(), json: jest.fn() };
 
-            mw(req, res, jest.fn());
-            mw(req, res, jest.fn());
+            await mw(req, res, jest.fn());
+            await mw(req, res, jest.fn());
 
             const stats = limiter.getStats();
             expect(stats.active_keys).toBe(1);

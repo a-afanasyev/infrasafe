@@ -1,6 +1,15 @@
 const logger = require('../utils/logger');
+const redisClient = require('../utils/redisClient');
 
-// Простая реализация rate limiting без внешних зависимостей
+// [Sprint 4] Hybrid rate-limiter: Redis-backed when REDIS_URL is set
+// (multi-replica safe), in-memory Map when not (single-replica only).
+// The fallback is transparent — call sites use middleware() the same way.
+//
+// Key namespace prefix prevents collisions across multiple consumers
+// sharing one Redis instance (e.g. multiple deployments on staging).
+const REDIS_KEY_PREFIX = 'ratelimit:';
+const REDIS_KEY_PREFIX_SD = 'slowdown:';
+
 class SimpleRateLimiter {
     constructor(options = {}) {
         this.windowMs = options.windowMs || 60000; // 1 минута
@@ -11,8 +20,12 @@ class SimpleRateLimiter {
         this.legacyHeaders = options.legacyHeaders !== false;
         this.keyGenerator = options.keyGenerator || this.defaultKeyGenerator;
         this.skip = options.skip || (() => false);
+        // Per-instance namespace prefix — for stats / reset isolation
+        // when multiple limiter instances share one Redis.
+        this.namespace = options.namespace || `g${Math.floor(Math.random() * 1e6)}`;
 
-        // Хранилище счетчиков запросов
+        // In-memory fallback store. Used when Redis is not configured
+        // OR when it temporarily becomes unhealthy (degraded mode).
         this.store = new Map();
 
         // Очистка устаревших записей каждую минуту
@@ -44,8 +57,30 @@ class SimpleRateLimiter {
         }
     }
 
+    async _redisIncrement(key, now) {
+        const client = redisClient.getClient();
+        if (!client || !redisClient.isReady()) return null;
+
+        const fullKey = `${REDIS_KEY_PREFIX}${this.namespace}:${key}`;
+        try {
+            const pipeline = client.multi();
+            pipeline.incr(fullKey);
+            pipeline.pttl(fullKey);
+            const results = await pipeline.exec();
+            const hits = results && results[0] ? results[0][1] : null;
+            let pttl = results && results[1] ? results[1][1] : -1;
+            if (hits === 1 || pttl < 0) {
+                await client.pexpire(fullKey, this.windowMs);
+                pttl = this.windowMs;
+            }
+            return { hits, resetTime: now + Math.max(0, pttl) };
+        } catch {
+            return null;
+        }
+    }
+
     middleware() {
-        return (req, res, next) => {
+        return async (req, res, next) => {
             if (this.skip(req)) {
                 return next();
             }
@@ -53,23 +88,20 @@ class SimpleRateLimiter {
             const key = this.keyGenerator(req);
             const now = Date.now();
 
-            let hitData = this.store.get(key);
-
+            let hitData = await this._redisIncrement(key, now);
             if (!hitData) {
-                hitData = {
-                    hits: 0,
-                    resetTime: now + this.windowMs
-                };
-                this.store.set(key, hitData);
+                let memData = this.store.get(key);
+                if (!memData) {
+                    memData = { hits: 0, resetTime: now + this.windowMs };
+                    this.store.set(key, memData);
+                }
+                if (now > memData.resetTime) {
+                    memData.hits = 0;
+                    memData.resetTime = now + this.windowMs;
+                }
+                memData.hits++;
+                hitData = { hits: memData.hits, resetTime: memData.resetTime };
             }
-
-            // Если окно времени истекло, сбрасываем счетчик
-            if (now > hitData.resetTime) {
-                hitData.hits = 0;
-                hitData.resetTime = now + this.windowMs;
-            }
-
-            hitData.hits++;
 
             const remaining = Math.max(0, this.max - hitData.hits);
             const msUntilReset = Math.max(0, hitData.resetTime - now);
@@ -155,6 +187,7 @@ class SimpleSlowDown {
         this.maxDelayMs = options.maxDelayMs || 5000; // максимальная задержка
         this.keyGenerator = options.keyGenerator || this.defaultKeyGenerator;
         this.skip = options.skip || (() => false);
+        this.namespace = options.namespace || `sd${Math.floor(Math.random() * 1e6)}`;
 
         this.store = new Map();
 
@@ -188,6 +221,27 @@ class SimpleSlowDown {
         }
     }
 
+    async _redisIncrement(key, now) {
+        const client = redisClient.getClient();
+        if (!client || !redisClient.isReady()) return null;
+        const fullKey = `${REDIS_KEY_PREFIX_SD}${this.namespace || 'default'}:${key}`;
+        try {
+            const pipeline = client.multi();
+            pipeline.incr(fullKey);
+            pipeline.pttl(fullKey);
+            const results = await pipeline.exec();
+            const hits = results && results[0] ? results[0][1] : null;
+            let pttl = results && results[1] ? results[1][1] : -1;
+            if (hits === 1 || pttl < 0) {
+                await client.pexpire(fullKey, this.windowMs);
+                pttl = this.windowMs;
+            }
+            return { hits, resetTime: now + Math.max(0, pttl) };
+        } catch {
+            return null;
+        }
+    }
+
     middleware() {
         return async (req, res, next) => {
             if (this.skip(req)) {
@@ -197,23 +251,20 @@ class SimpleSlowDown {
             const key = this.keyGenerator(req);
             const now = Date.now();
 
-            let hitData = this.store.get(key);
-
+            let hitData = await this._redisIncrement(key, now);
             if (!hitData) {
-                hitData = {
-                    hits: 0,
-                    resetTime: now + this.windowMs
-                };
-                this.store.set(key, hitData);
+                let memData = this.store.get(key);
+                if (!memData) {
+                    memData = { hits: 0, resetTime: now + this.windowMs };
+                    this.store.set(key, memData);
+                }
+                if (now > memData.resetTime) {
+                    memData.hits = 0;
+                    memData.resetTime = now + this.windowMs;
+                }
+                memData.hits++;
+                hitData = { hits: memData.hits, resetTime: memData.resetTime };
             }
-
-            // Сброс если окно истекло
-            if (now > hitData.resetTime) {
-                hitData.hits = 0;
-                hitData.resetTime = now + this.windowMs;
-            }
-
-            hitData.hits++;
 
             // Вычисляем задержку
             if (hitData.hits > this.delayAfter) {
@@ -245,53 +296,54 @@ class SimpleSlowDown {
 
 // Предустановленные конфигурации для разных типов API
 
-// Ограничения для аналитических эндпоинтов
+// [Sprint 4] Each limiter instance has an explicit `namespace` so its
+// Redis keys don't collide with other instances. Without this, two
+// limiters with similar keyGenerators could share state via Redis.
 const analyticsLimiter = new SimpleRateLimiter({
-    windowMs: 60 * 1000, // 1 минута
-    max: 30, // максимум 30 запросов в минуту
+    windowMs: 60 * 1000,
+    max: 30,
     message: 'Слишком много запросов к аналитике. Попробуйте позже.',
     standardHeaders: true,
-    legacyHeaders: false
+    legacyHeaders: false,
+    namespace: 'analytics'
 });
 
-// Замедление при превышении лимитов аналитики
 const analyticsSlowDown = new SimpleSlowDown({
     windowMs: 60 * 1000,
-    delayAfter: 20, // начинаем замедлять после 20 запросов
-    delayMs: 500, // задержка 500ms за каждый запрос сверх лимита
-    maxDelayMs: 5000 // максимальная задержка 5 секунд
+    delayAfter: 20,
+    delayMs: 500,
+    maxDelayMs: 5000,
+    namespace: 'analytics-slowdown'
 });
 
-// Строгие ограничения для административных операций
 const adminLimiter = new SimpleRateLimiter({
-    windowMs: 60 * 1000, // 1 минута
-    max: 20, // максимум 20 операций в минуту
+    windowMs: 60 * 1000,
+    max: 20,
     message: 'Слишком много административных операций. Попробуйте позже.',
     keyGenerator: (req) => {
-        // Для админских операций учитываем и IP, и пользователя
         const ip = req.ip || req.connection.remoteAddress;
         const userId = req.user ? req.user.user_id : 'anonymous';
         return `admin:${ip}:${userId}`;
-    }
+    },
+    namespace: 'admin'
 });
 
-// Ограничения для auth-маршрутов
 const authLimiter = new SimpleRateLimiter({
     windowMs: 15 * 60 * 1000,
     max: 10,
     message: 'Слишком много попыток входа. Попробуйте через 15 минут.',
-    keyGenerator: (req) => `auth:login:${req.ip || req.connection.remoteAddress}`
+    keyGenerator: (req) => `auth:login:${req.ip || req.connection.remoteAddress}`,
+    namespace: 'auth-login'
 });
 
 const registerLimiter = new SimpleRateLimiter({
     windowMs: 60 * 60 * 1000,
     max: 5,
     message: 'Слишком много регистраций. Попробуйте через час.',
-    keyGenerator: (req) => `auth:register:${req.ip || req.connection.remoteAddress}`
+    keyGenerator: (req) => `auth:register:${req.ip || req.connection.remoteAddress}`,
+    namespace: 'auth-register'
 });
 
-// Phase 13: dedicated limiter for password-change attempts so they
-// don't exhaust the login-limiter budget (separate key prefix).
 const passwordChangeLimiter = new SimpleRateLimiter({
     windowMs: 15 * 60 * 1000,
     max: 5,
@@ -300,25 +352,26 @@ const passwordChangeLimiter = new SimpleRateLimiter({
         const ip = req.ip || req.connection.remoteAddress;
         const userId = req.user ? req.user.user_id : 'anonymous';
         return `auth:change-password:${ip}:${userId}`;
-    }
+    },
+    namespace: 'auth-pwd-change'
 });
 
-// Ограничения для телеметрии (публичный эндпоинт)
 const telemetryLimiter = new SimpleRateLimiter({
-    windowMs: 60 * 1000, // 1 минута
-    max: 120, // максимум 120 запросов в минуту
+    windowMs: 60 * 1000,
+    max: 120,
     message: 'Слишком много запросов телеметрии. Попробуйте позже.',
     keyGenerator: (req) => `telemetry:${req.ip || req.connection.remoteAddress}`,
     standardHeaders: true,
-    legacyHeaders: false
+    legacyHeaders: false,
+    namespace: 'telemetry'
 });
 
-// Ограничения для CRUD операций
 const crudLimiter = new SimpleRateLimiter({
-    windowMs: 60 * 1000, // 1 минута
-    max: 60, // максимум 60 операций в минуту
+    windowMs: 60 * 1000,
+    max: 60,
     message: 'Слишком много операций создания/изменения данных. Попробуйте позже.',
-    skipSuccessfulRequests: false
+    skipSuccessfulRequests: false,
+    namespace: 'crud'
 });
 
 // Middleware для применения к конкретным роутам

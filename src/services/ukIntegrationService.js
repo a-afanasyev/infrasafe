@@ -9,6 +9,7 @@ const AlertRequestMap = require('../models/AlertRequestMap');
 const { isValidBuildingEvent, validateCoordinate } = require('../utils/webhookValidation');
 const { validateUKApiUrl } = require('../utils/urlValidation');
 const alertEvents = require('../events/alertEvents');
+const redisClient = require('../utils/redisClient');
 
 const ALLOWED_CONFIG_KEYS = ['uk_integration_enabled', 'uk_api_url', 'uk_frontend_url'];
 const SENSITIVE_KEYS = ['uk_webhook_secret', 'uk_service_user', 'uk_service_password'];
@@ -18,7 +19,11 @@ const WEBHOOK_TIMESTAMP_TOLERANCE_SEC = 300;
 // longer than the timestamp tolerance — a sig with t=(now-299) could
 // otherwise be re-played at t=(now+1) without being recognized.
 const SEEN_SIGNATURE_TTL_MS = (WEBHOOK_TIMESTAMP_TOLERANCE_SEC + 10) * 1000;
+const SEEN_SIGNATURE_TTL_SEC = WEBHOOK_TIMESTAMP_TOLERANCE_SEC + 10;
 const SEEN_SIGNATURE_MAX_ENTRIES = 10000; // soft cap; triggers full sweep
+// [Sprint 4] Redis key prefix for nonce-dedup so it doesn't collide with
+// rate-limiter / cache keys when sharing a Redis.
+const DEDUP_KEY_PREFIX = 'ukwh:nonce:';
 
 class UKIntegrationService {
     _requestCountsCache = null;
@@ -87,12 +92,14 @@ class UKIntegrationService {
     }
 
     /**
-     * Verify webhook HMAC signature. Synchronous. Returns boolean.
+     * Verify webhook HMAC signature.
+     * [Sprint 4] Async — Redis-backed dedup is awaited when available.
+     * Falls back to in-memory Map when Redis is not configured / unhealthy.
      * @param {string} rawBody - Raw request body string
      * @param {string} signatureHeader - Signature header value (t=<ts>,v1=<hex>)
-     * @returns {boolean}
+     * @returns {Promise<boolean>}
      */
-    verifyWebhookSignature(rawBody, signatureHeader) {
+    async verifyWebhookSignature(rawBody, signatureHeader) {
         try {
             const secret = process.env.UK_WEBHOOK_SECRET;
             if (!secret) {
@@ -145,14 +152,45 @@ class UKIntegrationService {
             // [P0-2] Replay/nonce dedup. A signed payload is reusable for up
             // to WEBHOOK_TIMESTAMP_TOLERANCE_SEC seconds without this check.
             // Track sig hashes with TTL; reject if seen before.
-            // Single-threaded JS makes has+set atomic per call.
+            //
+            // [Sprint 4] Redis-backed when available — multi-replica safe.
+            // SET NX EX is atomic: returns OK only on first insert, nil
+            // otherwise. If Redis is degraded, fall through to Map.
             const nowMs = Date.now();
             const sigHash = crypto.createHash('sha256').update(signature).digest('hex');
+
+            const client = redisClient.getClient();
+            if (client && redisClient.isReady()) {
+                try {
+                    // SET key value NX EX ttl → 'OK' if new, null if exists.
+                    const setResult = await client.set(
+                        `${DEDUP_KEY_PREFIX}${sigHash}`,
+                        '1',
+                        'EX',
+                        SEEN_SIGNATURE_TTL_SEC,
+                        'NX'
+                    );
+                    if (setResult === null) {
+                        logger.warn(
+                            `ukIntegrationService.verifyWebhookSignature: replay attempt detected ` +
+                            `(Redis) for signature ${sigHash.slice(0, 16)}... (timestamp ${timestamp})`
+                        );
+                        return false;
+                    }
+                    return true;
+                } catch (err) {
+                    // Redis hiccuped — fall through to Map fallback so we
+                    // don't open a replay window during a brief outage.
+                    logger.warn(`ukIntegrationService.verifyWebhookSignature: Redis dedup failed, using memory fallback: ${err.message}`);
+                }
+            }
+
+            // In-memory fallback (single-replica only).
             const prevExpireAt = this._seenSignatures.get(sigHash);
             if (prevExpireAt !== undefined && prevExpireAt > nowMs) {
                 logger.warn(
                     `ukIntegrationService.verifyWebhookSignature: replay attempt detected ` +
-                    `for signature ${sigHash.slice(0, 16)}... (timestamp ${timestamp})`
+                    `(memory) for signature ${sigHash.slice(0, 16)}... (timestamp ${timestamp})`
                 );
                 return false;
             }
@@ -160,10 +198,6 @@ class UKIntegrationService {
             // Lazy cleanup when the map grows past the soft cap. O(n) sweep
             // amortized across many requests; expected map size is small
             // (only the last ~310s of signatures).
-            // [Sprint 0.1 / HIGH-1] If the sweep frees nothing (all entries
-            // still within TTL — sustained legitimate load), evict the oldest
-            // entry so the map cannot grow unbounded. Insertion-order Map
-            // iteration gives us oldest-first for free.
             if (this._seenSignatures.size >= SEEN_SIGNATURE_MAX_ENTRIES) {
                 for (const [k, v] of this._seenSignatures) {
                     if (v <= nowMs) this._seenSignatures.delete(k);
@@ -175,7 +209,7 @@ class UKIntegrationService {
                         logger.warn(
                             `ukIntegrationService.verifyWebhookSignature: nonce map at hard cap ` +
                             `(${SEEN_SIGNATURE_MAX_ENTRIES}); evicted oldest entry. ` +
-                            `Sustained load — consider Phase 11.1 Redis migration.`
+                            `Configure REDIS_URL to switch to multi-replica-safe dedup.`
                         );
                     }
                 }

@@ -78,7 +78,7 @@ describe('webhookRoutes', () => {
 
         it('returns 401 when signature is invalid', async () => {
             ukIntegrationService.isEnabled.mockResolvedValue(true);
-            ukIntegrationService.verifyWebhookSignature.mockReturnValue(false);
+            ukIntegrationService.verifyWebhookSignature.mockResolvedValue(false);
             const { req, res, next } = createMockReqRes(
                 { event: 'test' },
                 { 'x-webhook-signature': 't=12345,v1=invalidsig' }
@@ -95,7 +95,7 @@ describe('webhookRoutes', () => {
 
         it('calls next() when signature is valid', async () => {
             ukIntegrationService.isEnabled.mockResolvedValue(true);
-            ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);
+            ukIntegrationService.verifyWebhookSignature.mockResolvedValue(true);
             const { req, res, next } = createMockReqRes(
                 { event: 'test' },
                 { 'x-webhook-signature': 't=12345,v1=validsig' }
@@ -138,7 +138,7 @@ describe('webhookRoutes', () => {
 
         it('calls handleBuildingWebhook for building events', async () => {
             ukIntegrationService.isEnabled.mockResolvedValue(true);
-            ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);
+            ukIntegrationService.verifyWebhookSignature.mockResolvedValue(true);
             ukIntegrationService.isDuplicateEvent.mockResolvedValue(false);
             ukIntegrationService.handleBuildingWebhook.mockResolvedValue();
 
@@ -162,7 +162,7 @@ describe('webhookRoutes', () => {
 
         it('returns 500 when handleBuildingWebhook throws', async () => {
             ukIntegrationService.isEnabled.mockResolvedValue(true);
-            ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);
+            ukIntegrationService.verifyWebhookSignature.mockResolvedValue(true);
             ukIntegrationService.isDuplicateEvent.mockResolvedValue(false);
             ukIntegrationService.handleBuildingWebhook.mockRejectedValue(new Error('DB error'));
 
@@ -183,7 +183,7 @@ describe('webhookRoutes', () => {
 
         it('returns 200 for duplicate event_id', async () => {
             ukIntegrationService.isEnabled.mockResolvedValue(true);
-            ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);
+            ukIntegrationService.verifyWebhookSignature.mockResolvedValue(true);
             ukIntegrationService.isDuplicateEvent.mockResolvedValue(true);
 
             const body = {
@@ -204,7 +204,7 @@ describe('webhookRoutes', () => {
 
         it('rejects missing event_id with 400', async () => {
             ukIntegrationService.isEnabled.mockResolvedValue(true);
-            ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);
+            ukIntegrationService.verifyWebhookSignature.mockResolvedValue(true);
             isValidUUID.mockReturnValue(false);
 
             const body = {
@@ -223,7 +223,7 @@ describe('webhookRoutes', () => {
 
         it('rejects missing event field with 400', async () => {
             ukIntegrationService.isEnabled.mockResolvedValue(true);
-            ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);
+            ukIntegrationService.verifyWebhookSignature.mockResolvedValue(true);
 
             const body = {
                 event_id: '550e8400-e29b-41d4-a716-446655440000',
@@ -241,7 +241,7 @@ describe('webhookRoutes', () => {
 
         it('rejects missing building field with 400', async () => {
             ukIntegrationService.isEnabled.mockResolvedValue(true);
-            ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);
+            ukIntegrationService.verifyWebhookSignature.mockResolvedValue(true);
 
             const body = {
                 event_id: '550e8400-e29b-41d4-a716-446655440000',
@@ -259,7 +259,7 @@ describe('webhookRoutes', () => {
 
         it('rejects non-integer building.id with 400', async () => {
             ukIntegrationService.isEnabled.mockResolvedValue(true);
-            ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);
+            ukIntegrationService.verifyWebhookSignature.mockResolvedValue(true);
 
             const body = {
                 event_id: '550e8400-e29b-41d4-a716-446655440000',
@@ -278,7 +278,7 @@ describe('webhookRoutes', () => {
 
         it('rejects non-UUID event_id with 400', async () => {
             ukIntegrationService.isEnabled.mockResolvedValue(true);
-            ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);
+            ukIntegrationService.verifyWebhookSignature.mockResolvedValue(true);
             isValidUUID.mockReturnValue(false);
 
             const body = {

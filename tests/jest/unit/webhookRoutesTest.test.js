@@ -43,7 +43,7 @@ describe('webhookRoutes — POST /request', () => {
 
         // Default: integration enabled, signature valid, UUID valid, request event valid
         ukIntegrationService.isEnabled.mockResolvedValue(true);
-        ukIntegrationService.verifyWebhookSignature.mockReturnValue(true);
+        ukIntegrationService.verifyWebhookSignature.mockResolvedValue(true);
         isValidUUID.mockReturnValue(true);
         isValidRequestEvent.mockReturnValue(true);
     });

@@ -35,7 +35,8 @@ async function verifyWebhook(req, res, next) {
         if (!rawBody) {
             return res.status(400).json({ success: false, message: 'Invalid content type' });
         }
-        const valid = ukIntegrationService.verifyWebhookSignature(rawBody, signature);
+        // [Sprint 4] verifyWebhookSignature is async — Redis-backed dedup.
+        const valid = await ukIntegrationService.verifyWebhookSignature(rawBody, signature);
         if (!valid) {
             return res.status(401).json({ success: false, message: 'Invalid webhook signature' });
         }

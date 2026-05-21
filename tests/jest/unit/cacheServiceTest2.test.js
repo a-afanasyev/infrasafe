@@ -15,6 +15,7 @@
 
 let CacheService;
 let cacheService;
+let redisClient;
 
 beforeEach(() => {
     jest.resetModules();
@@ -27,6 +28,10 @@ beforeEach(() => {
     delete process.env.REDIS_URL;
     CacheService = require('../../../src/services/cacheService').constructor;
     cacheService = new CacheService();
+    // [Sprint 4] redisClient is now a shared singleton; tests mock it via
+    // the _setClientForTest seam rather than assigning to cacheService.redisClient
+    // (which is a getter now).
+    redisClient = require('../../../src/utils/redisClient');
 });
 
 afterEach(() => {
@@ -34,7 +39,17 @@ afterEach(() => {
         clearInterval(cacheService.cleanupTimer);
         cacheService.cleanupTimer = null;
     }
+    if (redisClient && redisClient._reset) {
+        redisClient._reset();
+    }
 });
+
+// Helper: wire a mock as the active Redis client for the next call.
+// ioredis exposes .status which the redisClient utility checks via isReady().
+function installMockRedis(mock) {
+    mock.status = 'ready';
+    redisClient._setClientForTest(mock);
+}
 
 describe('CacheService — extended coverage', () => {
     // -------------------------------------------------------------------------
@@ -76,13 +91,13 @@ describe('CacheService — extended coverage', () => {
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
             const result = await cacheService.getTransformerAnalytics(42);
 
             expect(result).toEqual({ load: 70 });
-            expect(mockRedisClient.get).toHaveBeenCalledWith('transformer:42:analytics');
+            // [Sprint 4] Redis keys are prefixed with the cache namespace.
+            expect(mockRedisClient.get).toHaveBeenCalledWith('cache:transformer:42:analytics');
             // Should also be stored in memory cache now
             expect(cacheService.analyticsCache.has('transformer:42:analytics')).toBe(true);
         });
@@ -93,8 +108,7 @@ describe('CacheService — extended coverage', () => {
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
             const result = await cacheService.getTransformerAnalytics(42);
 
@@ -107,8 +121,7 @@ describe('CacheService — extended coverage', () => {
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
             const result = await cacheService.getTransformerAnalytics(42);
 
@@ -122,18 +135,17 @@ describe('CacheService — extended coverage', () => {
     describe('setTransformerAnalytics — Redis path', () => {
         it('writes to both memory and Redis', async () => {
             const mockRedisClient = {
-                setEx: jest.fn().mockResolvedValue('OK'),
+                setex: jest.fn().mockResolvedValue('OK'),
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
             await cacheService.setTransformerAnalytics(7, { load: 60 });
 
             expect(cacheService.analyticsCache.has('transformer:7:analytics')).toBe(true);
-            expect(mockRedisClient.setEx).toHaveBeenCalledWith(
-                'transformer:7:analytics',
+            expect(mockRedisClient.setex).toHaveBeenCalledWith(
+                'cache:transformer:7:analytics',
                 cacheService.defaultTTL,
                 JSON.stringify({ load: 60 })
             );
@@ -141,12 +153,11 @@ describe('CacheService — extended coverage', () => {
 
         it('continues when Redis write fails', async () => {
             const mockRedisClient = {
-                setEx: jest.fn().mockRejectedValue(new Error('Redis write failed')),
+                setex: jest.fn().mockRejectedValue(new Error('Redis write failed')),
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
             await cacheService.setTransformerAnalytics(7, { load: 60 });
 
@@ -165,8 +176,7 @@ describe('CacheService — extended coverage', () => {
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
             cacheService.analyticsCache.set('transformer:5:analytics', {
                 data: { load: 80 },
@@ -176,7 +186,7 @@ describe('CacheService — extended coverage', () => {
             await cacheService.invalidateTransformerCache(5);
 
             expect(cacheService.analyticsCache.has('transformer:5:analytics')).toBe(false);
-            expect(mockRedisClient.del).toHaveBeenCalledWith('transformer:5:analytics');
+            expect(mockRedisClient.del).toHaveBeenCalledWith('cache:transformer:5:analytics');
         });
 
         it('continues when Redis delete fails', async () => {
@@ -185,8 +195,7 @@ describe('CacheService — extended coverage', () => {
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
             cacheService.analyticsCache.set('transformer:5:analytics', {
                 data: { load: 80 },
@@ -263,8 +272,7 @@ describe('CacheService — extended coverage', () => {
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
             const result = await cacheService.get('some-key');
 
@@ -279,8 +287,7 @@ describe('CacheService — extended coverage', () => {
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
             const result = await cacheService.get('missing-key');
 
@@ -293,8 +300,7 @@ describe('CacheService — extended coverage', () => {
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
             const result = await cacheService.get('error-key');
 
@@ -308,17 +314,16 @@ describe('CacheService — extended coverage', () => {
     describe('set — Redis path', () => {
         it('writes to Redis when available', async () => {
             const mockRedisClient = {
-                setEx: jest.fn().mockResolvedValue('OK'),
+                setex: jest.fn().mockResolvedValue('OK'),
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
             await cacheService.set('redis-key', { value: 42 }, { ttl: 120 });
 
-            expect(mockRedisClient.setEx).toHaveBeenCalledWith(
-                'redis-key',
+            expect(mockRedisClient.setex).toHaveBeenCalledWith(
+                'cache:redis-key',
                 120,
                 JSON.stringify({ value: 42 })
             );
@@ -326,17 +331,16 @@ describe('CacheService — extended coverage', () => {
 
         it('uses default TTL when none provided', async () => {
             const mockRedisClient = {
-                setEx: jest.fn().mockResolvedValue('OK'),
+                setex: jest.fn().mockResolvedValue('OK'),
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
             await cacheService.set('redis-key', { value: 42 });
 
-            expect(mockRedisClient.setEx).toHaveBeenCalledWith(
-                'redis-key',
+            expect(mockRedisClient.setex).toHaveBeenCalledWith(
+                'cache:redis-key',
                 300, // default TTL
                 JSON.stringify({ value: 42 })
             );
@@ -344,12 +348,11 @@ describe('CacheService — extended coverage', () => {
 
         it('continues when Redis write fails', async () => {
             const mockRedisClient = {
-                setEx: jest.fn().mockRejectedValue(new Error('Redis write error')),
+                setex: jest.fn().mockRejectedValue(new Error('Redis write error')),
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
             await cacheService.set('redis-key', { value: 42 });
 
@@ -368,13 +371,12 @@ describe('CacheService — extended coverage', () => {
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
             await cacheService.set('del-key', { v: 1 });
             await cacheService.invalidate('del-key');
 
-            expect(mockRedisClient.del).toHaveBeenCalledWith('del-key');
+            expect(mockRedisClient.del).toHaveBeenCalledWith('cache:del-key');
             expect(cacheService.analyticsCache.has('del-key')).toBe(false);
         });
 
@@ -384,8 +386,7 @@ describe('CacheService — extended coverage', () => {
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
             await cacheService.set('del-key', { v: 1 });
             await cacheService.invalidate('del-key');
@@ -405,12 +406,12 @@ describe('CacheService — extended coverage', () => {
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
             await cacheService.invalidatePattern('metrics');
 
-            expect(mockRedisClient.scan).toHaveBeenCalledWith('0', 'MATCH', '*metrics*', 'COUNT', 100);
+            // [Sprint 4] Pattern scoped to cache namespace (cache:*).
+            expect(mockRedisClient.scan).toHaveBeenCalledWith('0', 'MATCH', 'cache:*metrics*', 'COUNT', 100);
             expect(mockRedisClient.del).toHaveBeenCalledWith(['metrics:1', 'metrics:2']);
         });
 
@@ -421,8 +422,7 @@ describe('CacheService — extended coverage', () => {
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
             await cacheService.invalidatePattern('nomatch');
 
@@ -435,8 +435,7 @@ describe('CacheService — extended coverage', () => {
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
             // Should not throw
             await expect(cacheService.invalidatePattern('pattern')).resolves.toBeUndefined();
@@ -445,32 +444,32 @@ describe('CacheService — extended coverage', () => {
 
     // -------------------------------------------------------------------------
     // clearAll — Redis path
+    // [Sprint 4] No more flushDb — scoped SCAN+DEL within cache: namespace.
     // -------------------------------------------------------------------------
     describe('clearAll — Redis path', () => {
-        it('flushes Redis when available', async () => {
+        it('scans+deletes only cache: keys when Redis available', async () => {
             const mockRedisClient = {
-                flushDb: jest.fn().mockResolvedValue('OK'),
+                scan: jest.fn().mockResolvedValue(['0', ['cache:k1', 'cache:k2']]),
+                del: jest.fn().mockResolvedValue(2),
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
-            await cacheService.set('key1', { v: 1 });
             await cacheService.clearAll();
 
             expect(cacheService.analyticsCache.size).toBe(0);
-            expect(mockRedisClient.flushDb).toHaveBeenCalled();
+            expect(mockRedisClient.scan).toHaveBeenCalledWith('0', 'MATCH', 'cache:*', 'COUNT', 200);
+            expect(mockRedisClient.del).toHaveBeenCalledWith(['cache:k1', 'cache:k2']);
         });
 
-        it('continues when Redis flush fails', async () => {
+        it('continues when Redis scan fails', async () => {
             const mockRedisClient = {
-                flushDb: jest.fn().mockRejectedValue(new Error('Redis flush error')),
+                scan: jest.fn().mockRejectedValue(new Error('Redis scan error')),
                 on: jest.fn(),
                 connect: jest.fn().mockResolvedValue(undefined)
             };
-            cacheService.redisClient = mockRedisClient;
-            cacheService.redisAvailable = true;
+            installMockRedis(mockRedisClient);
 
             await cacheService.set('key1', { v: 1 });
             await cacheService.clearAll();
@@ -480,34 +479,22 @@ describe('CacheService — extended coverage', () => {
     });
 
     // -------------------------------------------------------------------------
-    // close — Redis path
+    // close — [Sprint 4] No longer touches Redis (shared singleton, closed
+    // by src/server.js graceful shutdown). Just clears the cleanup timer.
     // -------------------------------------------------------------------------
-    describe('close — Redis path', () => {
-        it('quits Redis client and clears timer', async () => {
-            const mockRedisClient = {
-                quit: jest.fn().mockResolvedValue('OK'),
-                on: jest.fn(),
-                connect: jest.fn().mockResolvedValue(undefined)
-            };
-            cacheService.redisClient = mockRedisClient;
+    describe('close — timer cleanup only', () => {
+        it('clears the cleanup timer', async () => {
+            // Sanity: timer exists before close
+            expect(cacheService.cleanupTimer).not.toBeNull();
 
             await cacheService.close();
 
-            expect(mockRedisClient.quit).toHaveBeenCalled();
             expect(cacheService.cleanupTimer).toBeNull();
         });
 
-        it('continues when Redis quit fails', async () => {
-            const mockRedisClient = {
-                quit: jest.fn().mockRejectedValue(new Error('Redis quit error')),
-                on: jest.fn(),
-                connect: jest.fn().mockResolvedValue(undefined)
-            };
-            cacheService.redisClient = mockRedisClient;
-
-            await cacheService.close();
-
-            expect(cacheService.cleanupTimer).toBeNull();
+        it('is safe to call when timer is already null', async () => {
+            cacheService.cleanupTimer = null;
+            await expect(cacheService.close()).resolves.toBeUndefined();
         });
     });
 

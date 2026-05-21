@@ -60,6 +60,25 @@ services:
       - uk-network
     restart: unless-stopped
 
+  # [Sprint 4] Redis — shared state for rate-limiter, cache, webhook
+  # dedup. Optional service: if commented out OR if REDIS_URL is empty
+  # in .env, the app falls back to in-memory implementations and runs
+  # single-replica only. Enabling Redis is the prerequisite for
+  # horizontal scale-out (--scale app=N).
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - leaflet-network
+    restart: unless-stopped
+
   # База данных PostgreSQL с PostGIS
   postgres:
     image: postgis/postgis:15-3.3
@@ -226,6 +245,7 @@ services:
 volumes:
   postgres_data:
   app_logs:
+  redis_data:
 
 networks:
   leaflet-network:
