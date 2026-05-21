@@ -40,11 +40,18 @@ describe('Security Tests', () => {
     });
 
     // Helper: get auth token
+    // [1A-FU2-S-M2] Tokens are no longer in the response body — extract from
+    // Set-Cookie. Tests still use `Authorization: Bearer <token>` because the
+    // auth middleware accepts both delivery paths.
     const getToken = async () => {
         const res = await request(app)
             .post('/api/auth/login')
             .send({ username: 'testuser', password: 'TestPass123' });
-        return res.body.accessToken;
+        const cookies = res.headers['set-cookie'] || [];
+        const accessCookie = (Array.isArray(cookies) ? cookies : [cookies])
+            .find(c => /^access_token=/.test(c));
+        const match = accessCookie && accessCookie.match(/^access_token=([^;]+)/);
+        return match ? decodeURIComponent(match[1]) : null;
     };
 
     describe('JWT Authentication Security', () => {

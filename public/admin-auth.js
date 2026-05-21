@@ -102,7 +102,9 @@ class AdminAuth {
         //   • ensures `credentials: 'same-origin'` is set so the cookie
         //     reaches the server even on calls that started without it
         if (this.fetchIntercepted) {
-            console.warn('Fetch уже перехвачен, пропускаем повторную установку');
+            // [1A-FU2-C-L4] Silently ignore double-init — the flag check
+            // already covers correctness. Previous console.warn fired in
+            // SPA-style page transitions and added noise.
             return;
         }
 
@@ -130,8 +132,22 @@ class AdminAuth {
             }
 
             const method = (options.method || 'GET').toUpperCase();
-            if (window.csrfProtection && window.csrfProtection.isModifyingMethod(method)) {
-                const updatedOptions = window.csrfProtection.addToHeaders(options);
+            // [1A-FU2-C-M1] Explicit failure mode for missing csrfProtection.
+            // Earlier code used `window.csrfProtection?.` which silently
+            // omitted the CSRF header if the module hadn't loaded — a load-
+            // order regression would make CSRF a no-op without any signal.
+            // For API-modifying requests we now require csrfProtection to be
+            // present; if it is missing we log loudly and refuse to send.
+            const csrfApi = window.csrfProtection;
+            const isModifying = csrfApi
+                ? csrfApi.isModifyingMethod(method)
+                : ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+            if (isApiRequest && isModifying) {
+                if (!csrfApi) {
+                    console.error('[CSRF] window.csrfProtection not loaded — refusing to send modifying API request', { method, url });
+                    return Promise.reject(new Error('CSRF protection module not loaded'));
+                }
+                const updatedOptions = csrfApi.addToHeaders(options);
                 options.headers = { ...options.headers, ...updatedOptions.headers };
             }
 
@@ -144,7 +160,11 @@ class AdminAuth {
         };
 
         this.fetchIntercepted = true;
-        console.log('✅ Fetch перехвачен для CSRF + 401-handling (auth — через cookie)');
+        // [1A-FU2-C-L4] Removed per-load `console.log` confirmation —
+        // it fired on every admin panel page load in production. The
+        // `fetchIntercepted` flag and the visible CSRF behavior are
+        // sufficient evidence of success. The `console.error` paths
+        // above remain — they fire only on actual failures.
     }
 
     showAdminPanel() {

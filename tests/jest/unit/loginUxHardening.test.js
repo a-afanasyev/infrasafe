@@ -21,13 +21,21 @@ const LOGIN_JS = fs.readFileSync(
     'utf8'
 );
 
-describe('[1A-FU-C-M3] login.js validates qrCodeUrl before img.src', () => {
-    test('qrCodeUrl assignment is guarded by scheme prefix check', () => {
-        // The unsafe pattern is `img.src = data.qrCodeUrl` with no
-        // prior validation. The fix introduces a startsWith check
-        // restricted to safe schemes.
-        expect(LOGIN_JS).toMatch(/startsWith\(\s*['"]data:image\//);
-        expect(LOGIN_JS).toMatch(/startsWith\(\s*['"]https:\/\//);
+describe('[1A-FU-C-M3] + [1A-FU2-S-M3] login.js validates qrCodeUrl before img.src', () => {
+    test('qrCodeUrl assignment uses tight data:image/png;base64 prefix', () => {
+        // Sprint 2 hardening: narrowed allowlist to ONLY the format that
+        // totpService emits. Earlier wider check accepted any https://
+        // URL — an attacker-controlled CDN could be rendered through img.src.
+        expect(LOGIN_JS).toMatch(/data:image\/png;base64,/);
+        // The previous broader 'https://' allowlist must NOT be present.
+        expect(LOGIN_JS).not.toMatch(/startsWith\(\s*['"]https:\/\/['"]\)/);
+    });
+
+    test('qrCodeUrl length is capped to prevent giant data: URLs', () => {
+        // 8KB cap — actual QR is ~1-2KB. Guards against DoS via huge
+        // data: URLs in a compromised response.
+        expect(LOGIN_JS).toMatch(/QR_MAX_LEN[\s\S]*?8\s*\*\s*1024/);
+        expect(LOGIN_JS).toMatch(/qrUrl\.length\s*<=\s*QR_MAX_LEN/);
     });
 
     test('no direct img.src assignment of unvalidated data field exists', () => {

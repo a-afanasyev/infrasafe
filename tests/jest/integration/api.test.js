@@ -50,8 +50,15 @@ describe('API Integration Tests', () => {
 
             expect(response.status).toBe(200);
             expect(response.body).toHaveProperty('success', true);
-            expect(response.body).toHaveProperty('accessToken');
             expect(response.body).toHaveProperty('user');
+            // [1A-FU2-S-M2] accessToken/refreshToken must NOT be in body —
+            // they ship as HttpOnly cookies (Set-Cookie header).
+            expect(response.body).not.toHaveProperty('accessToken');
+            expect(response.body).not.toHaveProperty('refreshToken');
+            // Sanity: cookies are emitted.
+            const setCookies = response.headers['set-cookie'] || [];
+            const cookieJoined = Array.isArray(setCookies) ? setCookies.join(';') : String(setCookies);
+            expect(cookieJoined).toMatch(/access_token=/);
         });
 
         test('POST /api/auth/login - неверные учетные данные', async () => {
@@ -87,7 +94,15 @@ describe('API Integration Tests', () => {
             const loginRes = await request(app)
                 .post('/api/auth/login')
                 .send({ username: 'testuser', password: 'TestPass123' });
-            authToken = loginRes.body.accessToken;
+            // [1A-FU2-S-M2] tokens no longer in body — extract from Set-Cookie.
+            // Server sends Set-Cookie: access_token=...; HttpOnly;... — we read it
+            // and feed it back as a Cookie header on subsequent requests, OR pull
+            // the raw JWT out and use Authorization: Bearer for tests that asserted
+            // that path.
+            const cookies = loginRes.headers['set-cookie'] || [];
+            const accessCookie = (Array.isArray(cookies) ? cookies : [cookies]).find(c => /^access_token=/.test(c));
+            const match = accessCookie && accessCookie.match(/^access_token=([^;]+)/);
+            authToken = match ? decodeURIComponent(match[1]) : null;
         });
 
         test('GET /api/buildings - получение списка зданий', async () => {
@@ -157,7 +172,15 @@ describe('API Integration Tests', () => {
             const loginRes = await request(app)
                 .post('/api/auth/login')
                 .send({ username: 'testuser', password: 'TestPass123' });
-            authToken = loginRes.body.accessToken;
+            // [1A-FU2-S-M2] tokens no longer in body — extract from Set-Cookie.
+            // Server sends Set-Cookie: access_token=...; HttpOnly;... — we read it
+            // and feed it back as a Cookie header on subsequent requests, OR pull
+            // the raw JWT out and use Authorization: Bearer for tests that asserted
+            // that path.
+            const cookies = loginRes.headers['set-cookie'] || [];
+            const accessCookie = (Array.isArray(cookies) ? cookies : [cookies]).find(c => /^access_token=/.test(c));
+            const match = accessCookie && accessCookie.match(/^access_token=([^;]+)/);
+            authToken = match ? decodeURIComponent(match[1]) : null;
         });
 
         test('GET /api/controllers - получение списка контроллеров', async () => {
@@ -179,7 +202,15 @@ describe('API Integration Tests', () => {
             const loginRes = await request(app)
                 .post('/api/auth/login')
                 .send({ username: 'testuser', password: 'TestPass123' });
-            authToken = loginRes.body.accessToken;
+            // [1A-FU2-S-M2] tokens no longer in body — extract from Set-Cookie.
+            // Server sends Set-Cookie: access_token=...; HttpOnly;... — we read it
+            // and feed it back as a Cookie header on subsequent requests, OR pull
+            // the raw JWT out and use Authorization: Bearer for tests that asserted
+            // that path.
+            const cookies = loginRes.headers['set-cookie'] || [];
+            const accessCookie = (Array.isArray(cookies) ? cookies : [cookies]).find(c => /^access_token=/.test(c));
+            const match = accessCookie && accessCookie.match(/^access_token=([^;]+)/);
+            authToken = match ? decodeURIComponent(match[1]) : null;
         });
 
         test('POST /api/metrics/telemetry - контроллер не найден', async () => {

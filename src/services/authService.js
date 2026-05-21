@@ -501,9 +501,14 @@ class AuthService {
 
         const lockedUntilMs = new Date(record.locked_until).getTime();
         if (Date.now() < lockedUntilMs) {
-            // Phase 10.5 (DOC-015): use ISO-8601 to avoid server-locale
-            // dependent output (client displays as needed).
-            const error = new Error(`Аккаунт заблокирован до ${new Date(lockedUntilMs).toISOString()}`);
+            // [1A-FU2-S-M1] Generic user-facing message (no ISO timestamp).
+            // Previously the thrown error.message embedded the exact unlock
+            // time, which an API-direct attacker (curl, script) could use to
+            // time follow-up spraying. The frontend normalizer (login.js)
+            // already strips it from the HTML response, but raw API consumers
+            // bypassed that. Now the timestamp is only logged server-side.
+            logger.warn(`Account lockout active for login=${login} until=${new Date(lockedUntilMs).toISOString()}`);
+            const error = new Error('Аккаунт временно заблокирован. Попробуйте позже.');
             error.code = 'ACCOUNT_LOCKED';
             throw error;
         }

@@ -222,9 +222,20 @@ document.addEventListener('DOMContentLoaded', async function () {
             // ensures the cookie is sent.
 
             // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Добавляем CSRF защиту для изменяющих запросов
+            // [1A-FU2-C-M1] Explicit failure on missing csrfProtection
+            // (load-order regression / module not loaded). Throwing here
+            // surfaces the bug instead of silently omitting the header.
             const method = (options.method || 'GET').toUpperCase();
-            if (window.csrfProtection && window.csrfProtection.isModifyingMethod(method)) {
-                const updatedOptions = window.csrfProtection.addToHeaders(options);
+            const csrfApi = window.csrfProtection;
+            const isModifying = csrfApi
+                ? csrfApi.isModifyingMethod(method)
+                : ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+            if (isModifying) {
+                if (!csrfApi) {
+                    console.error('[CSRF] window.csrfProtection not loaded — refusing modifying request', { method, url });
+                    throw new Error('CSRF protection module not loaded');
+                }
+                const updatedOptions = csrfApi.addToHeaders(options);
                 options.headers = updatedOptions.headers;
             }
 
@@ -2198,8 +2209,10 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
 
     async function completeMapLogin(data) {
-        const token = data.accessToken || data.token;
-        apiClient.setToken(token);
+        // [1A-FU2-S-M2] Tokens no longer in response body — cookies are
+        // source of truth. apiClient.setToken() is kept as a no-op-with-
+        // side-effect (flips isAuthenticated boolean) for legacy code.
+        apiClient.setToken('cookie-session');
         hideLoginModal();
         showMapLoginStep('login');
         mapTempToken = null;
@@ -2230,7 +2243,9 @@ document.addEventListener('DOMContentLoaded', async function () {
                 });
                 const data = await response.json();
 
-                if (response.ok && (data.accessToken || data.token)) {
+                // [1A-FU2-S-M2] success marker is `data.success` — tokens no
+                // longer in body; HttpOnly cookies carry the session.
+                if (response.ok && data.success) {
                     await completeMapLogin(data);
                 } else if (response.ok && data.requires2FA) {
                     mapTempToken = data.tempToken;
@@ -2283,7 +2298,8 @@ document.addEventListener('DOMContentLoaded', async function () {
                     body: JSON.stringify({ tempToken: mapTempToken, code })
                 });
                 const data = await res.json();
-                if (res.ok && data.accessToken) {
+                // [1A-FU2-S-M2] success marker is `data.success` (cookies set).
+                if (res.ok && data.success) {
                     await completeMapLogin(data);
                 } else {
                     showMapError('map-2fa-error', data.message || data.error || 'Неверный код');
@@ -2320,7 +2336,8 @@ document.addEventListener('DOMContentLoaded', async function () {
                     body: JSON.stringify({ tempToken: mapTempToken, code })
                 });
                 const data = await res.json();
-                if (res.ok && data.accessToken) {
+                // [1A-FU2-S-M2] success marker is `data.success` (cookies set).
+                if (res.ok && data.success) {
                     await completeMapLogin(data);
                 } else {
                     showMapError('map-setup-error', data.message || data.error || 'Неверный код');

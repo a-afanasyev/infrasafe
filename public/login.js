@@ -68,8 +68,14 @@
 
         // --- Step 1: Login form ---
         initializeForm() {
+            // [1A-FU2-C-L3] Defensive null-guard: this file is only loaded
+            // on login.html, but a misloaded page (HTML/JS cache mismatch,
+            // partial deploy, etc.) could ship the JS without the form.
+            // Guard so a missing element doesn't blow up the rest of init.
             const form = document.getElementById('login-form');
-            document.getElementById('username').focus();
+            const usernameInput = document.getElementById('username');
+            if (!form || !usernameInput) return;
+            usernameInput.focus();
 
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
@@ -123,7 +129,10 @@
 
         // --- Step 2: TOTP verification ---
         initializeTOTPForm() {
-            document.getElementById('totp-form').addEventListener('submit', async (e) => {
+            // [1A-FU2-C-L3] Null-guard — see initializeForm.
+            const totpForm = document.getElementById('totp-form');
+            if (!totpForm) return;
+            totpForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const code = document.getElementById('totp-code').value.trim();
                 if (!code) { this.showError('totp-error-container', 'Введите код'); return; }
@@ -161,13 +170,18 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.message || data.error || 'Ошибка настройки 2FA');
 
-                // [1A-FU-C-M3] Defence-in-depth: validate qrCodeUrl
-                // scheme before assigning to img.src. Server controls it
-                // today, but a regression could send `javascript:` or a
-                // hostile origin — the prefix check makes the failure
-                // mode "image doesn't render" instead of "XSS executes".
+                // [1A-FU-C-M3] + [1A-FU2-S-M3] Defence-in-depth: validate
+                // qrCodeUrl scheme + length before assigning to img.src.
+                // The totpService produces exactly `data:image/png;base64,<...>`
+                // (see src/services/totpService.js QRCode.toDataURL). Anything
+                // else is either a server regression or an injection attempt —
+                // refuse to render. The earlier wider allowlist (any https://)
+                // could route an attacker-controlled CDN URL through img.src;
+                // tightened to PNG data URI only.
                 const qrUrl = String(data.qrCodeUrl || '');
-                const qrOk = qrUrl.startsWith('data:image/') || qrUrl.startsWith('https://');
+                const QR_PREFIX = 'data:image/png;base64,';
+                const QR_MAX_LEN = 8 * 1024; // 8KB — actual QR is ~1-2KB
+                const qrOk = qrUrl.startsWith(QR_PREFIX) && qrUrl.length <= QR_MAX_LEN;
                 if (!qrOk) {
                     throw new Error('Сервер вернул некорректный QR-код');
                 }
@@ -182,7 +196,10 @@
         }
 
         initializeSetupForm() {
-            document.getElementById('confirm-totp-form').addEventListener('submit', async (e) => {
+            // [1A-FU2-C-L3] Null-guard — see initializeForm.
+            const setupForm = document.getElementById('confirm-totp-form');
+            if (!setupForm) return;
+            setupForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const code = document.getElementById('confirm-code').value.trim();
                 if (!code) { this.showError('setup-error-container', 'Введите код'); return; }
