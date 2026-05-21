@@ -1,0 +1,52 @@
+# Gitleaks configuration — secret-scan tuning for InfraSafe.
+#
+# The default rule set is strict; this file declares allowlist
+# exceptions for known-safe placeholders in test fixtures and the
+# .env.example file (placeholders that LOOK like secrets but aren't).
+#
+# Docs: https://github.com/gitleaks/gitleaks#configuration
+
+title = "InfraSafe gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known placeholder secrets in fixtures and examples"
+
+# Paths that are intentionally never expected to contain real secrets
+# but may contain plausible-looking placeholders.
+paths = [
+    '''\.env\.example$''',
+    '''docs/.*\.md$''',
+    '''README\.md$''',
+    '''CLAUDE\.md$''',
+    '''tests/jest/.*\.test\.js$''',
+    '''tests/jest/.*\.config\.js$''',
+    '''package-lock\.json$''',
+]
+
+# Specific placeholder regex patterns used in this codebase.
+regexes = [
+    # ".env.example" + test fixtures use these literal placeholders.
+    '''CHANGE_ME''',
+    '''dev-secret-key-change-in-production''',
+    '''dev-refresh-secret-key-change-in-production''',
+    '''ci-test-jwt-secret-not-for-production''',
+    '''ci-test-refresh-secret-not-for-production''',
+
+    # Test data — admin/admin123 + testuser/TestPass123 documented in
+    # CLAUDE.md and used throughout integration tests. Not production.
+    '''TestPass123''',
+    '''admin123''',
+
+    # JWT example tokens used in unit tests as fixtures.
+    '''ey[A-Za-z0-9_-]{10,}\.ey[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}''',
+
+    # Dev-only postgres bootstrap password in docker-compose. Production
+    # bootstrap is done once at container init from .env.prod; this
+    # literal is only relevant on fresh dev `docker compose up`.
+    # Tracked for replacement with env_file substitution as a separate
+    # follow-up — for now allowlisted explicitly.
+    '''@ppl1c@ti0n''',
+]
