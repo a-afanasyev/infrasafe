@@ -27,6 +27,12 @@ async function verifyWebhook(req, res, next) {
         }
 
         const signature = req.headers['x-webhook-signature'];
+        // [CodeQL js/user-controlled-bypass false-positive] The check below
+        // is part of the security gate: missing header → 401 reject. The
+        // header value is never used to make a "skip security" decision,
+        // only to extract HMAC components that are verified downstream
+        // via timing-safe comparison.
+        // lgtm[js/user-controlled-bypass]
         if (!signature) {
             return res.status(401).json({ success: false, message: 'Missing webhook signature' });
         }
@@ -48,12 +54,15 @@ async function verifyWebhook(req, res, next) {
     }
 }
 
+// Rate-limiting for ALL routes in this router (60 req/min/IP).
 router.use(webhookLimiter.middleware());
 
 /**
  * POST /api/webhooks/uk/building
  * Receives building events from UK system.
+ * Rate-limited by `webhookLimiter` mounted via `router.use` above.
  */
+// lgtm[js/missing-rate-limiting]
 router.post('/building', verifyWebhook, async (req, res) => {
     try {
         const { event_id, event, building } = req.body;
@@ -101,7 +110,9 @@ router.post('/building', verifyWebhook, async (req, res) => {
  * POST /api/webhooks/uk/request
  * Receives request events from UK system.
  * Phase 4: processes request status changes and auto-resolves alerts when all requests are terminal.
+ * Rate-limited by `webhookLimiter` mounted via `router.use` above.
  */
+// lgtm[js/missing-rate-limiting]
 router.post('/request', verifyWebhook, async (req, res) => {
     try {
         const { event_id, event, request: ukRequest } = req.body;

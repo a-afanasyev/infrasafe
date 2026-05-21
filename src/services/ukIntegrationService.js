@@ -171,9 +171,16 @@ class UKIntegrationService {
                         'NX'
                     );
                     if (setResult === null) {
+                        // [CodeQL js/log-injection] timestamp originates from the
+                        // webhook header but the HMAC check above has already
+                        // proven the entire signed payload is authentic — so
+                        // `timestamp` cannot be attacker-shaped here. Still,
+                        // cast to integer + truncate hash so a corrupt branch
+                        // cannot land newlines in logs.
+                        const tsInt = Number.parseInt(timestamp, 10) || 0;
                         logger.warn(
-                            `ukIntegrationService.verifyWebhookSignature: replay attempt detected ` +
-                            `(Redis) for signature ${sigHash.slice(0, 16)}... (timestamp ${timestamp})`
+                            'ukIntegrationService.verifyWebhookSignature: replay attempt detected ' +
+                            `(Redis) for signature ${sigHash.slice(0, 16)}... (timestamp ${tsInt})`
                         );
                         return false;
                     }
@@ -188,9 +195,10 @@ class UKIntegrationService {
             // In-memory fallback (single-replica only).
             const prevExpireAt = this._seenSignatures.get(sigHash);
             if (prevExpireAt !== undefined && prevExpireAt > nowMs) {
+                const tsInt = Number.parseInt(timestamp, 10) || 0;
                 logger.warn(
-                    `ukIntegrationService.verifyWebhookSignature: replay attempt detected ` +
-                    `(memory) for signature ${sigHash.slice(0, 16)}... (timestamp ${timestamp})`
+                    'ukIntegrationService.verifyWebhookSignature: replay attempt detected ' +
+                    `(memory) for signature ${sigHash.slice(0, 16)}... (timestamp ${tsInt})`
                 );
                 return false;
             }
