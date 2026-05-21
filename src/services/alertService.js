@@ -36,6 +36,10 @@ class InfrastructureAlertService {
 
         // Флаг инициализации
         this.initialized = false;
+        // [Sprint 5 / P1-4] In-flight init promise — concurrent callers share
+        // one initialize() call instead of racing parallel loadActiveAlerts().
+        // Cleared in finally so a failed init can be retried.
+        this._initPromise = null;
     }
 
     // Инициализация сервиса (вызывается после готовности БД)
@@ -82,9 +86,13 @@ class InfrastructureAlertService {
 
     // Проверка инициализации перед операциями
     async ensureInitialized() {
-        if (!this.initialized) {
-            await this.initialize();
+        if (this.initialized) return;
+        if (!this._initPromise) {
+            this._initPromise = this.initialize().finally(() => {
+                this._initPromise = null;
+            });
         }
+        await this._initPromise;
     }
 
     // Загрузка активных алертов при старте

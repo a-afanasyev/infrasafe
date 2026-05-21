@@ -62,7 +62,11 @@ app.use(helmet({
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
 })); // Безопасность
 app.use(cors({
-    origin: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : 'http://localhost:8080',
+    // [Sprint 5 / P2-V3] Trim each origin so `a.com, b.com` works the same
+    // as `a.com,b.com`; filter empty strings from trailing commas.
+    origin: process.env.CORS_ORIGINS
+        ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
+        : 'http://localhost:8080',
     credentials: true
 })); // CORS
 app.use(express.json({

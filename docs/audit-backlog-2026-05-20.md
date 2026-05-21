@@ -13,6 +13,8 @@
 >
 > **Sprint 1 — Track A "Security through isolation" — 2026-05-21**: 3 items закрыты локально в `sprint1-security/all-2026-05-21` (P0-5 runtime role + P1-3 CSP/SRI + P1-2 HttpOnly cookies). 94 suites / 1907 tests ✓. Post-merge review: 0 BLOCKER/HIGH, 5 MEDIUM, 6 LOW → Track A follow-ups записаны как `[1A-FU-*]` в конце backlog'а.
 >
+> **Sprint 5 — Quick Wins — 2026-05-21**: 8 items закрыты на `feat/sprint-5-quick-wins`. 6 code-fixes + 2 миграции (018 FK alert_request_map, 019 buildings FK indexes). Tests: 98 suites / 1956 ✓ (+3 case-insensitive NODE_ENV cases). Closed: P1-4 AlertService race, P1-8 alert_request_map FK, P1-11 deprecated transformer FK, P3-4 buildings FK indexes (8 partial), P2-4 errorHandler NODE_ENV case-insensitive, P2-5 integrationRoutes parseInt guards, P2-V3 CORS trim, P2-V6 nginx.conf .map deny. Operator follow-up: apply migrations 018+019 on prod (`docker exec infrasafe-postgres-1 psql -U postgres -d infrasafe -f /database/migrations/018_*.sql && ... 019_*.sql`).
+>
 > | Item | Status | PR | Prod verification |
 > |---|---|---|---|
 > | [P0-1] login.html 404 | `fixed (deployed)` | #4 `8b4e9c1` | `curl /login.html` → 200 ✓ |
@@ -143,7 +145,7 @@
   if (!this._initPromise) this._initPromise = this.initialize();
   await this._initPromise;
   ```
-- **Status**: `open`
+- **Status**: `fixed` — Sprint 5 (2026-05-21). `_initPromise` shared across concurrent callers; `.finally()` clears it so failed init can be retried. Constructor declares the field; `ensureInitialized()` uses the cached promise.
 
 ### `[P1-5]` Silent `.catch(() => {})` на audit-log writes
 - **Files**: `src/services/ukIntegrationService.js:310, 484, 495`
@@ -166,7 +168,7 @@
 - **Files**: `database/migrations/011_uk_integration.sql:50-60`
 - **Severity**: P1 — orphan rows при удалении alerts
 - **Fix**: `ALTER TABLE alert_request_map ADD CONSTRAINT fk_arm_alert FOREIGN KEY (infrasafe_alert_id) REFERENCES infrastructure_alerts(alert_id) ON DELETE CASCADE;`
-- **Status**: `open`
+- **Status**: `fixed (pending operator apply)` — Sprint 5 (2026-05-21). Migration `018_alert_request_map_fk.sql` widens `infrasafe_alert_id` from INTEGER → BIGINT to match `infrastructure_alerts.alert_id` (bigserial), deletes orphan rows, then adds `fk_arm_infrasafe_alert ... ON DELETE CASCADE`. Idempotent; needs `psql -f` against prod.
 
 ### `[P1-9]` `users.id` `serial` (int4), FK columns `integer` — type mismatch ⤓ **scope ×8 in round 2**
 - **Files**: `database/init/01_init_database.sql:28`, `refresh_tokens.user_id`
@@ -185,7 +187,7 @@
 - **Files**: `src/services/analyticsService.js:280-289`
 - **Severity**: P1 — query возвращает пустые результаты для актуальных трансформеров (live data в `transformers`, не `power_transformers`)
 - **Fix**: rewrite `WHERE b.primary_transformer_id = $1::int OR b.backup_transformer_id = $1::int`
-- **Status**: `open`
+- **Status**: `fixed` — Sprint 5 (2026-05-21). Forecast query now joins via `(b.primary_transformer_id = $1 OR b.backup_transformer_id = $1)`. Both columns indexed by migration 010.
 
 ### `[P1-12]` UK frontend: CSP блокирует Google Fonts
 - **Files**: UK frontend CSP (на `/uk/resident-board`, `/uk/login`)
@@ -242,12 +244,12 @@
 ### `[P2-4]` `errorHandler` gate через case-sensitive `NODE_ENV === 'development'`
 - **Files**: `src/middleware/errorHandler.js:31`
 - **Fix**: pre-compute boolean на module load с `.toLowerCase()`
-- **Status**: `open`
+- **Status**: `fixed` — Sprint 5 (2026-05-21). Introduced `isDev()` helper that lowercases + trims `process.env.NODE_ENV` per call. Kept dynamic (not module-load constant) so test pattern of mutating `NODE_ENV` continues to work. Test suite extended with `Development | DEVELOPMENT | '  development  '` cases.
 
 ### `[P2-5]` `parseInt` без `isNaN` guard — inconsistency
 - **Files**: `src/routes/integrationRoutes.js:30` vs :82-83
 - **Fix**: единый паттерн с `isNaN` checks
-- **Status**: `open`
+- **Status**: `fixed` — Sprint 5 (2026-05-21). Line 30 now mirrors the pattern at :82-83 (`parseInt(.., 10)` + isNaN/range guard before clamping to 10). Default falls back to 3 only when input is missing or invalid.
 
 ### `[P2-6]` `handleBuildingWebhook` — мутация incoming payload ✅ **FIXED (verified 2026-05-21)**
 - **Files**: `src/services/ukIntegrationService.js`
@@ -318,7 +320,7 @@
 - **Files**: `database/init/01_init_database.sql`, `database/migrations/`
 - **Severity**: на fresh install будут seq scans
 - **Fix**: новая миграция `016_buildings_fk_indexes.sql`
-- **Status**: `open`
+- **Status**: `fixed (pending operator apply)` — Sprint 5 (2026-05-21). Migration `019_buildings_fk_indexes.sql` adds partial indexes (`WHERE col IS NOT NULL`) on 8 FK columns: `cold_water_source_id`, `heat_source_id`, `primary_line_id`, `backup_line_id`, `cold_water_line_id`, `hot_water_line_id`, `cold_water_supplier_id`, `hot_water_supplier_id`. `primary/backup_transformer_id` were already covered by migration 010; `power_transformer_id` skipped (legacy VARCHAR FK).
 
 ### `[P3-5]` Test data: testuser credentials не работают на prod
 - **Files**: `tests/jest/e2e/globalSetup.js` (caches token), DB user table
@@ -549,7 +551,7 @@
 - **Files**: `src/server.js:56`
 - **Evidence**: если ENV содержит "a, b" → второй origin становится " b" с leading space → silent CORS break → operator расширяет до `*`
 - **Fix**: `.split(',').map(s => s.trim()).filter(Boolean)`
-- **Status**: `open`
+- **Status**: `fixed` — Sprint 5 (2026-05-21). `src/server.js:65` now applies `.split(',').map(s => s.trim()).filter(Boolean)`; spaces and trailing commas in `CORS_ORIGINS` no longer silently break CORS.
 
 ### `[P2-V4]` AccountLockout key case-sensitive — bypass via case variation
 - **Files**: `src/models/AccountLockout.js:18-24`
@@ -567,7 +569,7 @@
 - **Files**: `nginx.production.conf:243` (denies `.map$` ✓), но `nginx.conf` для **unified frontend service** на порту 8080 не имеет `.map` deny
 - **Evidence**: source maps существуют в `public/dist/`; production proxy денaes их, но unified frontend (`infrasafe-frontend-1` на port 8080) — потенциально нет
 - **Fix**: добавить `.map$` deny в `nginx.conf` для unified frontend; либо exclude `.map` из build output для prod
-- **Status**: `open`
+- **Status**: `fixed` — Sprint 5 (2026-05-21). `nginx.conf` (baked into `Dockerfile.unified`) now has `location ~ \.map$ { return 404; access_log off; log_not_found off; }` placed BEFORE the static `\.(... js ...)$` regex so source maps are not served as JS. `nginx-frontend-only.conf` already had it. Dev config (`nginx.dev.conf`) intentionally unchanged — sourcemaps are useful for debugging.
 
 ### `[P2-V7]` `setup-generator.sh` password handling
 - **Files**: `setup-generator.sh:32-66`
@@ -872,16 +874,16 @@
 
 Found during/after P0-5 production rollout. Three independent issues bundled.
 
-## ⚡ Closed (PR #16 + PR #17)
+## ⚡ Closed (PR #16 + PR #17 + Sprint 4 + Sprint 5)
 
 | ID | Issue | Status |
 |---|---|---|
 | `1A-FU3-S-H1` | nginx `add_header` inheritance pitfall — security headers silently dropped on HTML responses by `location ~* \.(html|htm)$` block | **fixed** PR #16 commit `806232d` |
 | `1A-FU3-S-M2` | `docker-compose.unified.yml` `environment:` block hardcoded `DB_USER`, `DB_PASSWORD`, `NODE_ENV=development`, `JWT_SECRET=${VAR:-fallback}` — all override `env_file`, broke P0-5 + Helmet CSP + JWT rotation | **fixed** PR #17 commit `b279dd6` |
+| `1A-FU3-S-M1` | Helmet CSP `'unsafe-inline'` on prod — was rooted in `NODE_ENV=development`. Operator flipped `NODE_ENV=production` in `.env.prod` after PR #17; CSP now production-grade. | **fixed** (operator action, 2026-05-21) |
 
 ## 🟡 Carry-over
 
 | ID | Issue | Action |
 |---|---|---|
-| `1A-FU3-S-M1` | Helmet CSP in `src/server.js` had `'unsafe-inline'` in script-src on prod — root cause was `NODE_ENV=development` (M2 above). Now that NODE_ENV moves to `.env.prod`, this auto-resolves once operator sets `NODE_ENV=production`. | Operator: set `NODE_ENV=production` in `.env.prod`, restart app, verify `/api/health` response no longer has `'unsafe-inline'` in CSP. |
 | `1A-FU3-S-M3` | Switching NODE_ENV=production triggers additional env-var requirements (`CORS_ORIGINS`). Operator should verify `.env.prod` has all `PRODUCTION_REQUIRED_VARS` before flipping. | Pre-flight check before flipping NODE_ENV. |

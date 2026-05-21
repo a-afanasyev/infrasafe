@@ -27,7 +27,11 @@ router.get('/building-requests/:externalId', async (req, res) => {
         if (!externalId || !UUID_RE.test(externalId)) {
             return res.status(400).json({ success: false, message: 'Invalid externalId format' });
         }
-        const limit = Math.min(parseInt(req.query.limit) || 3, 10);
+        // [Sprint 5 / P2-5] Match the pattern used by getLogs (lines 82-83):
+        // explicit radix + isNaN/range guard, then clamp.
+        const rawLimit = parseInt(req.query.limit, 10);
+        const safeLimit = (!isNaN(rawLimit) && rawLimit >= 1) ? rawLimit : 3;
+        const limit = Math.min(safeLimit, 10);
         const data = await ukIntegrationService.getBuildingRequests(externalId, limit);
         return res.json({ success: true, data });
     } catch (error) {
