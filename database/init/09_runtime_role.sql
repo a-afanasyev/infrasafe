@@ -16,11 +16,27 @@ DO $init_09$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'infrasafe_runtime') THEN
         -- [1A-FU-C-L3] NOLOGIN — operator runbook sets LOGIN + password.
-        CREATE ROLE infrasafe_runtime NOLOGIN;
+        -- [1A-FU2-DB-M2] explicit denial attrs prevent accidental SUPERUSER.
+        -- [1A-FU2-DB-M1] CONNECTION LIMIT 20 matches the pg pool default.
+        CREATE ROLE infrasafe_runtime
+            NOLOGIN
+            NOSUPERUSER
+            NOCREATEDB
+            NOCREATEROLE
+            NOREPLICATION
+            INHERIT
+            CONNECTION LIMIT 20;
         COMMENT ON ROLE infrasafe_runtime IS
             'Least-privilege runtime role (P0-5). Created NOLOGIN — operator '
             'must `ALTER ROLE infrasafe_runtime LOGIN PASSWORD ...` and pass it '
             'via DB_PASSWORD env to the app.';
+    ELSE
+        ALTER ROLE infrasafe_runtime
+            NOSUPERUSER
+            NOCREATEDB
+            NOCREATEROLE
+            NOREPLICATION
+            CONNECTION LIMIT 20;
     END IF;
 END
 $init_09$;

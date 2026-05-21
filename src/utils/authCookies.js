@@ -32,6 +32,14 @@ const REFRESH_TOKEN_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;  // 7d
 // terminating TLS in front — without this override, cookies are sent
 // over plain HTTP and the Set-Cookie's `Secure` attribute is missing,
 // so an HTTP-side observer (man-in-the-middle in transit) sees them.
+//
+// [1A-FU2-S-L2] Precedence note: if NODE_ENV=production, the cookie is
+// ALWAYS Secure — SECURE_COOKIES has no effect (and is not consulted).
+// SECURE_COOKIES only matters for environments running NODE_ENV !=
+// 'production' (e.g. staging with NODE_ENV=development behind nginx TLS).
+// If a future env needs to FORCE-DISABLE Secure in production (e.g. a
+// local production-mode container without TLS for debugging), this
+// function would need an explicit `SECURE_COOKIES=false` escape hatch.
 function isCookieSecure() {
     if (process.env.NODE_ENV === 'production') return true;
     if (process.env.SECURE_COOKIES === 'true') return true;

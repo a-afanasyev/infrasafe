@@ -97,7 +97,10 @@ const PUBLIC_ROUTES = [
     { method: 'GET',  path: '/' },
     { method: 'POST', path: '/webhooks/uk/building' },
     { method: 'POST', path: '/webhooks/uk/request' },
-    { method: 'POST', path: '/csp-report' },
+    // [1A-FU2-C-L2] /csp-report is mounted at line 85, BEFORE the
+    // default-deny middleware below — so this PUBLIC_ROUTES entry was
+    // redundant. Removed to avoid confusing future maintainers about
+    // which mount is load-bearing.
 ];
 
 const isPublicRoute = (method, path) => {

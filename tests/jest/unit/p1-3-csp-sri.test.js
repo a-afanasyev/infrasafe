@@ -136,6 +136,35 @@ describe('[P1-3] nginx production CSP no longer permits unsafe-inline on script-
         );
         expect(cspMatch[1]).toMatch(/report-uri\s+\/api\/csp-report/);
     });
+
+    // [1A-FU2-S-M4] object-src 'none' blocks <object>/<embed>/<applet> —
+    // default-src 'self' alone would still allow self-hosted plugin
+    // objects. Defence-in-depth against legacy Flash-style vectors.
+    test('CSP includes object-src \'none\' in both server-level and html-location blocks', () => {
+        const cspMatches = nginxConf.match(
+            /add_header\s+Content-Security-Policy\s+"[^"]+"/g
+        );
+        expect(cspMatches).toBeTruthy();
+        // server-level + html location → at least 2 occurrences.
+        expect(cspMatches.length).toBeGreaterThanOrEqual(2);
+        for (const csp of cspMatches.slice(0, 2)) {
+            expect(csp).toMatch(/object-src\s+'none'/);
+        }
+    });
+
+    // [1A-FU2-S-M5] report-to + Report-To header — the modern Reporting
+    // API replacement for deprecated report-uri. Both kept for transition.
+    test('CSP includes report-to directive alongside report-uri', () => {
+        const cspMatch = nginxConf.match(
+            /add_header\s+Content-Security-Policy\s+"([^"]+)"/
+        );
+        expect(cspMatch[1]).toMatch(/report-to\s+csp/);
+    });
+
+    test('Report-To header is emitted with the csp group + /api/csp-report endpoint', () => {
+        expect(nginxConf).toMatch(/add_header\s+Report-To\s+'\{"group":"csp"/);
+        expect(nginxConf).toMatch(/"url":"\/api\/csp-report"/);
+    });
 });
 
 describe('[P1-3] helmet CSP no longer carries unsafe-eval anywhere', () => {

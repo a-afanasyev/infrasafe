@@ -98,13 +98,19 @@ describe('AuthController', () => {
 
             await authController.login(req, res, next);
 
+            // [1A-FU2-S-M2] Tokens are NOT echoed in the response body;
+            // cookies are the sole delivery mechanism. Success is signalled
+            // via `success: true` only.
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
                     success: true,
-                    message: 'Login successful',
-                    accessToken: 'access-token'
+                    message: 'Login successful'
                 })
             );
+            // Defence: confirm tokens really aren't leaking into the body.
+            const responseBody = res.json.mock.calls[0][0];
+            expect(responseBody.accessToken).toBeUndefined();
+            expect(responseBody.refreshToken).toBeUndefined();
         });
 
         test('returns requires2FASetup for admin without 2FA', async () => {
@@ -444,7 +450,7 @@ describe('AuthController', () => {
             );
         });
 
-        test('returns new tokens on successful refresh', async () => {
+        test('refreshes session and emits cookies (no tokens in body)', async () => {
             req.body = { refreshToken: 'valid-refresh-token' };
             const mockTokens = {
                 accessToken: 'new-access',
@@ -456,14 +462,17 @@ describe('AuthController', () => {
 
             await authController.refreshToken(req, res, next);
 
+            // [1A-FU2-S-M2] body must not contain accessToken/refreshToken
+            // — the cookie set is the auth delivery, not JSON fields.
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
                     success: true,
-                    message: 'Token refreshed successfully',
-                    accessToken: 'new-access',
-                    refreshToken: 'new-refresh'
+                    message: 'Token refreshed successfully'
                 })
             );
+            const body = res.json.mock.calls[0][0];
+            expect(body.accessToken).toBeUndefined();
+            expect(body.refreshToken).toBeUndefined();
         });
 
         test('returns 401 for INVALID_REFRESH_TOKEN error', async () => {

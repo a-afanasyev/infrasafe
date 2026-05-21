@@ -45,6 +45,18 @@ const cspReportLimiter = new SimpleRateLimiter({
     legacyHeaders: false
 });
 
+// [1A-FU2-S-L3] Defensive URL sanitization: strip query string +
+// fragment before logging. The CSP spec says browsers should already
+// do this for documentUri / blockedUri / sourceFile, but older or non-
+// compliant clients (and proxies) may not. Strip explicitly so a URL
+// like `https://app/?token=abc` never lands in the log file.
+function stripQueryFragment(s) {
+    if (typeof s !== 'string') return null;
+    const noFragment = s.split('#', 1)[0];
+    const noQuery = noFragment.split('?', 1)[0];
+    return noQuery.slice(0, 256);
+}
+
 router.post('/', cspReportLimiter.middleware(), (req, res) => {
     try {
         // Pull out the most informative fields without dumping the full
@@ -60,13 +72,11 @@ router.post('/', cspReportLimiter.middleware(), (req, res) => {
         // hides any cookie-shaped value an attacker might inject hoping
         // to see it echoed in logs.
         const summary = {
-            documentUri: typeof v['document-uri'] === 'string' ? v['document-uri'].slice(0, 256)
-                : typeof v.documentURL === 'string' ? v.documentURL.slice(0, 256) : null,
+            documentUri: stripQueryFragment(v['document-uri'] || v.documentURL),
             violatedDirective: typeof v['violated-directive'] === 'string' ? v['violated-directive'].slice(0, 128)
                 : typeof v.effectiveDirective === 'string' ? v.effectiveDirective.slice(0, 128) : null,
-            blockedUri: typeof v['blocked-uri'] === 'string' ? v['blocked-uri'].slice(0, 256)
-                : typeof v.blockedURL === 'string' ? v.blockedURL.slice(0, 256) : null,
-            sourceFile: typeof v['source-file'] === 'string' ? v['source-file'].slice(0, 256) : null,
+            blockedUri: stripQueryFragment(v['blocked-uri'] || v.blockedURL),
+            sourceFile: stripQueryFragment(v['source-file']),
             lineNumber: Number.isFinite(v['line-number']) ? v['line-number'] : null,
             disposition: typeof v.disposition === 'string' ? v.disposition.slice(0, 32) : null
         };

@@ -53,12 +53,36 @@ BEGIN
         --   ALTER ROLE infrasafe_runtime LOGIN PASSWORD '<strong>';
         -- in one atomic step. No placeholder credential ever lives in
         -- a usable state.
-        CREATE ROLE infrasafe_runtime NOLOGIN;
+        -- [1A-FU2-DB-M2] Explicit denial attributes — defence-in-depth
+        -- against a future operator copying a wrong ALTER ROLE from
+        -- another runbook (e.g. accidentally adding SUPERUSER). Pinning
+        -- them in CREATE ROLE makes the intent self-documenting.
+        -- [1A-FU2-DB-M1] CONNECTION LIMIT 20 — matches the default pg
+        -- pool size in src/config/db.js. Without it, a connection leak
+        -- in the app can exhaust max_connections cluster-wide.
+        CREATE ROLE infrasafe_runtime
+            NOLOGIN
+            NOSUPERUSER
+            NOCREATEDB
+            NOCREATEROLE
+            NOREPLICATION
+            INHERIT
+            CONNECTION LIMIT 20;
         COMMENT ON ROLE infrasafe_runtime IS
             'Least-privilege runtime role for the InfraSafe app (P0-5). '
             'Created NOLOGIN — operator must `ALTER ROLE infrasafe_runtime '
             'LOGIN PASSWORD ''<strong>''` before the app can use it. See '
             'docs/p0-5-runtime-role-2026-05-21.md.';
+    ELSE
+        -- Re-runnable migration: ensure attributes are correct even on
+        -- a pre-existing role that may have been created with looser
+        -- defaults. Each ALTER is idempotent — already-set flags are a no-op.
+        ALTER ROLE infrasafe_runtime
+            NOSUPERUSER
+            NOCREATEDB
+            NOCREATEROLE
+            NOREPLICATION
+            CONNECTION LIMIT 20;
     END IF;
 END
 $migration_017$;

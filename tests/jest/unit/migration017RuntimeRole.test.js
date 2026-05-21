@@ -200,6 +200,29 @@ describe('[P0-5] migration 017 — runtime role contract', () => {
         }
     });
 
+    // [1A-FU2-DB-M2] explicit role denial attrs prevent accidental
+    // privilege creep from a future operator copy-pasting the wrong
+    // ALTER ROLE. Each attribute pinned at CREATE time + re-asserted
+    // on every migration run.
+    test('CREATE ROLE pins NOSUPERUSER / NOCREATEDB / NOCREATEROLE / NOREPLICATION', () => {
+        const required = ['NOSUPERUSER', 'NOCREATEDB', 'NOCREATEROLE', 'NOREPLICATION'];
+        for (const attr of required) {
+            expect(MIGRATION).toMatch(new RegExp(`CREATE\\s+ROLE\\s+infrasafe_runtime[\\s\\S]*?${attr}[\\s\\S]*?;`, 'i'));
+            expect(INIT_MIRROR).toMatch(new RegExp(`CREATE\\s+ROLE\\s+infrasafe_runtime[\\s\\S]*?${attr}[\\s\\S]*?;`, 'i'));
+        }
+    });
+
+    // [1A-FU2-DB-M1] CONNECTION LIMIT prevents a runaway pool from
+    // exhausting cluster max_connections. 20 matches the default pg pool.
+    test('CONNECTION LIMIT 20 is set on the role at create time + re-asserted on rerun', () => {
+        // CREATE branch
+        expect(MIGRATION).toMatch(/CREATE\s+ROLE\s+infrasafe_runtime[\s\S]*?CONNECTION\s+LIMIT\s+20/i);
+        expect(INIT_MIRROR).toMatch(/CREATE\s+ROLE\s+infrasafe_runtime[\s\S]*?CONNECTION\s+LIMIT\s+20/i);
+        // ALTER (re-run) branch — idempotency guarantee
+        expect(MIGRATION).toMatch(/ALTER\s+ROLE\s+infrasafe_runtime[\s\S]*?CONNECTION\s+LIMIT\s+20/i);
+        expect(INIT_MIRROR).toMatch(/ALTER\s+ROLE\s+infrasafe_runtime[\s\S]*?CONNECTION\s+LIMIT\s+20/i);
+    });
+
     // [1A-FU2-DB-H1] No ALTER DEFAULT PRIVILEGES ... GRANT EXECUTE on FUNCTIONS.
     // Existing functions get EXECUTE via the snapshot grant; future ones must
     // be granted explicitly per-migration so a stray SECURITY DEFINER cannot

@@ -268,10 +268,12 @@ describe('[P1-2] controllers emit cookies on token-issuing endpoints', () => {
         const names = res.cookie.mock.calls.map(c => c[0]);
         expect(names).toContain(COOKIE_NAMES.access);
         expect(names).toContain(COOKIE_NAMES.refresh);
-        // Body still carries tokens (transitional dual-emit).
-        expect(res.json).toHaveBeenCalledWith(
-            expect.objectContaining({ accessToken: 'A', refreshToken: 'R' })
-        );
+        // [1A-FU2-S-M2] Tokens are NOT echoed in the body — cookies are
+        // the sole delivery mechanism.
+        const body = res.json.mock.calls[0][0];
+        expect(body.accessToken).toBeUndefined();
+        expect(body.refreshToken).toBeUndefined();
+        expect(body).toMatchObject({ success: true });
     });
 
     test('verify2FA sets BOTH cookies', async () => {

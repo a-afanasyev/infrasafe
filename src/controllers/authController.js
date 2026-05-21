@@ -46,13 +46,16 @@ const login = async (req, res, next) => {
         // Обычный пользователь без 2FA — стандартный JWT
         const tokens = authService.generateTokens(user);
 
-        // [P1-2] Emit HttpOnly cookies in parallel to the body fields.
+        // [P1-2] HttpOnly cookies are the auth delivery mechanism.
         setAuthCookies(res, tokens);
 
+        // [1A-FU2-S-M2] Tokens are NOT echoed in the response body —
+        // the cookies above are the source of truth. Body-echoed tokens
+        // were readable by injected scripts before garbage collection,
+        // partially defeating the HttpOnly defence.
         res.json({
             success: true,
             message: 'Login successful',
-            ...tokens,
             user: {
                 id: user.user_id,
                 username: user.username,
@@ -238,10 +241,10 @@ const refreshToken = async (req, res, next) => {
         // token and (rotated) refresh token become the active cookies.
         setAuthCookies(res, tokens);
 
+        // [1A-FU2-S-M2] No token spread — cookies are the only delivery.
         res.json({
             success: true,
-            message: 'Token refreshed successfully',
-            ...tokens
+            message: 'Token refreshed successfully'
         });
 
     } catch (error) {
@@ -313,15 +316,15 @@ const verify2FA = async (req, res, next) => {
         // Генерация полных токенов
         const tokens = authService.generateTokens(user);
 
-        // [P1-2] Emit HttpOnly cookies alongside the body fields.
+        // [P1-2] HttpOnly cookies are the auth delivery mechanism.
         setAuthCookies(res, tokens);
 
+        // [1A-FU2-S-M2] No token spread — cookies only.
         res.json({
             success: true,
             message: result.method === 'recovery'
                 ? 'Login successful (recovery code used)'
                 : 'Login successful',
-            ...tokens,
             user: {
                 id: user.user_id,
                 username: user.username,
@@ -378,13 +381,13 @@ const confirm2FA = async (req, res, next) => {
         // 2FA активирована — выдаём полные токены
         const tokens = authService.generateTokens(user);
 
-        // [P1-2] Emit HttpOnly cookies alongside the body fields.
+        // [P1-2] HttpOnly cookies are the auth delivery mechanism.
         setAuthCookies(res, tokens);
 
+        // [1A-FU2-S-M2] No token spread — cookies only.
         res.json({
             success: true,
             message: '2FA enabled successfully',
-            ...tokens,
             user: {
                 id: user.user_id,
                 username: user.username,
