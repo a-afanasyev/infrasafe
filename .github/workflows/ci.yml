@@ -61,3 +61,38 @@ jobs:
           name: coverage-report
           path: tests/reports/coverage/
           retention-days: 14
+
+  audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Fail only on high/critical CVEs in production deps. Moderate is
+      # informational — noisy across the dep tree and not actionable per-PR.
+      - name: Audit production deps
+        run: npm audit --omit=dev --audit-level=high
+
+  gitleaks:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks scans history; fetch full so it can see every commit
+          # introduced in the PR vs the base branch.
+          fetch-depth: 0
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GITLEAKS_LICENSE optional; without it the org-quota free
+          # tier is used. Add a secret if scan volume requires it.
+          # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
