@@ -50,8 +50,10 @@ psql postgresql://postgres:postgres@localhost:5435/infrasafe
 # Init scripts run automatically via Docker entrypoint from database/init/
 # Schema: database/init/01_init_database.sql
 # Seed data: database/init/02_seed_data.sql
-# Migrations: database/migrations/003-015 (see database/migrations/README.md)
-# Latest migrations: 011 UK integration, 012 TOTP 2FA, 013 account lockout, 014 perf indexes, 015 alert dedup
+# Migrations: database/migrations/003-019 (see database/migrations/README.md)
+# Latest migrations: 011 UK integration, 012 TOTP 2FA, 013 account lockout, 014 perf indexes,
+#                    015 alert dedup, 016 password_changed_at, 017 runtime role,
+#                    018 alert_request_map FK (Sprint 5), 019 buildings FK indexes (Sprint 5)
 ```
 
 ## Architecture

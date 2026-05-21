@@ -281,7 +281,7 @@ class AnalyticsService {
                 FROM metrics m
                 JOIN controllers c ON m.controller_id = c.controller_id
                 JOIN buildings b ON c.building_id = b.building_id
-                WHERE b.power_transformer_id = $1
+                WHERE (b.primary_transformer_id = $1 OR b.backup_transformer_id = $1)
                   AND m.timestamp > NOW() - INTERVAL '7 days'
                 GROUP BY DATE_TRUNC('hour', m.timestamp)
                 ORDER BY hour DESC

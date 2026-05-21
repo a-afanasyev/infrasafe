@@ -109,6 +109,18 @@ describe('Error Handler Middleware', () => {
         expect(responseBody.error.stack).toBeUndefined();
     });
 
+    // [Sprint 5 / P2-4] Case-insensitive NODE_ENV match.
+    test.each(['Development', 'DEVELOPMENT', '  development  '])(
+        'includes stack trace when NODE_ENV is %p (case-insensitive)',
+        (value) => {
+            process.env.NODE_ENV = value;
+            const err = new Error('Dev error');
+            errorHandler(err, req, res, next);
+            const responseBody = res.json.mock.calls[0][0];
+            expect(responseBody.error.stack).toBeDefined();
+        }
+    );
+
     test('logs error message', () => {
         const err = new Error('Logged error');
         err.statusCode = 400;
