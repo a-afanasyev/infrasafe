@@ -131,8 +131,11 @@ describe("[P1-5] integration_log catches no longer silent", () => {
             uk_category: 'electrical',
             uk_urgency: 'high'
         });
-        // resolveBuildingIds is on the service prototype — stub via spy
-        jest.spyOn(service, 'resolveBuildingIds').mockResolvedValue([{
+        // [P1-14 split] resolveBuildingIds lives on the alertForwarder
+        // submodule now. The spy must intercept the actual method that
+        // sendAlertToUK calls via `this.resolveBuildingIds(...)`.
+        const alertForwarder = require('../../../src/services/uk/alertForwarder');
+        jest.spyOn(alertForwarder, 'resolveBuildingIds').mockResolvedValue([{
             building_id: 99, external_id: 'ext-uuid-99'
         }]);
         AlertRequestMap.findByAlertAndBuilding.mockResolvedValue(null);
@@ -159,7 +162,8 @@ describe("[P1-5] integration_log catches no longer silent", () => {
             msg.includes('audit unreachable') // root cause
         )).toBe(true);
 
-        service.resolveBuildingIds.mockRestore();
+        const alertForwarderRestore = require('../../../src/services/uk/alertForwarder');
+        alertForwarderRestore.resolveBuildingIds.mockRestore();
     });
 
     test('no remaining `.catch(() => {})` patterns in source', () => {
