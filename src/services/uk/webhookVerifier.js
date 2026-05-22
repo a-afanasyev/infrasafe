@@ -63,12 +63,17 @@ class UKWebhookVerifier {
 
             if (!signatureHeader) return false;
 
-            // Parse header: "t=<timestamp>,v1=<hex_signature>"
+            // Parse header: "t=<timestamp>,v1=<hex_signature>".
+            // [CodeQL js/remote-property-injection] Only write to the two
+            // known-good keys — any other parameter the sender provides is
+            // discarded, so the parts object cannot be polluted with
+            // attacker-chosen property names.
             const parts = {};
             for (const part of signatureHeader.split(',')) {
                 const eqIdx = part.indexOf('=');
                 if (eqIdx === -1) continue;
                 const k = part.substring(0, eqIdx);
+                if (k !== 't' && k !== 'v1') continue;
                 const v = part.substring(eqIdx + 1);
                 parts[k] = v;
             }

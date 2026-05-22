@@ -20,6 +20,11 @@ const Building = require('../../models/Building');
 const logger = require('../../utils/logger');
 const { isValidBuildingEvent, isValidUUID, validateCoordinate } = require('../../utils/webhookValidation');
 
+// [CodeQL js/log-injection] Strip CR/LF/TAB and cap length so attacker-shaped
+// values from the webhook payload (event_id, ukBuilding.id) cannot forge
+// extra log lines.
+const safeLogValue = (v) => String(v ?? '').replace(/[\r\n\t]/g, '_').slice(0, 64);
+
 class UKBuildingSync {
     /**
      * Generate a deterministic external_id for a UK building.
@@ -87,7 +92,7 @@ class UKBuildingSync {
         } catch (logError) {
             // UNIQUE violation means another request is already processing this event
             if (logError.code === '23505') {
-                logger.info(`Concurrent duplicate event_id ${event_id}, skipping`);
+                logger.info(`Concurrent duplicate event_id ${safeLogValue(event_id)}, skipping`);
                 return;
             }
             throw logError;
@@ -99,7 +104,7 @@ class UKBuildingSync {
             if (event === 'building.deleted') {
                 if (existing) {
                     await Building.softDelete(existing.building_id);
-                    logger.info(`Soft-deleted building ${existing.building_id} (UK building ${ukBuilding.id})`);
+                    logger.info(`Soft-deleted building ${existing.building_id} (UK building ${safeLogValue(ukBuilding.id)})`);
                 } else {
                     logger.warn(`Building with external_id ${externalId} not found for deletion, ignoring`);
                 }
@@ -132,7 +137,7 @@ class UKBuildingSync {
                     logger.info(`Updated building ${existing.building_id} from UK (event: ${event})`);
                 } else {
                     await Building.createFromUK({ external_id: externalId, ...ukFields });
-                    logger.info(`Created building from UK building ${ukBuilding.id} (event: ${event})`);
+                    logger.info(`Created building from UK building ${safeLogValue(ukBuilding.id)} (event: ${event})`);
                 }
             }
 

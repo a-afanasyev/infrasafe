@@ -29,6 +29,11 @@ const configProxy = require('./configProxy');
 
 const TERMINAL_STATUSES = ['Принято', 'Отменена'];
 
+// [CodeQL js/log-injection] Strip CR/LF/TAB and cap length so attacker-shaped
+// values from the webhook payload (event_id, request_number, status) cannot
+// forge extra log lines.
+const safeLogValue = (v) => String(v ?? '').replace(/[\r\n\t]/g, '_').slice(0, 64);
+
 class UKRequestProcessor {
     /**
      * Handle incoming request status webhook from UK.
@@ -53,7 +58,7 @@ class UKRequestProcessor {
             });
         } catch (logError) {
             if (logError.code === '23505') {
-                logger.info(`handleRequestWebhook: concurrent duplicate event_id ${event_id}, skipping`);
+                logger.info(`handleRequestWebhook: concurrent duplicate event_id ${safeLogValue(event_id)}, skipping`);
                 return;
             }
             throw logError;
@@ -65,7 +70,7 @@ class UKRequestProcessor {
 
             // For request.created — just log (no alert mapping expected)
             if (event === 'request.created') {
-                logger.info(`handleRequestWebhook: request.created ${ukRequest.request_number}`);
+                logger.info(`handleRequestWebhook: request.created ${safeLogValue(ukRequest.request_number)}`);
                 return;
             }
 
@@ -79,7 +84,7 @@ class UKRequestProcessor {
                 // Find mapping by request number
                 const mapping = await AlertRequestMap.findByRequestNumber(ukRequest.request_number);
                 if (!mapping) {
-                    logger.debug(`handleRequestWebhook: no mapping for request ${ukRequest.request_number} (manual UK request)`);
+                    logger.debug(`handleRequestWebhook: no mapping for request ${safeLogValue(ukRequest.request_number)} (manual UK request)`);
                     return;
                 }
 
@@ -97,7 +102,7 @@ class UKRequestProcessor {
                     }
                 }
 
-                logger.info(`handleRequestWebhook: updated mapping for request ${ukRequest.request_number} → status: ${newStatus}`);
+                logger.info(`handleRequestWebhook: updated mapping for request ${safeLogValue(ukRequest.request_number)} → status: ${newStatus}`);
             }
 
             // Mark log entry as success — must happen before the alert resolution
