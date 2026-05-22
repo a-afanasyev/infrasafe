@@ -81,13 +81,44 @@ class UKIntegrationService {
                 throw new Error('Cannot update this setting via API');
             }
             if (ALLOWED_CONFIG_KEYS.includes(key)) {
+                // [Sprint 7 / P1-7] Type-validate each whitelisted key before
+                // persisting. The whitelist alone gates which keys are
+                // writable; this gates that the value is well-formed.
                 if (key === 'uk_api_url') {
                     validateUKApiUrl(value);
+                } else if (key === 'uk_integration_enabled') {
+                    if (!UKIntegrationService._isBoolish(value)) {
+                        throw new Error('Invalid value for uk_integration_enabled');
+                    }
+                } else if (key === 'uk_frontend_url') {
+                    if (!UKIntegrationService._isHttpUrl(value)) {
+                        throw new Error('Invalid value for uk_frontend_url');
+                    }
                 }
                 await IntegrationConfig.set(key, value);
             } else {
                 logger.warn(`ukIntegrationService.updateConfig: unknown key "${key}", skipping`);
             }
+        }
+    }
+
+    /** True for a real boolean or the JSON-body strings 'true'/'false'. */
+    static _isBoolish(value) {
+        return typeof value === 'boolean'
+            || value === 'true'
+            || value === 'false';
+    }
+
+    /** True for an http(s) URL string no longer than 255 chars. */
+    static _isHttpUrl(value) {
+        if (typeof value !== 'string' || value.length === 0 || value.length > 255) {
+            return false;
+        }
+        try {
+            const parsed = new URL(value);
+            return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+        } catch {
+            return false;
         }
     }
 
@@ -445,9 +476,12 @@ class UKIntegrationService {
             externalId = ukBuilding.external_id;
         } else {
             if (ukBuilding.external_id !== undefined && ukBuilding.external_id !== null) {
+                // [Sprint 7 / M-sec-1] Strip CR/LF/TAB and cap length so a
+                // crafted uk_building_id can't forge extra log lines.
+                const safeId = String(ukBuilding.id ?? '').replace(/[\r\n\t]/g, '_').slice(0, 64);
                 logger.warn(
                     `handleBuildingWebhook: invalid building.external_id received, ` +
-                    `falling back to internal hash (uk_building_id=${ukBuilding.id})`
+                    `falling back to internal hash (uk_building_id=${safeId})`
                 );
             }
             externalId = this._generateExternalId(ukBuilding.id);

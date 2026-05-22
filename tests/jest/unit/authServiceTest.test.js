@@ -973,4 +973,25 @@ describe('AuthService', () => {
             ).rejects.toEqual(expect.objectContaining({ code: 'INVALID_REFRESH_TOKEN' }));
         });
     });
+
+    // [Sprint 7 / P1-V2] Pin tests for the INTENTIONAL fail-OPEN trade-off
+    // (ARCH-102): when the blacklist DB lookup is unavailable, isTokenBlacklisted
+    // returns false so a DB outage does not lock every user out. This is a
+    // deliberate availability-over-strict-security choice — these tests exist
+    // so the behaviour can't be silently flipped.
+    describe('isTokenBlacklisted — fail-OPEN on DB outage (ARCH-102)', () => {
+        test('returns false when the blacklist DB lookup rejects', async () => {
+            cacheService.get.mockResolvedValue(null);
+            db.query.mockRejectedValue(new Error('connection refused'));
+
+            await expect(authService.isTokenBlacklisted('some-token')).resolves.toBe(false);
+        });
+
+        test('returns true when the token is present in the DB', async () => {
+            cacheService.get.mockResolvedValue(null);
+            db.query.mockResolvedValue({ rows: [{ exists: 1 }] });
+
+            await expect(authService.isTokenBlacklisted('blacklisted-token')).resolves.toBe(true);
+        });
+    });
 });

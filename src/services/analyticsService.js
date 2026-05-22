@@ -152,6 +152,11 @@ class AnalyticsService {
     }
 
     // Обновление материализованного представления
+    // [Sprint 7 / H1] Legacy admin-triggered refresh path. The scheduled
+    // background refresh lives in src/services/mvRefreshService.js, which
+    // calls migration 020's side-effect-free SECURITY DEFINER wrapper
+    // (refresh_mv_transformer_load) instead of this function. Keep the two
+    // paths in mind together — full consolidation is a tracked follow-up.
     async refreshTransformerAnalytics() {
         return await this.databaseBreaker.execute(async () => {
             const query = 'SELECT refresh_transformer_analytics()';

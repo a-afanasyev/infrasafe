@@ -68,7 +68,12 @@ const handlers = {
             const config = await ukIntegrationService.getConfig();
             return res.json({ success: true, data: config, message: 'Config updated' });
         } catch (error) {
-            if (error.message && error.message.includes('Cannot update this setting')) {
+            // [Sprint 7 / P1-7] Map both the sensitive-key rejection and the
+            // new type-validation failures to a 400 client error.
+            if (error.message && (
+                error.message.includes('Cannot update this setting')
+                || error.message.startsWith('Invalid value for')
+            )) {
                 return res.status(400).json({ success: false, message: error.message });
             }
             logger.error(`integrationRoutes.updateConfig error: ${error.message}`);

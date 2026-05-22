@@ -2261,7 +2261,19 @@ document.addEventListener('DOMContentLoaded', async function () {
                     });
                     const setupData = await setupRes.json();
                     if (setupRes.ok) {
-                        document.getElementById('map-qr-img').src = setupData.qrCodeUrl;
+                        // [1A-FU-C-M3] Defence-in-depth: validate qrCodeUrl
+                        // scheme + length before assigning to img.src. The
+                        // totpService produces exactly `data:image/png;base64,<...>`;
+                        // anything else is a server regression or injection
+                        // attempt — refuse to render. Mirrors public/login.js.
+                        const qrUrl = String(setupData.qrCodeUrl || '');
+                        const QR_PREFIX = 'data:image/png;base64,';
+                        const QR_MAX_LEN = 8 * 1024; // 8KB — actual QR is ~1-2KB
+                        if (!qrUrl.startsWith(QR_PREFIX) || qrUrl.length > QR_MAX_LEN) {
+                            showMapError('map-login-error', 'Сервер вернул некорректный QR-код');
+                            return;
+                        }
+                        document.getElementById('map-qr-img').src = qrUrl;
                         document.getElementById('map-qr-secret').textContent = setupData.secret;
                         document.getElementById('map-recovery-codes').textContent = setupData.recoveryCodes.join('\n');
                         showMapLoginStep('setup');

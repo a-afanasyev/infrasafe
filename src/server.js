@@ -190,7 +190,7 @@ db.init()
         try {
             require('./services/mvRefreshService').start();
         } catch (e) {
-            logger.error(`MV refresh scheduler failed to start: ${e.message}`);
+            logger.error('MV refresh scheduler failed to start:', e);
         }
     })
     .catch((error) => {

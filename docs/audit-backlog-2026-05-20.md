@@ -17,6 +17,8 @@
 >
 > **Sprint 6 — UK hardening + MV scheduler — 2026-05-22**: InfraSafe-side закрыто 3 items на `feat/sprint-6-uk-hardening`: CR-2 (deterministic `external_id` from UK payload), P0-6 (MV refresh scheduler — new `mvRefreshService.js`), P1-V13 (port healthcheck/limits/log-rotation from `docker-compose.prod.yml` into `docker-compose.unified.yml`, mark prod.yml deprecated). CR-1 (expose `external_id` in `/buildings-metrics`) was verified already done. Tests: 99 suites / 1978 ✓ (+22: 4 CR-2 + 18 MV scheduler). UK-side PR-A/B/C/D and reconciliation остаются для отдельной сессии в `/Users/andreyafanasyev/Code/UK/` per `docs/superpowers/specs/2026-05-19-uk-infrasafe-webhook-hardening.md`.
 >
+> **Sprint 7 — HIGH-severity blockers — 2026-05-22**: post Sprint 5/6/6.1 review, на `feat/sprint-7-high-blockers`. Phase-1 verification found 5 backlog items already fixed (statuses were stale) — synced to `fixed`: `[1A-FU-C-M1]`, `[1A-FU-C-M2]`, `[1A-FU-C-M4]`, `[P1-V10]`, `[1A-FU-S-M2]`. Code/migration changes (one PR): `[1A-FU-C-M3]` (port QR-URL validation into `script.js` map-login path), `[P1-7]` (updateConfig type validation, no Joi dep), `[P1-V14]` (migration 021 — `alerts.metric_id` FK), `[P1-V2]` (fail-OPEN pin tests), plus Sprint 6.1 review items M-sec-1 (log-injection sanitize), M-db-1/M-db-2 (migration 020 `VOLATILE` + GRANT comment), H1 (dual-refresh cross-ref comments), H2 (MV-refresh consecutive-failure log backoff), M-js-1 (`server.js` Error-object logging). Tests: 99 suites / 1983 ✓ (+5: 3 H2 + 2 P1-V2). Out of scope: architectural epics (P1-9/P1-14/P2-7), operator tasks (P0-4, pg_hba runbook), UK-side webhook hardening.
+>
 > | Item | Status | PR | Prod verification |
 > |---|---|---|---|
 > | [P0-1] login.html 404 | `fixed (deployed)` | #4 `8b4e9c1` | `curl /login.html` → 200 ✓ |
@@ -164,7 +166,7 @@
 - **Files**: `src/routes/integrationRoutes.js:63`, `src/services/ukIntegrationService.js:55-68`
 - **Severity**: P1 — `uk_integration_enabled` может быть object/string; `uk_frontend_url` не валидируется (vs `uk_api_url`)
 - **Fix**: Joi/zod schema на route entry; coerce boolean; validate URL
-- **Status**: `open`
+- **Status**: `fixed` — Sprint 7 (2026-05-22). Type validation added inside `ukIntegrationService.updateConfig()` — no new dependency (Joi not added): `uk_integration_enabled` must be boolean or `'true'`/`'false'`; `uk_frontend_url` must be an http(s) URL ≤255 chars; `uk_api_url` continues through the existing `validateUKApiUrl()`. Invalid values throw `Invalid value for <key>`, mapped to HTTP 400 in `integrationRoutes.js`.
 
 ### `[P1-8]` `alert_request_map.infrasafe_alert_id` без FK constraint
 - **Files**: `database/migrations/011_uk_integration.sql:50-60`
@@ -450,7 +452,7 @@
 - **Evidence**: комментарий явный — "Circuit breaker open or DB error — fail-open: assume not blacklisted". ARCH-102 decision, но в backlog отсутствует
 - **Security impact**: atacker может flood DB connections → blacklisted tokens принимаются заново
 - **Fix**: документировать threat model в spec; альтернатива — fail-closed для critical paths
-- **Status**: `open`
+- **Status**: `fixed` — Sprint 7 (2026-05-22). Confirmed as an INTENTIONAL ARCH-102 trade-off (availability over strict security — a DB outage must not lock every user out). Pinned by two tests in `tests/jest/unit/authServiceTest.test.js` ("isTokenBlacklisted — fail-OPEN on DB outage"): rejecting DB lookup → `false`, present token → `true`. The `ARCH-102` comment at `authService.js` now references the pin tests so the behaviour cannot be silently flipped.
 
 ### `[P1-V3]` `jwt.verify()` без `algorithms` whitelist — alg confusion possible
 - **Files**: `src/middleware/auth.js:59, 148, 224`; `src/services/authService.js:179, 230, 270` (6 callsites)
@@ -505,7 +507,7 @@
 - **Files**: `.github/dependabot.yml` (does not exist)
 - **Severity**: P1 — без auto-PR на CVE backlog P0-3 (axios) не появился бы
 - **Fix**: добавить `dependabot.yml` с weekly schedule на npm
-- **Status**: `open`
+- **Status**: `fixed` — verified Sprint 7 (2026-05-22). `.github/dependabot.yml` exists with a weekly npm schedule. Backlog status was stale.
 
 ### `[P1-V11]` Coverage threshold 80% возможно НЕ на E2E
 - **Files**: `package.json:99-106`, `.github/workflows/ci.yml`
@@ -525,7 +527,7 @@
 - **Files**: `database/init/01_init_database.sql:403`
 - **Evidence**: `metric_id bigint` есть, индекс `idx_alerts_metric` есть, FK `REFERENCES metrics(metric_id)` нет
 - **Fix**: `ALTER TABLE alerts ADD CONSTRAINT fk_alerts_metric FOREIGN KEY (metric_id) REFERENCES metrics(metric_id) ON DELETE SET NULL;`
-- **Status**: `open`
+- **Status**: `fixed (pending operator apply)` — Sprint 7 (2026-05-22). Migration `021_alerts_metric_id_fk.sql` deletes orphan rows then adds `fk_alerts_metric ... ON DELETE CASCADE`. Chose CASCADE over SET NULL: an alert tied to a deleted metric is meaningless, so the alert should go with it. Idempotent (pg_constraint guard); no new index needed — `idx_alerts_metric` already covers the column. Needs `psql -f` against prod.
 
 ### `[P1-V15]` Нет migration runner — миграции вручную через psql
 - **Files**: `package.json` (no `node-pg-migrate`, `flyway`, `liquibase`)
@@ -701,7 +703,7 @@
 - **Severity**: MEDIUM (но **HIGH-priority** функционально — без этого P1-2 не работает против XSS)
 - **Evidence**: server ставит HttpOnly cookie, но клиент **тут же** делает `localStorage.setItem('admin_token', data.accessToken)` → токен снова JS-accessible
 - **Fix**: убрать `localStorage.setItem` из `completeLogin()`; auth middleware уже умеет fallback на cookie. После — инвертировать `extractAccessToken` order на cookie-first.
-- **Status**: `open`
+- **Status**: `fixed` — verified Sprint 7 (2026-05-22). `public/login.js` `completeLogin()` no longer writes the access token to localStorage (see the `[1A-FU-C-M1]` comment block at `login.js:229-243`). Backlog status was stale.
 
 ### `[1A-FU-C-M2]` Hardcoded `infrasafe` DB name в миграции 017
 - **Files**: `database/migrations/017_runtime_role.sql:51`, `database/init/09_runtime_role.sql`
@@ -712,19 +714,19 @@
       EXECUTE format('GRANT CONNECT ON DATABASE %I TO infrasafe_runtime', current_database());
   END $$;
   ```
-- **Status**: `open`
+- **Status**: `fixed` — verified Sprint 7 (2026-05-22). `017_runtime_role.sql:99-100` already uses `format(... %I ..., current_database())`. Backlog status was stale.
 
 ### `[1A-FU-C-M3]` Unvalidated `data.qrCodeUrl` → `img.src` (data-URI injection)
 - **Files**: `public/login.js:170`
 - **Severity**: MEDIUM — server controls URL, но defence-in-depth
 - **Fix**: validate prefix `data:image/` или `https://` перед assignment; иначе `showError('Некорректный QR-код')`
-- **Status**: `open`
+- **Status**: `fixed` — Sprint 7 (2026-05-22). `public/login.js` was already hardened (strict `data:image/png;base64,` prefix + 8KB cap). Sprint 7 ported the same check into the map-login 2FA-setup path in `public/script.js` (`map-qr-img`), the only remaining unvalidated `qrCodeUrl → img.src` assignment. Frontend bundle rebuilt.
 
 ### `[1A-FU-C-M4]` p1-3-csp-sri tests — file-content contract, не live header
 - **Files**: `tests/jest/unit/p1-3-csp-sri.test.js`
 - **Evidence**: Whitespace/quoting error в nginx.production.conf обойдёт unit-тесты и доедет до prod как silent missing CSP header
 - **Fix**: добавить e2e тест в `tests/jest/e2e/` который делает HTTP GET и asserts `res.headers['content-security-policy']` существует + не содержит `'unsafe-inline'` в script-src
-- **Status**: `open`
+- **Status**: `fixed` — verified Sprint 7 (2026-05-22). `tests/jest/e2e/cspHeaders.e2e.test.js` asserts the live response header. Backlog status was stale.
 
 ### `[1A-FU-S-M1]` Runbook P0-5 не запрещает `trust` pg_hba для `infrasafe_runtime`
 - **Files**: `docs/p0-5-runtime-role-2026-05-21.md`
@@ -736,7 +738,7 @@
 - **Files**: `nginx.production.conf` CSP directive
 - **Evidence**: тightened CSP без observability — bypass/misconfig идут невидимо
 - **Fix**: добавить `report-uri /api/csp-report` + minimal backend endpoint (POST JSON, log via winston, rate-limited)
-- **Status**: `open`
+- **Status**: `fixed` — verified Sprint 7 (2026-05-22). `nginx.production.conf` carries both `report-uri /api/csp-report` and a modern `Report-To` header / `report-to csp` directive (see `nginx.production.conf:159-160`). Backlog status was stale.
 
 ## LOW (6)
 

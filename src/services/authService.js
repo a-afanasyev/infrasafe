@@ -584,7 +584,10 @@ class AuthService {
     }
 
     // Проверка, находится ли токен в черном списке
-    // ARCH-102: circuit breaker wraps DB lookup — fail-open on outage
+    // ARCH-102: circuit breaker wraps DB lookup — fail-OPEN on outage. This
+    // is an intentional availability-over-strict-security trade-off: a DB
+    // outage must not lock every user out. Pinned by
+    // tests/jest/unit/authServiceTest.test.js ("fail-OPEN on DB outage").
     async isTokenBlacklisted(token) {
         try {
             const tokenHash = crypto.createHash('sha256').update(token).digest('hex');

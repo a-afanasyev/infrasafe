@@ -18,7 +18,8 @@
 --   Add a dedicated, side-effect-free SECURITY DEFINER wrapper called from
 --   the Node-side scheduler (src/services/mvRefreshService.js). The existing
 --   `refresh_transformer_analytics()` is left untouched for the legacy
---   admin-triggered refresh endpoint (src/services/analyticsService.js:157).
+--   admin-triggered refresh endpoint
+--   (analyticsService.refreshTransformerAnalytics).
 --
 -- Security notes (mirroring the rationale in migration 017):
 --   - SECURITY DEFINER runs as the function owner. The migration runs as
@@ -33,7 +34,7 @@
 
 CREATE OR REPLACE FUNCTION public.refresh_mv_transformer_load()
 RETURNS void
-LANGUAGE plpgsql
+LANGUAGE plpgsql VOLATILE
 SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $$
@@ -47,6 +48,10 @@ COMMENT ON FUNCTION public.refresh_mv_transformer_load() IS
 
 REVOKE ALL ON FUNCTION public.refresh_mv_transformer_load() FROM PUBLIC;
 
+-- NOTE: migration 017's bulk `GRANT EXECUTE ON ALL FUNCTIONS` is a
+-- point-in-time snapshot — it does NOT cover functions created afterward.
+-- Every new SECURITY DEFINER function needs its own explicit GRANT, like
+-- the block below. DO NOT delete this block.
 DO $grant_runtime$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'infrasafe_runtime') THEN
