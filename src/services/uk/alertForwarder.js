@@ -26,11 +26,21 @@
 
 const crypto = require('crypto');
 const AlertRequestMap = require('../../models/AlertRequestMap');
+const UkOutbox = require('../../models/UkOutbox');
 const logger = require('../../utils/logger');
 const alertEvents = require('../../events/alertEvents');
 
 const configProxy = require('./configProxy');
 const webhookVerifier = require('./webhookVerifier');
+
+// [Sprint 9 / FIX-007] Master gate for the new HMAC-webhook sender.
+// When false, sendAlertToUK skips outbox.enqueue entirely (no event lost
+// — AlertRequestMap row stays at 'pending' for the next attempt). Default
+// false until UK Phase 2 lands + secret rotation completes.
+const _isWebhookSenderEnabled = () => {
+    const flag = (process.env.UK_USE_WEBHOOK_SENDER ?? 'false').toString().toLowerCase();
+    return flag === 'true' || flag === '1';
+};
 
 class UKAlertForwarder {
     /**
@@ -92,9 +102,16 @@ class UKAlertForwarder {
                 return;
             }
 
-            // 3. Create UK request per building
-            const ukApiClient = require('../../clients/ukApiClient');
+            // [Sprint 9 / FIX-007] Master gate: skip the webhook path until
+            // operator flips UK_USE_WEBHOOK_SENDER=true. Mappings stay at
+            // 'pending' — next alert cycle will retry. This is the
+            // safe-by-default state for prod until UK Phase 2 lands.
+            const senderEnabled = _isWebhookSenderEnabled();
 
+            // 3. For each affected building: ensure AlertRequestMap row,
+            //    then enqueue an outbox event. The drain worker (see
+            //    src/services/uk/ukOutboxService.js) sends to UK and
+            //    transitions AlertRequestMap.status to 'sent' on 202/409.
             for (const building of buildings) {
                 if (!building.external_id) {
                     logger.debug(`sendAlertToUK: building ${building.building_id} has no external_id, skipping`);
@@ -139,29 +156,66 @@ class UKAlertForwarder {
                         }
                     }
 
-                    // Call UK API
-                    const ukResponse = await ukApiClient.createRequest({
-                        building_external_id: building.external_id,
-                        category: rule.uk_category,
-                        urgency: rule.uk_urgency,
-                        description: alertData.message,
-                        idempotency_key: idempotencyKey
+                    if (!senderEnabled) {
+                        // Mapping is created/reused; sender is dormant.
+                        // When the flag flips later, the next alert cycle
+                        // for this same {alert, building} pair finds the
+                        // 'pending' mapping and re-enqueues (self-healing
+                        // per D3 in the plan).
+                        logger.debug(
+                            `sendAlertToUK: webhook sender disabled, mapping ` +
+                            `${mapping.id} stays pending`
+                        );
+                        continue;
+                    }
+
+                    // Build canonical payload bytes ONCE. These exact bytes
+                    // are signed by ukWebhookClient at send time and POSTed
+                    // verbatim. Re-stringifying elsewhere would invalidate
+                    // the HMAC (D1/D2 in the plan).
+                    const eventBody = JSON.stringify({
+                        event_id: idempotencyKey,
+                        event: 'alert.created',
+                        timestamp: new Date().toISOString(),
+                        alert: {
+                            // UK Phase 2 schema (FIX-007 O0/O1/A1, see contract).
+                            external_id: building.external_id,
+                            type: alertData.type,
+                            severity: alertData.severity,           // WARNING|CRITICAL — UK maps to urgency itself
+                            message: alertData.message,
+                            // Желательно поля для трассировки/debug:
+                            alert_id: alertData.alert_id,
+                            created_at: alertData.created_at || new Date().toISOString(),
+                            correlation_id: alertData.correlation_id || null,
+                            // Опционально поля (UK сохраняет в raw, не для логики):
+                            infrastructure_type: alertData.infrastructure_type,
+                            infrastructure_id: alertData.infrastructure_id,
+                            metric_id: alertData.metric_id,
+                            metric_value: alertData.metric_value,
+                            metric_unit: alertData.metric_unit
+                        }
                     });
 
-                    // Mark as sent
-                    await AlertRequestMap.markSent(mapping.id, ukResponse.request_number);
+                    // ON CONFLICT DO NOTHING — idempotent enqueue. A null
+                    // return here means a previous enqueue with the same
+                    // event_id is already in flight; that's success.
+                    await UkOutbox.enqueue({ event_id: idempotencyKey, payload_body: eventBody });
 
-                    // Log success
+                    // Log enqueue (the actual send + UK response is logged
+                    // by ukOutboxService when the drain worker picks it up).
                     await webhookVerifier.logEvent({
                         direction: 'to_uk',
                         entity_type: 'alert',
                         entity_id: String(alertData.alert_id),
-                        action: 'alert.forwarded',
-                        payload: { alert_id: alertData.alert_id, building_id: building.building_id, request_number: ukResponse.request_number },
-                        status: 'success'
-                    });
+                        action: 'alert.enqueued',
+                        payload: { alert_id: alertData.alert_id, building_id: building.building_id, event_id: idempotencyKey },
+                        status: 'pending'
+                    }).catch(logErr => logger.warn(
+                        `sendAlertToUK: integration_log write failed for alert ${alertData.alert_id} ` +
+                        `building ${building.building_id}: ${logErr.message}`
+                    ));
 
-                    logger.info(`sendAlertToUK: created UK request ${ukResponse.request_number} for alert ${alertData.alert_id}, building ${building.building_id}`);
+                    logger.info(`sendAlertToUK: enqueued event_id=${idempotencyKey} for alert ${alertData.alert_id}, building ${building.building_id}`);
                 } catch (buildingError) {
                     logger.error(`sendAlertToUK: failed for building ${building.building_id}: ${buildingError.message}`);
 
@@ -169,7 +223,7 @@ class UKAlertForwarder {
                         direction: 'to_uk',
                         entity_type: 'alert',
                         entity_id: String(alertData.alert_id),
-                        action: 'alert.forwarded',
+                        action: 'alert.enqueued',
                         payload: { alert_id: alertData.alert_id, building_id: building.building_id },
                         status: 'error',
                         error_message: buildingError.message
