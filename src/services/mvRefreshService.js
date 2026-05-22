@@ -6,20 +6,26 @@
  * `mv_transformer_load_realtime` (the live transformer-load analytics view)
  * was never refreshed automatically — dashboards showed stale data the
  * moment a controller pushed a new metric. This scheduler closes that
- * hole by calling `REFRESH MATERIALIZED VIEW CONCURRENTLY` directly.
+ * hole by calling a dedicated SECURITY DEFINER wrapper —
+ * `refresh_mv_transformer_load()` — added by migration 020.
  *
- * We do NOT call `refresh_transformer_analytics()` (the SQL helper that
- * also writes an audit row into `public.logs`) because `public.logs` is
- * partitioned by date in production and partitions are not auto-created —
- * a missing partition raises and propagates, masking the fact that the
- * REFRESH itself succeeded. Calling REFRESH directly keeps the contract
- * narrow: one statement, one observable outcome.
+ * Why a wrapper rather than `REFRESH MATERIALIZED VIEW CONCURRENTLY`
+ * directly: the app connects as `infrasafe_runtime`, which deliberately
+ * does NOT own materialized views (per migration 017). A direct REFRESH
+ * fails with `must be owner of materialized view`. The wrapper is
+ * SECURITY DEFINER, owned by the bootstrap user (which owns the MV), so
+ * it bypasses ownership while EXECUTE is granted only to the runtime role.
+ *
+ * Why not the pre-existing `refresh_transformer_analytics()` helper:
+ * that one also INSERTs an audit row into `public.logs`, which is
+ * partitioned by date with no auto-partition creation. A missing
+ * partition raises and masks the fact that REFRESH itself succeeded.
  *
  * The earlier `refresh_power_materialized_views()` function from migration
  * 003_v2 (which would have refreshed building/line MVs too) was never
  * applied — the building/line MVs were dropped by migration 012, leaving
  * only `mv_transformer_load_realtime`. If those MVs are reinstated later,
- * extend `_tick()` with additional REFRESH statements.
+ * extend the wrapper function with additional REFRESH statements.
  *
  * Design:
  * - Singleton — one timer per process. Multi-replica safety is delegated
@@ -106,7 +112,7 @@ class MvRefreshScheduler {
         this._running = true;
         const startedAt = Date.now();
         try {
-            await db.query('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_transformer_load_realtime');
+            await db.query('SELECT public.refresh_mv_transformer_load()');
             const durationMs = Date.now() - startedAt;
             logger.info(`MV refresh succeeded in ${durationMs}ms`);
         } catch (err) {

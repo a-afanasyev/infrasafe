@@ -100,13 +100,13 @@ describe('MvRefreshScheduler', () => {
         );
     });
 
-    test('_tick calls REFRESH MATERIALIZED VIEW once and logs success', async () => {
+    test('_tick calls SECURITY DEFINER wrapper once and logs success', async () => {
         db.query.mockResolvedValue({ rows: [] });
 
         await scheduler._tick();
 
         expect(db.query).toHaveBeenCalledWith(
-            'REFRESH MATERIALIZED VIEW CONCURRENTLY mv_transformer_load_realtime'
+            'SELECT public.refresh_mv_transformer_load()'
         );
         expect(db.query).toHaveBeenCalledTimes(1);
         expect(logger.info).toHaveBeenCalledWith(
