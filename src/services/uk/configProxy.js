@@ -66,6 +66,8 @@ class UKConfigProxy {
         return {
             ...dbConfig,
             uk_webhook_secret: '●●●●●●●●',
+            // [Sprint 9 / FIX-007 O5] Two-direction secret split — mask both.
+            infrasafe_webhook_secret: '●●●●●●●●',
             uk_service_user: '●●●●●●●●',
             uk_service_password: '●●●●●●●●'
         };
@@ -103,8 +105,31 @@ class UKConfigProxy {
     }
 
     /**
-     * Fetch /requests/counts-by-building via ukApiClient with 60s cache.
-     * Returns {buildings:{}} on any failure (graceful degradation).
+     * Get open-request count per building.
+     *
+     * [Sprint 9 / FIX-007 O4] UK confirmed they will NOT implement
+     * `/requests/counts-by-building`. Counts are now built locally from
+     * `alert_request_map` status:
+     *
+     *   pending  — outbox enqueued, not yet sent
+     *   sent     — UK acked (202/409); awaiting UK request.created callback
+     *   active   — UK created request; awaiting human resolution
+     *   resolved — UK closed request (Принято/Отменена) — EXCLUDED
+     *   cancelled— manual close — EXCLUDED
+     *
+     * Return shape `{buildings: {<external_id>: <count>}}` is preserved so
+     * existing route consumers (`GET /api/integration/request-counts`)
+     * continue to work without change.
+     *
+     * ⚠️ UNDER-COUNT CAVEAT: counts include only requests created from
+     * InfraSafe alerts. Requests opened directly by residents via the
+     * Telegram bot are NOT counted until UK ARCH-113 lands (UK doesn't
+     * emit `request.*` webhooks for bot-originated requests). Do not
+     * present these counts as "total open requests" in operator UI
+     * without that caveat.
+     *
+     * 60s in-memory cache (single-replica). Invalidated by
+     * requestProcessor.handleRequestWebhook on every UK request event.
      */
     async getRequestCounts() {
         const EMPTY = { buildings: {} };
@@ -117,13 +142,23 @@ class UKConfigProxy {
                 return this._requestCountsCache;
             }
 
-            const ukApiClient = require('../../clients/ukApiClient');
-            const response = await ukApiClient.get('/requests/counts-by-building');
+            const db = require('../../config/database');
+            const result = await db.query(
+                `SELECT building_external_id::text AS external_id, COUNT(*)::int AS count
+                 FROM alert_request_map
+                 WHERE status IN ('pending', 'sent', 'active')
+                   AND building_external_id IS NOT NULL
+                 GROUP BY building_external_id`
+            );
 
-            const result = response || EMPTY;
-            this._requestCountsCache = result;
+            const buildings = {};
+            for (const row of result.rows) {
+                buildings[row.external_id] = row.count;
+            }
+            const counts = { buildings };
+            this._requestCountsCache = counts;
             this._requestCountsCacheTime = Date.now();
-            return result;
+            return counts;
         } catch (error) {
             logger.error(`ukConfigProxy.getRequestCounts error: ${error.message}`);
             return EMPTY;
@@ -131,8 +166,14 @@ class UKConfigProxy {
     }
 
     /**
-     * Fetch /requests/by-building for a specific external_id. UUID-validated
-     * before any network call.
+     * Get recent open-state requests for a single building, by UUID.
+     *
+     * [Sprint 9 / FIX-007 O4] Same data source switch as getRequestCounts —
+     * we query alert_request_map locally instead of the (non-existent) UK
+     * `/requests/by-building` endpoint. Returns mapping rows so the API
+     * consumer sees `uk_request_number`, `status`, `updated_at`.
+     *
+     * Same UNDER-COUNT CAVEAT applies (see getRequestCounts header).
      */
     async getBuildingRequests(externalId, limit = 3) {
         const EMPTY = { requests: [] };
@@ -143,12 +184,21 @@ class UKConfigProxy {
             const enabled = await this.isEnabled();
             if (!enabled) return EMPTY;
 
-            const ukApiClient = require('../../clients/ukApiClient');
-            const response = await ukApiClient.get(
-                `/requests/by-building?external_id=${encodeURIComponent(externalId)}&limit=${limit}`
+            const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 3, 1), 50);
+
+            const db = require('../../config/database');
+            const result = await db.query(
+                `SELECT id, uk_request_number, status, infrasafe_alert_id,
+                        idempotency_key, created_at, updated_at
+                 FROM alert_request_map
+                 WHERE building_external_id = $1
+                   AND status IN ('pending', 'sent', 'active')
+                 ORDER BY created_at DESC
+                 LIMIT $2`,
+                [externalId, safeLimit]
             );
 
-            return response || EMPTY;
+            return { requests: result.rows };
         } catch (error) {
             logger.error(`ukConfigProxy.getBuildingRequests error: ${error.message}`);
             return EMPTY;

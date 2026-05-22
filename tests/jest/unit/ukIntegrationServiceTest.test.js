@@ -42,9 +42,11 @@ jest.mock('../../../src/models/AlertRequestMap', () => ({
     updateStatus: jest.fn(),
     areAllTerminal: jest.fn()
 }));
-jest.mock('../../../src/clients/ukApiClient', () => ({
-    createRequest: jest.fn(),
-    get: jest.fn()
+// [Sprint 9 / FIX-007] ukApiClient is gone. Outbound now goes through
+// UkOutbox.enqueue (drain worker handles the actual UK POST in
+// ukOutboxService); counters now query alert_request_map via db.query.
+jest.mock('../../../src/models/UkOutbox', () => ({
+    enqueue: jest.fn()
 }));
 jest.mock('../../../src/services/alertService', () => ({
     resolveAlert: jest.fn()
@@ -58,15 +60,26 @@ const IntegrationConfig = require('../../../src/models/IntegrationConfig');
 const IntegrationLog = require('../../../src/models/IntegrationLog');
 const AlertRule = require('../../../src/models/AlertRule');
 const AlertRequestMap = require('../../../src/models/AlertRequestMap');
-const ukApiClient = require('../../../src/clients/ukApiClient');
+const UkOutbox = require('../../../src/models/UkOutbox');
 const alertService = require('../../../src/services/alertService');
 const logger = require('../../../src/utils/logger');
 const service = require('../../../src/services/ukIntegrationService');
 
 describe('UKIntegrationService — Phase 3-5', () => {
+    const ORIGINAL_ENV = { ...process.env };
+
     beforeEach(() => {
         jest.clearAllMocks();
         service.invalidateRequestCache();
+        process.env = { ...ORIGINAL_ENV };
+        // Sprint 9 / FIX-007: most sendAlertToUK tests assume the webhook
+        // sender is enabled. Tests for the dormant path explicitly clear
+        // this in their own setup.
+        process.env.UK_USE_WEBHOOK_SENDER = 'true';
+    });
+
+    afterAll(() => {
+        process.env = ORIGINAL_ENV;
     });
 
     // -------------------------------------------------------------------------
@@ -209,7 +222,7 @@ describe('UKIntegrationService — Phase 3-5', () => {
             expect(logger.debug).toHaveBeenCalledWith(
                 expect.stringContaining('has no external_id')
             );
-            expect(ukApiClient.createRequest).not.toHaveBeenCalled();
+            expect(UkOutbox.enqueue).not.toHaveBeenCalled();
         });
 
         it('skips buildings already sent (existing mapping with sent status)', async () => {
@@ -229,13 +242,13 @@ describe('UKIntegrationService — Phase 3-5', () => {
 
             await service.sendAlertToUK(alertData);
 
-            expect(ukApiClient.createRequest).not.toHaveBeenCalled();
+            expect(UkOutbox.enqueue).not.toHaveBeenCalled();
             expect(logger.debug).toHaveBeenCalledWith(
                 expect.stringContaining('already sent')
             );
         });
 
-        it('retries pending mapping without creating a new one', async () => {
+        it('retries pending mapping by enqueueing with existing idempotency_key', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
             AlertRule.findByTypeAndSeverity.mockResolvedValue({
                 uk_category: 'electricity',
@@ -249,23 +262,29 @@ describe('UKIntegrationService — Phase 3-5', () => {
                 status: 'pending',
                 idempotency_key: 'existing-key'
             });
-            ukApiClient.createRequest.mockResolvedValue({ request_number: 'REQ-001' });
-            AlertRequestMap.markSent.mockResolvedValue({});
+            UkOutbox.enqueue.mockResolvedValue({ id: 1, event_id: 'existing-key' });
             IntegrationLog.create.mockResolvedValue({ id: 1 });
 
             await service.sendAlertToUK(alertData);
 
             expect(AlertRequestMap.create).not.toHaveBeenCalled();
-            expect(ukApiClient.createRequest).toHaveBeenCalledWith(
+            // Sprint 9: drain worker (not alertForwarder) will call
+            // AlertRequestMap.markSent after UK responds — assert NOT here.
+            expect(AlertRequestMap.markSent).not.toHaveBeenCalled();
+            expect(UkOutbox.enqueue).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    building_external_id: 'ext-1',
-                    idempotency_key: 'existing-key'
+                    event_id: 'existing-key',
+                    payload_body: expect.any(String)
                 })
             );
-            expect(AlertRequestMap.markSent).toHaveBeenCalledWith(50, 'REQ-001');
+            const enqueueCall = UkOutbox.enqueue.mock.calls[0][0];
+            const parsed = JSON.parse(enqueueCall.payload_body);
+            expect(parsed.event_id).toBe('existing-key');
+            expect(parsed.event).toBe('alert.created');
+            expect(parsed.alert.external_id).toBe('ext-1');
         });
 
-        it('creates new mapping and sends to UK API for new alert', async () => {
+        it('creates new mapping and enqueues outbox event for new alert', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
             AlertRule.findByTypeAndSeverity.mockResolvedValue({
                 uk_category: 'electricity',
@@ -279,8 +298,7 @@ describe('UKIntegrationService — Phase 3-5', () => {
                 id: 60,
                 idempotency_key: 'new-key'
             });
-            ukApiClient.createRequest.mockResolvedValue({ request_number: 'REQ-002' });
-            AlertRequestMap.markSent.mockResolvedValue({});
+            UkOutbox.enqueue.mockResolvedValue({ id: 2, event_id: 'new-key' });
             IntegrationLog.create.mockResolvedValue({ id: 2 });
 
             await service.sendAlertToUK(alertData);
@@ -292,15 +310,38 @@ describe('UKIntegrationService — Phase 3-5', () => {
                     status: 'pending'
                 })
             );
-            expect(ukApiClient.createRequest).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    building_external_id: 'ext-1',
-                    category: 'electricity',
-                    urgency: 'high',
-                    description: 'Voltage dropped below threshold'
-                })
-            );
-            expect(AlertRequestMap.markSent).toHaveBeenCalledWith(60, 'REQ-002');
+            // Sprint 9: payload carries the full Phase 2 alert envelope.
+            // category/urgency are NOT in payload — UK derives them from
+            // type+severity per O3.
+            const enqueueCall = UkOutbox.enqueue.mock.calls[0][0];
+            const parsed = JSON.parse(enqueueCall.payload_body);
+            expect(parsed.alert.external_id).toBe('ext-1');
+            expect(parsed.alert.type).toBe('voltage_drop');
+            expect(parsed.alert.severity).toBe('critical');
+            expect(parsed.alert.message).toBe('Voltage dropped below threshold');
+            // markSent moves to drain worker, not alertForwarder
+            expect(AlertRequestMap.markSent).not.toHaveBeenCalled();
+        });
+
+        it('does not enqueue when UK_USE_WEBHOOK_SENDER is disabled (dormant)', async () => {
+            // Sprint 9 / D5: prod default keeps the sender dormant.
+            delete process.env.UK_USE_WEBHOOK_SENDER;
+            IntegrationConfig.isEnabled.mockResolvedValue(true);
+            AlertRule.findByTypeAndSeverity.mockResolvedValue({
+                uk_category: 'electricity',
+                uk_urgency: 'high'
+            });
+            db.query.mockResolvedValue({
+                rows: [{ building_id: 1, external_id: 'ext-1' }]
+            });
+            AlertRequestMap.findByAlertAndBuilding.mockResolvedValue(null);
+            AlertRequestMap.create.mockResolvedValue({ id: 60, idempotency_key: 'k' });
+
+            await service.sendAlertToUK(alertData);
+
+            // Mapping is created (so flag-flip catches up) but no enqueue.
+            expect(AlertRequestMap.create).toHaveBeenCalled();
+            expect(UkOutbox.enqueue).not.toHaveBeenCalled();
         });
 
         it('handles race condition when create returns null (concurrent insert)', async () => {
@@ -321,7 +362,7 @@ describe('UKIntegrationService — Phase 3-5', () => {
             await service.sendAlertToUK(alertData);
 
             // Should skip because race winner has status 'sent'
-            expect(ukApiClient.createRequest).not.toHaveBeenCalled();
+            expect(UkOutbox.enqueue).not.toHaveBeenCalled();
         });
 
         it('handles race condition: create null, race winner pending', async () => {
@@ -337,16 +378,16 @@ describe('UKIntegrationService — Phase 3-5', () => {
                 .mockResolvedValueOnce(null)
                 .mockResolvedValueOnce({ id: 70, status: 'pending', idempotency_key: 'race-key' });
             AlertRequestMap.create.mockResolvedValue(null);
-            ukApiClient.createRequest.mockResolvedValue({ request_number: 'REQ-RACE' });
-            AlertRequestMap.markSent.mockResolvedValue({});
+            UkOutbox.enqueue.mockResolvedValue({ id: 3, event_id: 'race-key' });
             IntegrationLog.create.mockResolvedValue({ id: 3 });
 
             await service.sendAlertToUK(alertData);
 
-            expect(ukApiClient.createRequest).toHaveBeenCalledWith(
-                expect.objectContaining({ idempotency_key: 'race-key' })
+            expect(UkOutbox.enqueue).toHaveBeenCalledWith(
+                expect.objectContaining({ event_id: 'race-key' })
             );
-            expect(AlertRequestMap.markSent).toHaveBeenCalledWith(70, 'REQ-RACE');
+            // markSent moves to drain worker
+            expect(AlertRequestMap.markSent).not.toHaveBeenCalled();
         });
 
         it('logs error per building but continues with others on per-building failure', async () => {
@@ -365,8 +406,7 @@ describe('UKIntegrationService — Phase 3-5', () => {
             AlertRequestMap.create
                 .mockRejectedValueOnce(new Error('DB constraint error'))
                 .mockResolvedValueOnce({ id: 80, idempotency_key: 'key-2' });
-            ukApiClient.createRequest.mockResolvedValue({ request_number: 'REQ-003' });
-            AlertRequestMap.markSent.mockResolvedValue({});
+            UkOutbox.enqueue.mockResolvedValue({ id: 4, event_id: 'key-2' });
             IntegrationLog.create.mockResolvedValue({ id: 4 });
 
             await service.sendAlertToUK(alertData);
@@ -375,7 +415,7 @@ describe('UKIntegrationService — Phase 3-5', () => {
             expect(logger.error).toHaveBeenCalledWith(
                 expect.stringContaining('failed for building 1')
             );
-            expect(ukApiClient.createRequest).toHaveBeenCalledTimes(1);
+            expect(UkOutbox.enqueue).toHaveBeenCalledTimes(1);
         });
 
         it('does not throw on top-level error (graceful degradation)', async () => {
@@ -586,6 +626,11 @@ describe('UKIntegrationService — Phase 3-5', () => {
 
     // -------------------------------------------------------------------------
     // getRequestCounts
+    //
+    // Sprint 9 / FIX-007 O4: source switched from UK API to local
+    // alert_request_map aggregation. UK confirmed they won't implement
+    // /requests/counts-by-building; counts are built from inbound
+    // request.* webhook events (with ARCH-113 under-count caveat).
     // -------------------------------------------------------------------------
     describe('getRequestCounts()', () => {
         it('returns empty object when integration is disabled', async () => {
@@ -594,35 +639,43 @@ describe('UKIntegrationService — Phase 3-5', () => {
             const result = await service.getRequestCounts();
 
             expect(result).toEqual({ buildings: {} });
-            expect(ukApiClient.get).not.toHaveBeenCalled();
+            expect(db.query).not.toHaveBeenCalled();
         });
 
-        it('fetches from UK API when cache is empty', async () => {
+        it('aggregates open mappings from alert_request_map', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
-            ukApiClient.get.mockResolvedValue({ buildings: { 'ext-1': 5 } });
+            db.query.mockResolvedValue({
+                rows: [
+                    { external_id: 'ext-1', count: 5 },
+                    { external_id: 'ext-2', count: 2 }
+                ]
+            });
 
             const result = await service.getRequestCounts();
 
-            expect(result).toEqual({ buildings: { 'ext-1': 5 } });
-            expect(ukApiClient.get).toHaveBeenCalledWith('/requests/counts-by-building');
+            expect(result).toEqual({ buildings: { 'ext-1': 5, 'ext-2': 2 } });
+            const sql = db.query.mock.calls[0][0];
+            expect(sql).toMatch(/FROM alert_request_map/);
+            expect(sql).toMatch(/status IN \('pending', 'sent', 'active'\)/);
         });
 
         it('returns cached result within TTL window', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
-            ukApiClient.get.mockResolvedValue({ buildings: { 'ext-1': 5 } });
+            db.query.mockResolvedValue({
+                rows: [{ external_id: 'ext-1', count: 5 }]
+            });
 
-            // First call populates cache
             await service.getRequestCounts();
-            // Second call should use cache
             const result = await service.getRequestCounts();
 
             expect(result).toEqual({ buildings: { 'ext-1': 5 } });
-            expect(ukApiClient.get).toHaveBeenCalledTimes(1);
+            // db.query called only once due to 60s cache
+            expect(db.query).toHaveBeenCalledTimes(1);
         });
 
-        it('returns empty object on API error', async () => {
+        it('returns empty object on DB error (graceful degradation)', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
-            ukApiClient.get.mockRejectedValue(new Error('API timeout'));
+            db.query.mockRejectedValue(new Error('DB timeout'));
 
             const result = await service.getRequestCounts();
 
@@ -632,9 +685,9 @@ describe('UKIntegrationService — Phase 3-5', () => {
             );
         });
 
-        it('returns empty object when API returns null', async () => {
+        it('returns empty when no open mappings exist', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
-            ukApiClient.get.mockResolvedValue(null);
+            db.query.mockResolvedValue({ rows: [] });
 
             const result = await service.getRequestCounts();
 
@@ -644,19 +697,20 @@ describe('UKIntegrationService — Phase 3-5', () => {
 
     // -------------------------------------------------------------------------
     // getBuildingRequests
+    //
+    // Sprint 9 / FIX-007 O4: same data source switch as getRequestCounts.
+    // Returns AlertRequestMap rows in `{requests: [...]}` envelope.
     // -------------------------------------------------------------------------
     describe('getBuildingRequests()', () => {
         const validUUID = '550e8400-e29b-41d4-a716-446655440000';
 
         it('returns empty when externalId is null', async () => {
             const result = await service.getBuildingRequests(null);
-
             expect(result).toEqual({ requests: [] });
         });
 
         it('returns empty for invalid UUID format', async () => {
             const result = await service.getBuildingRequests('not-a-uuid');
-
             expect(result).toEqual({ requests: [] });
         });
 
@@ -666,38 +720,50 @@ describe('UKIntegrationService — Phase 3-5', () => {
             const result = await service.getBuildingRequests(validUUID);
 
             expect(result).toEqual({ requests: [] });
-            expect(ukApiClient.get).not.toHaveBeenCalled();
+            expect(db.query).not.toHaveBeenCalled();
         });
 
-        it('fetches requests from UK API with default limit', async () => {
+        it('queries alert_request_map with default limit 3', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
-            ukApiClient.get.mockResolvedValue({ requests: [{ id: 1, status: 'open' }] });
+            db.query.mockResolvedValue({
+                rows: [{ id: 1, uk_request_number: 'REQ-1', status: 'sent' }]
+            });
 
             const result = await service.getBuildingRequests(validUUID);
 
-            expect(result).toEqual({ requests: [{ id: 1, status: 'open' }] });
-            expect(ukApiClient.get).toHaveBeenCalledWith(
-                expect.stringContaining(`external_id=${encodeURIComponent(validUUID)}`)
-            );
-            expect(ukApiClient.get).toHaveBeenCalledWith(
-                expect.stringContaining('limit=3')
-            );
+            expect(result.requests).toHaveLength(1);
+            expect(result.requests[0]).toMatchObject({ uk_request_number: 'REQ-1' });
+            const [sql, params] = db.query.mock.calls[0];
+            expect(sql).toMatch(/FROM alert_request_map/);
+            expect(sql).toMatch(/building_external_id = \$1/);
+            expect(params).toEqual([validUUID, 3]);
         });
 
-        it('fetches requests with custom limit', async () => {
+        it('respects custom limit', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
-            ukApiClient.get.mockResolvedValue({ requests: [] });
+            db.query.mockResolvedValue({ rows: [] });
 
             await service.getBuildingRequests(validUUID, 10);
 
-            expect(ukApiClient.get).toHaveBeenCalledWith(
-                expect.stringContaining('limit=10')
-            );
+            const params = db.query.mock.calls[0][1];
+            expect(params[1]).toBe(10);
         });
 
-        it('returns empty on API error', async () => {
+        it('clamps limit to [1, 50]', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
-            ukApiClient.get.mockRejectedValue(new Error('Network error'));
+            db.query.mockResolvedValue({ rows: [] });
+
+            await service.getBuildingRequests(validUUID, 999);
+            expect(db.query.mock.calls[0][1][1]).toBe(50);
+
+            db.query.mockClear();
+            await service.getBuildingRequests(validUUID, 0);
+            expect(db.query.mock.calls[0][1][1]).toBe(3); // 0 → NaN → default 3
+        });
+
+        it('returns empty on DB error (graceful degradation)', async () => {
+            IntegrationConfig.isEnabled.mockResolvedValue(true);
+            db.query.mockRejectedValue(new Error('Network error'));
 
             const result = await service.getBuildingRequests(validUUID);
 
@@ -705,15 +771,6 @@ describe('UKIntegrationService — Phase 3-5', () => {
             expect(logger.error).toHaveBeenCalledWith(
                 expect.stringContaining('getBuildingRequests error')
             );
-        });
-
-        it('returns empty when API returns null', async () => {
-            IntegrationConfig.isEnabled.mockResolvedValue(true);
-            ukApiClient.get.mockResolvedValue(null);
-
-            const result = await service.getBuildingRequests(validUUID);
-
-            expect(result).toEqual({ requests: [] });
         });
     });
 
@@ -723,18 +780,17 @@ describe('UKIntegrationService — Phase 3-5', () => {
     describe('invalidateRequestCache()', () => {
         it('clears the internal request counts cache', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
-            ukApiClient.get.mockResolvedValue({ buildings: { 'ext-1': 3 } });
+            db.query.mockResolvedValue({
+                rows: [{ external_id: 'ext-1', count: 3 }]
+            });
 
-            // Populate cache
             await service.getRequestCounts();
-            expect(ukApiClient.get).toHaveBeenCalledTimes(1);
+            expect(db.query).toHaveBeenCalledTimes(1);
 
-            // Invalidate
             service.invalidateRequestCache();
 
-            // Next call should hit API again
             await service.getRequestCounts();
-            expect(ukApiClient.get).toHaveBeenCalledTimes(2);
+            expect(db.query).toHaveBeenCalledTimes(2);
         });
 
         it('resets cache time to 0', () => {

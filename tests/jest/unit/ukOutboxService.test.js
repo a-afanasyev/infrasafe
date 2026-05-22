@@ -1,0 +1,321 @@
+'use strict';
+
+/**
+ * [Sprint 9 / FIX-007] ukOutboxService drain worker unit tests.
+ *
+ * Covers:
+ *   - isEnabled / intervalMs env handling
+ *   - start() / stop() lifecycle (dormant when flag off)
+ *   - _tick advisory-lock guard (skip when lock not acquired)
+ *   - _tick mutex (skip when previous tick still inflight)
+ *   - _drainOne outcome translation (success/dead/retry/skip)
+ *   - Backoff schedule + dead-letter after MAX_ATTEMPTS
+ *   - AlertRequestMap.markSent called on success
+ *   - notification_failure recorded on dead-letter
+ */
+
+jest.mock('../../../src/config/database', () => ({ query: jest.fn() }));
+jest.mock('../../../src/utils/logger', () => ({
+    info: jest.fn(),
+    error: jest.fn(),
+    warn: jest.fn(),
+    debug: jest.fn()
+}));
+jest.mock('../../../src/models/UkOutbox', () => ({
+    pickNext: jest.fn(),
+    markSent: jest.fn(),
+    markFailed: jest.fn(),
+    markDead: jest.fn(),
+    resetForSkip: jest.fn(),
+    MAX_ATTEMPTS: 5
+}));
+jest.mock('../../../src/models/AlertRequestMap', () => ({
+    findByIdempotencyKey: jest.fn(),
+    markSent: jest.fn()
+}));
+jest.mock('../../../src/clients/ukWebhookClient', () => ({
+    send: jest.fn()
+}));
+
+const db = require('../../../src/config/database');
+const UkOutbox = require('../../../src/models/UkOutbox');
+const AlertRequestMap = require('../../../src/models/AlertRequestMap');
+const ukWebhookClient = require('../../../src/clients/ukWebhookClient');
+const logger = require('../../../src/utils/logger');
+const service = require('../../../src/services/uk/ukOutboxService');
+const { UkOutboxService } = require('../../../src/services/uk/ukOutboxService');
+
+// Helper: make advisory-lock returns predictable.
+const mockAdvisoryLockAcquired = () => {
+    db.query.mockImplementation((sql, _params) => {
+        if (/pg_try_advisory_lock/.test(sql)) return Promise.resolve({ rows: [{ locked: true }] });
+        if (/pg_advisory_unlock/.test(sql)) return Promise.resolve({ rows: [{}] });
+        // For notification_failure UPDATE
+        return Promise.resolve({ rows: [] });
+    });
+};
+const mockAdvisoryLockDenied = () => {
+    db.query.mockImplementation((sql) => {
+        if (/pg_try_advisory_lock/.test(sql)) return Promise.resolve({ rows: [{ locked: false }] });
+        return Promise.resolve({ rows: [] });
+    });
+};
+
+describe('ukOutboxService', () => {
+    const ORIGINAL_ENV = { ...process.env };
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        process.env = { ...ORIGINAL_ENV };
+        delete process.env.UK_USE_WEBHOOK_SENDER;
+        delete process.env.UK_OUTBOX_DRAIN_INTERVAL_MS;
+        // Reset internal state of singleton between tests
+        service._running = false;
+        service._stopped = false;
+        service._consecutiveFailures = 0;
+        service._lastFailureLogAt = 0;
+    });
+
+    afterAll(() => {
+        process.env = ORIGINAL_ENV;
+    });
+
+    describe('isEnabled()', () => {
+        it('returns false when UK_USE_WEBHOOK_SENDER is unset', () => {
+            expect(service.isEnabled()).toBe(false);
+        });
+
+        it('returns true for "true"', () => {
+            process.env.UK_USE_WEBHOOK_SENDER = 'true';
+            expect(service.isEnabled()).toBe(true);
+        });
+
+        it('returns true for "1"', () => {
+            process.env.UK_USE_WEBHOOK_SENDER = '1';
+            expect(service.isEnabled()).toBe(true);
+        });
+
+        it('returns false for "false", "0", random strings', () => {
+            for (const v of ['false', '0', 'yes', '']) {
+                process.env.UK_USE_WEBHOOK_SENDER = v;
+                expect(service.isEnabled()).toBe(false);
+            }
+        });
+    });
+
+    describe('intervalMs()', () => {
+        it('defaults to 2000ms', () => {
+            expect(service.intervalMs()).toBe(2000);
+        });
+
+        it('clamps to floor 500ms', () => {
+            process.env.UK_OUTBOX_DRAIN_INTERVAL_MS = '100';
+            expect(service.intervalMs()).toBe(500);
+        });
+
+        it('clamps to ceiling 60000ms', () => {
+            process.env.UK_OUTBOX_DRAIN_INTERVAL_MS = '999999';
+            expect(service.intervalMs()).toBe(60000);
+        });
+
+        it('respects valid env value', () => {
+            process.env.UK_OUTBOX_DRAIN_INTERVAL_MS = '3000';
+            expect(service.intervalMs()).toBe(3000);
+        });
+
+        it('falls back to default on NaN', () => {
+            process.env.UK_OUTBOX_DRAIN_INTERVAL_MS = 'banana';
+            expect(service.intervalMs()).toBe(2000);
+        });
+    });
+
+    describe('start() lifecycle', () => {
+        it('does not start any timer when disabled', () => {
+            const s = new UkOutboxService();
+            s.start();
+            expect(s._timer).toBeNull();
+            expect(s._warmupTimer).toBeNull();
+        });
+
+        it('schedules warmup + interval timer when enabled', () => {
+            process.env.UK_USE_WEBHOOK_SENDER = 'true';
+            const s = new UkOutboxService();
+            s.start();
+            expect(s._timer).not.toBeNull();
+            expect(s._warmupTimer).not.toBeNull();
+            s.stop();
+        });
+
+        it('idempotent: second start() warns and is a no-op', () => {
+            process.env.UK_USE_WEBHOOK_SENDER = 'true';
+            const s = new UkOutboxService();
+            s.start();
+            const firstTimer = s._timer;
+            s.start();
+            expect(s._timer).toBe(firstTimer);
+            expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('already started'));
+            s.stop();
+        });
+    });
+
+    describe('_tick — advisory lock', () => {
+        it('skips drain when lock is denied (another replica holds it)', async () => {
+            mockAdvisoryLockDenied();
+            await service._tick();
+            expect(UkOutbox.pickNext).not.toHaveBeenCalled();
+        });
+
+        it('drains when lock is acquired, then releases', async () => {
+            mockAdvisoryLockAcquired();
+            UkOutbox.pickNext.mockResolvedValue(null); // queue empty
+
+            await service._tick();
+
+            // Both lock + unlock called
+            const sqls = db.query.mock.calls.map(c => c[0]);
+            expect(sqls.some(s => /pg_try_advisory_lock/.test(s))).toBe(true);
+            expect(sqls.some(s => /pg_advisory_unlock/.test(s))).toBe(true);
+        });
+
+        it('releases lock even when drain throws', async () => {
+            db.query.mockImplementation((sql) => {
+                if (/pg_try_advisory_lock/.test(sql)) return Promise.resolve({ rows: [{ locked: true }] });
+                if (/pg_advisory_unlock/.test(sql)) return Promise.resolve({ rows: [{}] });
+                return Promise.resolve({ rows: [] });
+            });
+            UkOutbox.pickNext.mockRejectedValue(new Error('DB outage'));
+
+            await service._tick();
+
+            const sqls = db.query.mock.calls.map(c => c[0]);
+            expect(sqls.some(s => /pg_advisory_unlock/.test(s))).toBe(true);
+        });
+    });
+
+    describe('_tick — mutex', () => {
+        it('skips when previous tick is still inflight', async () => {
+            service._running = true;
+            await service._tick();
+            expect(db.query).not.toHaveBeenCalled();
+        });
+
+        it('skips when service has been stopped', async () => {
+            service._stopped = true;
+            await service._tick();
+            expect(db.query).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('_drainOne — outcomes', () => {
+        const queuedRow = {
+            id: 1,
+            event_id: 'evt-abc',
+            payload_body: '{"event":"alert.created"}',
+            attempt_count: 0
+        };
+
+        beforeEach(() => {
+            mockAdvisoryLockAcquired();
+        });
+
+        it('success → markSent + AlertRequestMap.markSent', async () => {
+            UkOutbox.pickNext.mockResolvedValue(queuedRow);
+            ukWebhookClient.send.mockResolvedValue({ outcome: 'success', code: 202 });
+            AlertRequestMap.findByIdempotencyKey.mockResolvedValue({ id: 99, status: 'pending', infrasafe_alert_id: 7 });
+
+            await service._tick();
+
+            expect(UkOutbox.markSent).toHaveBeenCalledWith(1, 202);
+            expect(AlertRequestMap.markSent).toHaveBeenCalledWith(99, null);
+        });
+
+        it('success but no AlertRequestMap → still markSent on outbox row (does not throw)', async () => {
+            UkOutbox.pickNext.mockResolvedValue(queuedRow);
+            ukWebhookClient.send.mockResolvedValue({ outcome: 'success', code: 202 });
+            AlertRequestMap.findByIdempotencyKey.mockResolvedValue(null);
+
+            await service._tick();
+
+            expect(UkOutbox.markSent).toHaveBeenCalled();
+            expect(AlertRequestMap.markSent).not.toHaveBeenCalled();
+        });
+
+        it('success but ARM already in sent status → skips ARM update', async () => {
+            UkOutbox.pickNext.mockResolvedValue(queuedRow);
+            ukWebhookClient.send.mockResolvedValue({ outcome: 'success', code: 202 });
+            AlertRequestMap.findByIdempotencyKey.mockResolvedValue({ id: 99, status: 'sent' });
+
+            await service._tick();
+
+            expect(UkOutbox.markSent).toHaveBeenCalled();
+            expect(AlertRequestMap.markSent).not.toHaveBeenCalled();
+        });
+
+        it('dead → markDead + records notification_failure', async () => {
+            UkOutbox.pickNext.mockResolvedValue(queuedRow);
+            ukWebhookClient.send.mockResolvedValue({ outcome: 'dead', code: 401, error: 'signature stale' });
+            AlertRequestMap.findByIdempotencyKey.mockResolvedValue({ id: 99, infrasafe_alert_id: 7 });
+
+            await service._tick();
+
+            expect(UkOutbox.markDead).toHaveBeenCalledWith(1, 'signature stale', 401);
+            // notification_failure: an UPDATE infrastructure_alerts SET data = ...
+            const calls = db.query.mock.calls.map(c => c[0]);
+            expect(calls.some(s => /UPDATE infrastructure_alerts/.test(s))).toBe(true);
+        });
+
+        it('skip → resetForSkip with 60s', async () => {
+            UkOutbox.pickNext.mockResolvedValue(queuedRow);
+            ukWebhookClient.send.mockResolvedValue({ outcome: 'skip', error: 'UK_WEBHOOK_SECRET missing' });
+
+            await service._tick();
+
+            expect(UkOutbox.resetForSkip).toHaveBeenCalledWith(1, 60);
+            expect(UkOutbox.markDead).not.toHaveBeenCalled();
+            expect(UkOutbox.markFailed).not.toHaveBeenCalled();
+        });
+
+        it('retry on first failure → markFailed with backoff 2s', async () => {
+            UkOutbox.pickNext.mockResolvedValue({ ...queuedRow, attempt_count: 0 });
+            ukWebhookClient.send.mockResolvedValue({ outcome: 'retry', code: 429, error: 'rate limit' });
+
+            await service._tick();
+
+            expect(UkOutbox.markFailed).toHaveBeenCalledWith(1, 'rate limit', 429, 2);
+        });
+
+        it('retry escalates: attempt_count=1 → 4s backoff', async () => {
+            UkOutbox.pickNext.mockResolvedValue({ ...queuedRow, attempt_count: 1 });
+            ukWebhookClient.send.mockResolvedValue({ outcome: 'retry', code: 503, error: 'down' });
+
+            await service._tick();
+
+            expect(UkOutbox.markFailed).toHaveBeenCalledWith(1, 'down', 503, 4);
+        });
+
+        it('retry at MAX_ATTEMPTS-1 → markDead instead of markFailed', async () => {
+            UkOutbox.pickNext.mockResolvedValue({ ...queuedRow, attempt_count: 4 });
+            ukWebhookClient.send.mockResolvedValue({ outcome: 'retry', code: 503, error: 'persistent 503' });
+            AlertRequestMap.findByIdempotencyKey.mockResolvedValue({ infrasafe_alert_id: 7 });
+
+            await service._tick();
+
+            expect(UkOutbox.markDead).toHaveBeenCalled();
+            expect(UkOutbox.markFailed).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('_drainOne — empty queue', () => {
+        beforeEach(() => mockAdvisoryLockAcquired());
+
+        it('pickNext null → no client call, no marks', async () => {
+            UkOutbox.pickNext.mockResolvedValue(null);
+            await service._tick();
+
+            expect(ukWebhookClient.send).not.toHaveBeenCalled();
+            expect(UkOutbox.markSent).not.toHaveBeenCalled();
+            expect(UkOutbox.markFailed).not.toHaveBeenCalled();
+            expect(UkOutbox.markDead).not.toHaveBeenCalled();
+        });
+    });
+});

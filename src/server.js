@@ -192,6 +192,14 @@ db.init()
         } catch (e) {
             logger.error('MV refresh scheduler failed to start:', e);
         }
+
+        // [Sprint 9 / FIX-007] Start UK outbox drain worker. Dormant when
+        // UK_USE_WEBHOOK_SENDER is unset/false (no interval started).
+        try {
+            require('./services/uk/ukOutboxService').start();
+        } catch (e) {
+            logger.error('UK outbox drain worker failed to start:', e);
+        }
     })
     .catch((error) => {
         logger.error(`Ошибка инициализации базы данных: ${error.message}`);
@@ -216,6 +224,7 @@ const gracefulShutdown = async (signal) => {
     try { destroyAllLimiters(); } catch (e) { logger.error('Rate limiter cleanup error:', e.message); }
     try { await cacheService.close(); } catch (e) { logger.error('Cache close error:', e.message); }
     try { await require('./services/mvRefreshService').stop(); } catch (e) { logger.error('MV scheduler stop error:', e.message); }
+    try { await require('./services/uk/ukOutboxService').stop(); } catch (e) { logger.error('UK outbox stop error:', e.message); }
 
     // [Sprint 4] Close Redis after all consumers (rate-limiter / cache /
     // dedup) have stopped issuing commands.

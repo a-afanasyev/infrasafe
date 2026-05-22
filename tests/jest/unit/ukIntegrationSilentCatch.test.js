@@ -43,8 +43,9 @@ jest.mock('../../../src/models/AlertRequestMap', () => ({
 jest.mock('../../../src/models/AlertRule', () => ({
     findByTypeAndSeverity: jest.fn()
 }));
-jest.mock('../../../src/clients/ukApiClient', () => ({
-    createRequest: jest.fn()
+// [Sprint 9 / FIX-007] ukApiClient is gone; outbound goes via UkOutbox.enqueue.
+jest.mock('../../../src/models/UkOutbox', () => ({
+    enqueue: jest.fn()
 }));
 jest.mock('../../../src/events/alertEvents', () => ({
     emit: jest.fn(),
@@ -120,11 +121,16 @@ describe("[P1-5] integration_log catches no longer silent", () => {
     });
 
     test('[Sprint 0.1 / HIGH-2] sendAlertToUK: logEvent failure inside catch → logger.warn', async () => {
-        // Force the per-building loop to enter the catch block, then make
-        // the audit-log write fail. The catch attaches `.catch(logErr => warn)`.
+        // Sprint 9 / FIX-007: outbound is now UkOutbox.enqueue, not
+        // ukApiClient.createRequest. We force enqueue to throw → enter the
+        // catch block; then make the integration_log error write also fail
+        // → triggers logger.warn for the inner audit-log .catch.
+        const ORIGINAL_FLAG = process.env.UK_USE_WEBHOOK_SENDER;
+        process.env.UK_USE_WEBHOOK_SENDER = 'true';
+
         const IntegrationConfig = require('../../../src/models/IntegrationConfig');
         const AlertRule = require('../../../src/models/AlertRule');
-        const ukApiClient = require('../../../src/clients/ukApiClient');
+        const UkOutbox = require('../../../src/models/UkOutbox');
 
         IntegrationConfig.isEnabled.mockResolvedValue(true);
         AlertRule.findByTypeAndSeverity.mockResolvedValue({
@@ -140,9 +146,9 @@ describe("[P1-5] integration_log catches no longer silent", () => {
         }]);
         AlertRequestMap.findByAlertAndBuilding.mockResolvedValue(null);
         AlertRequestMap.create.mockResolvedValue({ id: 1, idempotency_key: 'idem-1' });
-        // Force the UK API call to throw → enter the catch block
-        ukApiClient.createRequest.mockRejectedValueOnce(new Error('UK API 503'));
-        // Then the integration_log write also fails → triggers logger.warn
+        // Force the outbox enqueue to throw → enter the catch block
+        UkOutbox.enqueue.mockRejectedValueOnce(new Error('outbox DB locked'));
+        // Then the integration_log error write also fails → triggers logger.warn
         IntegrationLog.create.mockRejectedValueOnce(new Error('audit unreachable'));
 
         await service.sendAlertToUK({
@@ -164,6 +170,12 @@ describe("[P1-5] integration_log catches no longer silent", () => {
 
         const alertForwarderRestore = require('../../../src/services/uk/alertForwarder');
         alertForwarderRestore.resolveBuildingIds.mockRestore();
+
+        if (ORIGINAL_FLAG === undefined) {
+            delete process.env.UK_USE_WEBHOOK_SENDER;
+        } else {
+            process.env.UK_USE_WEBHOOK_SENDER = ORIGINAL_FLAG;
+        }
     });
 
     test('no remaining `.catch(() => {})` patterns in source', () => {
