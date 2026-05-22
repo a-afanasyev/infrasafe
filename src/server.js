@@ -182,6 +182,16 @@ db.init()
         server.timeout = 30000; // 30s — максимальное время обработки запроса
         server.keepAliveTimeout = 65000; // Чуть больше чем типичный Nginx proxy_read_timeout (60s)
         server.headersTimeout = 66000; // Должен быть больше keepAliveTimeout
+
+        // [Sprint 6 / P0-6] Start the materialized-view refresh scheduler
+        // AFTER DB is ready. Lazy-require so test harness can shim it out
+        // by setting MV_REFRESH_ENABLED=false in the env before requiring
+        // server.js.
+        try {
+            require('./services/mvRefreshService').start();
+        } catch (e) {
+            logger.error(`MV refresh scheduler failed to start: ${e.message}`);
+        }
     })
     .catch((error) => {
         logger.error(`Ошибка инициализации базы данных: ${error.message}`);
@@ -205,6 +215,7 @@ const gracefulShutdown = async (signal) => {
     // Очистка таймеров и ресурсов
     try { destroyAllLimiters(); } catch (e) { logger.error('Rate limiter cleanup error:', e.message); }
     try { await cacheService.close(); } catch (e) { logger.error('Cache close error:', e.message); }
+    try { await require('./services/mvRefreshService').stop(); } catch (e) { logger.error('MV scheduler stop error:', e.message); }
 
     // [Sprint 4] Close Redis after all consumers (rate-limiter / cache /
     // dedup) have stopped issuing commands.

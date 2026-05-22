@@ -6,7 +6,7 @@ const IntegrationLog = require('../models/IntegrationLog');
 const logger = require('../utils/logger');
 const Building = require('../models/Building');
 const AlertRequestMap = require('../models/AlertRequestMap');
-const { isValidBuildingEvent, validateCoordinate } = require('../utils/webhookValidation');
+const { isValidBuildingEvent, isValidUUID, validateCoordinate } = require('../utils/webhookValidation');
 const { validateUKApiUrl } = require('../utils/urlValidation');
 const alertEvents = require('../events/alertEvents');
 const redisClient = require('../utils/redisClient');
@@ -435,7 +435,23 @@ class UKIntegrationService {
             throw new Error('Invalid building event type');
         }
 
-        const externalId = this._generateExternalId(ukBuilding.id);
+        // [Sprint 6 / CR-2] Accept a deterministic `external_id` from the UK
+        // payload when present. UK can compute it as `uuid5(NAMESPACE, str(id))`
+        // and ship it in the webhook so reconciliation matches both sides
+        // without coordinating algorithms. Backward-compatible: payloads
+        // without the field continue to use InfraSafe's internal SHA-256 hash.
+        let externalId;
+        if (isValidUUID(ukBuilding.external_id)) {
+            externalId = ukBuilding.external_id;
+        } else {
+            if (ukBuilding.external_id !== undefined && ukBuilding.external_id !== null) {
+                logger.warn(
+                    `handleBuildingWebhook: invalid building.external_id received, ` +
+                    `falling back to internal hash (uk_building_id=${ukBuilding.id})`
+                );
+            }
+            externalId = this._generateExternalId(ukBuilding.id);
+        }
 
         // Insert pending log entry first — UNIQUE constraint on event_id
         // prevents concurrent processing of the same event (TOCTOU race protection)

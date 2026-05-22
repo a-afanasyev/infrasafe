@@ -15,6 +15,8 @@
 >
 > **Sprint 5 — Quick Wins — 2026-05-21**: 8 items закрыты на `feat/sprint-5-quick-wins`. 6 code-fixes + 2 миграции (018 FK alert_request_map, 019 buildings FK indexes). Tests: 98 suites / 1956 ✓ (+3 case-insensitive NODE_ENV cases). Closed: P1-4 AlertService race, P1-8 alert_request_map FK, P1-11 deprecated transformer FK, P3-4 buildings FK indexes (8 partial), P2-4 errorHandler NODE_ENV case-insensitive, P2-5 integrationRoutes parseInt guards, P2-V3 CORS trim, P2-V6 nginx.conf .map deny. Operator follow-up: apply migrations 018+019 on prod (`docker exec infrasafe-postgres-1 psql -U postgres -d infrasafe -f /database/migrations/018_*.sql && ... 019_*.sql`).
 >
+> **Sprint 6 — UK hardening + MV scheduler — 2026-05-22**: InfraSafe-side закрыто 3 items на `feat/sprint-6-uk-hardening`: CR-2 (deterministic `external_id` from UK payload), P0-6 (MV refresh scheduler — new `mvRefreshService.js`), P1-V13 (port healthcheck/limits/log-rotation from `docker-compose.prod.yml` into `docker-compose.unified.yml`, mark prod.yml deprecated). CR-1 (expose `external_id` in `/buildings-metrics`) was verified already done. Tests: 99 suites / 1978 ✓ (+22: 4 CR-2 + 18 MV scheduler). UK-side PR-A/B/C/D and reconciliation остаются для отдельной сессии в `/Users/andreyafanasyev/Code/UK/` per `docs/superpowers/specs/2026-05-19-uk-infrasafe-webhook-hardening.md`.
+>
 > | Item | Status | PR | Prod verification |
 > |---|---|---|---|
 > | [P0-1] login.html 404 | `fixed (deployed)` | #4 `8b4e9c1` | `curl /login.html` → 200 ✓ |
@@ -101,7 +103,7 @@
 - **Re-calibration (round 2)**: stale analytics — availability/freshness issue, not security/outage; downgrade to **P1**
 - **Evidence**: refresh только через `POST /api/power-analytics/refresh` (admin). Нет `pg_cron`, нет `setInterval` в `server.js`.
 - **Fix**: добавить `pg_cron` schedule (`*/15 min`) или `setInterval` в `server.js` вызывающий `analyticsService.refreshTransformerAnalytics()`
-- **Status**: `open` (P1)
+- **Status**: `fixed` — Sprint 6 (2026-05-22). New `src/services/mvRefreshService.js` runs a singleton `setInterval` (default 60s, clamped to [10, 3600] via `MV_REFRESH_INTERVAL_SECONDS`; toggle via `MV_REFRESH_ENABLED`). Calls `SELECT refresh_transformer_analytics()` which wraps `REFRESH MATERIALIZED VIEW CONCURRENTLY mv_transformer_load_realtime`. In-flight mutex prevents overlapping ticks; failures are logged and swallowed so the loop keeps ticking. Started after `db.init()` in `src/server.js`; stopped in graceful shutdown. 18 unit tests cover env parsing, mutex, error swallowing, lifecycle.
 
 ### `[P0-7]` (NEW round 2) **No automated DB backup**
 - **Files**: `backup-database.sh` (manual script), `deploy.sh:85`, `deploy-nosudo.sh:62`
@@ -517,7 +519,7 @@
 - **Files**: `docker-compose.prod.yml` vs `docker-compose.unified.yml`
 - **Evidence**: `prod.yml` имеет `healthcheck`, `deploy.resources.limits`, JSON-file log rotation, `condition: service_healthy` depends_on. `unified.yml` (актуальный deploy per deploy.sh:17) — none of this.
 - **Fix**: перенести defining bits из `prod.yml` в `unified.yml`; deprecate `prod.yml`
-- **Status**: `open`
+- **Status**: `fixed` — Sprint 6 (2026-05-22). `docker-compose.unified.yml` now carries `deploy.resources` limits (frontend 0.5cpu/128M, app 1cpu/512M, postgres 2cpu/1G), `healthcheck` blocks (using `wget -qO-` since the unified images bake nginx:alpine / node:18-alpine, both of which have wget but not curl), and `logging` driver `json-file` rotation (10/20/50M, 3-5 files). `docker-compose.prod.yml` retains a deprecation header pointing at unified.yml; can be deleted once the Mac local-dev stack is migrated.
 
 ### `[P1-V14]` `legacy alerts.metric_id` без FK — dangling bigint
 - **Files**: `database/init/01_init_database.sql:403`

@@ -198,6 +198,10 @@ CORS_ORIGINS=http://localhost:8088,http://localhost:3000
 LOG_LEVEL=info|debug|warn|error
 LOG_FILE=logs/app.log
 
+# Materialized view scheduler (Sprint 6 / P0-6)
+MV_REFRESH_ENABLED=true                  # set to false in tests; otherwise leave on
+MV_REFRESH_INTERVAL_SECONDS=60           # default 60, clamped to [10, 3600]
+
 # UK Integration (ENV-only secrets, never stored in DB)
 UK_WEBHOOK_SECRET          # HMAC-SHA256 shared secret for webhook verification
 UK_SERVICE_USER            # Service account for UK API calls
