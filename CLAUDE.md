@@ -115,7 +115,12 @@ All mounted under `/api`:
 Bidirectional integration with UK Management Bot (Управляющая Компания). All 5 phases complete.
 
 **Backend files:**
-- `src/services/ukIntegrationService.js` — Core logic: webhook verification, building sync, alert→request pipeline, request→alert feedback, request counts with caching
+- `src/services/ukIntegrationService.js` — Facade re-exporting the 5 modules below (Sprint 8 split for P1-14). Bound-method API surface + property proxies for backward compat.
+- `src/services/uk/configProxy.js` — `isEnabled` / `getConfig` / `updateConfig` + UK API read-through cache (`getRequestCounts`, `getBuildingRequests`, 60s TTL, `invalidateRequestCache`).
+- `src/services/uk/webhookVerifier.js` — HMAC-SHA256 verification + nonce replay protection (Redis-backed when configured, Map fallback). Also `logEvent` / `isDuplicateEvent` helpers.
+- `src/services/uk/buildingSync.js` — `handleBuildingWebhook` (created/updated/deleted) + deterministic `_generateExternalId`.
+- `src/services/uk/alertForwarder.js` — `sendAlertToUK` + `resolveBuildingIds`. Owns the `alertEvents.ALERT_CREATED` listener.
+- `src/services/uk/requestProcessor.js` — `handleRequestWebhook` (request status feedback from UK). Emits `alertEvents.UK_REQUEST_RESOLVED` for the auto-resolve flow.
 - `src/clients/ukApiClient.js` — UK API client: JWT auth with 25min token cache, createRequest() with retry + exponential backoff, get() with 401 retry
 - `src/routes/webhookRoutes.js` — POST `/webhooks/uk/building` and `/webhooks/uk/request` (full validation, TOCTOU-safe)
 - `src/routes/integrationRoutes.js` — Admin API + public-auth endpoints: config, logs, rules, request-counts, building-requests
@@ -125,11 +130,13 @@ Bidirectional integration with UK Management Bot (Управляющая Ком�
 - `src/models/AlertRule.js` — Alert-to-UK-request mapping rules + `findByTypeAndSeverity()`
 - `src/models/AlertRequestMap.js` — Tracks alert→request mappings: create, findByAlertAndBuilding, markSent, findByRequestNumber, updateStatus, areAllTerminal
 
-**Key methods in ukIntegrationService:**
-- `sendAlertToUK(alertData)` — matches alert rules, resolves buildings by infrastructure FK, creates UK requests with idempotent mappings
-- `handleRequestWebhook(payload)` — terminal status detection (Принято/Отменена), auto-resolves alert when all requests terminal
-- `resolveBuildingIds(id, type)` — resolves via primary/backup_transformer_id, controller_id, cold_water_source_id, heat_source_id
-- `getRequestCounts()` / `getBuildingRequests()` — UK API proxy with 60s cache, graceful degradation
+**Key methods (now distributed across 5 modules under `src/services/uk/`):**
+- `alertForwarder.sendAlertToUK(alertData)` — matches alert rules, resolves buildings by infrastructure FK, creates UK requests with idempotent mappings
+- `requestProcessor.handleRequestWebhook(payload)` — terminal status detection (Принято/Отменена), auto-resolves alert when all mappings terminal
+- `alertForwarder.resolveBuildingIds(id, type)` — resolves via primary/backup_transformer_id, controller_id, cold_water_source_id, heat_source_id
+- `configProxy.getRequestCounts()` / `configProxy.getBuildingRequests()` — UK API proxy with 60s cache, graceful degradation
+- `webhookVerifier.verifyWebhookSignature(rawBody, sigHeader)` — HMAC + replay protection
+- `buildingSync.handleBuildingWebhook(payload)` — building.created / .updated / .deleted
 
 **Building model extensions** (`src/models/Building.js`):
 - `external_id` (UUID) — reference to UK system building
