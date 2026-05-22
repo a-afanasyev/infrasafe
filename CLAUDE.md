@@ -55,7 +55,9 @@ psql postgresql://postgres:postgres@localhost:5435/infrasafe
 #                    015 alert dedup, 016 password_changed_at, 017 runtime role,
 #                    018 alert_request_map FK (Sprint 5), 019 buildings FK indexes (Sprint 5),
 #                    020 mv refresh SECURITY DEFINER wrapper (Sprint 6),
-#                    021 alerts.metric_id FK (Sprint 7)
+#                    021 alerts.metric_id FK (Sprint 7),
+#                    022 uk_outbox table (Sprint 9 FIX-007),
+#                    023 alert_request_map counter partial index (Sprint 9)
 ```
 
 ## Architecture
@@ -82,6 +84,7 @@ psql postgresql://postgres:postgres@localhost:5435/infrasafe
 - **Multi-layer Caching**: `src/services/cacheService.js` (in-memory, Redis-ready)
 - **Alert Cooldown**: 15-minute cooldown between identical alerts in `src/services/alertService.js`
 - **Alert Event Bus** (Phase 7): `src/events/alertEvents.js` — `EventEmitter` decouples `controllerService` → `alertService` → `ukIntegrationService`; breaks prior circular requires. Events: `TRANSFORMER_CHECK`, `ALERT_CREATED`, `UK_REQUEST_RESOLVED`.
+- **UK Outbox + Drain Worker** (Sprint 9 / FIX-007): `src/models/UkOutbox.js` + `src/services/uk/ukOutboxService.js` + `src/clients/ukWebhookClient.js`. Persistent outbox (migration 022) drained by singleton worker (mirrors `mvRefreshService` pattern) at ≤30/мин with `pg_try_advisory_lock` for multi-replica safety. Sign-at-send-time HMAC-SHA256 (UK 300s window); body stored as `TEXT` not `JSONB` for byte stability; `ON CONFLICT (event_id) DO NOTHING` for idempotent enqueue; dead-letter writes to `infrastructure_alerts.data.notification_failures`.
 - **CRUD Factory** (Phase 6): `src/models/factories/createCrudModel.js` and `src/controllers/factories/createCrudController.js` — used by `ColdWaterSource`, `HeatSource`; generate a `{ findAll, findById, create, update, delete }` model class and matching controller from a table descriptor.
 - **Admin Query Helpers** (Phase 5): `src/utils/adminQueryBuilder.js` (`buildPaginatedList()` with filter kinds exact/like/gte/lte, sort alias map, group-by) and `src/utils/dynamicUpdateBuilder.js` (`buildUpdateQuery()` with `ALLOWED_UPDATE_TABLES` whitelist). Shared by 8 admin controllers; `IDENT_RE` regex validates every identifier before it reaches SQL.
 - **Persistent Account Lockout** (Phase 12B.3): `src/models/AccountLockout.js` + migration 013 — replaces in-memory `Map` so lockout state survives restart and is consistent across replicas.
@@ -112,52 +115,63 @@ All mounted under `/api`:
 - `/integration` - UK integration: config/logs/rules (admin-only), request-counts/building-requests (any auth user)
 
 ### UK Integration Module
-Bidirectional integration with UK Management Bot (Управляющая Компания). All 5 phases complete.
+Bidirectional integration with UK Management Bot (Управляющая Компания). All 5 phases complete + Sprint 9 sender (FIX-007).
 
 **Backend files:**
 - `src/services/ukIntegrationService.js` — Facade re-exporting the 5 modules below (Sprint 8 split for P1-14). Bound-method API surface + property proxies for backward compat.
-- `src/services/uk/configProxy.js` — `isEnabled` / `getConfig` / `updateConfig` + UK API read-through cache (`getRequestCounts`, `getBuildingRequests`, 60s TTL, `invalidateRequestCache`).
-- `src/services/uk/webhookVerifier.js` — HMAC-SHA256 verification + nonce replay protection (Redis-backed when configured, Map fallback). Also `logEvent` / `isDuplicateEvent` helpers.
+- `src/services/uk/configProxy.js` — `isEnabled` / `getConfig` / `updateConfig` + counter cache (`getRequestCounts`, `getBuildingRequests`, 60s TTL, `invalidateRequestCache`). **Sprint 9**: counters now built from `alert_request_map` SQL aggregation (UK won't implement `/requests/counts-by-building` per O4).
+- `src/services/uk/webhookVerifier.js` — HMAC-SHA256 verification + nonce replay protection (Redis-backed when configured, Map fallback). Also `logEvent` / `isDuplicateEvent` helpers. **Sprint 9**: reads `INFRASAFE_WEBHOOK_SECRET ?? UK_WEBHOOK_SECRET` for the rename migration window.
 - `src/services/uk/buildingSync.js` — `handleBuildingWebhook` (created/updated/deleted) + deterministic `_generateExternalId`.
-- `src/services/uk/alertForwarder.js` — `sendAlertToUK` + `resolveBuildingIds`. Owns the `alertEvents.ALERT_CREATED` listener.
+- `src/services/uk/alertForwarder.js` — `sendAlertToUK` + `resolveBuildingIds`. Owns the `alertEvents.ALERT_CREATED` listener. **Sprint 9**: enqueues to `uk_outbox` (gated by `UK_USE_WEBHOOK_SENDER`) instead of synchronous JWT call.
 - `src/services/uk/requestProcessor.js` — `handleRequestWebhook` (request status feedback from UK). Emits `alertEvents.UK_REQUEST_RESOLVED` for the auto-resolve flow.
-- `src/clients/ukApiClient.js` — UK API client: JWT auth with 25min token cache, createRequest() with retry + exponential backoff, get() with 401 retry
+- `src/services/uk/ukOutboxService.js` — **Sprint 9 (NEW)** drain worker singleton; per-tick single-row drain with `pg_try_advisory_lock` for multi-replica safety; backoff 2/4/8/16/32s capped at 5 attempts → dead.
+- `src/clients/ukWebhookClient.js` — **Sprint 9 (NEW)** HMAC-SHA256 sender; mirrors webhookVerifier algorithm; signs at send-time (not enqueue) for 300s timestamp window; supports dual-secret rotation (`UK_USE_NEXT_SECRET`).
 - `src/routes/webhookRoutes.js` — POST `/webhooks/uk/building` and `/webhooks/uk/request` (full validation, TOCTOU-safe)
 - `src/routes/integrationRoutes.js` — Admin API + public-auth endpoints: config, logs, rules, request-counts, building-requests
 - `src/utils/webhookValidation.js` — Input validation helpers
 - `src/models/IntegrationConfig.js` — Key-value config store (DB-backed)
 - `src/models/IntegrationLog.js` — Sync event log with pagination and filtering
 - `src/models/AlertRule.js` — Alert-to-UK-request mapping rules + `findByTypeAndSeverity()`
-- `src/models/AlertRequestMap.js` — Tracks alert→request mappings: create, findByAlertAndBuilding, markSent, findByRequestNumber, updateStatus, areAllTerminal
+- `src/models/AlertRequestMap.js` — Tracks alert→request mappings: create, findByAlertAndBuilding, markSent, findByRequestNumber, findByIdempotencyKey, updateStatus, areAllTerminal
+- `src/models/UkOutbox.js` — **Sprint 9 (NEW)** persistent outbox: `enqueue` (ON CONFLICT DO NOTHING), `pickNext` (FOR UPDATE SKIP LOCKED), `markSent` / `markFailed` / `markDead` / `resetForSkip`.
 
-**Key methods (now distributed across 5 modules under `src/services/uk/`):**
-- `alertForwarder.sendAlertToUK(alertData)` — matches alert rules, resolves buildings by infrastructure FK, creates UK requests with idempotent mappings
+**Key methods:**
+- `alertForwarder.sendAlertToUK(alertData)` — matches alert rules, resolves buildings, **Sprint 9**: builds canonical event body and `UkOutbox.enqueue` per building (drain worker handles UK POST)
 - `requestProcessor.handleRequestWebhook(payload)` — terminal status detection (Принято/Отменена), auto-resolves alert when all mappings terminal
 - `alertForwarder.resolveBuildingIds(id, type)` — resolves via primary/backup_transformer_id, controller_id, cold_water_source_id, heat_source_id
-- `configProxy.getRequestCounts()` / `configProxy.getBuildingRequests()` — UK API proxy with 60s cache, graceful degradation
+- `configProxy.getRequestCounts()` / `configProxy.getBuildingRequests()` — **Sprint 9**: local SQL aggregation against `alert_request_map`, 60s cache, graceful degradation. ⚠️ Under-count caveat: bot-originated requests not included until UK ARCH-113.
 - `webhookVerifier.verifyWebhookSignature(rawBody, sigHeader)` — HMAC + replay protection
 - `buildingSync.handleBuildingWebhook(payload)` — building.created / .updated / .deleted
+- `ukWebhookClient.send(payloadBody)` — **Sprint 9** HMAC-signs at send-time, POSTs to UK `/api/v2/webhooks/infrasafe/alert`, returns `{outcome: success|dead|retry|skip, code, error}`.
+- `ukOutboxService.start()` / `.stop()` — **Sprint 9** drain worker lifecycle; per-tick `_drainOne` translates send outcome to outbox + AlertRequestMap transitions.
 
 **Building model extensions** (`src/models/Building.js`):
 - `external_id` (UUID) — reference to UK system building
 - `uk_deleted_at` — soft delete from UK
 - Methods: `findByExternalId()`, `createFromUK()`, `syncFromUK()`, `softDeleteFromUK()`
 
-**Security:** HMAC-SHA256 webhook signatures, replay protection, insert-first UNIQUE guard (TOCTOU-safe), idempotent alert→request mapping, rate limiting (60 req/min), timing-safe comparison. Secrets (UK_WEBHOOK_SECRET, UK_SERVICE_USER, UK_SERVICE_PASSWORD) stored in ENV only, never in DB.
+**Security:** HMAC-SHA256 webhook signatures both directions, replay protection, insert-first UNIQUE guard (TOCTOU-safe), idempotent alert→request mapping via outbox `ON CONFLICT`, rate limiting (60 req/min inbound + 30/мин outbound drain), timing-safe comparison. Secrets stored in ENV only:
+- `INFRASAFE_WEBHOOK_SECRET` — UK signs, InfraSafe verifies (inbound). Fallback `UK_WEBHOOK_SECRET` during migration.
+- `UK_WEBHOOK_SECRET` — InfraSafe signs, UK verifies (outbound). **Sprint 9**.
+- `UK_WEBHOOK_SECRET_NEXT` + `UK_USE_NEXT_SECRET` — dual-secret rotation support.
 
 **API endpoints (Phase 5):**
-- `GET /integration/request-counts` — any authenticated user (not admin), 60s cached
-- `GET /integration/building-requests/:externalId` — any authenticated user, UUID validated
+- `GET /integration/request-counts` — any authenticated user (not admin), 60s cached, Sprint 9: SQL from `alert_request_map`
+- `GET /integration/building-requests/:externalId` — any authenticated user, UUID validated, Sprint 9: SQL from `alert_request_map`
 - Both mounted BEFORE `router.use(isAdmin)` in integrationRoutes.js
 
-**Phased plan (5 phases, all merged to `main`):**
+**Phased plan:**
 1. Foundation (DB, models, routes, admin UI, logging) — **DONE**
 2. Building Sync (UK → InfraSafe) — **DONE**
-3. Alert → Request Pipeline (InfraSafe → UK) — **DONE**
+3. Alert → Request Pipeline (InfraSafe → UK) — **DONE** (Sprint 9 reimplementation: HMAC webhook via outbox replaces dead JWT path)
 4. Request → Alert Feedback (UK → InfraSafe) — **DONE**
-5. Map Layer backend (request counts, caching, external_id) — **DONE**
+5. Map Layer backend (request counts, caching, external_id) — **DONE** (Sprint 9: local SQL counters)
+6. **Sprint 9 / FIX-007**: HMAC-webhook sender + persistent outbox + secret split — **DONE** behind `UK_USE_WEBHOOK_SENDER` flag (default off until UK Phase 2 + secret rotation).
 
-**Spec:** `docs/superpowers/specs/2026-03-24-infrasafe-uk-integration-v2-design.md`
+**Specs & runbooks:**
+- `docs/superpowers/specs/2026-03-24-infrasafe-uk-integration-v2-design.md` — original Phase 1-5 design
+- `docs/audit/2026-05-22-FIX-007-uk-integration-questions.md` — Sprint 9 contract negotiation (rounds A-Q)
+- `docs/audit/2026-05-22-secret-split-runbook.md` — operator runbook for secret rename + age key exchange
 
 ### Frontend (Legacy — main branch)
 - **Vanilla JS** (no framework), HTML files at project root (`index.html`, `admin.html`, `about.html`, `contacts.html`, `documentation.html`)
@@ -211,11 +225,18 @@ LOG_FILE=logs/app.log
 MV_REFRESH_ENABLED=true                  # set to false in tests; otherwise leave on
 MV_REFRESH_INTERVAL_SECONDS=60           # default 60, clamped to [10, 3600]
 
-# UK Integration (ENV-only secrets, never stored in DB)
-UK_WEBHOOK_SECRET          # HMAC-SHA256 shared secret for webhook verification
-UK_SERVICE_USER            # Service account for UK API calls
-UK_SERVICE_PASSWORD        # Service account password
-# UK Integration (DB-stored via integration_config, toggleable in admin UI)
+# UK Integration — ENV-only secrets (Sprint 9 / FIX-007 split per O5):
+INFRASAFE_WEBHOOK_SECRET   # UK→InfraSafe verifier (UK signs, we verify).
+                           # Falls back to UK_WEBHOOK_SECRET during rename window.
+UK_WEBHOOK_SECRET          # InfraSafe→UK sender (we sign, UK verifies). Sprint 9.
+UK_WEBHOOK_SECRET_NEXT     # Optional: NEW value during rotation window. Sprint 9.
+UK_USE_NEXT_SECRET=false   # Set to 'true' to switch sender to UK_WEBHOOK_SECRET_NEXT.
+UK_API_URL                 # Bare host (e.g. https://uk.example.com) — client appends /api/v2/...
+UK_USE_WEBHOOK_SENDER=false # Master gate for the new HMAC-webhook outbound channel.
+                           # Default false until UK Phase 2 + secret rotation completes.
+UK_OUTBOX_DRAIN_INTERVAL_MS=2000  # Drain tick (clamped [500, 60000]). Default ≈30/мин rate.
+
+# UK Integration — DB-stored via integration_config, toggleable in admin UI
 # uk_integration_enabled, uk_api_url, uk_frontend_url
 ```
 
