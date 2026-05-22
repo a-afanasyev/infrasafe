@@ -149,6 +149,39 @@ describe('MvRefreshScheduler', () => {
         expect(scheduler._running).toBe(false);
     });
 
+    test('_consecutiveFailures increments when a tick fails', async () => {
+        db.query.mockRejectedValue(new Error('connection refused'));
+
+        await scheduler._tick();
+        expect(scheduler._consecutiveFailures).toBe(1);
+
+        await scheduler._tick();
+        expect(scheduler._consecutiveFailures).toBe(2);
+    });
+
+    test('_consecutiveFailures resets to 0 after a successful tick', async () => {
+        db.query.mockRejectedValueOnce(new Error('connection refused'));
+        await scheduler._tick();
+        expect(scheduler._consecutiveFailures).toBe(1);
+
+        db.query.mockResolvedValueOnce({ rows: [] });
+        await scheduler._tick();
+        expect(scheduler._consecutiveFailures).toBe(0);
+    });
+
+    test('escalates to logger.warn after 5 consecutive failures', async () => {
+        db.query.mockRejectedValue(new Error('connection refused'));
+
+        for (let i = 0; i < 5; i++) {
+            await scheduler._tick();
+        }
+
+        expect(scheduler._consecutiveFailures).toBe(5);
+        expect(logger.warn).toHaveBeenCalledWith(
+            expect.stringContaining('MV refresh failed')
+        );
+    });
+
     test('_tick is a no-op after stop()', async () => {
         await scheduler.stop();
         db.query.mockResolvedValue({ rows: [] });

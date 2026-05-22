@@ -49,12 +49,23 @@ const MIN_INTERVAL_SECONDS = 10;
 const MAX_INTERVAL_SECONDS = 3600;
 const WARMUP_DELAY_MS = 5000;
 
+// [Sprint 7 / H2] Failure-log throttling. The first failure logs in full;
+// while failures persist, repeat the log at most once per window so a
+// sustained outage doesn't flood the log at one line per tick.
+const FAILURE_LOG_THROTTLE_MS = 10 * 60 * 1000; // 10 minutes
+// After this many consecutive failures the condition is no longer
+// transient — escalate the throttled log from error to warn.
+const FAILURE_ESCALATE_THRESHOLD = 5;
+
 class MvRefreshScheduler {
     constructor() {
         this._timer = null;
         this._warmupTimer = null;
         this._running = false;
         this._stopped = false;
+        // [Sprint 7 / H2] Consecutive-failure tracking for log backoff.
+        this._consecutiveFailures = 0;
+        this._lastFailureLogAt = 0;
     }
 
     intervalSeconds() {
@@ -114,15 +125,44 @@ class MvRefreshScheduler {
         try {
             await db.query('SELECT public.refresh_mv_transformer_load()');
             const durationMs = Date.now() - startedAt;
+            this._consecutiveFailures = 0;
+            this._lastFailureLogAt = 0;
             logger.info(`MV refresh succeeded in ${durationMs}ms`);
         } catch (err) {
             const durationMs = Date.now() - startedAt;
             // Never rethrow — the scheduler must keep ticking. A failed
             // refresh leaves the previous (slightly stale) snapshot in place,
             // which is strictly better than crashing the app.
-            logger.error(`MV refresh failed after ${durationMs}ms: ${err.message}`);
+            this._consecutiveFailures += 1;
+            this._logFailure(err, durationMs);
         } finally {
             this._running = false;
+        }
+    }
+
+    /**
+     * [Sprint 7 / H2] Log a failed refresh with backoff. A line is emitted
+     * on the first failure, on the tick that crosses the escalation
+     * threshold, and at most once per FAILURE_LOG_THROTTLE_MS otherwise —
+     * so a sustained outage doesn't flood the log at one line per tick.
+     * Once failures stop being transient the line is elevated from error
+     * to warn.
+     */
+    _logFailure(err, durationMs) {
+        const now = Date.now();
+        const isFirst = this._consecutiveFailures === 1;
+        const justEscalated = this._consecutiveFailures === FAILURE_ESCALATE_THRESHOLD;
+        const windowElapsed = (now - this._lastFailureLogAt) >= FAILURE_LOG_THROTTLE_MS;
+        if (!isFirst && !justEscalated && !windowElapsed) {
+            return;
+        }
+        this._lastFailureLogAt = now;
+        const msg = `MV refresh failed after ${durationMs}ms `
+            + `(consecutive failures: ${this._consecutiveFailures}): ${err.message}`;
+        if (this._consecutiveFailures >= FAILURE_ESCALATE_THRESHOLD) {
+            logger.warn(msg);
+        } else {
+            logger.error(msg);
         }
     }
 }

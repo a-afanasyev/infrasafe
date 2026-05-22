@@ -54,7 +54,8 @@ psql postgresql://postgres:postgres@localhost:5435/infrasafe
 # Latest migrations: 011 UK integration, 012 TOTP 2FA, 013 account lockout, 014 perf indexes,
 #                    015 alert dedup, 016 password_changed_at, 017 runtime role,
 #                    018 alert_request_map FK (Sprint 5), 019 buildings FK indexes (Sprint 5),
-#                    020 mv refresh SECURITY DEFINER wrapper (Sprint 6)
+#                    020 mv refresh SECURITY DEFINER wrapper (Sprint 6),
+#                    021 alerts.metric_id FK (Sprint 7)
 ```
 
 ## Architecture
