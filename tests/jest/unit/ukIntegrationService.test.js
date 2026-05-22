@@ -28,6 +28,7 @@ jest.mock('../../../src/models/Building', () => ({
 }));
 jest.mock('../../../src/utils/webhookValidation', () => ({
     isValidBuildingEvent: jest.fn(),
+    isValidUUID: jest.fn(),
     validateCoordinate: jest.fn(() => ({ ok: true }))
 }));
 
@@ -38,7 +39,7 @@ const logger = require('../../../src/utils/logger');
 const service = require('../../../src/services/ukIntegrationService');
 
 const Building = require('../../../src/models/Building');
-const { isValidBuildingEvent, validateCoordinate } = require('../../../src/utils/webhookValidation');
+const { isValidBuildingEvent, isValidUUID, validateCoordinate } = require('../../../src/utils/webhookValidation');
 
 describe('UKIntegrationService', () => {
     beforeEach(() => {
@@ -337,6 +338,9 @@ describe('UKIntegrationService', () => {
             isValidBuildingEvent.mockImplementation(e =>
                 ['building.created', 'building.updated', 'building.deleted'].includes(e)
             );
+            // Default: no external_id in payload, isValidUUID returns false.
+            // Specific CR-2 tests override this per scenario.
+            isValidUUID.mockReturnValue(false);
             validateCoordinate.mockReturnValue({ ok: true });
         });
 
@@ -501,6 +505,78 @@ describe('UKIntegrationService', () => {
 
             await expect(service.handleBuildingWebhook(payload))
                 .rejects.toThrow('Invalid building event type');
+        });
+
+        // -------------------------------------------------------------------
+        // [Sprint 6 / CR-2] Deterministic external_id from UK payload
+        // -------------------------------------------------------------------
+        describe('[CR-2] external_id from payload', () => {
+            const ukExternalId = 'deadbeef-1234-5678-9abc-def012345678';
+
+            it('uses payload.building.external_id when it is a valid UUID', async () => {
+                isValidUUID.mockImplementation(v => v === ukExternalId);
+                Building.findByExternalId.mockResolvedValue(null);
+                Building.createFromUK.mockResolvedValue({ building_id: 18 });
+
+                const payload = {
+                    ...basePayload,
+                    building: { ...basePayload.building, external_id: ukExternalId }
+                };
+
+                await service.handleBuildingWebhook(payload);
+
+                expect(Building.findByExternalId).toHaveBeenCalledWith(ukExternalId);
+                expect(Building.createFromUK).toHaveBeenCalledWith(
+                    expect.objectContaining({ external_id: ukExternalId })
+                );
+            });
+
+            it('falls back to internal hash when external_id is missing', async () => {
+                isValidUUID.mockReturnValue(false);
+                Building.findByExternalId.mockResolvedValue(null);
+                Building.createFromUK.mockResolvedValue({ building_id: 18 });
+
+                // basePayload has no external_id
+                await service.handleBuildingWebhook(basePayload);
+
+                // findByExternalId called with internal hash — a UUID-shaped
+                // string but NOT the one UK would produce.
+                const calledWith = Building.findByExternalId.mock.calls[0][0];
+                expect(calledWith).toMatch(
+                    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+                );
+                expect(calledWith).not.toBe(ukExternalId);
+            });
+
+            it('falls back to internal hash AND warns when external_id is malformed', async () => {
+                isValidUUID.mockReturnValue(false);
+                Building.findByExternalId.mockResolvedValue(null);
+                Building.createFromUK.mockResolvedValue({ building_id: 18 });
+
+                const payload = {
+                    ...basePayload,
+                    building: { ...basePayload.building, external_id: 'not-a-uuid' }
+                };
+
+                await service.handleBuildingWebhook(payload);
+
+                expect(logger.warn).toHaveBeenCalledWith(
+                    expect.stringContaining('invalid building.external_id')
+                );
+                expect(Building.findByExternalId).toHaveBeenCalled();
+            });
+
+            it('does not warn when external_id is simply absent', async () => {
+                isValidUUID.mockReturnValue(false);
+                Building.findByExternalId.mockResolvedValue(null);
+                Building.createFromUK.mockResolvedValue({ building_id: 18 });
+
+                await service.handleBuildingWebhook(basePayload);
+
+                expect(logger.warn).not.toHaveBeenCalledWith(
+                    expect.stringContaining('invalid building.external_id')
+                );
+            });
         });
     });
 });

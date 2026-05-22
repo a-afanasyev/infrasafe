@@ -1,6 +1,18 @@
 version: '3.8'
 name: infrasafe
 
+# ============================================================================
+# DEPRECATED — Sprint 6 (2026-05-22).
+# Hardening (resource limits, healthchecks, log rotation) and the UK proxy
+# configuration are now consolidated in docker-compose.unified.yml. Prefer
+# `docker compose -f docker-compose.unified.yml up -d` for any new deploy.
+# This file is kept temporarily because a local Mac instance still uses it
+# (`docker-compose.prod.yml` mounts the Dockerfile.frontend-only image and
+# is wired into the developer's container set). When that local setup is
+# migrated to unified.yml + an override file for the Mac-specific bits,
+# delete this file. Tracked in audit-backlog under [P1-V13].
+# ============================================================================
+
 services:
   frontend:
     build:
