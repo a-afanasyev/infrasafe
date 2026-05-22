@@ -43,9 +43,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.refresh_mv_transformer_load() IS
-    'Sprint 6 / P0-6: side-effect-free MV refresh wrapper called by ' ||
-    'src/services/mvRefreshService.js. SECURITY DEFINER so runtime role ' ||
-    'can invoke it without owning the materialized view.';
+    'Sprint 6 / P0-6: side-effect-free MV refresh wrapper called by src/services/mvRefreshService.js. SECURITY DEFINER so runtime role can invoke it without owning the materialized view.';
 
 REVOKE ALL ON FUNCTION public.refresh_mv_transformer_load() FROM PUBLIC;
 
