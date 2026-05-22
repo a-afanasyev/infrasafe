@@ -19,6 +19,8 @@
 >
 > **Sprint 7 — HIGH-severity blockers — 2026-05-22**: post Sprint 5/6/6.1 review, на `feat/sprint-7-high-blockers`. Phase-1 verification found 5 backlog items already fixed (statuses were stale) — synced to `fixed`: `[1A-FU-C-M1]`, `[1A-FU-C-M2]`, `[1A-FU-C-M4]`, `[P1-V10]`, `[1A-FU-S-M2]`. Code/migration changes (one PR): `[1A-FU-C-M3]` (port QR-URL validation into `script.js` map-login path), `[P1-7]` (updateConfig type validation, no Joi dep), `[P1-V14]` (migration 021 — `alerts.metric_id` FK), `[P1-V2]` (fail-OPEN pin tests), plus Sprint 6.1 review items M-sec-1 (log-injection sanitize), M-db-1/M-db-2 (migration 020 `VOLATILE` + GRANT comment), H1 (dual-refresh cross-ref comments), H2 (MV-refresh consecutive-failure log backoff), M-js-1 (`server.js` Error-object logging). Tests: 99 suites / 1983 ✓ (+5: 3 H2 + 2 P1-V2). Out of scope: architectural epics (P1-9/P1-14/P2-7), operator tasks (P0-4, pg_hba runbook), UK-side webhook hardening.
 >
+> **Sprint 7.1 — P1-12 rescope + UK-side stale-spec note — 2026-05-22**: After UK-session verification, two important corrections logged. (1) `[P1-12]` Google Fonts CSP misclassified as "UK-репо" — `curl -I https://infrasafe.uz/uk/login` showed live CSP comes from InfraSafe `nginx.production.conf:244`, not from any UK-stack proxy. Rescoped and fixed in `fix/uk-csp-googlefonts` (5-line nginx change + 1 inline comment). Deploy = `docker exec infrasafe-nginx-1 nginx -s reload`; no app/DB restart. (2) **UK PR-A/B/C/D were already merged in UK-repo commit `a20686f` on 2026-05-19** — same day as the production incident — but the spec `docs/superpowers/specs/2026-05-19-uk-infrasafe-webhook-hardening.md` was written **post-hoc** and read like an open TODO, leading the Sprint 6 handoff to ask UK-session to "implement" already-shipped fixes. Lesson: handoffs must verify against current code state, not against design specs. UK-side reconciliation chose a different (better) external_id strategy than the spec — both sides compute `SHA-256("uk-building-{id}")` independently; UK does NOT need to ship uuid5 in payload. InfraSafe CR-2 (Sprint 6) still accepts a payload-supplied `external_id` for forward compat, but in current deployment it is unused.
+>
 > | Item | Status | PR | Prod verification |
 > |---|---|---|---|
 > | [P0-1] login.html 404 | `fixed (deployed)` | #4 `8b4e9c1` | `curl /login.html` → 200 ✓ |
@@ -193,12 +195,13 @@
 - **Fix**: rewrite `WHERE b.primary_transformer_id = $1::int OR b.backup_transformer_id = $1::int`
 - **Status**: `fixed` — Sprint 5 (2026-05-21). Forecast query now joins via `(b.primary_transformer_id = $1 OR b.backup_transformer_id = $1)`. Both columns indexed by migration 010.
 
-### `[P1-12]` UK frontend: CSP блокирует Google Fonts
-- **Files**: UK frontend CSP (на `/uk/resident-board`, `/uk/login`)
-- **Severity**: P1 — `style-src 'self' 'unsafe-inline'` не включает `fonts.googleapis.com`/`fonts.gstatic.com`; UI грузится без шрифтов
-- **Evidence**: Playwright live smoke зафиксировал 2 CSP errors в console
-- **Fix**: добавить `fonts.googleapis.com` (style-src), `fonts.gstatic.com` (font-src) в UK CSP **(этот fix в UK-репо, не InfraSafe)**
-- **Status**: `open`
+### `[P1-12]` UK frontend: CSP блокирует Google Fonts ⤓ **rescoped 2026-05-22 — fix в InfraSafe-репо, не UK**
+- **Files**: `nginx.production.conf:244` (`/uk/*` location block in InfraSafe nginx, не UK-stack)
+- **Severity**: P1 → low operational impact в проде; UI грузится с системным fallback-шрифтом
+- **Evidence**: `curl -I https://infrasafe.uz/uk/login` → `server: nginx` (infrasafe-nginx-1, не uk-frontend). CSP-заголовок эмитится upstream'ом InfraSafe, переписывая любой CSP от uk-frontend.
+- **Wrong assumption (original spec)**: pre-2026-05-22 backlog ошибочно scoped эту задачу в UK-репо. Caddyfile (UK-stack) уже корректен и frontend/nginx.conf без CSP, но **ничего из этого live в проде не идёт** — все `/uk/*` ответы проходят через InfraSafe nginx.
+- **Fix**: `style-src 'self' 'unsafe-inline'` → `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com` в `/uk/*` блоке. `font-src` уже разрешает `https://fonts.gstatic.com` — этого достаточно.
+- **Status**: `fixed (pending operator reload)` — 2026-05-22. После merge: `docker exec infrasafe-nginx-1 nginx -t && docker exec infrasafe-nginx-1 nginx -s reload`. No app/db restart needed.
 
 ### `[P1-13]` Controllers напрямую импортируют models — repository layer missing
 - **Files**: `src/controllers/transformerController.js:1`, `analyticsController.js:2`, `heatSourceController.js:5`, `lineController.js:1`, `coldWaterSourceController.js:7`
