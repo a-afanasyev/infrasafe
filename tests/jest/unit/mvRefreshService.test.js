@@ -100,12 +100,14 @@ describe('MvRefreshScheduler', () => {
         );
     });
 
-    test('_tick calls refresh function once and logs success', async () => {
+    test('_tick calls REFRESH MATERIALIZED VIEW once and logs success', async () => {
         db.query.mockResolvedValue({ rows: [] });
 
         await scheduler._tick();
 
-        expect(db.query).toHaveBeenCalledWith('SELECT refresh_transformer_analytics()');
+        expect(db.query).toHaveBeenCalledWith(
+            'REFRESH MATERIALIZED VIEW CONCURRENTLY mv_transformer_load_realtime'
+        );
         expect(db.query).toHaveBeenCalledTimes(1);
         expect(logger.info).toHaveBeenCalledWith(
             expect.stringContaining('MV refresh succeeded')
