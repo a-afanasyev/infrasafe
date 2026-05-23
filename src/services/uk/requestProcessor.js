@@ -115,8 +115,15 @@ class UKRequestProcessor {
             // ordering: integration log success precedes the alert resolution).
             let deferredResolveAlertId = null;
 
-            // For request.status_changed — check if terminal
-            if (event === 'request.status_changed' && ukRequest.status) {
+            // For request.status_changed — check if terminal.
+            //
+            // [Sprint 9.2 / FIX-007] Accept either `status` (legacy InfraSafe
+            // single-field spec) or `new_status` (UK Phase 2 contract, which
+            // also carries `old_status`). Prefer `new_status` when both
+            // present. Empty/missing both → skip the status-changed branch
+            // (validator at webhookRoutes.js:140 already 400s on this).
+            const ukStatus = ukRequest.new_status ?? ukRequest.status;
+            if (event === 'request.status_changed' && ukStatus) {
                 // Find mapping by request number
                 const mapping = await AlertRequestMap.findByRequestNumber(ukRequest.request_number);
                 if (!mapping) {
@@ -125,20 +132,20 @@ class UKRequestProcessor {
                 }
 
                 // Update mapping status
-                const newStatus = TERMINAL_STATUSES.includes(ukRequest.status) ? 'resolved' : 'active';
+                const newStatus = TERMINAL_STATUSES.includes(ukStatus) ? 'resolved' : 'active';
                 await AlertRequestMap.updateStatus(mapping.id, newStatus);
 
                 // If terminal — defer the UK_REQUEST_RESOLVED emit until after
                 // the integration log is updated. alertService's listener then
                 // calls resolveAlert with the system-initiated (null user) context.
-                if (TERMINAL_STATUSES.includes(ukRequest.status)) {
+                if (TERMINAL_STATUSES.includes(ukStatus)) {
                     const allTerminal = await AlertRequestMap.areAllTerminal(mapping.infrasafe_alert_id);
                     if (allTerminal) {
                         deferredResolveAlertId = mapping.infrasafe_alert_id;
                     }
                 }
 
-                logger.info(`handleRequestWebhook: updated mapping for request ${safeLogValue(ukRequest.request_number)} → status: ${newStatus}`);
+                logger.info(`handleRequestWebhook: updated mapping for request ${safeLogValue(ukRequest.request_number)} → status: ${newStatus} (uk_status=${safeLogValue(ukStatus)})`);
             }
 
             // Mark log entry as success — must happen before the alert resolution

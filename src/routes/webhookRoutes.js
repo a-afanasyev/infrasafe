@@ -137,12 +137,17 @@ router.post('/request', verifyWebhook, async (req, res) => {
             return res.status(400).json({ success: false, message: 'request.request_number exceeds maximum length' });
         }
 
-        if (event === 'request.status_changed' && (!ukRequest.status || typeof ukRequest.status !== 'string')) {
-            return res.status(400).json({ success: false, message: 'Missing required field: request.status for status_changed event' });
+        // [Sprint 9.2 / FIX-007] Accept either `status` (legacy InfraSafe spec)
+        // or `new_status` (UK Phase 2 contract — `{old_status, new_status}` is
+        // semantically richer and matches UK request lifecycle events).
+        // Either field satisfies the required-status check.
+        const effectiveStatus = ukRequest.new_status ?? ukRequest.status;
+        if (event === 'request.status_changed' && (!effectiveStatus || typeof effectiveStatus !== 'string')) {
+            return res.status(400).json({ success: false, message: 'Missing required field: request.status or request.new_status for status_changed event' });
         }
 
-        if (ukRequest.status && ukRequest.status.length > 100) {
-            return res.status(400).json({ success: false, message: 'request.status exceeds maximum length' });
+        if (effectiveStatus && effectiveStatus.length > 100) {
+            return res.status(400).json({ success: false, message: 'request.status / request.new_status exceeds maximum length' });
         }
 
         if (await ukIntegrationService.isDuplicateEvent(event_id)) {
