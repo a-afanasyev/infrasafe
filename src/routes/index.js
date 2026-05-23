@@ -4,6 +4,7 @@ const controllerRoutes = require('./controllerRoutes');
 const metricRoutes = require('./metricRoutes');
 const authRoutes = require('./authRoutes');
 const buildingMetricsRoutes = require('./buildingMetricsRoutes');
+const ukRequestsMetricsRoutes = require('./ukRequestsMetricsRoutes');
 const analyticsRoutes = require('./analyticsRoutes');
 const alertRoutes = require('./alertRoutes');
 const adminRoutes = require('./adminRoutes');
@@ -94,6 +95,12 @@ const PUBLIC_ROUTES = [
     { method: 'POST', path: '/auth/confirm-2fa' },
     { method: 'POST', path: '/metrics/telemetry' },
     { method: 'GET',  path: '/buildings-metrics' },
+    // [ARCH-114] UK reconciliation safety-net — set-diff inventory of
+    // uk_request_number values we've stored. Mirror of buildings-metrics:
+    // read-only, internal docker network reachable, returns identifiers
+    // UK already owns. Spec: docs/audit/2026-05-24-ARCH-114-uk-requests-
+    // inventory-spec.md
+    { method: 'GET',  path: '/uk-requests-metrics' },
     { method: 'GET',  path: '/' },
     { method: 'POST', path: '/webhooks/uk/building' },
     { method: 'POST', path: '/webhooks/uk/request' },
@@ -182,6 +189,7 @@ router.use('/water-lines', waterLineRoutes);
 router.use('/water-suppliers', waterSupplierRoutes);
 router.use('/metrics', metricRoutes);
 router.use('/buildings-metrics', buildingMetricsRoutes);
+router.use('/uk-requests-metrics', ukRequestsMetricsRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/alerts', alertRoutes);
 router.use('/admin', adminRoutes);

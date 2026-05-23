@@ -106,6 +106,43 @@ class AlertRequestMap {
         }
     }
 
+    /**
+     * [ARCH-114] Inventory of every uk_request_number we've stored.
+     *
+     * Used by UK's reconciliation worker to set-diff against their local
+     * `requests` table and replay any missing rows via webhook. See
+     * docs/audit/2026-05-24-ARCH-114-uk-requests-inventory-spec.md for
+     * the contract and rationale.
+     *
+     * Returns terminal AND non-terminal rows — filtering out resolved
+     * entries would create false replay events. Mappings without a
+     * uk_request_number (sender race / failed sends) are excluded.
+     *
+     * @param {object} [opts]
+     * @param {number} [opts.limit=5000] - Soft cap, hard maximum 10000.
+     */
+    static async listInventory({ limit = 5000 } = {}) {
+        const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 5000, 1), 10000);
+        try {
+            const result = await db.query(
+                `SELECT uk_request_number,
+                        status,
+                        building_external_id,
+                        infrasafe_alert_id,
+                        updated_at
+                 FROM alert_request_map
+                 WHERE uk_request_number IS NOT NULL
+                 ORDER BY updated_at DESC
+                 LIMIT $1`,
+                [safeLimit]
+            );
+            return { rows: result.rows, limit: safeLimit };
+        } catch (error) {
+            logger.error(`AlertRequestMap.listInventory error: ${error.message}`);
+            throw error;
+        }
+    }
+
     static async areAllTerminal(alertId) {
         try {
             const result = await db.query(
