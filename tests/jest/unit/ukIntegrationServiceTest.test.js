@@ -628,7 +628,9 @@ describe('UKIntegrationService — Phase 3-5', () => {
             expect(listener).not.toHaveBeenCalled();
         });
 
-        it('does nothing when no mapping found for request number (manual UK request)', async () => {
+        it('does nothing to mapping when no ARM found (manual UK request or stale)', async () => {
+            // [Sprint 9.2.1] Earlier behavior: early return → integration_log stays pending.
+            // New behavior: log debug, fall through to integration_log.success.
             AlertRequestMap.findByRequestNumber.mockResolvedValue(null);
 
             await service.handleRequestWebhook(basePayload);
@@ -637,6 +639,8 @@ describe('UKIntegrationService — Phase 3-5', () => {
             expect(logger.debug).toHaveBeenCalledWith(
                 expect.stringContaining('no mapping for request REQ-100')
             );
+            // Sprint 9.2.1: log is now marked success even on no-mapping path
+            expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(10, 'success');
         });
 
         it('handles terminal status Отменена', async () => {
