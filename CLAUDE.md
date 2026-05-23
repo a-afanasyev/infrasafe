@@ -122,9 +122,12 @@ All mounted under `/api`:
 - `/power-analytics` - Power grid analysis
 - `/webhooks/uk` - Incoming webhooks from UK bot (HMAC-verified, rate-limited 60/min, no JWT)
 - `/integration` - UK integration: config/logs/rules (admin-only), request-counts/building-requests (any auth user)
+- `/uk-requests-metrics` - ARCH-114 reconciliation inventory for UK side (no auth, mirror of `/buildings-metrics`)
 
 ### UK Integration Module
-Bidirectional integration with UK Management Bot (Управляющая Компания). All 5 phases complete + Sprint 9 sender (FIX-007).
+Bidirectional integration with UK Management Bot (Управляющая Компания). All 5 phases complete + Sprint 9 sender (FIX-007) + Sprint 10 ARCH-114 reconcile (2026-05-24).
+
+**Network topology** (2026-05-24, post-Sprint-9.x): UK→InfraSafe inbound calls flow through the **public HTTPS edge** (`https://infrasafe.uz/webhooks/uk/*` and `/api/uk-requests-metrics`), NOT the internal docker `uk-network`. The Sprint 9.x compose changes (and subsequent compose-fix PR #51) removed `infrasafe-app-1` from `uk-network`; the public edge is the new canonical target. Defense-in-depth: nginx TLS + HMAC-SHA256 webhook signatures + 60/min rate limit. If you ever need to restore internal docker connectivity, add `uk-network` (external) to `docker-compose.prod.yml` with explicit `app` alias — but the public edge is preferred (no docker-network coupling).
 
 **Backend files:**
 - `src/services/ukIntegrationService.js` — Facade re-exporting the 5 modules below (Sprint 8 split for P1-14). Bound-method API surface + property proxies for backward compat.
