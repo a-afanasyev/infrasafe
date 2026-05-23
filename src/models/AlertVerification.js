@@ -120,6 +120,50 @@ class AlertVerification {
     }
 
     /**
+     * [Sprint 10 PR-3] Mark that the verification's VERIFY event was
+     * dispatched. Bumps attempts but keeps status='pending' so the row
+     * waits for ALERT_REOPENED match (until window_until). Idempotent
+     * via the `attempts = 0` guard — re-dispatch is prevented.
+     */
+    static async markDispatched(id) {
+        try {
+            const result = await db.query(
+                `UPDATE alert_verifications
+                 SET attempts = attempts + 1
+                 WHERE id = $1 AND status = 'pending' AND attempts = 0
+                 RETURNING *`,
+                [id]
+            );
+            return result.rows[0] || null;
+        } catch (error) {
+            logger.error(`AlertVerification.markDispatched error: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * [Sprint 10 PR-3] Find a pending verification for a chain so we can
+     * mark it 'reopened' when a fresh alert with matching reopen_chain_id
+     * is created. Returns the most-recent pending row (one per chain by
+     * the partial UNIQUE index).
+     */
+    static async findPendingByChainId(reopenChainId) {
+        try {
+            const result = await db.query(
+                `SELECT * FROM alert_verifications
+                 WHERE reopen_chain_id = $1 AND status = 'pending'
+                 ORDER BY id DESC
+                 LIMIT 1`,
+                [reopenChainId]
+            );
+            return result.rows[0] || null;
+        } catch (error) {
+            logger.error(`AlertVerification.findPendingByChainId error: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
      * Mark verification passed — sensor recovered, no reopen needed.
      * Increments attempts (audit trail) and stamps processed_at.
      */

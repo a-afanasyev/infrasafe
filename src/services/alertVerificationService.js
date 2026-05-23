@@ -171,17 +171,22 @@ class AlertVerificationService {
      *
      * Decision tree:
      *   1. No row → return
-     *   2. Past window_until (took too long to pick up) → markSkipped
-     *   3. Suppression active → markSuppressed
-     *   4. Reopen quota exceeded → markEngineerRequired + emit
-     *   5. Unknown alert_type (no VERIFY mapping) → markSkipped + log
-     *   6. Happy path → emit VERIFY_<TYPE>; row stays pending so a
+     *   2. Past window_until + already dispatched (attempts>0) → markPassed
+     *      (no reopen happened; sensor recovered)
+     *   3. Past window_until + never dispatched (attempts=0) → markSkipped
+     *      (we never even got to fire the VERIFY event)
+     *   4. Suppression active → markSuppressed
+     *   5. Reopen quota exceeded → markEngineerRequired + emit
+     *   6. Unknown alert_type (no VERIFY mapping) → markSkipped + log
+     *   7. Happy path → emit VERIFY_<TYPE>; row stays pending so a
      *      future tick can examine post-emit state
      *
-     * Note: in PR-2 scaffolding, the post-emit "did a new alert appear?"
-     * reconciliation is not yet wired — PR-3 adds that path. For now, the
-     * drain emits and leaves the row pending until window_until elapses;
-     * a follow-up tick will markPassed.
+     * [Sprint 10 PR-3] The "did a new alert appear?" reconciliation is
+     * handled via the ALERT_REOPENED event listener (registered at module
+     * load below). When the checker creates a reopen alert, the listener
+     * calls AlertVerification.markReopened(verification.id, newAlertId).
+     * If no reopen happens within window, this _drainOne path catches the
+     * row on a future tick and marks it passed.
      */
     async _drainOne() {
         const row = await AlertVerification.pickDue();
@@ -189,11 +194,27 @@ class AlertVerificationService {
             return; // queue empty / nothing due
         }
 
-        // Window expired — verification missed its slot
+        // Window expired
         const now = Date.now();
         const windowUntilMs = new Date(row.window_until).getTime();
         if (now > windowUntilMs) {
-            await AlertVerification.markSkipped(row.id, `window expired (${row.window_until})`);
+            if (row.attempts > 0) {
+                // We dispatched the VERIFY event earlier, no reopen happened
+                // in the window → sensor recovered. Mark passed.
+                await AlertVerification.markPassed(row.id);
+                logger.info(`alertVerificationService: verification ${row.id} passed (no reopen within window)`);
+            } else {
+                // We never even got to fire — drain was starved.
+                await AlertVerification.markSkipped(row.id, `window expired (${row.window_until})`);
+            }
+            return;
+        }
+
+        // If we've already dispatched once (attempts > 0) and we're still
+        // inside the window, leave the row pending so the ALERT_REOPENED
+        // listener can match. Subsequent ticks would re-emit, creating
+        // duplicate UK requests — that's wrong.
+        if (row.attempts > 0) {
             return;
         }
 
@@ -251,6 +272,24 @@ class AlertVerificationService {
             return;
         }
 
+        // [Sprint 10 PR-3] Look up the previous UK request number from the
+        // original alert (set there by alertService.resolveAlert system-path).
+        // Passed through to the checker so the reopen alert's UK payload can
+        // include `related_request_number` for operator context on the УК UI
+        // ("Повторное обращение №2, предыдущая заявка 260523-004").
+        let previousUkRequestNumber = null;
+        try {
+            const prevQuery = await db.query(
+                'SELECT previous_uk_request_number FROM infrastructure_alerts WHERE alert_id = $1',
+                [row.original_alert_id]
+            );
+            if (prevQuery.rows[0]) {
+                previousUkRequestNumber = prevQuery.rows[0].previous_uk_request_number || null;
+            }
+        } catch (e) {
+            logger.debug(`alertVerificationService: previous_uk_request_number lookup failed: ${e.message}`);
+        }
+
         alertEvents.emit(verifyEvent, {
             infraType: row.infrastructure_type,
             infraId: row.infrastructure_id,
@@ -259,16 +298,16 @@ class AlertVerificationService {
             reopenChainId: row.reopen_chain_id,
             reopenSequence: row.reopen_sequence + 1,
             originalAlertId: row.original_alert_id,
-            previousUkRequestNumber: null  // PR-3 will populate
+            previousUkRequestNumber
         });
-        logger.info(`alertVerificationService: emitted ${verifyEvent} for verification ${row.id} (chain ${row.reopen_chain_id}, seq→${row.reopen_sequence + 1})`);
 
-        // PR-3 will add: poll for new alert with matching reopen_chain_id;
-        // if found within window_until → markReopened(row.id, newAlertId);
-        // if window expires without match → markPassed(row.id).
-        //
-        // PR-2 scaffolding leaves the row pending; the next tick that
-        // catches it past window_until will markSkipped per step 2.
+        // Mark the row as dispatched so subsequent ticks within the window
+        // don't re-emit (would create duplicate UK requests). When the
+        // ALERT_REOPENED listener fires, it markReopened; if window expires
+        // without reopen, the windowExpired branch marks it passed.
+        await AlertVerification.markDispatched(row.id);
+
+        logger.info(`alertVerificationService: emitted ${verifyEvent} for verification ${row.id} (chain ${row.reopen_chain_id}, seq→${row.reopen_sequence + 1})`);
     }
 
     /**
@@ -312,5 +351,34 @@ class AlertVerificationService {
 }
 
 const singleton = new AlertVerificationService();
+
+// [Sprint 10 PR-3] ALERT_REOPENED listener — when alertService.createAlert
+// emits this after inserting a reopen alert, look up the matching pending
+// verification by reopen_chain_id and markReopened with the new alert_id.
+// This is the "did a new alert appear?" reconciliation that closes the
+// verification loop.
+//
+// Fire-and-forget: errors are logged but don't propagate (the new alert
+// row is already persisted). Operator can manually fix orphaned
+// verification rows from admin UI if needed.
+alertEvents.on(alertEvents.EVENTS.ALERT_REOPENED, async (payload) => {
+    const { alertId, reopenChainId } = payload || {};
+    if (!alertId || !reopenChainId) {
+        logger.warn(`alertVerificationService: ALERT_REOPENED missing alertId or reopenChainId`);
+        return;
+    }
+    try {
+        const pending = await AlertVerification.findPendingByChainId(reopenChainId);
+        if (!pending) {
+            logger.debug(`alertVerificationService: ALERT_REOPENED chain ${reopenChainId} has no pending verification`);
+            return;
+        }
+        await AlertVerification.markReopened(pending.id, alertId);
+        logger.info(`alertVerificationService: verification ${pending.id} → reopened (new alert_id=${alertId}, chain=${reopenChainId})`);
+    } catch (err) {
+        logger.error(`alertVerificationService: ALERT_REOPENED handler failed: ${err.message}`);
+    }
+});
+
 module.exports = singleton;
 module.exports.AlertVerificationService = AlertVerificationService;
