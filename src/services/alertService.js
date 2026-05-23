@@ -527,6 +527,20 @@ class InfrastructureAlertService {
         });
     }
 
+    // [Sprint 10 PR-4] Получение одного алерта по alert_id (для suppress endpoint —
+    // нужно знать {infra_type, infra_id, type} чтобы создать suppression).
+    async getAlertById(alertId) {
+        await this.ensureInitialized();
+        const result = await db.query(
+            `SELECT alert_id, type, infrastructure_id, infrastructure_type,
+                    severity, message, status, created_at, resolved_at, resolved_by
+             FROM infrastructure_alerts
+             WHERE alert_id = $1`,
+            [alertId]
+        );
+        return result.rows[0] || null;
+    }
+
     // Получение активных алертов
     async getActiveAlerts(filters = {}, pagination = {}) {
         await this.ensureInitialized();

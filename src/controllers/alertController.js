@@ -323,6 +323,123 @@ class AlertController {
             next(error);
         }
     }
+
+    // ────────────────────────────────────────────────────────────────────
+    // [Sprint 10 PR-4] Suppression endpoints
+    // ────────────────────────────────────────────────────────────────────
+
+    /**
+     * POST /api/alerts/:alertId/suppress
+     * Suppress future alerts for the SAME infrastructure tuple as :alertId
+     * for the given duration. Operator-driven mute: stops the verifier from
+     * reopening this kind of alert. Duration capped at 24h (re-apply if
+     * needed).
+     *
+     * Body: { duration_hours, reason, comment? }
+     */
+    static async suppressAlert(req, res, next) {
+        try {
+            const AlertSuppression = require('../models/AlertSuppression');
+            const { alertId } = req.params;
+            const { duration_hours, reason, comment } = req.body;
+
+            // Lookup the alert to extract its {infra_type, infra_id, type} tuple
+            const alert = await alertService.getAlertById(parseInt(alertId, 10));
+            if (!alert) {
+                return res.status(404).json({ success: false, message: 'Алерт не найден' });
+            }
+
+            if (!Number.isFinite(Number(duration_hours)) || Number(duration_hours) <= 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'duration_hours должен быть положительным числом (1..24)'
+                });
+            }
+            if (Number(duration_hours) > AlertSuppression.MAX_SUPPRESSION_HOURS) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Максимальная длительность подавления ${AlertSuppression.MAX_SUPPRESSION_HOURS} часов`
+                });
+            }
+            if (!reason || !AlertSuppression.VALID_REASONS.includes(reason)) {
+                return res.status(400).json({
+                    success: false,
+                    message: `reason обязателен и должен быть одним из: ${AlertSuppression.VALID_REASONS.join(', ')}`
+                });
+            }
+
+            const suppression = await AlertSuppression.create({
+                infrastructure_type: alert.infrastructure_type,
+                infrastructure_id: alert.infrastructure_id,
+                alert_type: alert.type,
+                duration_hours: Number(duration_hours),
+                reason,
+                comment: comment || null,
+                suppressed_by: req.user ? req.user.user_id : null
+            });
+
+            return res.status(201).json({
+                success: true,
+                message: `Подавление активно до ${suppression.suppress_until}`,
+                data: suppression
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
+     * DELETE /api/alerts/suppressions/:id
+     * End an active suppression early ("sensor fixed, resume monitoring").
+     */
+    static async clearSuppression(req, res, next) {
+        try {
+            const AlertSuppression = require('../models/AlertSuppression');
+            const { id } = req.params;
+            const clearedBy = req.user ? req.user.user_id : null;
+
+            const cleared = await AlertSuppression.clear(parseInt(id, 10), clearedBy);
+            if (!cleared) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Подавление не найдено или уже снято'
+                });
+            }
+
+            return res.json({
+                success: true,
+                message: 'Подавление снято',
+                data: cleared
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
+     * GET /api/alerts/suppressions
+     * List suppressions. Query params: active=true|false, infra_type,
+     * infra_id, alert_type, limit (1..500).
+     */
+    static async listSuppressions(req, res, next) {
+        try {
+            const AlertSuppression = require('../models/AlertSuppression');
+            const { active, infra_type, infra_id, alert_type, limit } = req.query;
+
+            const filters = {};
+            if (active === 'true') filters.active = true;
+            else if (active === 'false') filters.active = false;
+            if (infra_type) filters.infraType = infra_type;
+            if (infra_id) filters.infraId = parseInt(infra_id, 10);
+            if (alert_type) filters.alertType = alert_type;
+            if (limit) filters.limit = parseInt(limit, 10);
+
+            const rows = await AlertSuppression.list(filters);
+            return res.json({ success: true, data: rows });
+        } catch (error) {
+            next(error);
+        }
+    }
 }
 
 module.exports = AlertController;

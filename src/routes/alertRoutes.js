@@ -379,6 +379,88 @@ router.patch('/:alertId/acknowledge', applyCrudRateLimit, isAdmin, alertControll
  */
 router.patch('/:alertId/resolve', applyCrudRateLimit, isAdmin, alertController.resolveAlert);
 
+// ───────────────────────────────────────────────────────────────────────
+// [Sprint 10 PR-4] Suppression endpoints — operator "mute this sensor"
+// ───────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /api/alerts/{alertId}/suppress:
+ *   post:
+ *     summary: Подавить будущие алерты этого типа для инфраструктуры
+ *     tags: [Alerts]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: alertId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [duration_hours, reason]
+ *             properties:
+ *               duration_hours: { type: integer, minimum: 1, maximum: 24 }
+ *               reason:
+ *                 type: string
+ *                 enum: [faulty_sensor, under_repair, planned_maintenance, known_issue, other]
+ *               comment: { type: string }
+ *     responses:
+ *       201: { description: Подавление создано }
+ *       400: { description: Невалидные параметры }
+ *       404: { description: Алерт не найден }
+ */
+router.post('/:alertId/suppress', applyCrudRateLimit, isAdmin, alertController.suppressAlert);
+
+/**
+ * @swagger
+ * /api/alerts/suppressions:
+ *   get:
+ *     summary: Список подавлений
+ *     tags: [Alerts]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: active
+ *         schema: { type: string, enum: [true, false] }
+ *       - in: query
+ *         name: infra_type
+ *         schema: { type: string }
+ *       - in: query
+ *         name: infra_id
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: alert_type
+ *         schema: { type: string }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, minimum: 1, maximum: 500 }
+ *     responses:
+ *       200: { description: Список }
+ */
+router.get('/suppressions', applyCrudRateLimit, isAdmin, alertController.listSuppressions);
+
+/**
+ * @swagger
+ * /api/alerts/suppressions/{id}:
+ *   delete:
+ *     summary: Снять подавление досрочно
+ *     tags: [Alerts]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Подавление снято }
+ *       404: { description: Не найдено или уже снято }
+ */
+router.delete('/suppressions/:id', applyCrudRateLimit, isAdmin, alertController.clearSuppression);
+
 // === НАСТРОЙКИ АЛЕРТОВ ===
 
 /**
