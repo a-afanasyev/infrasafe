@@ -68,10 +68,46 @@ class UKRequestProcessor {
             // Invalidate request counts cache on any request event
             configProxy.invalidateRequestCache();
 
-            // For request.created — just log (no alert mapping expected)
+            // For request.created — match by `source_event_id` (which is our
+            // AlertRequestMap.idempotency_key, also the uk_outbox.event_id we
+            // signed and sent) so we can fill in `uk_request_number` on our
+            // mapping row. Without this, subsequent `request.status_changed`
+            // events for this request can't find the mapping
+            // (findByRequestNumber returns NULL) — and the alert never
+            // auto-resolves when UK closes the ticket.
+            //
+            // [Sprint 9.1 / FIX-007] Closes the integration gap discovered
+            // during cutover smoke (260523-001) — Sprint 9 sender +
+            // outbox ship the outbound channel but the inbound feedback loop
+            // was a Sprint 8 leftover not updated for UK Phase 2 payloads.
+            //
+            // Backward-compat: `source_event_id` may be missing on manual UK
+            // requests (created via dashboard without our event_id), in which
+            // case we just log and skip — no mapping to fill, no alert flow.
             if (event === 'request.created') {
-                logger.info(`handleRequestWebhook: request.created ${safeLogValue(ukRequest.request_number)}`);
-                return;
+                const sourceEventId = ukRequest.source_event_id;
+                if (sourceEventId) {
+                    const mapping = await AlertRequestMap.findByIdempotencyKey(sourceEventId);
+                    if (mapping) {
+                        await AlertRequestMap.markSent(mapping.id, ukRequest.request_number);
+                        logger.info(
+                            `handleRequestWebhook: request.created matched mapping ${mapping.id} ` +
+                            `via source_event_id, uk_request_number=${safeLogValue(ukRequest.request_number)}`
+                        );
+                    } else {
+                        logger.debug(
+                            `handleRequestWebhook: request.created ${safeLogValue(ukRequest.request_number)}: ` +
+                            `no AlertRequestMap for source_event_id ${safeLogValue(sourceEventId)} ` +
+                            '(synthetic test or stale)'
+                        );
+                    }
+                } else {
+                    logger.info(
+                        `handleRequestWebhook: request.created ${safeLogValue(ukRequest.request_number)} ` +
+                        '(no source_event_id — manual UK request)'
+                    );
+                }
+                // Fall through to integration_log success — see below.
             }
 
             // Deferred emit so the integration log is marked 'success' BEFORE

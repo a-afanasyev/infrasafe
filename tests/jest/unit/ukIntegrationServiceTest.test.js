@@ -39,6 +39,7 @@ jest.mock('../../../src/models/AlertRequestMap', () => ({
     create: jest.fn(),
     markSent: jest.fn(),
     findByRequestNumber: jest.fn(),
+    findByIdempotencyKey: jest.fn(),
     updateStatus: jest.fn(),
     areAllTerminal: jest.fn()
 }));
@@ -482,18 +483,79 @@ describe('UKIntegrationService — Phase 3-5', () => {
             ).rejects.toThrow('DB down');
         });
 
-        it('handles request.created event — logs only, no mapping lookup', async () => {
+        // -------------------------------------------------------------------
+        // [Sprint 9.1 / FIX-007] request.created matching by source_event_id.
+        //
+        // UK Phase 2 emits `request.created` with `source_event_id` echoed
+        // from our `event_id` (= AlertRequestMap.idempotency_key). We must
+        // match the mapping and fill `uk_request_number` so subsequent
+        // `request.status_changed` events can find it via findByRequestNumber.
+        // -------------------------------------------------------------------
+
+        it('request.created with source_event_id → matches mapping and fills uk_request_number', async () => {
             const payload = {
                 ...basePayload,
-                event: 'request.created'
+                event: 'request.created',
+                request: {
+                    request_number: 'REQ-200',
+                    source_event_id: 'idemp-key-abc'
+                }
+            };
+            AlertRequestMap.findByIdempotencyKey.mockResolvedValue({
+                id: 77,
+                idempotency_key: 'idemp-key-abc',
+                infrasafe_alert_id: 555
+            });
+            AlertRequestMap.markSent.mockResolvedValue({});
+
+            await service.handleRequestWebhook(payload);
+
+            expect(AlertRequestMap.findByIdempotencyKey).toHaveBeenCalledWith('idemp-key-abc');
+            expect(AlertRequestMap.markSent).toHaveBeenCalledWith(77, 'REQ-200');
+            // findByRequestNumber should NOT be called on request.created — only on status_changed
+            expect(AlertRequestMap.findByRequestNumber).not.toHaveBeenCalled();
+            // Integration log marked success (fall-through after request.created branch)
+            expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(10, 'success');
+        });
+
+        it('request.created without source_event_id → logs only, no mapping lookup (manual UK request)', async () => {
+            const payload = {
+                ...basePayload,
+                event: 'request.created',
+                request: { request_number: 'REQ-MANUAL-1' }
             };
 
             await service.handleRequestWebhook(payload);
 
-            expect(AlertRequestMap.findByRequestNumber).not.toHaveBeenCalled();
+            expect(AlertRequestMap.findByIdempotencyKey).not.toHaveBeenCalled();
+            expect(AlertRequestMap.markSent).not.toHaveBeenCalled();
             expect(logger.info).toHaveBeenCalledWith(
-                expect.stringContaining('request.created')
+                expect.stringContaining('manual UK request')
             );
+            // Still marks log success — webhook was processed cleanly
+            expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(10, 'success');
+        });
+
+        it('request.created with unknown source_event_id → debug log, no markSent', async () => {
+            const payload = {
+                ...basePayload,
+                event: 'request.created',
+                request: {
+                    request_number: 'REQ-STALE-1',
+                    source_event_id: 'idemp-unknown'
+                }
+            };
+            AlertRequestMap.findByIdempotencyKey.mockResolvedValue(null);
+
+            await service.handleRequestWebhook(payload);
+
+            expect(AlertRequestMap.findByIdempotencyKey).toHaveBeenCalledWith('idemp-unknown');
+            expect(AlertRequestMap.markSent).not.toHaveBeenCalled();
+            expect(logger.debug).toHaveBeenCalledWith(
+                expect.stringContaining('no AlertRequestMap for source_event_id')
+            );
+            // Still marks log success — webhook processed without errors
+            expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(10, 'success');
         });
 
         it('updates mapping to resolved on terminal status (Принято)', async () => {
