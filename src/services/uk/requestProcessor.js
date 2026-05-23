@@ -126,26 +126,30 @@ class UKRequestProcessor {
             if (event === 'request.status_changed' && ukStatus) {
                 // Find mapping by request number
                 const mapping = await AlertRequestMap.findByRequestNumber(ukRequest.request_number);
+                // [Sprint 9.2.1 / FIX-007] No mapping is an expected case
+                // (manual UK request, or our ARM row was cleaned up). Fall
+                // through to integration_log.success instead of early return:
+                // "successful no-op" is the correct status — anything else
+                // leaves pending rows in operator's audit trail.
                 if (!mapping) {
-                    logger.debug(`handleRequestWebhook: no mapping for request ${safeLogValue(ukRequest.request_number)} (manual UK request)`);
-                    return;
-                }
+                    logger.debug(`handleRequestWebhook: no mapping for request ${safeLogValue(ukRequest.request_number)} (manual UK request or stale ARM)`);
+                } else {
+                    // Update mapping status
+                    const newStatus = TERMINAL_STATUSES.includes(ukStatus) ? 'resolved' : 'active';
+                    await AlertRequestMap.updateStatus(mapping.id, newStatus);
 
-                // Update mapping status
-                const newStatus = TERMINAL_STATUSES.includes(ukStatus) ? 'resolved' : 'active';
-                await AlertRequestMap.updateStatus(mapping.id, newStatus);
-
-                // If terminal — defer the UK_REQUEST_RESOLVED emit until after
-                // the integration log is updated. alertService's listener then
-                // calls resolveAlert with the system-initiated (null user) context.
-                if (TERMINAL_STATUSES.includes(ukStatus)) {
-                    const allTerminal = await AlertRequestMap.areAllTerminal(mapping.infrasafe_alert_id);
-                    if (allTerminal) {
-                        deferredResolveAlertId = mapping.infrasafe_alert_id;
+                    // If terminal — defer the UK_REQUEST_RESOLVED emit until after
+                    // the integration log is updated. alertService's listener then
+                    // calls resolveAlert with the system-initiated (null user) context.
+                    if (TERMINAL_STATUSES.includes(ukStatus)) {
+                        const allTerminal = await AlertRequestMap.areAllTerminal(mapping.infrasafe_alert_id);
+                        if (allTerminal) {
+                            deferredResolveAlertId = mapping.infrasafe_alert_id;
+                        }
                     }
-                }
 
-                logger.info(`handleRequestWebhook: updated mapping for request ${safeLogValue(ukRequest.request_number)} → status: ${newStatus} (uk_status=${safeLogValue(ukStatus)})`);
+                    logger.info(`handleRequestWebhook: updated mapping for request ${safeLogValue(ukRequest.request_number)} → status: ${newStatus} (uk_status=${safeLogValue(ukStatus)})`);
+                }
             }
 
             // Mark log entry as success — must happen before the alert resolution
