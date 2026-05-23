@@ -42,6 +42,16 @@ const _isWebhookSenderEnabled = () => {
     return flag === 'true' || flag === '1';
 };
 
+// [Sprint 10 PR-3] Urgency ladder for reopen-bump. One step up per reopen,
+// capped at Критическая. Russian values to match alert_rules.uk_urgency
+// canonical strings.
+const URGENCY_LADDER = Object.freeze(['Обычная', 'Средняя', 'Срочная', 'Критическая']);
+function bumpUrgency(current) {
+    const idx = URGENCY_LADDER.indexOf(current);
+    if (idx < 0) return current; // unknown urgency — don't change
+    return URGENCY_LADDER[Math.min(idx + 1, URGENCY_LADDER.length - 1)];
+}
+
 class UKAlertForwarder {
     /**
      * Resolve building IDs affected by an infrastructure alert.
@@ -169,6 +179,19 @@ class UKAlertForwarder {
                         continue;
                     }
 
+                    // [Sprint 10 PR-3] Reopen context — if this alert is part
+                    // of a reopen chain, include related_request_number +
+                    // reopen_sequence so УК UI can show "Повторное обращение
+                    // №N, предыдущая заявка XXX-YYY". Urgency bump (one tier
+                    // up, capped at Критическая) is applied here if the rule
+                    // says so — the УК side just sees a higher-urgency
+                    // ticket without needing to know about reopens.
+                    const isReopen = !!alertData.reopen_chain_id && (alertData.reopen_sequence || 1) > 1;
+                    let effectiveUrgency = rule.uk_urgency;
+                    if (isReopen && rule.reopen_urgency_bump) {
+                        effectiveUrgency = bumpUrgency(rule.uk_urgency);
+                    }
+
                     // Build canonical payload bytes ONCE. These exact bytes
                     // are signed by ukWebhookClient at send time and POSTed
                     // verbatim. Re-stringifying elsewhere would invalidate
@@ -192,7 +215,13 @@ class UKAlertForwarder {
                             infrastructure_id: alertData.infrastructure_id,
                             metric_id: alertData.metric_id,
                             metric_value: alertData.metric_value,
-                            metric_unit: alertData.metric_unit
+                            metric_unit: alertData.metric_unit,
+                            // [Sprint 10 PR-3] Reopen context (optional fields,
+                            // UK can ignore unknowns per Phase 2 contract):
+                            reopen_chain_id: alertData.reopen_chain_id || null,
+                            reopen_sequence: alertData.reopen_sequence || 1,
+                            related_request_number: alertData.previous_uk_request_number || null,
+                            uk_urgency_override: isReopen ? effectiveUrgency : null
                         }
                     });
 

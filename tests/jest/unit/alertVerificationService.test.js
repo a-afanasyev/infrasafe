@@ -17,7 +17,9 @@ jest.mock('../../../src/models/AlertVerification', () => ({
     markSuppressed: jest.fn(),
     markEngineerRequired: jest.fn(),
     markSkipped: jest.fn(),
-    countRecentReopensForChain: jest.fn()
+    markDispatched: jest.fn(),
+    countRecentReopensForChain: jest.fn(),
+    findPendingByChainId: jest.fn()
 }));
 
 // [Sprint 10 PR-4] AlertSuppression model exists now — mock it so the
@@ -184,7 +186,8 @@ describe('alertVerificationService', () => {
             infrastructure_id: 1,
             alert_type: 'LEAK_DETECTED',
             run_at: new Date(Date.now() - 1000).toISOString(),
-            window_until: new Date(Date.now() + 60000).toISOString() // 1 min in future
+            window_until: new Date(Date.now() + 60000).toISOString(), // 1 min in future
+            attempts: 0
         };
 
         test('returns quietly when no row due', async () => {
@@ -196,17 +199,60 @@ describe('alertVerificationService', () => {
             expect(AlertVerification.markPassed).not.toHaveBeenCalled();
         });
 
-        test('markSkipped when window_until already passed', async () => {
+        test('markSkipped when window_until already passed AND never dispatched (attempts=0)', async () => {
             setupDbQueryRouter();
             const staleRow = {
                 ...dueRow,
-                window_until: new Date(Date.now() - 60000).toISOString() // 1 min ago
+                window_until: new Date(Date.now() - 60000).toISOString(), // 1 min ago
+                attempts: 0
             };
             AlertVerification.pickDue.mockResolvedValueOnce(staleRow);
 
             await service._tick();
 
             expect(AlertVerification.markSkipped).toHaveBeenCalledWith(1, expect.stringContaining('window expired'));
+            expect(AlertVerification.markPassed).not.toHaveBeenCalled();
+        });
+
+        test('[Sprint 10 PR-3] markPassed when window expired AND already dispatched (attempts>0, sensor recovered)', async () => {
+            setupDbQueryRouter();
+            const staleDispatchedRow = {
+                ...dueRow,
+                window_until: new Date(Date.now() - 60000).toISOString(),
+                attempts: 1
+            };
+            AlertVerification.pickDue.mockResolvedValueOnce(staleDispatchedRow);
+
+            await service._tick();
+
+            expect(AlertVerification.markPassed).toHaveBeenCalledWith(1);
+            expect(AlertVerification.markSkipped).not.toHaveBeenCalled();
+        });
+
+        test('[Sprint 10 PR-3] returns quietly when attempts>0 and still in window (waiting for ALERT_REOPENED)', async () => {
+            setupDbQueryRouter();
+            const dispatchedRow = {
+                ...dueRow,
+                attempts: 1   // already dispatched
+            };
+            AlertVerification.pickDue.mockResolvedValueOnce(dispatchedRow);
+
+            await service._tick();
+
+            // No re-dispatch, no markPassed (window not expired yet)
+            expect(AlertVerification.markDispatched).not.toHaveBeenCalled();
+            expect(AlertVerification.markPassed).not.toHaveBeenCalled();
+            expect(AlertVerification.markSkipped).not.toHaveBeenCalled();
+        });
+
+        test('[Sprint 10 PR-3] bumps attempts via markDispatched after emit', async () => {
+            setupDbQueryRouter({ quota: 3 });
+            AlertVerification.pickDue.mockResolvedValueOnce(dueRow);
+            AlertVerification.countRecentReopensForChain.mockResolvedValueOnce(0);
+
+            await service._tick();
+
+            expect(AlertVerification.markDispatched).toHaveBeenCalledWith(1);
         });
 
         test('emits VERIFY_LEAK for LEAK_DETECTED alert', async () => {
@@ -312,6 +358,50 @@ describe('alertVerificationService', () => {
             expect(listener).not.toHaveBeenCalled();
             // Quota check also skipped (return-early after suppression)
             expect(AlertVerification.countRecentReopensForChain).not.toHaveBeenCalled();
+        });
+    });
+
+    // [Sprint 10 PR-3] ALERT_REOPENED listener wires the reconciliation:
+    // when a checker creates a reopen alert via alertService.createAlert,
+    // ALERT_REOPENED fires; this listener finds the matching pending
+    // verification by chain_id and markReopened with the new alert_id.
+    describe('ALERT_REOPENED listener', () => {
+        test('markReopened on listener fire with matching chain_id', async () => {
+            AlertVerification.findPendingByChainId.mockResolvedValueOnce({ id: 7 });
+
+            alertEvents.emit(alertEvents.EVENTS.ALERT_REOPENED, {
+                alertId: 200,
+                reopenChainId: 'chain-uuid-listen',
+                reopenSequence: 2,
+                previousAlertId: 100
+            });
+
+            // Listener is async; wait a tick for the queued microtask.
+            await new Promise((r) => setImmediate(r));
+
+            expect(AlertVerification.findPendingByChainId).toHaveBeenCalledWith('chain-uuid-listen');
+            expect(AlertVerification.markReopened).toHaveBeenCalledWith(7, 200);
+        });
+
+        test('listener no-ops when no pending verification matches', async () => {
+            AlertVerification.findPendingByChainId.mockResolvedValueOnce(null);
+
+            alertEvents.emit(alertEvents.EVENTS.ALERT_REOPENED, {
+                alertId: 201,
+                reopenChainId: 'orphan-chain',
+                reopenSequence: 2
+            });
+
+            await new Promise((r) => setImmediate(r));
+
+            expect(AlertVerification.markReopened).not.toHaveBeenCalled();
+        });
+
+        test('listener tolerates missing payload fields', async () => {
+            // Emit with missing alertId — should log warn and bail
+            alertEvents.emit(alertEvents.EVENTS.ALERT_REOPENED, { reopenChainId: 'only-chain' });
+            await new Promise((r) => setImmediate(r));
+            expect(AlertVerification.findPendingByChainId).not.toHaveBeenCalled();
         });
     });
 
