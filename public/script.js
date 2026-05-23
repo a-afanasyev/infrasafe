@@ -2213,13 +2213,21 @@ document.addEventListener('DOMContentLoaded', async function () {
         // source of truth. apiClient.setToken() is kept as a no-op-with-
         // side-effect (flips isAuthenticated boolean) for legacy code.
         apiClient.setToken('cookie-session');
+        // Critical UX: close the modal and flip the button BEFORE any
+        // network work. If loadData() throws (network blip, slow API),
+        // the user must still see they're logged in.
         hideLoginModal();
         showMapLoginStep('login');
         mapTempToken = null;
         updateAuthButton();
-        await loadData();
         if (window.mapLayersControl) window.mapLayersControl.handleAuthChange(true);
         showToast('Вы вошли в систему', 'success');
+        try {
+            await loadData();
+        } catch (err) {
+            // Modal/button state already updated — log and continue.
+            console.error('loadData after login failed:', err);
+        }
     }
 
     // Step 1: Login form
@@ -2243,11 +2251,12 @@ document.addEventListener('DOMContentLoaded', async function () {
                 });
                 const data = await response.json();
 
-                // [1A-FU2-S-M2] success marker is `data.success` — tokens no
-                // longer in body; HttpOnly cookies carry the session.
-                if (response.ok && data.success) {
-                    await completeMapLogin(data);
-                } else if (response.ok && data.requires2FA) {
+                // Order matters: /api/auth/login returns `{success:true, requires2FA:true, tempToken}`
+                // for admin accounts — checking `data.success` first would close the modal
+                // before the 2FA step, leaving the user without an HttpOnly cookie. Check the
+                // 2FA branches first so that `data.success` is only treated as a terminal
+                // login when neither 2FA flag is present.
+                if (response.ok && data.requires2FA) {
                     mapTempToken = data.tempToken;
                     showMapLoginStep('2fa');
                     document.getElementById('map-2fa-code').focus();
@@ -2281,6 +2290,9 @@ document.addEventListener('DOMContentLoaded', async function () {
                     } else {
                         showMapError('map-login-error', setupData.message || 'Ошибка настройки 2FA');
                     }
+                } else if (response.ok && data.success) {
+                    // No 2FA path — user без 2FA, server already issued the auth cookies.
+                    await completeMapLogin(data);
                 } else {
                     showMapError('map-login-error', data.message || data.error || 'Неверные учетные данные');
                 }
