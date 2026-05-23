@@ -87,31 +87,43 @@ describe('AlertRule Model', () => {
     });
 
     describe('toggleEnabled', () => {
+        // [Sprint 10 PR-5] toggleEnabled now does findById first (audit-log
+        // friendly: skip UPDATE + audit if value unchanged). Tests use
+        // mockResolvedValueOnce for proper sequencing.
         test('enables rule and returns updated record', async () => {
-            const enabled = { ...mockRule, enabled: true };
-            db.query.mockResolvedValue({ rows: [enabled] });
+            const before = { ...mockRule, enabled: false };       // SELECT (findById)
+            const after  = { ...mockRule, enabled: true };        // UPDATE returning
+            db.query
+                .mockResolvedValueOnce({ rows: [before] })
+                .mockResolvedValueOnce({ rows: [after] })
+                .mockResolvedValueOnce({ rows: [{ id: 99 }] }); // audit INSERT
 
             const result = await AlertRule.toggleEnabled(1, true);
 
             expect(result).toBeDefined();
             expect(result.enabled).toBe(true);
-            expect(db.query.mock.calls[0][0]).toContain('UPDATE alert_rules SET enabled = $1');
-            expect(db.query.mock.calls[0][1]).toEqual([true, 1]);
+            // Call 0 is findById SELECT, call 1 is UPDATE
+            expect(db.query.mock.calls[1][0]).toContain('UPDATE alert_rules SET enabled = $1');
+            expect(db.query.mock.calls[1][1]).toEqual([true, 1]);
         });
 
         test('disables rule and returns updated record', async () => {
-            const disabled = { ...mockRule, enabled: false };
-            db.query.mockResolvedValue({ rows: [disabled] });
+            const before = { ...mockRule, enabled: true };
+            const after  = { ...mockRule, enabled: false };
+            db.query
+                .mockResolvedValueOnce({ rows: [before] })
+                .mockResolvedValueOnce({ rows: [after] })
+                .mockResolvedValueOnce({ rows: [{ id: 100 }] });
 
             const result = await AlertRule.toggleEnabled(1, false);
 
             expect(result).toBeDefined();
             expect(result.enabled).toBe(false);
-            expect(db.query.mock.calls[0][1]).toEqual([false, 1]);
+            expect(db.query.mock.calls[1][1]).toEqual([false, 1]);
         });
 
         test('returns null when rule not found', async () => {
-            db.query.mockResolvedValue({ rows: [] });
+            db.query.mockResolvedValueOnce({ rows: [] }); // findById returns empty
 
             const result = await AlertRule.toggleEnabled(999, true);
 

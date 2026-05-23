@@ -190,6 +190,108 @@ const handlers = {
             logger.error(`integrationRoutes.getRules error: ${error.message}`);
             return res.status(500).json({ success: false, message: 'Internal server error' });
         }
+    },
+
+    /**
+     * [Sprint 10 PR-5] GET /rules/stats?days=7
+     * Returns all rules joined with per-rule activity stats from the last
+     * N days (alert count, escalated count, reopen count). Admin UI uses
+     * this for the "Status" badges in the rules editor.
+     */
+    async getRulesStats(req, res) {
+        try {
+            const days = parseInt(req.query.days, 10) || 7;
+            const rules = await AlertRule.listWithStats(days);
+            return res.json({ success: true, data: rules, meta: { days } });
+        } catch (error) {
+            logger.error(`integrationRoutes.getRulesStats error: ${error.message}`);
+            return res.status(500).json({ success: false, message: 'Internal server error' });
+        }
+    },
+
+    /**
+     * [Sprint 10 PR-5] PATCH /rules/:id
+     * Update one or more editable fields. Validates whitelist + ranges.
+     * Writes audit log entries per field change.
+     * Body: { fields: { min_persistence_seconds: 90, ... }, reason?: string }
+     */
+    async updateRule(req, res) {
+        try {
+            const id = parseInt(req.params.id, 10);
+            if (!Number.isInteger(id) || id <= 0) {
+                return res.status(400).json({ success: false, message: 'Invalid rule id' });
+            }
+            const { fields, reason } = req.body || {};
+            if (!fields || typeof fields !== 'object' || Array.isArray(fields)) {
+                return res.status(400).json({ success: false, message: 'fields object is required' });
+            }
+            const userId = req.user ? req.user.user_id : null;
+
+            try {
+                const { rule, changes } = await AlertRule.update(id, fields, userId, reason || null);
+                if (!rule) {
+                    return res.status(404).json({ success: false, message: 'Rule not found' });
+                }
+                return res.json({
+                    success: true,
+                    data: rule,
+                    changes_recorded: changes.length
+                });
+            } catch (validationErr) {
+                // AlertRule.update throws on invalid field name or value
+                return res.status(400).json({ success: false, message: validationErr.message });
+            }
+        } catch (error) {
+            logger.error(`integrationRoutes.updateRule error: ${error.message}`);
+            return res.status(500).json({ success: false, message: 'Internal server error' });
+        }
+    },
+
+    /**
+     * [Sprint 10 PR-5] POST /rules/:id/toggle
+     * Body: { enabled: boolean, reason?: string }
+     * Audit-logged.
+     */
+    async toggleRule(req, res) {
+        try {
+            const id = parseInt(req.params.id, 10);
+            if (!Number.isInteger(id) || id <= 0) {
+                return res.status(400).json({ success: false, message: 'Invalid rule id' });
+            }
+            const { enabled, reason } = req.body || {};
+            if (typeof enabled !== 'boolean') {
+                return res.status(400).json({ success: false, message: 'enabled (boolean) is required' });
+            }
+            const userId = req.user ? req.user.user_id : null;
+            const rule = await AlertRule.toggleEnabled(id, enabled, userId, reason || null);
+            if (!rule) {
+                return res.status(404).json({ success: false, message: 'Rule not found' });
+            }
+            return res.json({ success: true, data: rule });
+        } catch (error) {
+            logger.error(`integrationRoutes.toggleRule error: ${error.message}`);
+            return res.status(500).json({ success: false, message: 'Internal server error' });
+        }
+    },
+
+    /**
+     * [Sprint 10 PR-5] GET /rules/:id/history?limit=50
+     * Returns audit log entries for the rule, most-recent first.
+     */
+    async getRuleHistory(req, res) {
+        try {
+            const id = parseInt(req.params.id, 10);
+            if (!Number.isInteger(id) || id <= 0) {
+                return res.status(400).json({ success: false, message: 'Invalid rule id' });
+            }
+            const AlertRuleChange = require('../models/AlertRuleChange');
+            const limit = parseInt(req.query.limit, 10) || 50;
+            const history = await AlertRuleChange.findByRuleId(id, limit);
+            return res.json({ success: true, data: history });
+        } catch (error) {
+            logger.error(`integrationRoutes.getRuleHistory error: ${error.message}`);
+            return res.status(500).json({ success: false, message: 'Internal server error' });
+        }
     }
 };
 
@@ -200,6 +302,13 @@ router.get('/logs', handlers.getLogs);
 router.get('/logs/:id', handlers.getLogById);
 router.post('/logs/retry/:id', handlers.retryLog);
 router.get('/rules', handlers.getRules);
+
+// [Sprint 10 PR-5] Rules admin endpoints — all admin-only via the
+// `router.use(isAdmin)` mounted earlier in this file.
+router.get('/rules/stats', handlers.getRulesStats);
+router.patch('/rules/:id', handlers.updateRule);
+router.post('/rules/:id/toggle', handlers.toggleRule);
+router.get('/rules/:id/history', handlers.getRuleHistory);
 
 module.exports = router;
 module.exports.handlers = handlers;

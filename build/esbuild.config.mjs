@@ -35,6 +35,8 @@ const ENTRIES = [
     'public/utils/powerUtils.js',
     'public/utils/rateLimiter.js',
     'public/utils/safeJsonParser.js',
+    // [Sprint 10 PR-5] UK rules client-side validation bounds
+    'public/utils/ukRulesValidation.js',
 ].map(f => path.join(projectRoot, f));
 
 const sharedOptions = {
