@@ -265,17 +265,11 @@ class Building {
         try {
             await client.query('BEGIN');
 
-            // 1. Delete legacy alerts referencing metrics of this building's controllers
-            await client.query(
-                `DELETE FROM alerts WHERE metric_id IN (
-                    SELECT metric_id FROM metrics WHERE controller_id IN (
-                        SELECT controller_id FROM controllers WHERE building_id = $1
-                    )
-                )`,
-                [id]
-            );
+            // [Sprint 10 PR-1.5] Legacy `alerts` table dropped (migration 028);
+            // no equivalent cleanup needed for it. Active alerts live in
+            // `infrastructure_alerts` — handled below.
 
-            // 2. Delete infrastructure_alerts for this building's controllers
+            // 1. Delete infrastructure_alerts for this building's controllers
             await client.query(
                 `DELETE FROM infrastructure_alerts
                  WHERE infrastructure_type = 'controller'
@@ -285,16 +279,16 @@ class Building {
                 [id]
             );
 
-            // 3. Delete metrics for all controllers in this building
+            // 2. Delete metrics for all controllers in this building
             await client.query(
                 'DELETE FROM metrics WHERE controller_id IN (SELECT controller_id FROM controllers WHERE building_id = $1)',
                 [id]
             );
 
-            // 4. Delete controllers
+            // 3. Delete controllers
             await client.query('DELETE FROM controllers WHERE building_id = $1', [id]);
 
-            // 5. Delete the building itself
+            // 4. Delete the building itself
             const result = await client.query(
                 'DELETE FROM buildings WHERE building_id = $1 RETURNING *',
                 [id]

@@ -1,15 +1,20 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
 
+// [Sprint 10 PR-1.5] Removed 'alerts' (legacy table dropped — was 0 rows in
+// prod, unused by active code) and 'alert_types' (catalog dropped — never
+// reconciled with code-side string literals like LEAK_DETECTED). Active
+// alerts live in `infrastructure_alerts` which carries a free-form `type`
+// VARCHAR(50) column instead.
 const ALLOWED_TABLES = [
-    'buildings', 'controllers', 'metrics', 'alerts', 'alert_types',
+    'buildings', 'controllers', 'metrics',
     'power_transformers', 'transformers', 'cold_water_sources', 'heat_sources',
     'water_lines', 'water_suppliers', 'users', 'lines',
     'integration_config', 'integration_log', 'alert_rules', 'alert_request_map'
 ];
 
 const ALLOWED_COLUMNS = [
-    'building_id', 'controller_id', 'metric_id', 'alert_id', 'alert_type_id',
+    'building_id', 'controller_id', 'metric_id', 'alert_id',
     'transformer_id', 'cold_water_source_id', 'heat_source_id',
     'water_line_id', 'water_supplier_id', 'user_id', 'id', 'line_id',
     'status', 'is_active', 'name', 'address', 'description',
