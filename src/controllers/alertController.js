@@ -159,7 +159,10 @@ class AlertController {
                 data: data || {}
             };
 
-            const alert = await alertService.createAlert(alertData);
+            // [Sprint 10 PR-1] Manual operator route bypasses persistence +
+            // buildings gates — operator explicitly chose to create the alert
+            // and presumably knows the condition is real.
+            const alert = await alertService.createAlert(alertData, { bypassGates: true });
 
             res.status(201).json({
                 success: true,

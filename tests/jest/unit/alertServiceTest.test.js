@@ -146,7 +146,9 @@ describe('AlertService', () => {
                 data: { load_percent: 87 }
             };
 
-            const result = await alertService.createAlert(alertData);
+            // [Sprint 10 PR-1] bypassGates skips the persistence/buildings gate
+            // path so this test stays focused on INSERT semantics.
+            const result = await alertService.createAlert(alertData, { bypassGates: true });
 
             expect(result.alert_id).toBe(42);
             expect(result.type).toBe('TRANSFORMER_OVERLOAD');
@@ -171,7 +173,7 @@ describe('AlertService', () => {
                 message: 'Low water',
                 affected_buildings: 2,
                 data: {}
-            });
+            }, { bypassGates: true });
 
             const key = 'water_source:5:WATER_LOW';
             expect(alertService.activeAlerts.has(key)).toBe(true);
@@ -190,7 +192,7 @@ describe('AlertService', () => {
                 severity: 'INFO',
                 message: 'Test',
                 data: {}
-            });
+            }, { bypassGates: true });
 
             const values = db.query.mock.calls[0][1];
             expect(values[5]).toBe(0);
@@ -450,7 +452,7 @@ describe('AlertService', () => {
                 data: { load_percent: 90 },
             };
 
-            const result = await alertService.createAlert(alertData);
+            const result = await alertService.createAlert(alertData, { bypassGates: true });
             expect(result).toBeNull();
         });
 
@@ -468,7 +470,7 @@ describe('AlertService', () => {
                 data: {},
             };
 
-            await expect(alertService.createAlert(alertData)).rejects.toThrow('connection refused');
+            await expect(alertService.createAlert(alertData, { bypassGates: true })).rejects.toThrow('connection refused');
         });
     });
 

@@ -224,9 +224,113 @@ class InfrastructureAlertService {
         }
     }
 
-    // Создание нового алерта
-    async createAlert(alertData) {
+    // [Sprint 10 PR-1] Persistence gate. Returns { allowed, reason }.
+    //
+    // For LEAK_DETECTED via controller — SQL aggregation against `metrics`
+    // counting `leak_sensor=true` samples whose earliest reading is at least
+    // `minSeconds` ago. ≥2 samples needed to filter single-blip noise.
+    //
+    // For other types (TRANSFORMER_*, VOLTAGE_ANOMALY, HEATING_FAILURE):
+    // fail-open in v1 — those metrics come pre-aggregated via analyticsService
+    // and implementing per-type persistence requires rolling-window helpers
+    // that are out of scope for PR-1. Tracked as Sprint 10.x follow-up.
+    async _checkPersistenceGate(alertData, rule) {
+        const minSeconds = rule.min_persistence_seconds;
+        if (!minSeconds || minSeconds <= 0) {
+            return { allowed: true, reason: 'persistence disabled (min=0)' };
+        }
+
+        const { type, infrastructure_type, infrastructure_id } = alertData;
+
+        if (type === 'LEAK_DETECTED' && infrastructure_type === 'controller') {
+            const result = await db.query(
+                `SELECT COUNT(*) AS samples, MIN(timestamp) AS first_seen
+                 FROM metrics
+                 WHERE controller_id = $1
+                   AND leak_sensor = true
+                   AND timestamp >= NOW() - ($2::int * INTERVAL '1 second')`,
+                [infrastructure_id, Math.max(minSeconds * 2, 600)] // look back 2x window or 10min min
+            );
+            const samples = parseInt(result.rows[0].samples, 10);
+            const firstSeen = result.rows[0].first_seen;
+            if (samples < 2) {
+                return { allowed: false, reason: `LEAK persistence: only ${samples} leak samples in lookback window` };
+            }
+            // First qualifying sample must be at least `minSeconds` ago
+            const firstSeenAge = (Date.now() - new Date(firstSeen).getTime()) / 1000;
+            if (firstSeenAge < minSeconds) {
+                return { allowed: false, reason: `LEAK persistence: condition observed for ${firstSeenAge.toFixed(0)}s, need ${minSeconds}s` };
+            }
+            return { allowed: true, reason: `LEAK persistence OK: ${samples} samples spanning ${firstSeenAge.toFixed(0)}s` };
+        }
+
+        // Fail-open for unsupported type/infra combinations (Sprint 10.x will
+        // extend coverage for TRANSFORMER/VOLTAGE/HEATING via rolling-window
+        // aggregations in analyticsService).
+        return { allowed: true, reason: `persistence not enforced for ${type}/${infrastructure_type} in v1` };
+    }
+
+    // [Sprint 10 PR-1] Affected-buildings gate. Returns { allowed, reason }.
+    // Uses alertForwarder.resolveBuildingIds (lazy require to avoid load-order
+    // issues — alertForwarder is loaded by server.js after alertService).
+    async _checkAffectedBuildingsGate(alertData, rule) {
+        const minBuildings = rule.min_affected_buildings;
+        if (!minBuildings || minBuildings <= 1) {
+            return { allowed: true, reason: 'buildings gate default (min=1)' };
+        }
+
+        const alertForwarder = require('./uk/alertForwarder');
+        const buildings = await alertForwarder.resolveBuildingIds(
+            alertData.infrastructure_id,
+            alertData.infrastructure_type
+        );
+
+        if (buildings.length < minBuildings) {
+            return {
+                allowed: false,
+                reason: `buildings gate: ${buildings.length} buildings affected, need ${minBuildings}`
+            };
+        }
+        return { allowed: true, reason: `buildings gate OK: ${buildings.length} affected` };
+    }
+
+    // Создание нового алерта.
+    //
+    // [Sprint 10 PR-1] options.bypassGates=true skips persistence + buildings
+    // gates. Manual POST /api/alerts/ from operator passes this — the operator
+    // explicitly chose to escalate. Auto-emitters (checkTransformerLoad,
+    // future leak-checker) leave it false so gates apply.
+    async createAlert(alertData, options = {}) {
         await this.ensureInitialized();
+
+        // [Sprint 10 PR-1] Gate evaluation BEFORE INSERT. If a matching
+        // AlertRule defines persistence / buildings thresholds and the data
+        // doesn't satisfy them, skip alert creation entirely (returns null —
+        // same as DB dedup hit, so callers handle uniformly).
+        if (!options.bypassGates) {
+            const AlertRule = require('../models/AlertRule');
+            const rule = await AlertRule.findByTypeAndSeverity(alertData.type, alertData.severity);
+            if (rule) {
+                const persistenceCheck = await this._checkPersistenceGate(alertData, rule);
+                if (!persistenceCheck.allowed) {
+                    logger.info(
+                        `Alert skipped by persistence gate: ${alertData.type}/${alertData.severity} ` +
+                        `for ${alertData.infrastructure_type}:${alertData.infrastructure_id} — ${persistenceCheck.reason}`
+                    );
+                    return null;
+                }
+                const buildingsCheck = await this._checkAffectedBuildingsGate(alertData, rule);
+                if (!buildingsCheck.allowed) {
+                    logger.info(
+                        `Alert skipped by buildings gate: ${alertData.type}/${alertData.severity} ` +
+                        `for ${alertData.infrastructure_type}:${alertData.infrastructure_id} — ${buildingsCheck.reason}`
+                    );
+                    return null;
+                }
+            }
+            // No matching rule → no gates apply (existing behavior preserved;
+            // alert created but won't be forwarded to UK anyway).
+        }
 
         return await this.dbBreaker.execute(async () => {
             const query = `
