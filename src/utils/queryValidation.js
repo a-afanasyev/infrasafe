@@ -71,11 +71,9 @@ const allowedSortColumns = {
         'created_at', 'updated_at'
     ],
     
-    // Алерты и уведомления
-    alerts: [
-        'alert_id', 'severity', 'status', 'created_at', 'resolved_at',
-        'alert_type_id', 'metric_id', 'message', 'acknowledged_at'
-    ]
+    // [Sprint 10 PR-1.5] Removed `alerts` whitelist — legacy table dropped
+    // (migration 028). Active alerts use `infrastructure_alerts` which has
+    // its own sort handling in alertService.js (validSortColumns at L451).
 };
 
 /**

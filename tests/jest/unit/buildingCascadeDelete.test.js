@@ -47,13 +47,13 @@ describe('Building.deleteCascade', () => {
         });
     });
 
-    it('should delete alerts, metrics, controllers, and building in a transaction', async () => {
+    // [Sprint 10 PR-1.5] Legacy `alerts` table dropped (migration 028);
+    // cascade now has 5 calls (BEGIN + 3 DELETEs + COMMIT) instead of 7.
+    it('should delete infrastructure_alerts, metrics, controllers, and building in a transaction', async () => {
         const deletedBuilding = { building_id: 5, name: 'Test Building', address: 'Test Address' };
 
         // BEGIN
         mockClient.query.mockResolvedValueOnce({});
-        // DELETE FROM alerts (legacy)
-        mockClient.query.mockResolvedValueOnce({ rowCount: 2 });
         // DELETE FROM infrastructure_alerts
         mockClient.query.mockResolvedValueOnce({ rowCount: 1 });
         // DELETE FROM metrics
@@ -68,22 +68,21 @@ describe('Building.deleteCascade', () => {
         const result = await Building.deleteCascade(5);
 
         expect(result).toEqual(deletedBuilding);
-        expect(mockClient.query).toHaveBeenCalledTimes(7);
+        expect(mockClient.query).toHaveBeenCalledTimes(6);
 
         // Verify transaction boundaries
         expect(mockClient.query.mock.calls[0][0]).toBe('BEGIN');
-        expect(mockClient.query.mock.calls[6][0]).toBe('COMMIT');
+        expect(mockClient.query.mock.calls[5][0]).toBe('COMMIT');
 
-        // Verify correct order: alerts -> infrastructure_alerts -> metrics -> controllers -> building
-        expect(mockClient.query.mock.calls[1][0]).toMatch(/DELETE FROM alerts/);
-        expect(mockClient.query.mock.calls[2][0]).toMatch(/DELETE FROM infrastructure_alerts/);
-        expect(mockClient.query.mock.calls[3][0]).toMatch(/DELETE FROM metrics/);
-        expect(mockClient.query.mock.calls[4][0]).toMatch(/DELETE FROM controllers/);
-        expect(mockClient.query.mock.calls[5][0]).toMatch(/DELETE FROM buildings/);
+        // Verify correct order: infrastructure_alerts -> metrics -> controllers -> building
+        expect(mockClient.query.mock.calls[1][0]).toMatch(/DELETE FROM infrastructure_alerts/);
+        expect(mockClient.query.mock.calls[2][0]).toMatch(/DELETE FROM metrics/);
+        expect(mockClient.query.mock.calls[3][0]).toMatch(/DELETE FROM controllers/);
+        expect(mockClient.query.mock.calls[4][0]).toMatch(/DELETE FROM buildings/);
 
         // All queries use the same building ID
         expect(mockClient.query.mock.calls[1][1]).toEqual([5]);
-        expect(mockClient.query.mock.calls[5][1]).toEqual([5]);
+        expect(mockClient.query.mock.calls[4][1]).toEqual([5]);
 
         // Client released
         expect(mockClient.release).toHaveBeenCalledTimes(1);
@@ -92,8 +91,6 @@ describe('Building.deleteCascade', () => {
     it('should rollback and release client on error', async () => {
         // BEGIN
         mockClient.query.mockResolvedValueOnce({});
-        // DELETE FROM alerts succeeds
-        mockClient.query.mockResolvedValueOnce({ rowCount: 0 });
         // DELETE FROM infrastructure_alerts fails
         mockClient.query.mockRejectedValueOnce(new Error('DB connection lost'));
         // ROLLBACK
@@ -111,8 +108,6 @@ describe('Building.deleteCascade', () => {
     it('should return null when building does not exist', async () => {
         // BEGIN
         mockClient.query.mockResolvedValueOnce({});
-        // DELETE FROM alerts
-        mockClient.query.mockResolvedValueOnce({ rowCount: 0 });
         // DELETE FROM infrastructure_alerts
         mockClient.query.mockResolvedValueOnce({ rowCount: 0 });
         // DELETE FROM metrics
@@ -127,7 +122,7 @@ describe('Building.deleteCascade', () => {
         const result = await Building.deleteCascade(999);
 
         expect(result).toBeNull();
-        expect(mockClient.query.mock.calls[6][0]).toBe('COMMIT');
+        expect(mockClient.query.mock.calls[5][0]).toBe('COMMIT');
         expect(mockClient.release).toHaveBeenCalledTimes(1);
     });
 
@@ -155,7 +150,7 @@ describe('BuildingService.deleteBuildingCascade', () => {
 
         mockClient.query
             .mockResolvedValueOnce({}) // BEGIN
-            .mockResolvedValueOnce({ rowCount: 0 }) // alerts
+            // [Sprint 10 PR-1.5] legacy `alerts` step removed
             .mockResolvedValueOnce({ rowCount: 0 }) // infrastructure_alerts
             .mockResolvedValueOnce({ rowCount: 5 }) // metrics
             .mockResolvedValueOnce({ rowCount: 2 }) // controllers

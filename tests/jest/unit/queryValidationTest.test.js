@@ -59,11 +59,8 @@ describe('queryValidation', () => {
             expect(result.validOrder).toBe('ASC');
         });
 
-        test('validates sort for alerts entity', () => {
-            const result = validateSortOrder('alerts', 'severity', 'DESC');
-            expect(result.validSort).toBe('severity');
-            expect(result.validOrder).toBe('DESC');
-        });
+        // [Sprint 10 PR-1.5] `alerts` whitelist removed — legacy table dropped.
+        // Active alerts use infrastructure_alerts with its own sort handling.
 
         test('validates sort for transformers entity', () => {
             const result = validateSortOrder('transformers', 'power_kva', 'ASC');
@@ -221,7 +218,8 @@ describe('queryValidation', () => {
             expect(allowedSortColumns).toHaveProperty('water_lines');
             expect(allowedSortColumns).toHaveProperty('water_sources');
             expect(allowedSortColumns).toHaveProperty('heat_sources');
-            expect(allowedSortColumns).toHaveProperty('alerts');
+            // [Sprint 10 PR-1.5] `alerts` entry removed — legacy table dropped
+            expect(allowedSortColumns).not.toHaveProperty('alerts');
         });
 
         test('allowedOrderDirections contains ASC and DESC', () => {
