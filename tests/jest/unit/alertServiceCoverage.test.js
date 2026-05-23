@@ -40,6 +40,13 @@ jest.mock('../../../src/services/ukIntegrationService', () => ({
     sendAlertToUK: jest.fn().mockResolvedValue(undefined)
 }));
 
+// [Sprint 10 PR-1] Mock AlertRule so persistence/buildings gates are no-op
+// (no matching rule → gates short-circuit). Tests in this file pre-date the
+// gate logic and assume createAlert goes straight to INSERT.
+jest.mock('../../../src/models/AlertRule', () => ({
+    findByTypeAndSeverity: jest.fn().mockResolvedValue(null)
+}));
+
 const db = require('../../../src/config/database');
 const logger = require('../../../src/utils/logger');
 const alertService = require('../../../src/services/alertService');
