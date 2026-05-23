@@ -50,14 +50,20 @@ psql postgresql://postgres:postgres@localhost:5435/infrasafe
 # Init scripts run automatically via Docker entrypoint from database/init/
 # Schema: database/init/01_init_database.sql
 # Seed data: database/init/02_seed_data.sql
-# Migrations: database/migrations/003-020 (see database/migrations/README.md)
+# Migrations: database/migrations/003-029 (see database/migrations/README.md)
 # Latest migrations: 011 UK integration, 012 TOTP 2FA, 013 account lockout, 014 perf indexes,
 #                    015 alert dedup, 016 password_changed_at, 017 runtime role,
 #                    018 alert_request_map FK (Sprint 5), 019 buildings FK indexes (Sprint 5),
 #                    020 mv refresh SECURITY DEFINER wrapper (Sprint 6),
 #                    021 alerts.metric_id FK (Sprint 7),
 #                    022 uk_outbox table (Sprint 9 FIX-007),
-#                    023 alert_request_map counter partial index (Sprint 9)
+#                    023 alert_request_map counter partial index (Sprint 9),
+#                    024 alert_rules extensions (Sprint 10 PR-1: persistence + reopen policy cols),
+#                    025 alert_verifications queue (Sprint 10 PR-2),
+#                    026 alert_suppressions table (Sprint 10 PR-4),
+#                    027 alerts lifecycle v2 (Sprint 10 PR-2: status enum + reopen_chain_id),
+#                    028 drop alert_types catalog (Sprint 10 PR-1.5),
+#                    029 alert_rule_changes audit log (Sprint 10 PR-5)
 ```
 
 ## Architecture
@@ -78,13 +84,16 @@ psql postgresql://postgres:postgres@localhost:5435/infrasafe
 - JWT with refresh tokens, blacklist, and persistent account lockout (`src/middleware/auth.js` + `src/models/AccountLockout.js`, migration 013)
 - **2FA (TOTP)**: mandatory for admin accounts. Login returns `{ requires2FA | requires2FASetup, tempToken }` (no `accessToken`); flow completes via `/auth/verify-2fa` or `/auth/setup-2fa` → `/auth/confirm-2fa`. `generateSetup()` is idempotent — same secret returned until `confirmSetup()` succeeds, so refreshing the QR page doesn't invalidate prior scans (`src/services/totpService.js`).
 - **Admin login flow** (2026-04-17): `admin.html` delegates login entirely to `/login.html`. `public/admin-auth.js` only validates the token in localStorage and intercepts `window.fetch` to add `Authorization: Bearer`; when unauthenticated it redirects to `/login.html`, which writes `admin_token` back and redirects to `/admin.html`.
+- **Map-page login modal — 2FA condition order** (2026-05-24 fix): the inline modal in `public/script.js` had `if (response.ok && data.success)` BEFORE `data.requires2FA`. Backend returns `{success:true, requires2FA:true, tempToken}` for admin login, so the modal closed immediately without ever issuing a cookie — `apiClient.isAuthenticated` flipped true on a non-existent session, every subsequent `/api/*` call returned 401. Mirror `public/login.js`: check `requires2FA` / `requires2FASetup` FIRST, then the terminal `success` branch. `completeMapLogin` also reordered to close the modal + flip the auth button BEFORE awaiting `loadData()`, wrapped in try/catch so a network blip cannot leave the modal half-closed.
 
 ### Key Patterns
 - **Circuit Breaker**: `src/utils/circuitBreaker.js`, used in `analyticsService.js` for fault tolerance
 - **Multi-layer Caching**: `src/services/cacheService.js` (in-memory, Redis-ready)
 - **Alert Cooldown**: 15-minute cooldown between identical alerts in `src/services/alertService.js`
-- **Alert Event Bus** (Phase 7): `src/events/alertEvents.js` — `EventEmitter` decouples `controllerService` → `alertService` → `ukIntegrationService`; breaks prior circular requires. Events: `TRANSFORMER_CHECK`, `ALERT_CREATED`, `UK_REQUEST_RESOLVED`.
+- **Alert Event Bus** (Phase 7 + Sprint 10): `src/events/alertEvents.js` — `EventEmitter` decouples `controllerService` → `alertService` → `ukIntegrationService`; breaks prior circular requires. Events: `TRANSFORMER_CHECK`, `ALERT_CREATED`, `UK_REQUEST_RESOLVED`, plus Sprint 10: `VERIFY_TRANSFORMER` / `VERIFY_LEAK` / `VERIFY_VOLTAGE` / `VERIFY_HEATING`, `ALERT_REOPENED`, `ALERT_ENGINEER_REQUIRED`, `ALERT_SUPPRESSED`.
 - **UK Outbox + Drain Worker** (Sprint 9 / FIX-007): `src/models/UkOutbox.js` + `src/services/uk/ukOutboxService.js` + `src/clients/ukWebhookClient.js`. Persistent outbox (migration 022) drained by singleton worker (mirrors `mvRefreshService` pattern) at ≤30/мин with `pg_try_advisory_lock` for multi-replica safety. Sign-at-send-time HMAC-SHA256 (UK 300s window); body stored as `TEXT` not `JSONB` for byte stability; `ON CONFLICT (event_id) DO NOTHING` for idempotent enqueue; dead-letter writes to `infrastructure_alerts.data.notification_failures`.
+- **Alert business rules + Verification + Reopen** (Sprint 10, dormant via `ALERT_VERIFICATION_ENABLED`): per-rule policy (persistence_seconds, min_affected_buildings, verification_grace/window, max_reopens_per_24h, reopen_urgency_bump) in `alert_rules` (migration 024). `alertService.createAlert` gates: persistence (SQL aggregation against `metrics` for LEAK+controller path; other types fail-open in v1) + affected-buildings count. `alertService.resolveAlert` system path → status `resolved_verifying` + enqueue `AlertVerification`. `src/services/alertVerificationService.js` singleton (mirrors `ukOutboxService` pattern, advisory_lock `849608648`, 15s tick): pickDue + suppression check + reopen-quota check → markPassed / markReopened (new alert with `reopen_sequence=N+1`, `reopen_chain_id`, `related_request_number`, urgency bump) / markEngineerRequired / markSuppressed. `src/models/AlertSuppression.js` keyed on `(infra_type, infra_id, alert_type)` so suppression survives reopen. Schema: migrations 024–027.
+- **Admin Rules Editor + Audit Log** (Sprint 10 PR-5): `src/models/AlertRule.js` `EDITABLE_FIELDS` whitelist + `update(id, fields, userId, reason)` diff-then-PATCH-then-audit + `listWithStats(days)` LATERAL join for per-rule alert/escalation/reopen counts. `src/models/AlertRuleChange.js` writes one audit row per changed field (migration 029). Admin UI panel "Правила эскалации" in `admin.html` + `public/admin.js` `renderIntegrationRules`; client-side bounds mirror in `public/utils/ukRulesValidation.js`. Endpoints: `GET /api/integration/rules/stats`, `PATCH /api/integration/rules/:id`, `POST /api/integration/rules/:id/toggle`, `GET /api/integration/rules/:id/history`. CRITICAL-rule disable shows confirmation modal.
 - **CRUD Factory** (Phase 6): `src/models/factories/createCrudModel.js` and `src/controllers/factories/createCrudController.js` — used by `ColdWaterSource`, `HeatSource`; generate a `{ findAll, findById, create, update, delete }` model class and matching controller from a table descriptor.
 - **Admin Query Helpers** (Phase 5): `src/utils/adminQueryBuilder.js` (`buildPaginatedList()` with filter kinds exact/like/gte/lte, sort alias map, group-by) and `src/utils/dynamicUpdateBuilder.js` (`buildUpdateQuery()` with `ALLOWED_UPDATE_TABLES` whitelist). Shared by 8 admin controllers; `IDENT_RE` regex validates every identifier before it reaches SQL.
 - **Persistent Account Lockout** (Phase 12B.3): `src/models/AccountLockout.js` + migration 013 — replaces in-memory `Map` so lockout state survives restart and is consistent across replicas.
@@ -196,7 +205,9 @@ Bidirectional integration with UK Management Bot (Управляющая Ком�
 - **PostgreSQL 15+ with PostGIS** extension (SRID 4326 for coordinates)
 - **Core tables**: `users`, `buildings`, `controllers`, `metrics`, `alerts`, `alert_types`
 - **Infrastructure tables**: `power_transformers`, `cold_water_sources`, `heat_sources`, `water_lines`, `water_suppliers`
-- **UK Integration tables**: `integration_config`, `integration_log`, `alert_rules`, `alert_request_map`
+- **UK Integration tables**: `integration_config`, `integration_log`, `alert_rules` (+Sprint 10 cols), `alert_request_map`, `uk_outbox`
+- **Sprint 10 tables**: `alert_verifications` (verification queue), `alert_suppressions` (operator escape hatch), `alert_rule_changes` (per-field audit log)
+- **Status enum** (`infrastructure_alerts.status`): `active`, `acknowledged`, `resolved`, `resolved_verifying`, `engineer_required` (Sprint 10 expansion via migration 027). Partial dedup index restricted to `('active', 'acknowledged')` so a reopen with a fresh `alert_id` is not blocked. `alert_types` catalog dropped in PR-1.5 — type names live as a CHECK constraint on `alert_rules.alert_type`.
 - **Building extensions**: `external_id` (UUID, UNIQUE), `uk_deleted_at` (TIMESTAMPTZ), nullable `latitude`/`longitude`
 - **Materialized views** for transformer load analytics
 - Schema defined in `database/init/01_init_database.sql`
@@ -236,6 +247,12 @@ UK_USE_WEBHOOK_SENDER=false # Master gate for the new HMAC-webhook outbound chan
                            # Default false until UK Phase 2 + secret rotation completes.
 UK_OUTBOX_DRAIN_INTERVAL_MS=2000  # Drain tick (clamped [500, 60000]). Default ≈30/мин rate.
 
+# Sprint 10 — Alert verification + reopen subsystem (deployed dormant 2026-05-23)
+ALERT_VERIFICATION_ENABLED=false       # Master gate. false = worker is created but never ticks.
+                                       # Flip to true via the CR-window runbook only after
+                                       # docs/audit/2026-05-24-sprint-10-rollout-runbook.md §0 pre-flight.
+ALERT_VERIFICATION_TICK_MS=15000       # Drain interval (clamped [5000, 60000])
+
 # UK Integration — DB-stored via integration_config, toggleable in admin UI
 # uk_integration_enabled, uk_api_url, uk_frontend_url
 ```
@@ -245,14 +262,19 @@ UK_OUTBOX_DRAIN_INTERVAL_MS=2000  # Drain tick (clamped [500, 60000]). Default �
 - **app**: Node.js Express on port 3000
 - **postgres**: PostGIS on port 5435 (mapped from container 5432)
 
+### Prod-only compose (`docker-compose.prod.yml`) — 2026-05-24 fixes
+- **External nginx network**: the prod `infrasafe-nginx-1` container lives in `infrasafe_leaflet-network` (created by an older deploy). The compose declares it as `external: true` and joins both `app` and `frontend` to it with explicit `app` / `frontend` aliases — without this, every `docker compose up -d --no-deps app frontend` made nginx 502 on `/api/*` until someone manually `docker network connect`'d the services.
+- **Portable postgres healthcheck**: uses `pg_isready -h 127.0.0.1 -p 5432` (no `-U`). The earlier check ran `psql -U $POSTGRES_USER -c 'SELECT 1;'` which broke after migration 017 renamed the runtime role to `infrasafe_app` (the literal `postgres` role no longer exists, so the SELECT 1 probe failed and postgres went unhealthy on every recreate, blocking app/frontend startup).
+- **Frontend bundle on prod**: nginx serves `public/` as a directory bind mount, so `git pull` refreshes `public/dist/*.js` automatically. HTML files (`admin.html`, `index.html`, `login.html`, etc.) are mounted as **individual files** — `git pull` creates new inodes, so nginx keeps reading the old inode until the container is restarted. After a Sprint deploy that touches any `.html`, run `docker restart infrasafe-nginx-1` (or migrate this to a directory mount in a future PR).
+
 ## Test Data
 - **Admin**: admin / admin123
 - **Test user**: testuser / TestPass123
 - **17 buildings** in Tashkent with coordinates, **34 metric records**
 
 ## Test Suite
-- **1804+ tests** in `npm test` (89 suites) plus `npm run test:e2e` (~57 in `tests/jest/e2e/`)
-- Unit tests: `tests/jest/unit/` (~29 files — services, controllers, models, middleware, UK integration, totpService, AccountLockout, EventBus, factories)
+- **~2128 tests** in `npm test` (107+ suites) plus `npm run test:e2e` (~57 in `tests/jest/e2e/`). Sprint 10 added ~300 units across persistence gate, verification worker, suppression, AlertRule.update, AlertRuleChange.
+- Unit tests: `tests/jest/unit/` — services, controllers, models, middleware, UK integration, totpService, AccountLockout, EventBus, factories, plus Sprint 10: `AlertVerification.test.js`, `AlertSuppression.test.js`, `alertVerificationService.test.js`, `alertService.persistenceGate.test.js`, `alertService.resolveAlert.test.js`, `alertService.reopen.test.js`, `AlertRule.update.test.js`.
 - Integration tests: `tests/jest/integration/` (API, default-deny auth)
 - Security tests: `tests/jest/security/` (SQL injection, XSS, general security)
 - E2E tests: `tests/jest/e2e/` — real Docker containers, no mocks — run via `npm run test:e2e`
@@ -265,7 +287,9 @@ UK_OUTBOX_DRAIN_INTERVAL_MS=2000  # Drain tick (clamped [500, 60000]). Default �
 - Models execute SQL directly (no repository layer). Phase 6 introduced `createCrudModel` factory for two water-source models; the rest still hand-write queries.
 - Some backend code uses `console.error` instead of Winston logger.
 - Duplication across water-related route files remains (Phase 6 factory covers models only).
-- Rate-limiter, cache, and outbox are still in-memory — multi-replica deployments will need Redis (tracked in audit plan Phase 11.1/11.2/11.10).
+- Rate-limiter and cache are still in-memory — multi-replica deployments will need Redis (tracked in audit plan Phase 11.1/11.2). Sprint 9 outbox is already DB-backed (`uk_outbox`) and Sprint 10 verification queue is DB-backed (`alert_verifications`), both with `pg_try_advisory_lock` for cross-replica coordination.
 - Frontend redesign (`feature/frontend-redesign`) not yet merged to main.
+- Prod nginx bind-mounts individual HTML files (not the directory) — `git pull` creates new inodes and nginx keeps reading the old one until a restart. A Sprint-10-era deploy that touched `admin.html` served stale HTML until `docker restart infrasafe-nginx-1`. Recommend migrating to a directory mount + nginx `try_files` whitelist in a separate cleanup PR.
+- `alertService` persistence gate only fully implemented for LEAK_DETECTED+controller path (SQL aggregation on `metrics`). Other types fail-open in v1, pending rolling-window metric aggregations.
 
 NEVER delete the project directory or run rm -rf in the project root.
