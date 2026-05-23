@@ -1,4 +1,3 @@
-version: '3.8'
 name: infrasafe
 
 # ============================================================================
@@ -12,6 +11,14 @@ name: infrasafe
 # migrated to unified.yml + an override file for the Mac-specific bits,
 # delete this file. Tracked in audit-backlog under [P1-V13].
 # ============================================================================
+#
+# Network topology (prod): the prod nginx (infrasafe-nginx-1) lives in an
+# external network `infrasafe_leaflet-network` created by an older deploy. To
+# avoid the post-`up -d` split-brain where the nginx upstream `app:3000`
+# resolves to a stale IP, the app and frontend services join BOTH the
+# project-internal network AND the external leaflet-network. Without this,
+# every `docker compose up -d --no-deps app frontend` makes nginx 502 until
+# someone manually `docker network connect`s with the right aliases.
 
 services:
   frontend:
@@ -26,7 +33,9 @@ services:
       app:
         condition: service_healthy
     networks:
-      - infrasafe-network
+      infrasafe-network: {}
+      leaflet-network:
+        aliases: [frontend]
     restart: unless-stopped
     deploy:
       resources:
@@ -64,7 +73,9 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - infrasafe-network
+      infrasafe-network: {}
+      leaflet-network:
+        aliases: [app]
     restart: unless-stopped
     deploy:
       resources:
@@ -96,8 +107,15 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      # $$ is a compose-escape — shell evaluates inside the container against env_file vars
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER && psql -U $$POSTGRES_USER -d $$POSTGRES_DB -c 'SELECT 1;'"]
+      # pg_isready without -U: returns 0 as soon as the postmaster accepts
+      # connections, regardless of which roles exist. The earlier check
+      # hard-coded `$POSTGRES_USER` and broke on prod after migration 017
+      # renamed the runtime role to `infrasafe_app` (the `postgres` role no
+      # longer exists, so the SELECT 1 probe failed with FATAL: role does
+      # not exist and the container went unhealthy on every recreate). The
+      # real liveness signal we need is "accepting TCP connections", which
+      # is exactly what pg_isready gives us.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -126,3 +144,13 @@ volumes:
 networks:
   infrasafe-network:
     driver: bridge
+  # External network created by the older deploy (Sprint 1 era) — owns the
+  # prod nginx container. Marked external:true so `docker compose up` does
+  # NOT try to create or recreate it, and `down` does not destroy it. The
+  # app+frontend services attach with explicit `app` / `frontend` aliases
+  # so the nginx `proxy_pass http://$app_upstream` DNS lookup resolves.
+  # If you ever need to recreate it locally:
+  #   docker network create infrasafe_leaflet-network
+  leaflet-network:
+    external: true
+    name: infrasafe_leaflet-network
