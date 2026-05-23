@@ -3232,19 +3232,174 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
 
+    // [Sprint 10 PR-5] Rules editor — fetch from /rules/stats so we get
+    // per-rule activity counts for the badges. Stats window controlled by
+    // the #rules-stats-days select.
     async function loadIntegrationRules() {
         try {
-            const response = await fetch(`${backendURL}/integration/rules`, {
+            const daysSelect = document.getElementById('rules-stats-days');
+            const days = daysSelect ? parseInt(daysSelect.value, 10) || 7 : 7;
+            const response = await fetch(`${backendURL}/integration/rules/stats?days=${days}`, {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
             const data = await response.json();
             if (data.success) {
                 integrationState.rules = data.data;
+                integrationState.rulesStatsDays = days;
                 renderIntegrationRules();
+                setRulesStatus(`Загружено ${data.data.length} правил, статистика за ${days} д.`);
             }
         } catch (error) {
             console.error('Failed to load integration rules:', error);
+            setRulesStatus('Ошибка загрузки правил', true);
         }
+    }
+
+    function setRulesStatus(text, isError = false) {
+        const el = document.getElementById('rules-status');
+        if (!el) return;
+        el.textContent = text;
+        el.style.color = isError ? '#c00' : '#666';
+    }
+
+    // [Sprint 10 PR-5] PATCH one field. Validates client-side via
+    // window.UkRulesValidation, then POSTs.
+    async function patchRuleField(ruleId, fieldName, rawValue) {
+        if (!window.UkRulesValidation) {
+            showToast('Validation helper не загружен', 'error');
+            return false;
+        }
+        const check = window.UkRulesValidation.validateRuleField(fieldName, rawValue);
+        if (!check.ok) {
+            showToast(check.error, 'error');
+            return false;
+        }
+        try {
+            const response = await fetch(`${backendURL}/integration/rules/${ruleId}`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({ fields: { [fieldName]: check.coerced } })
+            });
+            const data = await response.json();
+            if (data.success) {
+                const idx = integrationState.rules.findIndex(r => r.id === ruleId);
+                if (idx >= 0) {
+                    integrationState.rules[idx] = { ...integrationState.rules[idx], ...data.data };
+                }
+                showToast(`Поле "${fieldName}" обновлено`, 'success');
+                return true;
+            }
+            showToast(`Ошибка: ${data.message || 'unknown'}`, 'error');
+            return false;
+        } catch (error) {
+            console.error('patchRuleField error:', error);
+            showToast('Сетевая ошибка', 'error');
+            return false;
+        }
+    }
+
+    // [Sprint 10 PR-5] Toggle enabled. CRITICAL rules require confirmation
+    // because disabling them silently drops critical alerts from УК forwarding.
+    async function toggleRuleEnabled(ruleId, newEnabled) {
+        const rule = integrationState.rules.find(r => r.id === ruleId);
+        if (!rule) return;
+
+        if (!newEnabled && rule.severity === 'CRITICAL') {
+            // eslint-disable-next-line no-alert
+            const ok = window.confirm(
+                `Вы отключаете эскалацию КРИТИЧЕСКИХ алертов "${rule.alert_type}" в УК. ` +
+                `Эти аварии больше НЕ будут создавать заявки автоматически. Подтвердить?`
+            );
+            if (!ok) {
+                renderIntegrationRules();
+                return;
+            }
+        }
+
+        try {
+            const response = await fetch(`${backendURL}/integration/rules/${ruleId}/toggle`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({ enabled: newEnabled })
+            });
+            const data = await response.json();
+            if (data.success) {
+                const idx = integrationState.rules.findIndex(r => r.id === ruleId);
+                if (idx >= 0) integrationState.rules[idx] = { ...integrationState.rules[idx], ...data.data };
+                showToast(`Правило ${newEnabled ? 'включено' : 'выключено'}`, 'success');
+                renderIntegrationRules();
+            } else {
+                showToast(`Ошибка: ${data.message || 'unknown'}`, 'error');
+                renderIntegrationRules();
+            }
+        } catch (error) {
+            console.error('toggleRuleEnabled error:', error);
+            showToast('Сетевая ошибка', 'error');
+            renderIntegrationRules();
+        }
+    }
+
+    // [Sprint 10 PR-5] Audit history modal
+    async function showRuleHistory(ruleId, ruleLabel) {
+        const modal = document.getElementById('rule-history-modal');
+        const title = document.getElementById('rule-history-title');
+        const tbody = document.querySelector('#rule-history-table tbody');
+        if (!modal || !tbody) return;
+
+        title.textContent = `История изменений: ${ruleLabel}`;
+        tbody.textContent = 'Загрузка…';
+        modal.style.display = 'flex';
+
+        try {
+            const response = await fetch(`${backendURL}/integration/rules/${ruleId}/history?limit=100`, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            const data = await response.json();
+            tbody.textContent = '';
+            if (!data.success || !data.data || data.data.length === 0) {
+                const tr = document.createElement('tr');
+                const td = document.createElement('td');
+                td.colSpan = 5;
+                td.style.textAlign = 'center';
+                td.style.color = '#999';
+                td.textContent = 'Изменений нет';
+                tr.appendChild(td);
+                tbody.appendChild(tr);
+                return;
+            }
+            data.data.forEach(entry => {
+                const tr = document.createElement('tr');
+                const cells = [
+                    new Date(entry.changed_at).toISOString().replace('T', ' ').slice(0, 19),
+                    entry.changed_by_username || (entry.changed_by ? `user#${entry.changed_by}` : 'system'),
+                    entry.field_name,
+                    `${entry.old_value ?? '∅'} → ${entry.new_value ?? '∅'}`,
+                    entry.reason || ''
+                ];
+                cells.forEach(text => {
+                    const td = document.createElement('td');
+                    td.textContent = text;
+                    td.style.padding = '4px 8px';
+                    td.style.borderBottom = '1px solid #eee';
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+        } catch (error) {
+            console.error('showRuleHistory error:', error);
+            tbody.textContent = 'Ошибка загрузки';
+        }
+    }
+
+    function closeRuleHistory() {
+        const modal = document.getElementById('rule-history-modal');
+        if (modal) modal.style.display = 'none';
     }
 
     function renderIntegrationRules() {
@@ -3252,22 +3407,165 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!tbody) return;
 
         tbody.textContent = '';
+
+        if (!integrationState.rules || integrationState.rules.length === 0) {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = 10;
+            td.style.textAlign = 'center';
+            td.style.color = '#999';
+            td.textContent = 'Правил нет';
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+            return;
+        }
+
         integrationState.rules.forEach(rule => {
             const tr = document.createElement('tr');
-            const cells = [
-                rule.alert_type,
-                rule.severity,
-                rule.uk_category,
-                rule.uk_urgency,
-                rule.enabled ? '✓' : '✗'
-            ];
-            cells.forEach(text => {
-                const td = document.createElement('td');
-                td.textContent = text;
-                tr.appendChild(td);
-            });
+            if (!rule.enabled) tr.style.background = '#fafafa';
+
+            tr.appendChild(_mkCell(`${rule.alert_type} / ${rule.severity}`, { fontWeight: '600' }));
+            tr.appendChild(_mkCell(`${rule.uk_category} / ${rule.uk_urgency}`, { color: '#555' }));
+            tr.appendChild(_mkEditableInt(rule, 'min_persistence_seconds'));
+            tr.appendChild(_mkEditableInt(rule, 'min_affected_buildings'));
+            tr.appendChild(_mkEditableInt(rule, 'verification_grace_seconds'));
+            tr.appendChild(_mkEditableInt(rule, 'verification_window_seconds'));
+            tr.appendChild(_mkEditableInt(rule, 'max_reopens_per_24h'));
+            tr.appendChild(_mkBoolCheck(rule, 'reopen_urgency_bump'));
+
+            // Col 9: stats badges
+            const statsTd = document.createElement('td');
+            statsTd.style.fontSize = '12px';
+            const alertCount = rule.alert_count || 0;
+            const escalatedCount = rule.escalated_count || 0;
+            const reopenCount = rule.reopen_count || 0;
+            statsTd.appendChild(_mkStatBadge(`${alertCount} alerts`, '#e3f2fd', '#1565c0'));
+            statsTd.appendChild(document.createTextNode(' '));
+            statsTd.appendChild(_mkStatBadge(`${escalatedCount} → УК`, '#fff3e0', '#e65100'));
+            if (reopenCount > 0) {
+                statsTd.appendChild(document.createTextNode(' '));
+                statsTd.appendChild(_mkStatBadge(`${reopenCount} reopen`, '#fce4ec', '#ad1457'));
+            }
+            tr.appendChild(statsTd);
+
+            // Col 10: actions
+            const actionsTd = document.createElement('td');
+            actionsTd.style.whiteSpace = 'nowrap';
+            const enableLabel = document.createElement('label');
+            enableLabel.style.cursor = 'pointer';
+            enableLabel.style.marginRight = '8px';
+            const enableCb = document.createElement('input');
+            enableCb.type = 'checkbox';
+            enableCb.checked = !!rule.enabled;
+            enableCb.addEventListener('change', () => toggleRuleEnabled(rule.id, enableCb.checked));
+            enableLabel.appendChild(enableCb);
+            enableLabel.appendChild(document.createTextNode(' вкл'));
+            actionsTd.appendChild(enableLabel);
+
+            const histBtn = document.createElement('button');
+            histBtn.textContent = 'История';
+            histBtn.className = 'btn';
+            histBtn.style.fontSize = '12px';
+            histBtn.style.padding = '2px 8px';
+            histBtn.addEventListener('click', () => showRuleHistory(rule.id, `${rule.alert_type} / ${rule.severity}`));
+            actionsTd.appendChild(histBtn);
+
+            tr.appendChild(actionsTd);
             tbody.appendChild(tr);
         });
+    }
+
+    function _mkCell(text, style = {}) {
+        const td = document.createElement('td');
+        td.textContent = text;
+        Object.assign(td.style, style);
+        return td;
+    }
+
+    function _mkStatBadge(text, bg, fg) {
+        const span = document.createElement('span');
+        span.textContent = text;
+        span.style.background = bg;
+        span.style.color = fg;
+        span.style.padding = '2px 6px';
+        span.style.borderRadius = '4px';
+        span.style.fontSize = '11px';
+        span.style.whiteSpace = 'nowrap';
+        return span;
+    }
+
+    function _mkEditableInt(rule, fieldName) {
+        const td = document.createElement('td');
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.value = rule[fieldName];
+        input.style.width = '70px';
+        input.style.padding = '2px 4px';
+        input.style.border = '1px solid #ddd';
+        input.style.borderRadius = '3px';
+        input.style.textAlign = 'right';
+
+        const spec = window.UkRulesValidation && window.UkRulesValidation.RULE_FIELD_SPEC[fieldName];
+        if (spec) {
+            if (spec.min !== undefined) input.min = spec.min;
+            if (spec.max !== undefined) input.max = spec.max;
+            input.title = spec.hint || '';
+        }
+
+        let originalValue = rule[fieldName];
+        input.addEventListener('blur', async () => {
+            const newVal = parseInt(input.value, 10);
+            if (newVal === originalValue) return;
+            const success = await patchRuleField(rule.id, fieldName, newVal);
+            if (success) {
+                originalValue = newVal;
+                input.style.background = '#e8f5e9';
+                setTimeout(() => { input.style.background = ''; }, 1000);
+            } else {
+                input.value = originalValue;
+            }
+        });
+        td.appendChild(input);
+        return td;
+    }
+
+    function _mkBoolCheck(rule, fieldName) {
+        const td = document.createElement('td');
+        td.style.textAlign = 'center';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = !!rule[fieldName];
+        const spec = window.UkRulesValidation && window.UkRulesValidation.RULE_FIELD_SPEC[fieldName];
+        if (spec) cb.title = spec.hint || '';
+        cb.addEventListener('change', async () => {
+            await patchRuleField(rule.id, fieldName, cb.checked);
+        });
+        td.appendChild(cb);
+        return td;
+    }
+
+    function _wireRulesControls() {
+        const refreshBtn = document.getElementById('rules-refresh-btn');
+        if (refreshBtn) refreshBtn.addEventListener('click', loadIntegrationRules);
+
+        const daysSelect = document.getElementById('rules-stats-days');
+        if (daysSelect) daysSelect.addEventListener('change', loadIntegrationRules);
+
+        const closeBtn = document.getElementById('rule-history-close');
+        if (closeBtn) closeBtn.addEventListener('click', closeRuleHistory);
+
+        const modal = document.getElementById('rule-history-modal');
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) closeRuleHistory();
+            });
+        }
+    }
+
+    if (document.readyState !== 'loading') {
+        _wireRulesControls();
+    } else {
+        document.addEventListener('DOMContentLoaded', _wireRulesControls);
     }
 
     async function loadIntegrationLogs() {
