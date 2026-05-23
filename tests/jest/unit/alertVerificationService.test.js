@@ -20,9 +20,17 @@ jest.mock('../../../src/models/AlertVerification', () => ({
     countRecentReopensForChain: jest.fn()
 }));
 
+// [Sprint 10 PR-4] AlertSuppression model exists now — mock it so the
+// verifier's conditional require picks up our test double. Default
+// isActive=false so existing tests stay unaffected.
+jest.mock('../../../src/models/AlertSuppression', () => ({
+    isActive: jest.fn().mockResolvedValue(false)
+}));
+
 const db = require('../../../src/config/database');
 const logger = require('../../../src/utils/logger');
 const AlertVerification = require('../../../src/models/AlertVerification');
+const AlertSuppression = require('../../../src/models/AlertSuppression');
 const alertEvents = require('../../../src/events/alertEvents');
 
 // Require the service AFTER mocks are set up; use the class to avoid
@@ -282,6 +290,28 @@ describe('alertVerificationService', () => {
             // No countRecentReopens call when quota=0
             expect(AlertVerification.countRecentReopensForChain).not.toHaveBeenCalled();
             expect(listener).toHaveBeenCalled();
+        });
+
+        // [Sprint 10 PR-4] Suppression-active path — the AlertSuppression
+        // model now exists, so the conditional require hits a real
+        // mockable module. When isActive=true, the verifier markSuppressed
+        // and does NOT emit a VERIFY event.
+        test('markSuppressed + no VERIFY emit when AlertSuppression.isActive=true', async () => {
+            setupDbQueryRouter({ quota: 3 });
+            AlertVerification.pickDue.mockResolvedValueOnce(dueRow);
+            AlertSuppression.isActive.mockResolvedValueOnce(true);
+
+            const listener = jest.fn();
+            alertEvents.on(alertEvents.EVENTS.VERIFY_LEAK, listener);
+
+            await service._tick();
+            alertEvents.off(alertEvents.EVENTS.VERIFY_LEAK, listener);
+
+            expect(AlertSuppression.isActive).toHaveBeenCalledWith('controller', 1, 'LEAK_DETECTED');
+            expect(AlertVerification.markSuppressed).toHaveBeenCalledWith(1);
+            expect(listener).not.toHaveBeenCalled();
+            // Quota check also skipped (return-early after suppression)
+            expect(AlertVerification.countRecentReopensForChain).not.toHaveBeenCalled();
         });
     });
 

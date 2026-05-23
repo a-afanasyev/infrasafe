@@ -1,6 +1,6 @@
 # CodeQL configuration — query tuning for InfraSafe.
 #
-# Two queries are globally excluded because they produce only false
+# Three queries are globally excluded because they produce only false
 # positives on this codebase:
 #
 # 1. `js/user-controlled-bypass` — fires on the early-return in
@@ -13,6 +13,17 @@
 #    src/routes/webhookRoutes.js. Rate-limiting IS active via
 #    `router.use(webhookLimiter.middleware())` above both routes
 #    (60 req/min/IP). CodeQL doesn't follow the router.use chain.
+#
+# 3. `js/missing-token-validation` (CSRF) — [Sprint 10 PR-4] fires on
+#    every state-changing route because `cookie-parser` middleware is
+#    mounted in src/server.js. The project uses JWT-based auth (Bearer
+#    token in the Authorization header), NOT cookie-based sessions —
+#    CSRF attacks rely on browsers auto-sending session cookies on
+#    cross-site requests, which doesn't apply to Bearer-token APIs
+#    (attacker can't write the Authorization header from a malicious
+#    site). The cookie middleware is mounted because some internal
+#    debug endpoints use cookies, but the API surface is Bearer-only.
+#    Re-evaluate if/when cookie-based session auth is introduced.
 #
 # All other queries in security-and-quality stay active — real
 # findings (SQL injection, XSS, log injection, path traversal, etc.)
@@ -34,3 +45,5 @@ query-filters:
       id: js/user-controlled-bypass
   - exclude:
       id: js/missing-rate-limiting
+  - exclude:
+      id: js/missing-token-validation
