@@ -656,6 +656,81 @@ describe('UKIntegrationService — Phase 3-5', () => {
             expect(AlertRequestMap.updateStatus).toHaveBeenCalledWith(30, 'resolved');
         });
 
+        // -------------------------------------------------------------------
+        // [Sprint 9.2 / FIX-007] Accept `new_status` (UK Phase 2 payload
+        // shape) as alias for `status` on request.status_changed events.
+        //
+        // UK ARCH-113 emits `{old_status, new_status}` — our Sprint 8 spec
+        // defined a single `status` field. The validator + handler now
+        // accept either; when both present, `new_status` wins.
+        // -------------------------------------------------------------------
+
+        it('accepts new_status field as alias for status (UK Phase 2 payload)', async () => {
+            const payload = {
+                ...basePayload,
+                request: {
+                    request_number: 'REQ-100',
+                    old_status: 'В работе',
+                    new_status: 'Принято'
+                }
+            };
+            AlertRequestMap.findByRequestNumber.mockResolvedValue({
+                id: 40,
+                infrasafe_alert_id: 400
+            });
+            AlertRequestMap.updateStatus.mockResolvedValue({});
+            AlertRequestMap.areAllTerminal.mockResolvedValue(false);
+
+            await service.handleRequestWebhook(payload);
+
+            expect(AlertRequestMap.updateStatus).toHaveBeenCalledWith(40, 'resolved');
+            expect(logger.info).toHaveBeenCalledWith(
+                expect.stringContaining('uk_status=Принято')
+            );
+        });
+
+        it('prefers new_status over status when both are present', async () => {
+            const payload = {
+                ...basePayload,
+                request: {
+                    request_number: 'REQ-100',
+                    status: 'В работе',           // legacy field — non-terminal
+                    new_status: 'Принято'         // UK Phase 2 field — terminal
+                }
+            };
+            AlertRequestMap.findByRequestNumber.mockResolvedValue({
+                id: 50,
+                infrasafe_alert_id: 500
+            });
+            AlertRequestMap.updateStatus.mockResolvedValue({});
+            AlertRequestMap.areAllTerminal.mockResolvedValue(false);
+
+            await service.handleRequestWebhook(payload);
+
+            // new_status wins → terminal → resolved (not 'active' from status)
+            expect(AlertRequestMap.updateStatus).toHaveBeenCalledWith(50, 'resolved');
+        });
+
+        it('non-terminal new_status updates mapping to active', async () => {
+            const payload = {
+                ...basePayload,
+                request: {
+                    request_number: 'REQ-100',
+                    old_status: 'Новая',
+                    new_status: 'В работе'
+                }
+            };
+            AlertRequestMap.findByRequestNumber.mockResolvedValue({
+                id: 60,
+                infrasafe_alert_id: 600
+            });
+            AlertRequestMap.updateStatus.mockResolvedValue({});
+
+            await service.handleRequestWebhook(payload);
+
+            expect(AlertRequestMap.updateStatus).toHaveBeenCalledWith(60, 'active');
+        });
+
         it('marks log as error and re-throws on processing failure', async () => {
             AlertRequestMap.findByRequestNumber.mockRejectedValue(new Error('Query failed'));
 

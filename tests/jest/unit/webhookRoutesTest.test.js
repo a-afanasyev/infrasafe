@@ -219,7 +219,8 @@ describe('webhookRoutes — POST /request', () => {
             .send(body);
 
         expect(res.status).toBe(400);
-        expect(res.body.message).toContain('request.status for status_changed event');
+        // [Sprint 9.2] Message now mentions both status and new_status
+        expect(res.body.message).toMatch(/request\.status.*request\.new_status.*status_changed event/);
     });
 
     it('returns 400 when status exceeds 100 characters', async () => {
@@ -234,7 +235,77 @@ describe('webhookRoutes — POST /request', () => {
             .send(body);
 
         expect(res.status).toBe(400);
-        expect(res.body.message).toBe('request.status exceeds maximum length');
+        // [Sprint 9.2] Message updated to mention both status and new_status
+        expect(res.body.message).toContain('exceeds maximum length');
+    });
+
+    // [Sprint 9.2 / FIX-007] UK Phase 2 sends `{old_status, new_status}` instead
+    // of single `status`. Validator accepts either, prefers new_status when both
+    // present. These tests pin the wire-level contract.
+    it('accepts new_status field as alias for status (UK Phase 2 payload)', async () => {
+        ukIntegrationService.isDuplicateEvent.mockResolvedValue(false);
+        ukIntegrationService.handleRequestWebhook.mockResolvedValue();
+
+        const body = {
+            event_id: '550e8400-e29b-41d4-a716-446655440000',
+            event: 'request.status_changed',
+            request: {
+                request_number: 'REQ-200',
+                old_status: 'В работе',
+                new_status: 'Принято'
+            }
+        };
+
+        const res = await request(app)
+            .post('/request')
+            .set('x-webhook-signature', 't=1234567890,v1=abc123')
+            .send(body);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(ukIntegrationService.handleRequestWebhook).toHaveBeenCalledWith(
+            expect.objectContaining({
+                request: expect.objectContaining({ new_status: 'Принято' })
+            })
+        );
+    });
+
+    it('returns 400 when both status and new_status are missing for status_changed', async () => {
+        const body = {
+            event_id: '550e8400-e29b-41d4-a716-446655440000',
+            event: 'request.status_changed',
+            request: {
+                request_number: 'REQ-300',
+                old_status: 'Новая'   // only old_status, no new_status, no status
+            }
+        };
+
+        const res = await request(app)
+            .post('/request')
+            .set('x-webhook-signature', 't=1234567890,v1=abc123')
+            .send(body);
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/request\.status.*request\.new_status/);
+    });
+
+    it('returns 400 when new_status exceeds 100 characters', async () => {
+        const body = {
+            event_id: '550e8400-e29b-41d4-a716-446655440000',
+            event: 'request.status_changed',
+            request: {
+                request_number: 'REQ-400',
+                new_status: 'N'.repeat(101)
+            }
+        };
+
+        const res = await request(app)
+            .post('/request')
+            .set('x-webhook-signature', 't=1234567890,v1=abc123')
+            .send(body);
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toContain('exceeds maximum length');
     });
 
     it('returns 200 for duplicate event_id (already processed)', async () => {
