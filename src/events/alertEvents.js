@@ -43,6 +43,34 @@ alertEvents.EVENTS = Object.freeze({
     // ukIntegrationService → alertService: every UK request mapped to
     // this alert reached a terminal status; alert should auto-resolve.
     UK_REQUEST_RESOLVED: 'uk.request.resolved',
+
+    // [Sprint 10 PR-2] alertVerificationService → checker services:
+    // per-type verification trigger. Payload:
+    //   { infraType, infraId, alertType, bypassCooldown:true,
+    //     reopenChainId, reopenSequence, originalAlertId,
+    //     previousUkRequestNumber }
+    // Checker emits a fresh alert via createAlert if condition persists;
+    // verifier then markReopened with the new alert_id.
+    VERIFY_TRANSFORMER: 'verify.transformer',
+    VERIFY_LEAK:        'verify.leak',
+    VERIFY_VOLTAGE:     'verify.voltage',
+    VERIFY_HEATING:     'verify.heating',
+
+    // [Sprint 10 PR-2] alertService → consumers (UI, audit, future
+    // notification channels). Emitted when an alert is reopened as part
+    // of a verification cycle. Payload: { alertId, reopenChainId,
+    // reopenSequence, previousAlertId }.
+    ALERT_REOPENED: 'alert.reopened',
+
+    // [Sprint 10 PR-2] alertVerificationService → consumers. Emitted when
+    // a verification cycle hits max_reopens_per_24h and auto-reopen
+    // halts. Payload: { reopenChainId, lastAlertId, reopenCount }.
+    ALERT_ENGINEER_REQUIRED: 'alert.engineer_required',
+
+    // [Sprint 10 PR-4 — placeholder for future use] alertService → consumers.
+    // Emitted when an operator suppresses an alert (forward-declared so
+    // PR-2 tests that subscribe to all events don't need updating).
+    ALERT_SUPPRESSED: 'alert.suppressed',
 });
 
 module.exports = alertEvents;

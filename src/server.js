@@ -200,6 +200,16 @@ db.init()
         } catch (e) {
             logger.error('UK outbox drain worker failed to start:', e);
         }
+
+        // [Sprint 10 PR-2] Start alert verification drain worker. Dormant
+        // when ALERT_VERIFICATION_ENABLED is unset/false (no interval).
+        // Wakes up scheduled post-resolve verifications enqueued by
+        // alertService.resolveAlert (system path, PR-3 wiring).
+        try {
+            require('./services/alertVerificationService').start();
+        } catch (e) {
+            logger.error('Alert verification drain worker failed to start:', e);
+        }
     })
     .catch((error) => {
         logger.error(`Ошибка инициализации базы данных: ${error.message}`);
@@ -225,6 +235,7 @@ const gracefulShutdown = async (signal) => {
     try { await cacheService.close(); } catch (e) { logger.error('Cache close error:', e.message); }
     try { await require('./services/mvRefreshService').stop(); } catch (e) { logger.error('MV scheduler stop error:', e.message); }
     try { await require('./services/uk/ukOutboxService').stop(); } catch (e) { logger.error('UK outbox stop error:', e.message); }
+    try { await require('./services/alertVerificationService').stop(); } catch (e) { logger.error('Alert verification stop error:', e.message); }
 
     // [Sprint 4] Close Redis after all consumers (rate-limiter / cache /
     // dedup) have stopped issuing commands.
