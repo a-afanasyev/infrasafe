@@ -51,7 +51,7 @@ describe('Sprint 9 / FIX-007 — end-to-end outbound flow', () => {
     test('happy path: enqueue → drain → UK 202 → outbox sent → AlertRequestMap sent', async () => {
         // ── ARRANGE ──────────────────────────────────────────────
         const payloadBody = JSON.stringify({
-            event_id: 'evt-happy-1',
+            event_id: 'aaaaaaaa-1111-4111-8111-111111111111',
             event: 'alert.created',
             timestamp: '2026-05-22T12:00:00Z',
             alert: { external_id: 'b1', type: 'TRANSFORMER_OVERLOAD', severity: 'WARNING', message: 'overload' }
@@ -62,7 +62,7 @@ describe('Sprint 9 / FIX-007 — end-to-end outbound flow', () => {
         // this row to the drain worker.
         const queuedRow = {
             id: 1,
-            event_id: 'evt-happy-1',
+            event_id: 'aaaaaaaa-1111-4111-8111-111111111111',
             payload_body: payloadBody,
             attempt_count: 0,
             status: 'pending'
@@ -120,8 +120,8 @@ describe('Sprint 9 / FIX-007 — end-to-end outbound flow', () => {
     });
 
     test('409 from UK is idempotent success (re-delivery)', async () => {
-        const payloadBody = '{"event_id":"evt-replay-1","event":"alert.created"}';
-        const queuedRow = { id: 2, event_id: 'evt-replay-1', payload_body: payloadBody, attempt_count: 0 };
+        const payloadBody = '{"event_id":"aaaaaaaa-2222-4222-8222-222222222222","event":"alert.created"}';
+        const queuedRow = { id: 2, event_id: 'aaaaaaaa-2222-4222-8222-222222222222', payload_body: payloadBody, attempt_count: 0 };
 
         db.query.mockImplementation((sql) => {
             if (/pg_try_advisory_lock/.test(sql)) return Promise.resolve({ rows: [{ locked: true }] });
@@ -142,8 +142,8 @@ describe('Sprint 9 / FIX-007 — end-to-end outbound flow', () => {
     });
 
     test('401 from UK is terminal (no retry) and notification_failure recorded', async () => {
-        const payloadBody = '{"event_id":"evt-bad-sig"}';
-        const queuedRow = { id: 3, event_id: 'evt-bad-sig', payload_body: payloadBody, attempt_count: 0 };
+        const payloadBody = '{"event_id":"aaaaaaaa-3333-4333-8333-333333333333"}';
+        const queuedRow = { id: 3, event_id: 'aaaaaaaa-3333-4333-8333-333333333333', payload_body: payloadBody, attempt_count: 0 };
 
         db.query.mockImplementation((sql, params) => {
             if (/pg_try_advisory_lock/.test(sql)) return Promise.resolve({ rows: [{ locked: true }] });
@@ -172,8 +172,8 @@ describe('Sprint 9 / FIX-007 — end-to-end outbound flow', () => {
     });
 
     test('429 from UK is retriable with backoff (no dead, no retry-burn)', async () => {
-        const payloadBody = '{"event_id":"evt-rate"}';
-        const queuedRow = { id: 4, event_id: 'evt-rate', payload_body: payloadBody, attempt_count: 0 };
+        const payloadBody = '{"event_id":"aaaaaaaa-4444-4444-8444-444444444444"}';
+        const queuedRow = { id: 4, event_id: 'aaaaaaaa-4444-4444-8444-444444444444', payload_body: payloadBody, attempt_count: 0 };
 
         db.query.mockImplementation((sql) => {
             if (/pg_try_advisory_lock/.test(sql)) return Promise.resolve({ rows: [{ locked: true }] });
@@ -203,8 +203,8 @@ describe('Sprint 9 / FIX-007 — end-to-end outbound flow', () => {
     test('secret missing → skip outcome, row stays pending with 60s backoff', async () => {
         delete process.env.UK_WEBHOOK_SECRET;
 
-        const payloadBody = '{"event_id":"evt-noconfig"}';
-        const queuedRow = { id: 5, event_id: 'evt-noconfig', payload_body: payloadBody, attempt_count: 0 };
+        const payloadBody = '{"event_id":"aaaaaaaa-5555-4555-8555-555555555555"}';
+        const queuedRow = { id: 5, event_id: 'aaaaaaaa-5555-4555-8555-555555555555', payload_body: payloadBody, attempt_count: 0 };
 
         db.query.mockImplementation((sql) => {
             if (/pg_try_advisory_lock/.test(sql)) return Promise.resolve({ rows: [{ locked: true }] });

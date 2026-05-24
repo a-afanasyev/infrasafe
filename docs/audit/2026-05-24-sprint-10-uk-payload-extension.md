@@ -50,79 +50,108 @@ No HMAC algorithm change. No endpoint change. No header changes.
 }
 ```
 
-### 2.2 Sprint 10 — new optional top-level keys
+### 2.2 Sprint 10 — new optional keys inside the `alert` object
 
-These four keys appear **only when the alert is part of a reopen chain** (i.e. it was spawned by `alertVerificationService` after a verification window detected a persisting fault). For first-time alerts, they are omitted entirely.
+> **⚠️ Wire-format correction 2026-05-24** (UK INT-120 review): the original
+> revision of this spec showed the Sprint 10 extension keys at the envelope
+> level. The **deployed sender** (`src/services/uk/alertForwarder.js:199-237`)
+> puts them **inside the `alert` object**, alongside `external_id` / `type` /
+> `severity`. UK INT-120 backend handler is aligned on the nested shape;
+> this section now reflects that single source of truth. The envelope-level
+> placement is NOT planned for any future sprint.
+
+These keys appear inside the `alert` block on **every** outbound event (not just reopens) — the sender emits them as `null` / `1` for first-time alerts so UK schema validation sees a consistent shape regardless of event type. UK can safely ignore them when `reopen_sequence === 1` (no operational meaning).
 
 ```json
 {
-  "...sprint9 keys unchanged...": "...",
+  "event_id": "0c9a…-uuid",
+  "event": "alert.created",
+  "timestamp": "...",
+  "alert": {
+    "external_id": "...",
+    "type": "...",
+    "severity": "...",
+    "message": "...",
+    "alert_id": 42,
+    "...sprint9 keys unchanged...": "...",
 
-  "reopen_chain_id": "f3a1c…-uuid",
-  "reopen_sequence": 2,
-  "related_request_number": "260523-004",
-  "uk_urgency_override": "Критическая"
+    "reopen_chain_id": "f3a1c…-uuid",
+    "reopen_sequence": 2,
+    "related_request_number": "260523-004",
+    "uk_urgency_override": "Критическая",
+    "uk_category_override": null,
+    "engineer_required_reason": null
+  }
 }
 ```
 
-| Field | Type | Always present? | Semantics |
+| Field (all under `alert.`) | Type | Always present? | Semantics |
 |---|---|---|---|
-| `reopen_chain_id` | UUID | only on reopens | Stable identifier for the chain — same value for every reopen of the same physical fault. Original (sequence=1) alert does NOT carry it. |
-| `reopen_sequence` | int ≥ 1 | only on reopens (and only when ≥ 2) | 1 = first-time alert (UK won't see this — we omit the field). 2+ = N-th reopen. Increments by 1 on each verification → reopen transition. |
-| `related_request_number` | string | only on reopens | The УК request number of the **previous** (most recent terminated) request in the same chain. Operator-facing context: "this is a reopen of ticket X". Format is whatever УК returned at request creation — InfraSafe does not normalise it. |
-| `uk_urgency_override` | string | only when `rule.reopen_urgency_bump=true` AND sequence ≥ 2 | One-step urgency bump along the canonical ladder: `Обычная → Средняя → Срочная → Критическая` (capped). When present, UK SHOULD use this value instead of `rule.uk_urgency`. The rule's base urgency stays in `rule.uk_urgency` for traceability. |
+| `reopen_chain_id` | UUID or null | always (null on sequence=1) | Stable identifier for the chain — same value for every reopen of the same physical fault. |
+| `reopen_sequence` | int ≥ 1 | always (defaults to 1) | 1 = first-time alert, 2+ = N-th reopen. Increments by 1 on each verification → reopen transition. |
+| `related_request_number` | string or null | always (null on sequence=1) | UK request number of the previous terminated request in this chain. Operator-facing context: "this is a reopen of ticket X". Format is whatever UK returned at request creation — InfraSafe does not normalise it. |
+| `uk_urgency_override` | string or null | always (null when no override applies) | When non-null, UK SHOULD use this value instead of `rule.uk_urgency`. Set on reopens with `reopen_urgency_bump=true` (canonical ladder `Обычная → Средняя → Срочная → Критическая`, capped) and always set to `"Критическая"` on `alert.engineer_required` events. |
+| `uk_category_override` | string or null | always (null except on engineer_required) | Always `"Инженерный разбор"` on `alert.engineer_required`, null otherwise. UK SHOULD route to engineering queue when present. |
+| `engineer_required_reason` | string or null | always (null except on engineer_required) | Always `"max_reopens_per_24h"` on `alert.engineer_required` (the only trigger in v1), null otherwise. |
 
-### 2.3 Example — second escalation of the same leak
+### 2.3 Example — second escalation of the same leak (`event = "alert.created"`, `reopen_sequence ≥ 2`)
 
 ```json
 {
   "event_id": "5d2e…-uuid",
-  "event_type": "alert.created",
-  "occurred_at": "2026-05-24T07:42:11.502Z",
+  "event": "alert.created",
+  "timestamp": "2026-05-24T07:42:11.502Z",
   "alert": {
-    "infrasafe_alert_id": 87,
+    "external_id": "b7f6…-uuid",
     "type": "LEAK_DETECTED",
     "severity": "WARNING",
-    "title": "Утечка воды в стояке (повтор)",
-    "description": "После закрытия заявки 260523-004 датчик снова показывает воду",
+    "message": "Утечка воды в стояке (повтор после закрытия 260523-004)",
+    "alert_id": 87,
+    "created_at": "2026-05-24T07:42:11.401Z",
+    "correlation_id": null,
+    "infrastructure_type": "controller",
+    "infrastructure_id": "1",
     "metric_id": 1419,
-    "created_at": "2026-05-24T07:42:11.401Z"
-  },
-  "building": {
-    "external_id": "b7f6…-uuid",
-    "name": "…",
-    "address": "…"
-  },
-  "rule": {
-    "uk_category": "Сантехника",
-    "uk_urgency": "Срочная"
-  },
-  "reopen_chain_id": "f3a1c…-uuid",
-  "reopen_sequence": 2,
-  "related_request_number": "260523-004",
-  "uk_urgency_override": "Критическая",
-  "idempotency_key": "alert-87-building-b7f6…"
+    "metric_value": null,
+    "metric_unit": null,
+    "reopen_chain_id": "f3a1c…-uuid",
+    "reopen_sequence": 2,
+    "related_request_number": "260523-004",
+    "uk_urgency_override": "Критическая",
+    "uk_category_override": null,
+    "engineer_required_reason": null
+  }
 }
 ```
 
-### 2.4 Engineer-required hand-off
+### 2.4 Engineer-required hand-off (`event = "alert.engineer_required"`)
 
-When a chain reaches `max_reopens_per_24h` (default 3), InfraSafe does **NOT** send another `alert.created` event. The alert transitions to status `engineer_required` and we send a different event type:
+When a chain reaches `max_reopens_per_24h` (default 3), InfraSafe does **NOT** send another `alert.created` event. The alert transitions locally to status `engineer_required` and we emit a different event type. **Same envelope shape, different `event` value + three filled override fields inside `alert{}`.** Sender: `src/services/uk/alertForwarder.js` `ALERT_ENGINEER_REQUIRED` listener (hotfix 2026-05-24).
 
 ```json
 {
-  "event_id": "…",
-  "event_type": "alert.engineer_required",
-  "occurred_at": "…",
-  "alert": { … },
-  "building": { … },
-  "reopen_chain_id": "f3a1c…-uuid",
-  "reopen_sequence": 4,
-  "related_request_number": "260523-006",
-  "engineer_required_reason": "max_reopens_per_24h",
-  "rule": {
-    "uk_category": "Инженерный разбор",
-    "uk_urgency": "Критическая"
+  "event_id": "...-uuid",
+  "event": "alert.engineer_required",
+  "timestamp": "...",
+  "alert": {
+    "external_id": "b7f6…-uuid",
+    "type": "LEAK_DETECTED",
+    "severity": "WARNING",
+    "message": "...",
+    "alert_id": 142,
+    "created_at": "...",
+    "correlation_id": null,
+    "infrastructure_type": "controller",
+    "infrastructure_id": "1",
+    "metric_id": null,
+    "metric_value": null,
+    "metric_unit": null,
+    "reopen_chain_id": "f3a1c…-uuid",
+    "reopen_sequence": 4,
+    "related_request_number": "260523-006",
+    "uk_urgency_override": "Критическая",
+    "uk_category_override": "Инженерный разбор",
+    "engineer_required_reason": "max_reopens_per_24h"
   }
 }
 ```
