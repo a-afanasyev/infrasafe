@@ -127,7 +127,11 @@ All mounted under `/api`:
 ### UK Integration Module
 Bidirectional integration with UK Management Bot (Управляющая Компания). All 5 phases complete + Sprint 9 sender (FIX-007) + Sprint 10 ARCH-114 reconcile (2026-05-24).
 
-**Network topology** (2026-05-24, post-Sprint-9.x): UK→InfraSafe inbound calls flow through the **public HTTPS edge** (`https://infrasafe.uz/webhooks/uk/*` and `/api/uk-requests-metrics`), NOT the internal docker `uk-network`. The Sprint 9.x compose changes (and subsequent compose-fix PR #51) removed `infrasafe-app-1` from `uk-network`; the public edge is the new canonical target. Defense-in-depth: nginx TLS + HMAC-SHA256 webhook signatures + 60/min rate limit. If you ever need to restore internal docker connectivity, add `uk-network` (external) to `docker-compose.prod.yml` with explicit `app` alias — but the public edge is preferred (no docker-network coupling).
+**Network topology** (2026-05-24, post-Sprint-9.x): **both directions** of the UK channel flow through the **public HTTPS edge**, NOT the internal docker `uk-network`. The Sprint 9.x compose changes (and subsequent compose-fix PR #51) removed `infrasafe-app-1` from `uk-network`; the public edge became the canonical target for inbound, and after the e2e smoke on 2026-05-24 (alert 24 → ticket 260524-001) we confirmed the same for outbound:
+- **UK→InfraSafe** (inbound): `https://infrasafe.uz/webhooks/uk/*` and `/api/uk-requests-metrics` → nginx → `infrasafe-app-1:3000` over the `leaflet-network` bridge.
+- **InfraSafe→UK** (outbound): `UK_API_URL=https://infrasafe.uz/uk` → nginx `location ^~ /uk/api/` (nginx.production.conf:192) → rewrite `/uk/api/*` → `http://uk-management-api:8080/api/*` over the `uk-network` bridge (only `infrasafe-nginx-1` is in that network, not the app).
+
+Defense-in-depth: nginx TLS + HMAC-SHA256 webhook signatures (both directions, same `UK_WEBHOOK_SECRET`) + 60/мин rate limit. If you ever need to restore internal docker connectivity to the app, add `uk-network` (external) to `docker-compose.prod.yml` with explicit `app` alias and flip `UK_API_URL=http://uk-management-api:8080` — but the public edge is preferred (no docker-network coupling, identical TLS path both ways).
 
 **Backend files:**
 - `src/services/ukIntegrationService.js` — Facade re-exporting the 5 modules below (Sprint 8 split for P1-14). Bound-method API surface + property proxies for backward compat.
@@ -245,7 +249,16 @@ INFRASAFE_WEBHOOK_SECRET   # UK→InfraSafe verifier (UK signs, we verify).
 UK_WEBHOOK_SECRET          # InfraSafe→UK sender (we sign, UK verifies). Sprint 9.
 UK_WEBHOOK_SECRET_NEXT     # Optional: NEW value during rotation window. Sprint 9.
 UK_USE_NEXT_SECRET=false   # Set to 'true' to switch sender to UK_WEBHOOK_SECRET_NEXT.
-UK_API_URL                 # Bare host (e.g. https://uk.example.com) — client appends /api/v2/...
+UK_API_URL                 # Bare host — client appends /api/v2/webhooks/infrasafe/alert.
+                           # Canonical for prod (2026-05-24): https://infrasafe.uz/uk
+                           # The nginx `location ^~ /uk/api/` (nginx.production.conf:192)
+                           # rewrites /uk/api/* → http://uk-management-api:8080/api/* over
+                           # the existing uk-network bridge. Symmetric with UK's inbound:
+                           # both directions go through our public HTTPS edge (TLS + HMAC),
+                           # no internal docker http://uk-management-api on the InfraSafe
+                           # side (infrasafe-app-1 is NOT in uk-network — see compose-fix
+                           # PR #51 rationale + the network-topology note under "UK
+                           # Integration Module" above).
 UK_USE_WEBHOOK_SENDER=false # Master gate for the new HMAC-webhook outbound channel.
                            # Default false until UK Phase 2 + secret rotation completes.
 UK_OUTBOX_DRAIN_INTERVAL_MS=2000  # Drain tick (clamped [500, 60000]). Default ≈30/мин rate.
