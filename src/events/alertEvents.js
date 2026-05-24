@@ -36,6 +36,13 @@ alertEvents.EVENTS = Object.freeze({
     // alertService should run its threshold check for this transformer.
     TRANSFORMER_CHECK: 'transformer.check',
 
+    // [B-005 / 2026-05-25] metricService → alertService: a new metric just
+    // landed with leak_sensor=true for some controller. alertService should
+    // run its persistence-gated leak check. Mirrors TRANSFORMER_CHECK contract:
+    // fire-and-forget, payload `{ controllerId, metricId }`. Persistence gate
+    // inside createAlert filters single-blip noise; cooldown filters spam.
+    LEAK_CHECK: 'leak.check',
+
     // alertService → ukIntegrationService: an alert was just persisted;
     // if integration is enabled, forward it as a UK request.
     ALERT_CREATED: 'alert.created',

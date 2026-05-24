@@ -2,6 +2,7 @@ const Metric = require('../models/Metric');
 const Controller = require('../models/Controller');
 const logger = require('../utils/logger');
 const cacheService = require('./cacheService');
+const alertEvents = require('../events/alertEvents');
 
 class MetricService {
     constructor() {
@@ -165,6 +166,25 @@ class MetricService {
 
             // Инвалидируем связанные кэши
             await this.invalidateMetricCaches(controllerId);
+
+            // [B-005 / 2026-05-25] Auto-trigger leak alert path. When a
+            // controller reports leak_sensor=true, fire LEAK_CHECK so
+            // alertService can run its persistence-gated check. Mirrors the
+            // TRANSFORMER_CHECK emit from analyticsService — fire-and-forget,
+            // never blocks telemetry ingest. Errors logged inside the
+            // listener; we only surface emitter-side problems here.
+            if (metricData.leak_sensor === true && controllerId) {
+                try {
+                    alertEvents.emit(alertEvents.EVENTS.LEAK_CHECK, {
+                        controllerId,
+                        metricId: newMetric.metric_id
+                    });
+                } catch (emitErr) {
+                    logger.warn(
+                        `Не удалось опубликовать leak.check для контроллера ${controllerId}: ${emitErr.message}`
+                    );
+                }
+            }
 
             logger.info(`Создана новая метрика для контроллера ${controllerId} (ID: ${newMetric.metric_id})`);
             return newMetric;

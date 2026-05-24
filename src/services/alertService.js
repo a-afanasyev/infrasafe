@@ -224,6 +224,71 @@ class InfrastructureAlertService {
         }
     }
 
+    // [B-005 / 2026-05-25] LEAK auto-trigger from telemetry.
+    //
+    // Called via alertEvents.LEAK_CHECK when metricService.createMetric
+    // persists a row with leak_sensor=true. Mirrors checkTransformerLoad
+    // contract: cooldown + dedup + delegate to createAlert (which runs the
+    // persistence-gate SQL aggregation: ≥2 samples spanning ≥minSeconds).
+    //
+    // Severity is hardcoded CRITICAL for v1 — a real basement leak is
+    // critical by definition. The persistence gate already filters
+    // single-blip noise (10s window for CRITICAL rule, 600s lookback).
+    // Operators can fine-tune via alert_rules.* (Sprint 10 PR-5 admin UI).
+    async checkLeak(controllerId) {
+        await this.ensureInitialized();
+
+        const checkKey = `controller:${controllerId}:leak_check`;
+        const now = Date.now();
+
+        // Cooldown — avoid CPU thrashing when telemetry comes every few seconds.
+        // Dedup index in DB already prevents duplicate active alerts; this is
+        // purely an optimization for the hot path (createAlert + persistence
+        // SQL query) before we even hit the DB-level guard.
+        if (this.lastChecks.has(checkKey)) {
+            const lastCheck = this.lastChecks.get(checkKey);
+            if (now - lastCheck < this.alertCooldown * 60 * 1000) {
+                return null;
+            }
+        }
+
+        try {
+            // In-memory dedup (fast path before DB).
+            const alertKey = `controller:${controllerId}:LEAK_DETECTED`;
+            if (this.activeAlerts.has(alertKey)) {
+                logger.debug(`LEAK_DETECTED для контроллера ${controllerId} уже активен`);
+                this.lastChecks.set(checkKey, now);
+                return null;
+            }
+
+            const alertData = {
+                type: 'LEAK_DETECTED',
+                severity: 'CRITICAL',
+                infrastructure_id: controllerId,
+                infrastructure_type: 'controller',
+                message: `Протечка в подвале — датчик контроллера ${controllerId} сработал. Уровень воды требует проверки.`,
+                affected_buildings: 1,
+                data: {
+                    source: 'auto_leak_check',
+                    controller_id: controllerId,
+                    detected_at: new Date().toISOString()
+                }
+            };
+
+            // createAlert runs persistence-gate (SQL aggregation against
+            // metrics.leak_sensor=true) + buildings-gate + DB dedup. Returns
+            // null if any gate denies; we still bump cooldown either way so a
+            // sensor-spam controller doesn't burn CPU on every reading.
+            const createdAlert = await this.createAlert(alertData);
+            this.lastChecks.set(checkKey, now);
+
+            return createdAlert;
+        } catch (error) {
+            logger.error(`Ошибка checkLeak для контроллера ${controllerId}: ${error.message}`);
+            return null;
+        }
+    }
+
     // [Sprint 10 PR-1] Persistence gate. Returns { allowed, reason }.
     //
     // For LEAK_DETECTED via controller — SQL aggregation against `metrics`
@@ -859,6 +924,18 @@ alertEvents.on(alertEvents.EVENTS.TRANSFORMER_CHECK, (payload) => {
         .then(() => singleton.checkTransformerLoad(transformerId))
         .catch(err => logger.error(
             `alertEvents transformer.check handler: ${err.message}`
+        ));
+});
+
+// [B-005 / 2026-05-25] LEAK auto-trigger from telemetry. metricService
+// emits LEAK_CHECK after persisting a metric with leak_sensor=true.
+alertEvents.on(alertEvents.EVENTS.LEAK_CHECK, (payload) => {
+    const { controllerId } = payload || {};
+    if (controllerId == null) return;
+    Promise.resolve()
+        .then(() => singleton.checkLeak(controllerId))
+        .catch(err => logger.error(
+            `alertEvents leak.check handler: ${err.message}`
         ));
 });
 
