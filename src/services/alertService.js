@@ -277,10 +277,19 @@ class InfrastructureAlertService {
 
             // createAlert runs persistence-gate (SQL aggregation against
             // metrics.leak_sensor=true) + buildings-gate + DB dedup. Returns
-            // null if any gate denies; we still bump cooldown either way so a
-            // sensor-spam controller doesn't burn CPU on every reading.
+            // null if any gate denies OR if dedup hit.
+            //
+            // Cooldown is bumped ONLY on successful creation. On gate-denied
+            // (returned null because not enough samples in window yet) we
+            // MUST keep re-checking on next telemetry — otherwise a
+            // 15-minute cooldown would mask the threshold being met by
+            // later samples. Sensor-spam protection comes from the
+            // in-memory dedup check above (active alert ⇒ short return) +
+            // the DB-level partial unique index inside createAlert.
             const createdAlert = await this.createAlert(alertData);
-            this.lastChecks.set(checkKey, now);
+            if (createdAlert) {
+                this.lastChecks.set(checkKey, now);
+            }
 
             return createdAlert;
         } catch (error) {
