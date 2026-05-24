@@ -90,8 +90,20 @@ class UKAlertForwarder {
     /**
      * Forward an alert to UK as request(s). Called by the ALERT_CREATED
      * listener (below) or, in tests, directly. Never throws.
+     *
+     * @param {object} alertData
+     * @param {object} [options]
+     * @param {boolean} [options.engineerRequired=false] - When true, the
+     *   outbound payload uses event="alert.engineer_required" and adds
+     *   `engineer_required_reason` + hardcoded category/urgency overrides
+     *   per Sprint 10 spec §2.4. Triggered by the ALERT_ENGINEER_REQUIRED
+     *   listener (below) after the verification worker hits a chain's
+     *   max_reopens_per_24h ceiling.
      */
-    async sendAlertToUK(alertData) {
+    async sendAlertToUK(alertData, options = {}) {
+        const { engineerRequired = false } = options;
+        const eventType = engineerRequired ? 'alert.engineer_required' : 'alert.created';
+        const enqueueAction = engineerRequired ? 'alert.engineer_required.enqueued' : 'alert.enqueued';
         try {
             const enabled = await configProxy.isEnabled();
             if (!enabled) return;
@@ -198,7 +210,7 @@ class UKAlertForwarder {
                     // the HMAC (D1/D2 in the plan).
                     const eventBody = JSON.stringify({
                         event_id: idempotencyKey,
-                        event: 'alert.created',
+                        event: eventType,
                         timestamp: new Date().toISOString(),
                         alert: {
                             // UK Phase 2 schema (FIX-007 O0/O1/A1, see contract).
@@ -221,7 +233,18 @@ class UKAlertForwarder {
                             reopen_chain_id: alertData.reopen_chain_id || null,
                             reopen_sequence: alertData.reopen_sequence || 1,
                             related_request_number: alertData.previous_uk_request_number || null,
-                            uk_urgency_override: isReopen ? effectiveUrgency : null
+                            // For engineer_required: hardcoded override per spec
+                            // §2.4 ("Инженерный разбор" / "Критическая");
+                            // for reopen-bump path on alert.created: per-rule
+                            // urgency bump up the ladder.
+                            uk_urgency_override: engineerRequired
+                                ? 'Критическая'
+                                : (isReopen ? effectiveUrgency : null),
+                            // Engineer-required-specific fields. Null on
+                            // alert.created so UK schema validation sees a
+                            // consistent shape regardless of event type.
+                            uk_category_override: engineerRequired ? 'Инженерный разбор' : null,
+                            engineer_required_reason: engineerRequired ? 'max_reopens_per_24h' : null
                         }
                     });
 
@@ -236,7 +259,7 @@ class UKAlertForwarder {
                         direction: 'to_uk',
                         entity_type: 'alert',
                         entity_id: String(alertData.alert_id),
-                        action: 'alert.enqueued',
+                        action: enqueueAction,
                         payload: { alert_id: alertData.alert_id, building_id: building.building_id, event_id: idempotencyKey },
                         status: 'pending'
                     }).catch(logErr => logger.warn(
@@ -252,7 +275,7 @@ class UKAlertForwarder {
                         direction: 'to_uk',
                         entity_type: 'alert',
                         entity_id: String(alertData.alert_id),
-                        action: 'alert.enqueued',
+                        action: enqueueAction,
                         payload: { alert_id: alertData.alert_id, building_id: building.building_id },
                         status: 'error',
                         error_message: buildingError.message
@@ -279,6 +302,47 @@ alertEvents.on(alertEvents.EVENTS.ALERT_CREATED, async ({ alertData, alertId }) 
     try {
         if (!(await configProxy.isEnabled())) return;
         await singleton.sendAlertToUK({ ...alertData, alert_id: alertId });
+    } catch (ukError) {
+        logger.error(`Alert ${alertId} UK forwarding failed: ${ukError.message}`);
+        try {
+            const db = require('../../config/database');
+            await db.query(
+                `UPDATE infrastructure_alerts
+                 SET data = jsonb_set(
+                     COALESCE(data::jsonb, '{}'::jsonb),
+                     '{notification_failures}',
+                     COALESCE(data::jsonb -> 'notification_failures', '[]'::jsonb)
+                         || $1::jsonb,
+                     true
+                 )
+                 WHERE alert_id = $2`,
+                [JSON.stringify([{
+                    channel: 'uk_integration',
+                    error: ukError.message,
+                    at: new Date().toISOString(),
+                }]), alertId]
+            );
+        } catch (dbErr) {
+            logger.error(
+                `Failed to record UK forwarding failure for alert ${alertId}: ${dbErr.message}`
+            );
+        }
+    }
+});
+
+// [hotfix 2026-05-24] ALERT_ENGINEER_REQUIRED sender — when the
+// verification worker hits a chain's max_reopens_per_24h ceiling
+// (alertVerificationService.js:256), it emits this event. Without
+// this listener the local alert flips to status='engineer_required'
+// but UK never sees a ticket — engineering dispatch falls silent.
+// Reuses sendAlertToUK with the engineerRequired option flag so
+// the canonical body / HMAC / outbox / drain path are all identical
+// to alert.created (only event_type + a few fields differ per
+// Sprint 10 spec §2.4).
+alertEvents.on(alertEvents.EVENTS.ALERT_ENGINEER_REQUIRED, async ({ alertData, alertId }) => {
+    try {
+        if (!(await configProxy.isEnabled())) return;
+        await singleton.sendAlertToUK({ ...alertData, alert_id: alertId }, { engineerRequired: true });
     } catch (ukError) {
         logger.error(`Alert ${alertId} UK forwarding failed: ${ukError.message}`);
         try {

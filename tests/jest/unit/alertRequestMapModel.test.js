@@ -169,23 +169,28 @@ describe('AlertRequestMap Model', () => {
     });
 
     describe('findByIdempotencyKey', () => {
+        // Real UUIDs — the column is `uuid` type, see hotfix 2026-05-24 note
+        // in the model. Previous tests used arbitrary strings, which short-
+        // circuit the new guard (correctly) but defeated the SQL assertions.
+        const VALID_UUID = '04d4ae99-19b1-49e7-9d94-23aad521e823';
+
         test('returns mapping when found', async () => {
             db.query.mockResolvedValue({ rows: [mockRow] });
 
-            const result = await AlertRequestMap.findByIdempotencyKey('idem-123');
+            const result = await AlertRequestMap.findByIdempotencyKey(VALID_UUID);
 
             expect(result).toBeDefined();
             expect(result.idempotency_key).toBe('idem-123');
             expect(db.query).toHaveBeenCalledWith(
                 'SELECT * FROM alert_request_map WHERE idempotency_key = $1',
-                ['idem-123']
+                [VALID_UUID]
             );
         });
 
         test('returns null when not found', async () => {
             db.query.mockResolvedValue({ rows: [] });
 
-            const result = await AlertRequestMap.findByIdempotencyKey('nonexistent');
+            const result = await AlertRequestMap.findByIdempotencyKey(VALID_UUID);
 
             expect(result).toBeNull();
         });
@@ -193,7 +198,29 @@ describe('AlertRequestMap Model', () => {
         test('throws on database error', async () => {
             db.query.mockRejectedValue(new Error('DB error'));
 
-            await expect(AlertRequestMap.findByIdempotencyKey('idem-123')).rejects.toThrow('DB error');
+            await expect(AlertRequestMap.findByIdempotencyKey(VALID_UUID)).rejects.toThrow('DB error');
+        });
+
+        // [hotfix 2026-05-24] UUID guard — non-uuid input must NOT reach
+        // the DB (which would crash with "invalid input syntax for type
+        // uuid"). UK callbacks can carry arbitrary source_event_id values
+        // from manual injections / synthetic smoke / future schema migrations.
+        test('returns null for non-uuid input without touching db', async () => {
+            db.query.mockClear();
+
+            for (const bad of [
+                'smoke-int120-04d4ae99-19b1-49e7-9d94-23aad521e823', // real synthetic case
+                'idem-123',
+                '',
+                null,
+                undefined,
+                'not-a-uuid-at-all',
+                '04d4ae99-19b1-49e7' // partial uuid
+            ]) {
+                const result = await AlertRequestMap.findByIdempotencyKey(bad);
+                expect(result).toBeNull();
+            }
+            expect(db.query).not.toHaveBeenCalled();
         });
     });
 
