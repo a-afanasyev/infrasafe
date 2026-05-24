@@ -565,11 +565,25 @@ class InfrastructureAlertService {
             const current = existing.rows[0];
 
             // System-initiated resolve + matching rule → verification cycle
+            //
+            // [hotfix 2026-05-24] Gate on ALERT_VERIFICATION_ENABLED env flag too.
+            // alertVerificationService.start() is the only thing that ever clears
+            // a resolved_verifying row (back to resolved or forward to reopened/
+            // engineer_required). If the worker is dormant (flag false — Sprint
+            // 10 default until CR-window flip), any alert that enters
+            // resolved_verifying stays there forever. Without this gate the e2e
+            // smoke alert 24 ("Течь в подвале") got stuck after UK closed
+            // 260524-001 — the alert auto-resolved but couldn't transition past
+            // verifying. The flag now controls both worker AND status-flip in
+            // lockstep, which is what was originally intended in the plan
+            // (D9 in tingly-munching-badger.md).
             const isSystemInitiated = userId === null || userId === undefined;
+            const verificationEnabled = (process.env.ALERT_VERIFICATION_ENABLED || 'false')
+                .toString().toLowerCase() === 'true';
             let useVerifyingState = false;
             let rule = null;
 
-            if (isSystemInitiated) {
+            if (isSystemInitiated && verificationEnabled) {
                 const AlertRule = require('../models/AlertRule');
                 rule = await AlertRule.findByTypeAndSeverity(current.type, current.severity);
                 if (rule && rule.verification_grace_seconds > 0 && rule.verification_window_seconds > 0) {
