@@ -45,11 +45,21 @@ const AlertVerification = require('../../../src/models/AlertVerification');
 const alertService = require('../../../src/services/alertService');
 
 describe('alertService.resolveAlert — Sprint 10 PR-3 system vs manual path', () => {
+    const originalVerifyEnv = process.env.ALERT_VERIFICATION_ENABLED;
+
     beforeEach(() => {
         jest.clearAllMocks();
         alertService.initialized = true;
         alertService.activeAlerts.clear();
         alertService.lastChecks.clear();
+    });
+
+    afterEach(() => {
+        if (originalVerifyEnv === undefined) {
+            delete process.env.ALERT_VERIFICATION_ENABLED;
+        } else {
+            process.env.ALERT_VERIFICATION_ENABLED = originalVerifyEnv;
+        }
     });
 
     const baseAlert = {
@@ -73,6 +83,7 @@ describe('alertService.resolveAlert — Sprint 10 PR-3 system vs manual path', (
 
     describe('System-initiated resolve (userId === null)', () => {
         test('uses resolved_verifying status + enqueues verification when rule has grace > 0', async () => {
+            process.env.ALERT_VERIFICATION_ENABLED = 'true';
             // 1st query: SELECT existing alert
             db.query.mockResolvedValueOnce({ rows: [baseAlert] });
             AlertRule.findByTypeAndSeverity.mockResolvedValueOnce(ruleWithVerification);
@@ -100,6 +111,7 @@ describe('alertService.resolveAlert — Sprint 10 PR-3 system vs manual path', (
         });
 
         test('reuses existing reopen_chain_id when alert already part of chain', async () => {
+            process.env.ALERT_VERIFICATION_ENABLED = 'true';
             const chainedAlert = { ...baseAlert, reopen_chain_id: 'existing-uuid', reopen_sequence: 2 };
             db.query.mockResolvedValueOnce({ rows: [chainedAlert] });
             AlertRule.findByTypeAndSeverity.mockResolvedValueOnce(ruleWithVerification);
@@ -130,7 +142,27 @@ describe('alertService.resolveAlert — Sprint 10 PR-3 system vs manual path', (
             expect(AlertVerification.enqueue).not.toHaveBeenCalled();
         });
 
+        test('[hotfix 2026-05-24] resolves directly when ALERT_VERIFICATION_ENABLED is false, even when rule wants verification', async () => {
+            // Default env: ALERT_VERIFICATION_ENABLED unset → treated as false.
+            // Worker is dormant, so the gate must close even if the rule has
+            // verification_grace_seconds > 0. Otherwise the alert gets stuck
+            // in resolved_verifying forever.
+            delete process.env.ALERT_VERIFICATION_ENABLED;
+            db.query.mockResolvedValueOnce({ rows: [baseAlert] });
+            // AlertRule.findByTypeAndSeverity must NOT be called when env-gate
+            // short-circuits — the gate sits BEFORE the rule lookup.
+            db.query.mockResolvedValueOnce({ rows: [{ ...baseAlert, status: 'resolved' }] });
+
+            await alertService.resolveAlert(21, null);
+
+            const updateCall = db.query.mock.calls.find(c => c[0].includes('UPDATE infrastructure_alerts'));
+            expect(updateCall[1][2]).toBe('resolved');
+            expect(AlertRule.findByTypeAndSeverity).not.toHaveBeenCalled();
+            expect(AlertVerification.enqueue).not.toHaveBeenCalled();
+        });
+
         test('resolves directly when rule has grace=0 (verification disabled per rule)', async () => {
+            process.env.ALERT_VERIFICATION_ENABLED = 'true'; // env on, but rule says no
             db.query.mockResolvedValueOnce({ rows: [baseAlert] });
             AlertRule.findByTypeAndSeverity.mockResolvedValueOnce({
                 ...ruleWithVerification,
@@ -148,12 +180,26 @@ describe('alertService.resolveAlert — Sprint 10 PR-3 system vs manual path', (
         });
 
         test('clears lastChecks cooldown so checker can re-evaluate', async () => {
+            process.env.ALERT_VERIFICATION_ENABLED = 'true';
             alertService.lastChecks.set('controller:1:load_check', Date.now());
+
+            // Re-arm query mocks AFTER seeding the lastChecks — full mock state
+            // is reset by beforeEach but mockResolvedValueOnce queue from earlier
+            // sibling tests can leak if other tests in this describe set
+            // mockResolvedValue (catch-all). Use a clean .mockReset() + per-call
+            // mockResolvedValueOnce to be deterministic.
+            db.query.mockReset();
+            AlertRule.findByTypeAndSeverity.mockReset();
+            AlertVerification.enqueue.mockReset();
 
             db.query.mockResolvedValueOnce({ rows: [baseAlert] });
             AlertRule.findByTypeAndSeverity.mockResolvedValueOnce(ruleWithVerification);
             db.query.mockResolvedValueOnce({ rows: [{ ...baseAlert, status: 'resolved_verifying' }] });
             AlertVerification.enqueue.mockResolvedValueOnce({ id: 1 });
+            // Sprint 10 PR-3 reopen-chain-id backfill + previous_uk_request_number
+            // lookup both fire extra DB UPDATEs after enqueue — catch-all so the
+            // await chain completes and reaches the lastChecks.delete line.
+            db.query.mockResolvedValue({ rows: [] });
 
             await alertService.resolveAlert(21, null);
 
