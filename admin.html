@@ -1508,11 +1508,9 @@
 
     </div><!-- /.admin-container -->
 
-    <!-- Подключение DOMPurify для защиты от XSS — SRI sha384 закрепляет содержимое CDN-пакета [P1-3] -->
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.7/dist/purify.min.js"
-            integrity="sha384-qJNkHwhlYywDHfyoEe1np+1lYvX/8x+3gHCKFhSSBMQyCFlvFnn+zXmaebXl21rV"
-            crossorigin="anonymous"
-            referrerpolicy="no-referrer"></script>
+    <!-- DOMPurify 3.2.7 self-hosted (since 2026-05-25) — устранён CSP sourcemap-noise
+         от CDN + убрана зависимость от jsdelivr. SRI больше не нужен для self-hosted. -->
+    <script src="public/libs/dompurify/purify.min.js"></script>
     
     <!-- Leaflet для мини-карт -->
     <link rel="stylesheet" href="public/libs/leaflet/leaflet.css" />
@@ -1520,6 +1518,13 @@
     
     <!-- Подключение утилит безопасности -->
     <script src="public/dist/utils/domSecurity.js"></script>
+
+    <!-- [hotfix 2026-05-25] CSRF helper MUST load before admin-auth.js — the
+         fetch interceptor in admin-auth.js refuses to send any modifying API
+         request when window.csrfProtection is missing (returns rejected
+         promise with "CSRF protection module not loaded"). index.html already
+         loaded csrf.js, admin.html did not — every admin save was failing. -->
+    <script src="public/dist/utils/csrf.js"></script>
 
     <!-- [Sprint 10 PR-5] UK rules client-side validation bounds -->
     <script src="public/dist/utils/ukRulesValidation.js"></script>
