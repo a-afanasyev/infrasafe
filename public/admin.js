@@ -1038,11 +1038,18 @@ document.addEventListener("DOMContentLoaded", function () {
     // template. Substitutes ${uk_frontend_url} and ${uk_request_number}.
     // Returns null when configuration is incomplete so callers can skip
     // rendering the link.
+    //
+    // Confirmed format with UK team 2026-05-27:
+    //   ${uk_frontend_url}/dashboard?request=${uk_request_number}
+    //   → https://infrasafe.uz/uk/dashboard?request=260527-001
+    // UK side will add useSearchParams to KanbanPage in a follow-up to
+    // auto-open the request modal; until then the link lands on the
+    // dashboard without the modal — acceptable per UK team.
     function buildUkRequestUrl(uk_request_number) {
         const config = integrationState.config || {};
         const baseUrl = (config.uk_frontend_url || '').replace(/\/$/, '');
         const template = config.uk_request_url_template
-            || '${uk_frontend_url}/requests/${uk_request_number}';
+            || '${uk_frontend_url}/dashboard?request=${uk_request_number}';
         if (!baseUrl || !uk_request_number) return null;
         return template
             .replace(/\$\{uk_frontend_url\}/g, baseUrl)

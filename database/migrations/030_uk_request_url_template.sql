@@ -5,13 +5,22 @@
 -- time. Stored in DB (not env / hardcoded) so the UK team can change the
 -- format without forcing an InfraSafe frontend release.
 --
--- DEFAULT VALUE — PENDING UK CONFIRMATION:
---   '${uk_frontend_url}/requests/${uk_request_number}'
---   This is a REST-style guess. UK team is being asked to confirm the
---   exact format expected by their `onOpenRelated` prop (alternatives
---   considered: `?open=<number>` query param, `/admin/dashboard?request=
---   <number>`). Operator can override via admin UI «Интеграция УК» tab
---   without re-running migration.
+-- DEFAULT VALUE — confirmed by UK team 2026-05-27:
+--   '${uk_frontend_url}/dashboard?request=${uk_request_number}'
+--
+-- Resolves to e.g. https://infrasafe.uz/uk/dashboard?request=260527-001.
+-- UK side will land a follow-up PR adding useSearchParams to KanbanPage
+-- so the linked ticket auto-opens in a modal; until that ships, the link
+-- still takes the operator to the right dashboard (just without the
+-- request modal pre-opened) — acceptable per UK team.
+--
+-- Notes from UK confirmation:
+--   - {uk_request_number} taken as-is (YYMMDD-NNN, chars [0-9-]) — no
+--     URL-encoding needed (we still encodeURIComponent client-side as a
+--     defensive no-op for the current charset).
+--   - Single route /dashboard (not /admin/dashboard) — admin + manager
+--     roles both land there via ProtectedRoute.
+--   - Unauthenticated open → UK /login?redirect=... preserves target.
 --
 -- Why ON CONFLICT DO NOTHING:
 --   Idempotent rerun in dev; never overwrite an operator-tuned value
@@ -22,8 +31,8 @@ BEGIN;
 INSERT INTO integration_config (key, value, description)
 VALUES (
     'uk_request_url_template',
-    '${uk_frontend_url}/requests/${uk_request_number}',
-    'URL template for the admin-UI "Открыть в УК" button. Substitutes ${uk_frontend_url} (from integration_config.uk_frontend_url) and ${uk_request_number} (from alert_request_map). PENDING UK contract confirmation.'
+    '${uk_frontend_url}/dashboard?request=${uk_request_number}',
+    'URL template for the admin-UI "Открыть в УК" button. Substitutes ${uk_frontend_url} (from integration_config.uk_frontend_url) and ${uk_request_number} (from alert_request_map.uk_request_number). Confirmed contract with UK team 2026-05-27.'
 )
 ON CONFLICT (key) DO NOTHING;
 
