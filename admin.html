@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>InfraSafe - Администрирование</title>
     <!-- [hotfix 2026-05-27 debug] Earliest possible probe to prove admin.html reaches script execution. -->
-    <script src="public/admin-head-probe.js"></script>
+    <script src="public/admin-head-probe.js?v=20260527"></script>
     <link rel="icon" type="image/svg+xml" href="public/images/favicon.svg">
     <!-- Скрипт подключается в конце body -->
     <link rel="stylesheet" href="public/css/admin.css">
@@ -1512,39 +1512,39 @@
 
     <!-- DOMPurify 3.2.7 self-hosted (since 2026-05-25) — устранён CSP sourcemap-noise
          от CDN + убрана зависимость от jsdelivr. SRI больше не нужен для self-hosted. -->
-    <script src="public/libs/dompurify/purify.min.js"></script>
+    <script src="public/libs/dompurify/purify.min.js?v=20260527"></script>
     
     <!-- Leaflet для мини-карт -->
     <link rel="stylesheet" href="public/libs/leaflet/leaflet.css" />
-    <script src="public/libs/leaflet/leaflet.js"></script>
+    <script src="public/libs/leaflet/leaflet.js?v=20260527"></script>
     
     <!-- Подключение утилит безопасности -->
-    <script src="public/dist/utils/domSecurity.js"></script>
+    <script src="public/dist/utils/domSecurity.js?v=20260527"></script>
 
     <!-- [hotfix 2026-05-25] CSRF helper MUST load before admin-auth.js — the
          fetch interceptor in admin-auth.js refuses to send any modifying API
          request when window.csrfProtection is missing (returns rejected
          promise with "CSRF protection module not loaded"). index.html already
          loaded csrf.js, admin.html did not — every admin save was failing. -->
-    <script src="public/dist/utils/csrf.js"></script>
+    <script src="public/dist/utils/csrf.js?v=20260527"></script>
 
     <!-- [Sprint 10 PR-5] UK rules client-side validation bounds -->
-    <script src="public/dist/utils/ukRulesValidation.js"></script>
+    <script src="public/dist/utils/ukRulesValidation.js?v=20260527"></script>
 
     <!-- [hotfix 2026-05-27 debug] Probe right before admin-auth.js to verify parsing reaches body. -->
-    <script src="public/admin-body-probe.js"></script>
+    <script src="public/admin-body-probe.js?v=20260527"></script>
 
     <!-- Подключаем систему авторизации перед основным скриптом -->
-    <script src="public/dist/admin-auth.js"></script>
+    <script src="public/dist/admin-auth.js?v=20260527"></script>
 
     <!-- Компонент редактирования координат -->
-    <script src="public/dist/admin-coordinate-editor.js"></script>
+    <script src="public/dist/admin-coordinate-editor.js?v=20260527"></script>
 
     <!-- Компонент редактирования линий инфраструктуры -->
-    <script src="public/dist/infrastructure-line-editor.js"></script>
+    <script src="public/dist/infrastructure-line-editor.js?v=20260527"></script>
 
     <!-- Основной скрипт админки -->
-    <script src="public/dist/admin.js"></script>
+    <script src="public/dist/admin.js?v=20260527"></script>
 
 <dialog id="change-password-modal" class="modal-dialog">
     <form id="change-password-form">

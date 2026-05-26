@@ -169,10 +169,10 @@
          [hotfix 2026-05-27] Path must include `public/` prefix — nginx root is at
          project root (verified: same prefix used by neighbouring login.js and
          domSecurity.js script tags below). Previous `libs/dompurify/...` was 404. -->
-    <script src="public/libs/dompurify/purify.min.js"></script>
+    <script src="public/libs/dompurify/purify.min.js?v=20260527"></script>
     
     <!-- Подключение утилит безопасности -->
-    <script src="public/dist/utils/domSecurity.js"></script>
+    <script src="public/dist/utils/domSecurity.js?v=20260527"></script>
 </head>
 <body>
     <div class="login-container">
@@ -268,7 +268,7 @@
     </div>
 
     <!-- [P1-3] Inline LoginHandler extracted to public/login.js so CSP can drop 'unsafe-inline' -->
-    <script src="public/login.js"></script>
+    <script src="public/login.js?v=20260527"></script>
 </body>
 </html>
 
