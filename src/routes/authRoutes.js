@@ -4,6 +4,27 @@ const { authenticateRefresh, authenticateTempToken } = require('../middleware/au
 const { authLimiter, registerLimiter, passwordChangeLimiter } = require('../middleware/rateLimiter');
 const router = express.Router();
 
+// [hotfix 2026-05-27] Disable client-side caching for ALL auth routes.
+//
+// Background: Express defaults `etag: true`. /auth/profile (and other JSON
+// responses on this router) get an auto-generated ETag from response body.
+// On repeat calls, the browser sends `If-None-Match` → server returns 304.
+// In the Fetch API, `response.ok` is FALSE for status 304, so client code
+// like `admin-auth.js validateToken()` sees the response as "not ok" and
+// treats it as a failed auth, triggering `logout()` → `/login.html`. After
+// re-login, the browser cache still serves 304 on next visit to /admin.html
+// → flip loop login ↔ admin observed on prod 2026-05-26 (~25s @ 1Hz).
+//
+// `Cache-Control: no-store` tells the browser to neither cache the body nor
+// send conditional revalidation requests. Server still computes ETag but
+// there's nothing to match against → always 200 → `response.ok` true.
+// `Pragma: no-cache` covers legacy HTTP/1.0 caches.
+router.use((req, res, next) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
+    next();
+});
+
 /**
  * @swagger
  * /auth/login:

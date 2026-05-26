@@ -166,8 +166,10 @@
     
     <!-- DOMPurify 3.2.7 self-hosted (since 2026-05-25) — устранён CSP sourcemap-noise
          от CDN + убрана зависимость от jsdelivr. SRI больше не нужен для self-hosted.
-         Path относительно public/ (этот файл лежит в public/login.html). -->
-    <script src="libs/dompurify/purify.min.js"></script>
+         [hotfix 2026-05-27] Path must include `public/` prefix — nginx root is at
+         project root (verified: same prefix used by neighbouring login.js and
+         domSecurity.js script tags below). Previous `libs/dompurify/...` was 404. -->
+    <script src="public/libs/dompurify/purify.min.js"></script>
     
     <!-- Подключение утилит безопасности -->
     <script src="public/dist/utils/domSecurity.js"></script>
