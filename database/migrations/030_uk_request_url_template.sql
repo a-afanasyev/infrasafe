@@ -28,11 +28,13 @@
 
 BEGIN;
 
-INSERT INTO integration_config (key, value, description)
+-- integration_config schema is (key, value, updated_at) only — no
+-- description column (verified against migration 011). Documentation
+-- for this row lives in this migration header comment above.
+INSERT INTO integration_config (key, value)
 VALUES (
     'uk_request_url_template',
-    '${uk_frontend_url}/dashboard?request=${uk_request_number}',
-    'URL template for the admin-UI "Открыть в УК" button. Substitutes ${uk_frontend_url} (from integration_config.uk_frontend_url) and ${uk_request_number} (from alert_request_map.uk_request_number). Confirmed contract with UK team 2026-05-27.'
+    '${uk_frontend_url}/dashboard?request=${uk_request_number}'
 )
 ON CONFLICT (key) DO NOTHING;
 
