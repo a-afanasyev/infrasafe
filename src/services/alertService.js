@@ -814,12 +814,39 @@ class InfrastructureAlertService {
         const countResult = await db.query(countQuery, values);
         const total = parseInt(countResult.rows[0].total);
 
+        // [B-001 / Sprint 11] uk_requests aggregation. LEFT JOIN against
+        // alert_request_map + json_agg so the frontend gets the related UK
+        // request numbers inline (one query instead of N+1 lazy fetches).
+        // FILTER (WHERE arm.uk_request_number IS NOT NULL) keeps unsent /
+        // pending mappings out of the array. COALESCE returns '[]'::json
+        // when there are no rows so consumers can always Array.isArray it.
+        // GROUP BY enumerates every non-aggregated column from the SELECT.
         const dataQuery = `
-            SELECT ia.*, u1.username as acknowledged_by_name, u2.username as resolved_by_name
+            SELECT
+                ia.alert_id, ia.type, ia.severity, ia.message, ia.status,
+                ia.infrastructure_id, ia.infrastructure_type, ia.affected_buildings,
+                ia.data, ia.acknowledged_by, ia.acknowledged_at,
+                ia.resolved_by, ia.resolved_at, ia.created_at, ia.updated_at,
+                ia.reopen_chain_id, ia.reopen_sequence, ia.previous_alert_id,
+                ia.previous_uk_request_number,
+                u1.username as acknowledged_by_name,
+                u2.username as resolved_by_name,
+                COALESCE(
+                    json_agg(
+                        json_build_object(
+                            'uk_request_number', arm.uk_request_number,
+                            'building_external_id', arm.building_external_id,
+                            'status', arm.status
+                        )
+                    ) FILTER (WHERE arm.uk_request_number IS NOT NULL),
+                    '[]'::json
+                ) AS uk_requests
             FROM infrastructure_alerts ia
             LEFT JOIN users u1 ON ia.acknowledged_by = u1.user_id
             LEFT JOIN users u2 ON ia.resolved_by = u2.user_id
+            LEFT JOIN alert_request_map arm ON arm.infrasafe_alert_id = ia.alert_id
             WHERE ${whereClause}
+            GROUP BY ia.alert_id, u1.username, u2.username
             ORDER BY ia.${sortColumn} ${sortOrder}
             LIMIT $${paramIdx++} OFFSET $${paramIdx++}
         `;
