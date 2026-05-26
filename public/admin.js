@@ -1015,6 +1015,15 @@ document.addEventListener("DOMContentLoaded", function () {
         showLoadingMessage("#alerts-table tbody", "9");
 
         try {
+            // [B-001 / Sprint 11] Eagerly load integration config so the
+            // «Открыть в УК» action knows uk_frontend_url + url_template
+            // without forcing the operator to visit the «Интеграция УК»
+            // tab first. Fire-and-forget — if it fails, the button just
+            // won't show (condition checks for non-empty url).
+            if (!integrationState.config || !integrationState.config.uk_frontend_url) {
+                loadIntegrationConfig().catch(() => { /* silent */ });
+            }
+
             const data = await loadData('/api/alerts', 'alerts');
             renderAlertsTable(data);
             updatePagination('alerts');
@@ -1023,6 +1032,84 @@ document.addEventListener("DOMContentLoaded", function () {
             console.error("Error loading alerts:", error);
             showErrorMessage("#alerts-table tbody", "9");
         }
+    }
+
+    // [B-001 / Sprint 11] Build a UK request deep-link from the configured
+    // template. Substitutes ${uk_frontend_url} and ${uk_request_number}.
+    // Returns null when configuration is incomplete so callers can skip
+    // rendering the link.
+    //
+    // Confirmed format with UK team 2026-05-27:
+    //   ${uk_frontend_url}/dashboard?request=${uk_request_number}
+    //   → https://infrasafe.uz/uk/dashboard?request=260527-001
+    // UK side will add useSearchParams to KanbanPage in a follow-up to
+    // auto-open the request modal; until then the link lands on the
+    // dashboard without the modal — acceptable per UK team.
+    function buildUkRequestUrl(uk_request_number) {
+        const config = integrationState.config || {};
+        const baseUrl = (config.uk_frontend_url || '').replace(/\/$/, '');
+        const template = config.uk_request_url_template
+            || '${uk_frontend_url}/dashboard?request=${uk_request_number}';
+        if (!baseUrl || !uk_request_number) return null;
+        return template
+            .replace(/\$\{uk_frontend_url\}/g, baseUrl)
+            .replace(/\$\{uk_request_number\}/g, encodeURIComponent(uk_request_number));
+    }
+
+    // [B-001 / Sprint 11] Open the UK request(s) linked to an alert in a
+    // new tab. For a single linked request we open it directly; for
+    // multiple (mass outage — N buildings, N tickets) we render a small
+    // dropdown so the operator chooses which ticket to inspect.
+    function openUkRequest(item) {
+        const requests = Array.isArray(item.uk_requests) ? item.uk_requests : [];
+        if (requests.length === 0) return;
+
+        if (requests.length === 1) {
+            const url = buildUkRequestUrl(requests[0].uk_request_number);
+            if (url) {
+                window.open(url, '_blank', 'noopener,noreferrer');
+            } else {
+                showToast('UK URL не настроен — проверьте «Интеграция УК»', 'error');
+            }
+            return;
+        }
+
+        // Multi-ticket popover. Built ad-hoc since we don't have a generic
+        // dropdown primitive in admin.js yet. Caller already validated
+        // condition (requests.length > 0) so we never render an empty list.
+        const existing = document.getElementById('uk-request-picker');
+        if (existing) existing.remove();
+
+        const picker = document.createElement('div');
+        picker.id = 'uk-request-picker';
+        picker.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);'
+            + 'background:white;border:1px solid #ccc;border-radius:6px;padding:16px;'
+            + 'box-shadow:0 4px 12px rgba(0,0,0,.15);z-index:9999;min-width:280px;';
+        const title = document.createElement('div');
+        title.textContent = `Связанные заявки УК (${requests.length}):`;
+        title.style.cssText = 'font-weight:600;margin-bottom:10px;';
+        picker.appendChild(title);
+
+        requests.forEach(req => {
+            const link = document.createElement('a');
+            link.href = buildUkRequestUrl(req.uk_request_number) || '#';
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.textContent = `№${req.uk_request_number}` + (req.status ? ` · ${req.status}` : '');
+            link.style.cssText = 'display:block;padding:6px 8px;margin:4px 0;'
+                + 'background:#f5f5f5;border-radius:4px;text-decoration:none;color:#0066cc;';
+            link.addEventListener('click', () => setTimeout(() => picker.remove(), 100));
+            picker.appendChild(link);
+        });
+
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = 'Закрыть';
+        closeBtn.className = 'btn-sm';
+        closeBtn.style.cssText = 'margin-top:10px;width:100%;';
+        closeBtn.addEventListener('click', () => picker.remove());
+        picker.appendChild(closeBtn);
+
+        document.body.appendChild(picker);
     }
 
     function getAlertStatusLabel(status) {
@@ -1081,6 +1168,18 @@ document.addEventListener("DOMContentLoaded", function () {
                     className: 'btn-sm btn-danger',
                     condition: (item) => item.status !== 'resolved',
                     handler: (item) => resolveAlert(item.alert_id)
+                },
+                // [B-001 / Sprint 11] Deep-link into the UK dashboard for
+                // operators reviewing an alert. Shows only when at least
+                // one alert_request_map row exists for this alert AND the
+                // uk_frontend_url is configured.
+                {
+                    label: 'Открыть в УК',
+                    className: 'btn-sm',
+                    condition: (item) => Array.isArray(item.uk_requests)
+                        && item.uk_requests.length > 0
+                        && !!(integrationState.config && integrationState.config.uk_frontend_url),
+                    handler: (item) => openUkRequest(item)
                 }
             ]
         });

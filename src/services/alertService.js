@@ -1071,12 +1071,37 @@ class InfrastructureAlertService {
         const countResult = await db.query(countQuery, values);
         const total = parseInt(countResult.rows[0].total);
 
+        // [B-001 / Sprint 11] uk_requests aggregation. LEFT JOIN against
+        // alert_request_map + json_agg so the frontend gets the related UK
+        // request numbers inline (one query instead of N+1 lazy fetches).
+        // FILTER (WHERE arm.uk_request_number IS NOT NULL) keeps unsent /
+        // pending mappings out of the array. COALESCE returns '[]'::json
+        // when there are no rows so consumers can always Array.isArray it.
+        // GROUP BY enumerates every non-aggregated column from the SELECT.
+        // Postgres allows SELECT ia.* with GROUP BY ia.alert_id (primary key —
+        // functional-dependency rule, since 9.1). This keeps the explicit
+        // column list out of sync with the table schema as the model evolves.
         const dataQuery = `
-            SELECT ia.*, u1.username as acknowledged_by_name, u2.username as resolved_by_name
+            SELECT
+                ia.*,
+                u1.username as acknowledged_by_name,
+                u2.username as resolved_by_name,
+                COALESCE(
+                    json_agg(
+                        json_build_object(
+                            'uk_request_number', arm.uk_request_number,
+                            'building_external_id', arm.building_external_id,
+                            'status', arm.status
+                        )
+                    ) FILTER (WHERE arm.uk_request_number IS NOT NULL),
+                    '[]'::json
+                ) AS uk_requests
             FROM infrastructure_alerts ia
             LEFT JOIN users u1 ON ia.acknowledged_by = u1.user_id
             LEFT JOIN users u2 ON ia.resolved_by = u2.user_id
+            LEFT JOIN alert_request_map arm ON arm.infrasafe_alert_id = ia.alert_id
             WHERE ${whereClause}
+            GROUP BY ia.alert_id, u1.username, u2.username
             ORDER BY ia.${sortColumn} ${sortOrder}
             LIMIT $${paramIdx++} OFFSET $${paramIdx++}
         `;
