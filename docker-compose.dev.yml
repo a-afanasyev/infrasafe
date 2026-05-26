@@ -74,6 +74,19 @@ services:
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-dev-refresh-secret-key-change-in-production}
       - CORS_ORIGINS=http://localhost:8088,http://localhost:3000
       - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-infrasafe-totp-dev-key-change-in-production-32ch}
+      # MV refresh scheduler relies on prod-only functions that are not in
+      # the dev schema (database/init/). Disable to keep the log clean —
+      # operators can opt back in by exporting MV_REFRESH_ENABLED=true.
+      - MV_REFRESH_ENABLED=${MV_REFRESH_ENABLED:-false}
+      # Alert verification queue is dormant by default (Sprint 10 rollout
+      # runbook flips it via CR-window in prod). Mirror that in dev so
+      # the scheduler doesn't run unless explicitly enabled.
+      - ALERT_VERIFICATION_ENABLED=${ALERT_VERIFICATION_ENABLED:-false}
+      # UK outbox sender stays off until UK Phase 2 + secret rotation.
+      # Mirror the prod default so dev doesn't accidentally enqueue
+      # webhooks toward the real UK endpoint when a developer flips
+      # uk_integration_enabled in the admin UI.
+      - UK_USE_WEBHOOK_SENDER=${UK_USE_WEBHOOK_SENDER:-false}
     depends_on:
       postgres:
         condition: service_healthy

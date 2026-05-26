@@ -9,8 +9,15 @@ RUN addgroup -g 1001 -S nodejs && \
 # Копируем только package files для установки зависимостей
 COPY package*.json ./
 
-# Устанавливаем все зависимости (включая dev для разработки)
-RUN npm install
+# Устанавливаем все зависимости (включая dev для разработки).
+# --ignore-scripts: postinstall (npm run build:frontend, Phase 12B.4)
+# требует build/ + public/, которых в этом слое ещё нет (мы копируем
+# только package*.json). На dev frontend bundle собирается на host
+# через `npm run build:frontend` или `:watch` — nginx читает public/
+# через volume mount, так что отдельный build внутри dev-контейнера
+# не нужен. Та же стратегия используется в Dockerfile.prod и
+# Dockerfile.frontend-only.
+RUN npm install --ignore-scripts
 
 # Создаем директорию для логов
 RUN mkdir -p logs
