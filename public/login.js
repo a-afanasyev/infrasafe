@@ -282,31 +282,34 @@
         }
     }
 
+    function traceLog(msg) {
+        try {
+            const buf = JSON.parse(localStorage.getItem('flip-trace') || '[]');
+            buf.push(Date.now() + ' [login] ' + msg);
+            if (buf.length > 80) buf.shift();
+            localStorage.setItem('flip-trace', JSON.stringify(buf));
+        } catch (_) {}
+        console.log('[LOGIN]', msg);
+    }
+
     document.addEventListener('DOMContentLoaded', async () => {
-        // [1A-FU-C-M1] Phase 2 — page-load "already logged in?" check
-        // can no longer read localStorage. Probe the cookie session by
-        // calling /api/auth/profile; if it returns 200 the cookie is
-        // valid and we redirect to admin. Anything else (401/network)
-        // → user is not logged in, render the form.
+        traceLog('DOMContentLoaded url=' + location.href);
         try {
             const res = await fetch('/api/auth/profile', {
                 method: 'GET',
                 credentials: 'same-origin'   // browser must send the cookie
             });
-            // [hotfix 2026-05-27] Debug logging while diagnosing flip loop.
-            console.log('[LOGIN] DOMContentLoaded /profile probe',
-                'status=' + res.status, 'ok=' + res.ok,
-                'redirected=' + res.redirected, 'url=' + res.url);
+            traceLog('/profile probe status=' + res.status + ' ok=' + res.ok
+                + ' redirected=' + res.redirected);
             if (res.ok) {
-                console.log('[LOGIN] /profile ok → redirecting to /admin.html');
+                traceLog('redirecting to /admin.html');
                 window.location.href = '/admin.html';
                 return;
             }
         } catch (e) {
-            console.warn('[LOGIN] /profile probe threw:', e.name, e.message);
-            // Network error — fall through to render the form.
+            traceLog('/profile threw ' + e.name + ': ' + e.message);
         }
-        console.log('[LOGIN] rendering login form (no valid session)');
+        traceLog('rendering login form (no valid session)');
         new LoginHandler();
     });
 }());

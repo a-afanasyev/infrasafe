@@ -38,42 +38,54 @@ class AdminAuth {
     }
 
     async validateToken() {
+        const traceLog = (msg) => {
+            try {
+                const buf = JSON.parse(localStorage.getItem('flip-trace') || '[]');
+                buf.push(Date.now() + ' [admin] ' + msg);
+                if (buf.length > 80) buf.shift();
+                localStorage.setItem('flip-trace', JSON.stringify(buf));
+            } catch (_) {}
+            console.log('[ADMIN-AUTH]', msg);
+        };
+
+        traceLog('validateToken start url=' + location.href);
         try {
             const response = await fetch('/api/auth/profile', {
                 method: 'GET',
                 credentials: 'same-origin'   // [1A-FU-C-M1] cookie carries auth
             });
 
-            // [hotfix 2026-05-27] Debug logging while diagnosing login↔admin
-            // flip loop. Remove after root cause confirmed.
-            console.log('[ADMIN-AUTH] validateToken response',
-                'status=' + response.status,
-                'ok=' + response.ok,
-                'type=' + response.type,
-                'redirected=' + response.redirected,
-                'url=' + response.url);
+            traceLog('validateToken response status=' + response.status
+                + ' ok=' + response.ok
+                + ' type=' + response.type
+                + ' redirected=' + response.redirected);
 
             if (response.ok) {
+                traceLog('validateToken OK → showAdminPanel');
                 this.isAuthenticated = true;
                 this.showAdminPanel();
                 this.setupAuthHeaders();
                 this.setupChangePassword();
                 window.dispatchEvent(new CustomEvent('admin-auth-ready'));
             } else {
-                console.warn('[ADMIN-AUTH] validateToken NOT OK → calling logout(). status=' + response.status);
+                traceLog('validateToken NOT OK → logout');
                 this.logout();
             }
         } catch (error) {
-            console.error('[ADMIN-AUTH] validateToken threw:', error.name, error.message, error);
+            traceLog('validateToken threw ' + error.name + ': ' + error.message);
             this.logout();
         }
     }
 
     logout() {
-        // [hotfix 2026-05-27] Stack trace logging while diagnosing the flip loop
-        // — want to know exactly who's calling logout().
+        // [hotfix 2026-05-27] Persist stack trace so we can read it after navigation.
         try {
-            console.warn('[ADMIN-AUTH] logout() called from:\n' + (new Error('logout-trace').stack));
+            const stack = (new Error('logout-trace').stack || '').split('\n').slice(0, 5).join(' | ');
+            const buf = JSON.parse(localStorage.getItem('flip-trace') || '[]');
+            buf.push(Date.now() + ' [admin] logout() called STACK=' + stack);
+            if (buf.length > 80) buf.shift();
+            localStorage.setItem('flip-trace', JSON.stringify(buf));
+            console.warn('[ADMIN-AUTH] logout() called from:\n' + stack);
         } catch (_) { /* defensive */ }
 
         // [P1-V1 / 1A-FU-C-M1] Best-effort server-side blacklist + cookie clear.
