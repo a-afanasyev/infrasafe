@@ -545,6 +545,13 @@ class InfrastructureAlertService {
                    OR electricity_ph2 NOT BETWEEN $3 AND $4
                    OR electricity_ph3 NOT BETWEEN $3 AND $4`;
 
+            const params = severity === 'CRITICAL'
+                ? [infrastructure_id, lookbackSeconds,
+                   voltage.warn_min, voltage.warn_max,
+                   voltage.crit_min, voltage.crit_max]
+                : [infrastructure_id, lookbackSeconds,
+                   voltage.warn_min, voltage.warn_max];
+
             const result = await db.query(
                 `SELECT COUNT(*) AS samples, MIN(timestamp) AS first_seen
                  FROM metrics
@@ -552,12 +559,7 @@ class InfrastructureAlertService {
                    AND timestamp >= NOW() - ($2::int * INTERVAL '1 second')
                    AND (electricity_ph1 IS NOT NULL OR electricity_ph2 IS NOT NULL OR electricity_ph3 IS NOT NULL)
                    AND (${filterClause})`,
-                [
-                    infrastructure_id,
-                    lookbackSeconds,
-                    voltage.warn_min, voltage.warn_max,
-                    voltage.crit_min, voltage.crit_max
-                ]
+                params
             );
             const samples = parseInt(result.rows[0].samples, 10);
             const firstSeen = result.rows[0].first_seen;

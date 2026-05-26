@@ -183,6 +183,38 @@ describe('AlertService — Sprint 10 persistence + buildings gates', () => {
             expect(db.query).toHaveBeenCalledTimes(2);
         });
 
+        test('WARNING gate passes exactly 4 SQL params (controllerId, lookback, warn_min, warn_max)', async () => {
+            // Regression for the bug found during dev smoke 2026-05-27:
+            // earlier version always passed 6 params, but the WARNING
+            // filterClause only references $1..$4 → Postgres errored
+            // "bind message supplies 6 parameters, but prepared statement
+            // requires 4". CRITICAL branch uses $5/$6 for the deep-band
+            // check, so it gets all 6.
+            AlertRule.findByTypeAndSeverity.mockResolvedValue(warnRule);
+            const firstSeen = new Date(Date.now() - 70_000).toISOString();
+            db.query
+                .mockResolvedValueOnce({ rows: [{ samples: '3', first_seen: firstSeen }] })
+                .mockResolvedValueOnce({ rows: [{ alert_id: 403, created_at: new Date().toISOString() }] });
+
+            await alertService.createAlert(baseAlert);
+
+            const gateParams = db.query.mock.calls[0][1];
+            expect(gateParams).toHaveLength(4);
+        });
+
+        test('CRITICAL gate passes exactly 6 SQL params (adds crit_min, crit_max)', async () => {
+            AlertRule.findByTypeAndSeverity.mockResolvedValue(critRule);
+            const firstSeen = new Date(Date.now() - 15_000).toISOString();
+            db.query
+                .mockResolvedValueOnce({ rows: [{ samples: '3', first_seen: firstSeen }] })
+                .mockResolvedValueOnce({ rows: [{ alert_id: 404, created_at: new Date().toISOString() }] });
+
+            await alertService.createAlert({ ...baseAlert, severity: 'CRITICAL' });
+
+            const gateParams = db.query.mock.calls[0][1];
+            expect(gateParams).toHaveLength(6);
+        });
+
         test('CRITICAL gate uses different predicate than WARNING (2+ phases or deep band)', async () => {
             AlertRule.findByTypeAndSeverity.mockResolvedValue(critRule);
             const firstSeen = new Date(Date.now() - 15_000).toISOString();
