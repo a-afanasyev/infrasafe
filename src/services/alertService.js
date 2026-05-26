@@ -821,14 +821,12 @@ class InfrastructureAlertService {
         // pending mappings out of the array. COALESCE returns '[]'::json
         // when there are no rows so consumers can always Array.isArray it.
         // GROUP BY enumerates every non-aggregated column from the SELECT.
+        // Postgres allows SELECT ia.* with GROUP BY ia.alert_id (primary key —
+        // functional-dependency rule, since 9.1). This keeps the explicit
+        // column list out of sync with the table schema as the model evolves.
         const dataQuery = `
             SELECT
-                ia.alert_id, ia.type, ia.severity, ia.message, ia.status,
-                ia.infrastructure_id, ia.infrastructure_type, ia.affected_buildings,
-                ia.data, ia.acknowledged_by, ia.acknowledged_at,
-                ia.resolved_by, ia.resolved_at, ia.created_at, ia.updated_at,
-                ia.reopen_chain_id, ia.reopen_sequence, ia.previous_alert_id,
-                ia.previous_uk_request_number,
+                ia.*,
                 u1.username as acknowledged_by_name,
                 u2.username as resolved_by_name,
                 COALESCE(
