@@ -22,6 +22,15 @@ const cacheService = require('./services/cacheService');
 // Создаем экземпляр приложения Express
 const app = express();
 app.set('trust proxy', 1);
+// [hotfix 2026-05-27] Disable Express auto-ETag generation globally.
+// Conditional revalidation on session-bound JSON responses (e.g. /api/auth/profile)
+// can return 304 to the browser, and Fetch API's `response.ok` is FALSE for 304 —
+// downstream JS like admin-auth.js treats that as a failed auth → logout flip loop
+// login.html ↔ admin.html. Route-level Cache-Control: no-store on authRoutes was
+// not enough in practice (browsers can still cache JSON even with no-store under
+// some conditions, then revalidate). Disabling ETag at the source removes the
+// conditional path entirely. APIs are dynamic — ETag-based caching has no upside.
+app.disable('etag');
 
 // Настройка порта
 const PORT = process.env.PORT || 3000;

@@ -293,13 +293,20 @@
                 method: 'GET',
                 credentials: 'same-origin'   // browser must send the cookie
             });
+            // [hotfix 2026-05-27] Debug logging while diagnosing flip loop.
+            console.log('[LOGIN] DOMContentLoaded /profile probe',
+                'status=' + res.status, 'ok=' + res.ok,
+                'redirected=' + res.redirected, 'url=' + res.url);
             if (res.ok) {
+                console.log('[LOGIN] /profile ok → redirecting to /admin.html');
                 window.location.href = '/admin.html';
                 return;
             }
-        } catch (_) {
+        } catch (e) {
+            console.warn('[LOGIN] /profile probe threw:', e.name, e.message);
             // Network error — fall through to render the form.
         }
+        console.log('[LOGIN] rendering login form (no valid session)');
         new LoginHandler();
     });
 }());

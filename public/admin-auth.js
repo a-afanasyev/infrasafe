@@ -44,6 +44,15 @@ class AdminAuth {
                 credentials: 'same-origin'   // [1A-FU-C-M1] cookie carries auth
             });
 
+            // [hotfix 2026-05-27] Debug logging while diagnosing login↔admin
+            // flip loop. Remove after root cause confirmed.
+            console.log('[ADMIN-AUTH] validateToken response',
+                'status=' + response.status,
+                'ok=' + response.ok,
+                'type=' + response.type,
+                'redirected=' + response.redirected,
+                'url=' + response.url);
+
             if (response.ok) {
                 this.isAuthenticated = true;
                 this.showAdminPanel();
@@ -51,15 +60,22 @@ class AdminAuth {
                 this.setupChangePassword();
                 window.dispatchEvent(new CustomEvent('admin-auth-ready'));
             } else {
+                console.warn('[ADMIN-AUTH] validateToken NOT OK → calling logout(). status=' + response.status);
                 this.logout();
             }
         } catch (error) {
-            console.error('Ошибка валидации токена:', error);
+            console.error('[ADMIN-AUTH] validateToken threw:', error.name, error.message, error);
             this.logout();
         }
     }
 
     logout() {
+        // [hotfix 2026-05-27] Stack trace logging while diagnosing the flip loop
+        // — want to know exactly who's calling logout().
+        try {
+            console.warn('[ADMIN-AUTH] logout() called from:\n' + (new Error('logout-trace').stack));
+        } catch (_) { /* defensive */ }
+
         // [P1-V1 / 1A-FU-C-M1] Best-effort server-side blacklist + cookie clear.
         // No localStorage to clean — cookies are the only token store now.
         // We don't await; network failures must not block the redirect.
