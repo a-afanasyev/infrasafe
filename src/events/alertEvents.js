@@ -43,6 +43,17 @@ alertEvents.EVENTS = Object.freeze({
     // inside createAlert filters single-blip noise; cooldown filters spam.
     LEAK_CHECK: 'leak.check',
 
+    // [B-005 / Sprint 11] Same contract as LEAK_CHECK — emitted by
+    // metricService when a metric lands with at least one non-null
+    // `electricity_ph*` value for VOLTAGE, or non-null `hot_water_in_temp`
+    // for HEATING. Listener does its own threshold + persistence-gate
+    // evaluation; emit-side does no threshold logic to keep single source
+    // of truth in alertService. NOT to be confused with VERIFY_VOLTAGE /
+    // VERIFY_HEATING below — those are post-resolve verification triggers
+    // from Sprint 10 PR-2, fired by alertVerificationService.
+    VOLTAGE_CHECK: 'voltage.check',
+    HEATING_CHECK: 'heating.check',
+
     // alertService → ukIntegrationService: an alert was just persisted;
     // if integration is enabled, forward it as a UK request.
     ALERT_CREATED: 'alert.created',

@@ -24,5 +24,24 @@ module.exports = Object.freeze({
     heating: Object.freeze({
         temp_delta_low: 15,      // °C delta — WARNING (heating_temp_delta_low)
         temp_delta_critical: 10, // °C delta — CRITICAL (heating_temp_delta_critical)
+        // [B-005-HEATING / Sprint 11] Hot-water inlet temperature gate for
+        // HEATING_FAILURE auto-trigger. Below 40°C — heat-supply has degraded
+        // (heat substation fail / cold riser); apartments cool down within
+        // 10-30 min. Operators can tune via this constant; persistence-gate
+        // (alert_rules.min_persistence_seconds=10s for CRITICAL) filters
+        // single-blip noise. Seasonal/time-of-day modes — Sprint 12.
+        hot_water_in_critical: 40,
+    }),
+    // [B-005-VOLTAGE / Sprint 11] Phase voltage gates for VOLTAGE_ANOMALY
+    // auto-trigger. ГОСТ ±10% from 220V nominal → [198, 242]; any phase
+    // outside that range triggers WARNING. Deep brownout/spike — outside
+    // [180, 260] OR 2+ phases simultaneously outside warning range —
+    // triggers CRITICAL. Three-phase asymmetry (typical РУ-0.4кВ fault)
+    // is the dominant failure mode we want to catch early.
+    voltage: Object.freeze({
+        warn_min: 198,
+        warn_max: 242,
+        crit_min: 180,
+        crit_max: 260,
     }),
 });

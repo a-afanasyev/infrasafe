@@ -127,6 +127,150 @@ describe('AlertService — Sprint 10 persistence + buildings gates', () => {
     });
 
     // ────────────────────────────────────────────────────────────────────
+    // [B-005 / Sprint 11] Persistence gate — VOLTAGE_ANOMALY
+    // ────────────────────────────────────────────────────────────────────
+
+    describe('persistence gate — VOLTAGE_ANOMALY via controller', () => {
+        const warnRule = {
+            id: 5,
+            alert_type: 'VOLTAGE_ANOMALY',
+            severity: 'WARNING',
+            min_persistence_seconds: 60,
+            min_affected_buildings: 1
+        };
+        const critRule = {
+            id: 5,
+            alert_type: 'VOLTAGE_ANOMALY',
+            severity: 'CRITICAL',
+            min_persistence_seconds: 10,
+            min_affected_buildings: 1
+        };
+        const baseAlert = {
+            type: 'VOLTAGE_ANOMALY',
+            severity: 'WARNING',
+            infrastructure_type: 'controller',
+            infrastructure_id: 1,
+            message: 'Voltage anomaly',
+            data: {}
+        };
+
+        test('WARNING gate denies when fewer than 2 out-of-range samples in window', async () => {
+            AlertRule.findByTypeAndSeverity.mockResolvedValue(warnRule);
+            db.query.mockResolvedValueOnce({
+                rows: [{ samples: '1', first_seen: new Date().toISOString() }]
+            });
+
+            const result = await alertService.createAlert(baseAlert);
+
+            expect(result).toBeNull();
+            expect(logger.info).toHaveBeenCalledWith(
+                expect.stringContaining('VOLTAGE persistence (WARNING): only 1 samples')
+            );
+            expect(db.query).toHaveBeenCalledTimes(1);
+        });
+
+        test('WARNING gate proceeds when ≥2 samples spanning ≥ min_persistence_seconds', async () => {
+            AlertRule.findByTypeAndSeverity.mockResolvedValue(warnRule);
+            const firstSeen = new Date(Date.now() - 70_000).toISOString();
+            db.query
+                .mockResolvedValueOnce({ rows: [{ samples: '5', first_seen: firstSeen }] })
+                .mockResolvedValueOnce({ rows: [{ alert_id: 401, created_at: new Date().toISOString() }] });
+
+            const result = await alertService.createAlert(baseAlert);
+
+            expect(result).not.toBeNull();
+            expect(result.alert_id).toBe(401);
+            expect(db.query).toHaveBeenCalledTimes(2);
+        });
+
+        test('CRITICAL gate uses different predicate than WARNING (2+ phases or deep band)', async () => {
+            AlertRule.findByTypeAndSeverity.mockResolvedValue(critRule);
+            const firstSeen = new Date(Date.now() - 15_000).toISOString();
+            db.query
+                .mockResolvedValueOnce({ rows: [{ samples: '3', first_seen: firstSeen }] })
+                .mockResolvedValueOnce({ rows: [{ alert_id: 402, created_at: new Date().toISOString() }] });
+
+            const result = await alertService.createAlert({
+                ...baseAlert, severity: 'CRITICAL'
+            });
+
+            expect(result).not.toBeNull();
+            // First call is the gate SELECT — verify CRITICAL filter clause was used
+            const gateSql = db.query.mock.calls[0][0];
+            expect(gateSql).toMatch(/CASE WHEN electricity_ph1 NOT BETWEEN/);
+            expect(gateSql).toMatch(/>= 2/); // 2+ phases predicate
+            expect(gateSql).toMatch(/electricity_ph1 NOT BETWEEN \$5 AND \$6/); // deep band
+        });
+
+        test('denies when 2 samples landed but condition observed for too short', async () => {
+            AlertRule.findByTypeAndSeverity.mockResolvedValue(warnRule);
+            const firstSeen = new Date(Date.now() - 20_000).toISOString();
+            db.query.mockResolvedValueOnce({
+                rows: [{ samples: '2', first_seen: firstSeen }]
+            });
+
+            const result = await alertService.createAlert(baseAlert);
+
+            expect(result).toBeNull();
+            expect(logger.info).toHaveBeenCalledWith(
+                expect.stringContaining('condition observed for 20s, need 60s')
+            );
+        });
+    });
+
+    // ────────────────────────────────────────────────────────────────────
+    // [B-005 / Sprint 11] Persistence gate — HEATING_FAILURE
+    // ────────────────────────────────────────────────────────────────────
+
+    describe('persistence gate — HEATING_FAILURE via controller', () => {
+        const rule = {
+            id: 6,
+            alert_type: 'HEATING_FAILURE',
+            severity: 'CRITICAL',
+            min_persistence_seconds: 10,
+            min_affected_buildings: 1
+        };
+        const baseAlert = {
+            type: 'HEATING_FAILURE',
+            severity: 'CRITICAL',
+            infrastructure_type: 'controller',
+            infrastructure_id: 1,
+            message: 'Heating failure',
+            data: {}
+        };
+
+        test('denies when fewer than 2 sub-threshold samples in window', async () => {
+            AlertRule.findByTypeAndSeverity.mockResolvedValue(rule);
+            db.query.mockResolvedValueOnce({
+                rows: [{ samples: '1', first_seen: new Date().toISOString() }]
+            });
+
+            const result = await alertService.createAlert(baseAlert);
+
+            expect(result).toBeNull();
+            expect(logger.info).toHaveBeenCalledWith(
+                expect.stringContaining('HEATING persistence: only 1 sub-threshold samples')
+            );
+        });
+
+        test('proceeds when ≥2 samples spanning ≥ min_persistence_seconds', async () => {
+            AlertRule.findByTypeAndSeverity.mockResolvedValue(rule);
+            const firstSeen = new Date(Date.now() - 15_000).toISOString();
+            db.query
+                .mockResolvedValueOnce({ rows: [{ samples: '4', first_seen: firstSeen }] })
+                .mockResolvedValueOnce({ rows: [{ alert_id: 500, created_at: new Date().toISOString() }] });
+
+            const result = await alertService.createAlert(baseAlert);
+
+            expect(result).not.toBeNull();
+            expect(result.alert_id).toBe(500);
+            // Verify the gate SQL uses the hot_water_in_temp predicate
+            const gateSql = db.query.mock.calls[0][0];
+            expect(gateSql).toMatch(/hot_water_in_temp < \$3/);
+        });
+    });
+
+    // ────────────────────────────────────────────────────────────────────
     // Persistence gate — fail-open for non-LEAK types in v1
     // ────────────────────────────────────────────────────────────────────
 

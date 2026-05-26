@@ -298,23 +298,212 @@ class InfrastructureAlertService {
         }
     }
 
+    // [B-005 / Sprint 11] VOLTAGE auto-trigger. Mirrors checkLeak contract:
+    // dedup → cooldown → createAlert (gate inside) → bump cooldown only on
+    // success. Severity is determined dynamically:
+    //   - any phase outside [crit_min, crit_max] OR ≥2 phases outside the
+    //     warning band [warn_min, warn_max] → CRITICAL
+    //   - otherwise any 1 phase outside [warn_min, warn_max] → WARNING
+    //   - all three phases inside [warn_min, warn_max] (or all NULL) → no alert
+    // Classification is done by _classifyVoltageSeverity which does a single
+    // SQL aggregation over recent metrics (~600s lookback) so a single-blip
+    // out-of-range reading doesn't escalate severity prematurely. The
+    // per-rule persistence-gate inside createAlert then re-checks
+    // min_persistence_seconds against samples spanning the right interval.
+    async checkVoltage(controllerId) {
+        await this.ensureInitialized();
+
+        const checkKey = `controller:${controllerId}:voltage_check`;
+        const now = Date.now();
+
+        if (this.lastChecks.has(checkKey)) {
+            const lastCheck = this.lastChecks.get(checkKey);
+            if (now - lastCheck < this.alertCooldown * 60 * 1000) {
+                return null;
+            }
+        }
+
+        try {
+            const severity = await this._classifyVoltageSeverity(controllerId);
+            if (!severity) {
+                // Voltage is currently within both warn and crit bands —
+                // nothing to do. Do not bump cooldown so we can re-check
+                // promptly when the next metric lands.
+                return null;
+            }
+
+            // In-memory dedup — fast path before DB. The dedup key is per
+            // alert-type, so a WARNING alert active doesn't block a later
+            // CRITICAL alert (different key). createAlert's DB-level partial
+            // unique index handles the deeper invariant.
+            const alertKey = `controller:${controllerId}:VOLTAGE_ANOMALY`;
+            if (this.activeAlerts.has(alertKey)) {
+                logger.debug(`VOLTAGE_ANOMALY для контроллера ${controllerId} уже активен`);
+                this.lastChecks.set(checkKey, now);
+                return null;
+            }
+
+            const alertData = {
+                type: 'VOLTAGE_ANOMALY',
+                severity,
+                infrastructure_id: controllerId,
+                infrastructure_type: 'controller',
+                message: severity === 'CRITICAL'
+                    ? `Критическая аномалия напряжения на контроллере ${controllerId} — глубокая просадка или несколько фаз вне нормы.`
+                    : `Аномалия напряжения на контроллере ${controllerId} — одна из фаз вне допустимого диапазона.`,
+                affected_buildings: 1,
+                data: {
+                    source: 'auto_voltage_check',
+                    controller_id: controllerId,
+                    detected_at: new Date().toISOString(),
+                    classified_severity: severity
+                }
+            };
+
+            const createdAlert = await this.createAlert(alertData);
+            if (createdAlert) {
+                this.lastChecks.set(checkKey, now);
+            }
+            return createdAlert;
+        } catch (error) {
+            logger.error(`Ошибка checkVoltage для контроллера ${controllerId}: ${error.message}`);
+            return null;
+        }
+    }
+
+    // [B-005 / Sprint 11] Classify the current voltage condition. Returns
+    // 'CRITICAL', 'WARNING', or null. Looks back 600s — long enough to
+    // catch a sustained fault but short enough to avoid stale data from
+    // a previous incident. The actual persistence-gate (≥2 samples
+    // spanning ≥ min_persistence_seconds) runs inside createAlert.
+    async _classifyVoltageSeverity(controllerId) {
+        const { voltage } = sharedThresholds;
+        const result = await db.query(
+            `SELECT
+                COUNT(*) FILTER (
+                    WHERE electricity_ph1 NOT BETWEEN $2 AND $3
+                       OR electricity_ph2 NOT BETWEEN $2 AND $3
+                       OR electricity_ph3 NOT BETWEEN $2 AND $3
+                ) AS warn_samples,
+                COUNT(*) FILTER (
+                    WHERE (CASE WHEN electricity_ph1 NOT BETWEEN $2 AND $3 THEN 1 ELSE 0 END)
+                        + (CASE WHEN electricity_ph2 NOT BETWEEN $2 AND $3 THEN 1 ELSE 0 END)
+                        + (CASE WHEN electricity_ph3 NOT BETWEEN $2 AND $3 THEN 1 ELSE 0 END) >= 2
+                      OR electricity_ph1 NOT BETWEEN $4 AND $5
+                      OR electricity_ph2 NOT BETWEEN $4 AND $5
+                      OR electricity_ph3 NOT BETWEEN $4 AND $5
+                ) AS crit_samples
+            FROM metrics
+            WHERE controller_id = $1
+              AND (electricity_ph1 IS NOT NULL OR electricity_ph2 IS NOT NULL OR electricity_ph3 IS NOT NULL)
+              AND timestamp >= NOW() - INTERVAL '600 seconds'`,
+            [controllerId, voltage.warn_min, voltage.warn_max, voltage.crit_min, voltage.crit_max]
+        );
+        const warnSamples = parseInt(result.rows[0].warn_samples, 10);
+        const critSamples = parseInt(result.rows[0].crit_samples, 10);
+        if (critSamples > 0) return 'CRITICAL';
+        if (warnSamples > 0) return 'WARNING';
+        return null;
+    }
+
+    // [B-005 / Sprint 11] HEATING auto-trigger. Hot-water inlet temperature
+    // below threshold (default 40°C) indicates heat-supply degradation:
+    // heat substation failure, cold riser, or supply company outage.
+    // Severity is hardcoded CRITICAL — there is no useful "mild" band;
+    // either the substation delivers warm water or it doesn't. Operators
+    // can tune via thresholds.heating.hot_water_in_critical.
+    async checkHeating(controllerId) {
+        await this.ensureInitialized();
+
+        const checkKey = `controller:${controllerId}:heating_check`;
+        const now = Date.now();
+
+        if (this.lastChecks.has(checkKey)) {
+            const lastCheck = this.lastChecks.get(checkKey);
+            if (now - lastCheck < this.alertCooldown * 60 * 1000) {
+                return null;
+            }
+        }
+
+        try {
+            // Cheap preliminary check — do we have any anomalous samples at
+            // all in the lookback window? Saves a createAlert call (which
+            // dereferences AlertRule + persistence-gate SQL) when telemetry
+            // is normal. Persistence-gate inside createAlert still runs the
+            // full ≥2 samples spanning ≥ minSeconds check.
+            const hasAnomaly = await this._hasRecentHeatingAnomaly(controllerId);
+            if (!hasAnomaly) {
+                return null;
+            }
+
+            const alertKey = `controller:${controllerId}:HEATING_FAILURE`;
+            if (this.activeAlerts.has(alertKey)) {
+                logger.debug(`HEATING_FAILURE для контроллера ${controllerId} уже активен`);
+                this.lastChecks.set(checkKey, now);
+                return null;
+            }
+
+            const alertData = {
+                type: 'HEATING_FAILURE',
+                severity: 'CRITICAL',
+                infrastructure_id: controllerId,
+                infrastructure_type: 'controller',
+                message: `Отказ теплоснабжения — температура ГВС на контроллере ${controllerId} ниже допустимой.`,
+                affected_buildings: 1,
+                data: {
+                    source: 'auto_heating_check',
+                    controller_id: controllerId,
+                    detected_at: new Date().toISOString()
+                }
+            };
+
+            const createdAlert = await this.createAlert(alertData);
+            if (createdAlert) {
+                this.lastChecks.set(checkKey, now);
+            }
+            return createdAlert;
+        } catch (error) {
+            logger.error(`Ошибка checkHeating для контроллера ${controllerId}: ${error.message}`);
+            return null;
+        }
+    }
+
+    // [B-005 / Sprint 11] Quick predicate — is there at least one sub-
+    // threshold hot_water_in_temp reading in the recent window? Used by
+    // checkHeating to short-circuit on healthy controllers.
+    async _hasRecentHeatingAnomaly(controllerId) {
+        const { heating } = sharedThresholds;
+        const result = await db.query(
+            `SELECT 1
+             FROM metrics
+             WHERE controller_id = $1
+               AND hot_water_in_temp IS NOT NULL
+               AND hot_water_in_temp < $2
+               AND timestamp >= NOW() - INTERVAL '600 seconds'
+             LIMIT 1`,
+            [controllerId, heating.hot_water_in_critical]
+        );
+        return result.rows.length > 0;
+    }
+
     // [Sprint 10 PR-1] Persistence gate. Returns { allowed, reason }.
     //
     // For LEAK_DETECTED via controller — SQL aggregation against `metrics`
     // counting `leak_sensor=true` samples whose earliest reading is at least
     // `minSeconds` ago. ≥2 samples needed to filter single-blip noise.
     //
-    // For other types (TRANSFORMER_*, VOLTAGE_ANOMALY, HEATING_FAILURE):
-    // fail-open in v1 — those metrics come pre-aggregated via analyticsService
-    // and implementing per-type persistence requires rolling-window helpers
-    // that are out of scope for PR-1. Tracked as Sprint 10.x follow-up.
+    // [B-005 / Sprint 11] Extended to VOLTAGE_ANOMALY and HEATING_FAILURE.
+    // For TRANSFORMER_* — still fail-open in v1 (analyticsService aggregates
+    // pre-window, persistence semantics would require rolling helpers that
+    // are out of scope here).
     async _checkPersistenceGate(alertData, rule) {
         const minSeconds = rule.min_persistence_seconds;
         if (!minSeconds || minSeconds <= 0) {
             return { allowed: true, reason: 'persistence disabled (min=0)' };
         }
 
-        const { type, infrastructure_type, infrastructure_id } = alertData;
+        const { type, severity, infrastructure_type, infrastructure_id } = alertData;
+        const lookbackSeconds = Math.max(minSeconds * 2, 600);
 
         if (type === 'LEAK_DETECTED' && infrastructure_type === 'controller') {
             const result = await db.query(
@@ -323,14 +512,13 @@ class InfrastructureAlertService {
                  WHERE controller_id = $1
                    AND leak_sensor = true
                    AND timestamp >= NOW() - ($2::int * INTERVAL '1 second')`,
-                [infrastructure_id, Math.max(minSeconds * 2, 600)] // look back 2x window or 10min min
+                [infrastructure_id, lookbackSeconds]
             );
             const samples = parseInt(result.rows[0].samples, 10);
             const firstSeen = result.rows[0].first_seen;
             if (samples < 2) {
                 return { allowed: false, reason: `LEAK persistence: only ${samples} leak samples in lookback window` };
             }
-            // First qualifying sample must be at least `minSeconds` ago
             const firstSeenAge = (Date.now() - new Date(firstSeen).getTime()) / 1000;
             if (firstSeenAge < minSeconds) {
                 return { allowed: false, reason: `LEAK persistence: condition observed for ${firstSeenAge.toFixed(0)}s, need ${minSeconds}s` };
@@ -338,9 +526,76 @@ class InfrastructureAlertService {
             return { allowed: true, reason: `LEAK persistence OK: ${samples} samples spanning ${firstSeenAge.toFixed(0)}s` };
         }
 
-        // Fail-open for unsupported type/infra combinations (Sprint 10.x will
-        // extend coverage for TRANSFORMER/VOLTAGE/HEATING via rolling-window
-        // aggregations in analyticsService).
+        if (type === 'VOLTAGE_ANOMALY' && infrastructure_type === 'controller') {
+            // Two-tier predicate: WARNING needs ≥2 samples with any phase
+            // outside the warn band; CRITICAL needs ≥2 samples with either
+            // 2+ phases outside warn band OR any phase outside crit band.
+            // We pick the predicate that matches the alertData.severity so
+            // a WARNING alert isn't blocked by absence of CRITICAL samples
+            // and vice versa.
+            const { voltage } = sharedThresholds;
+            const filterClause = severity === 'CRITICAL'
+                ? `((CASE WHEN electricity_ph1 NOT BETWEEN $3 AND $4 THEN 1 ELSE 0 END)
+                  + (CASE WHEN electricity_ph2 NOT BETWEEN $3 AND $4 THEN 1 ELSE 0 END)
+                  + (CASE WHEN electricity_ph3 NOT BETWEEN $3 AND $4 THEN 1 ELSE 0 END)) >= 2
+                  OR electricity_ph1 NOT BETWEEN $5 AND $6
+                  OR electricity_ph2 NOT BETWEEN $5 AND $6
+                  OR electricity_ph3 NOT BETWEEN $5 AND $6`
+                : `electricity_ph1 NOT BETWEEN $3 AND $4
+                   OR electricity_ph2 NOT BETWEEN $3 AND $4
+                   OR electricity_ph3 NOT BETWEEN $3 AND $4`;
+
+            const result = await db.query(
+                `SELECT COUNT(*) AS samples, MIN(timestamp) AS first_seen
+                 FROM metrics
+                 WHERE controller_id = $1
+                   AND timestamp >= NOW() - ($2::int * INTERVAL '1 second')
+                   AND (electricity_ph1 IS NOT NULL OR electricity_ph2 IS NOT NULL OR electricity_ph3 IS NOT NULL)
+                   AND (${filterClause})`,
+                [
+                    infrastructure_id,
+                    lookbackSeconds,
+                    voltage.warn_min, voltage.warn_max,
+                    voltage.crit_min, voltage.crit_max
+                ]
+            );
+            const samples = parseInt(result.rows[0].samples, 10);
+            const firstSeen = result.rows[0].first_seen;
+            if (samples < 2) {
+                return { allowed: false, reason: `VOLTAGE persistence (${severity}): only ${samples} samples in lookback window` };
+            }
+            const firstSeenAge = (Date.now() - new Date(firstSeen).getTime()) / 1000;
+            if (firstSeenAge < minSeconds) {
+                return { allowed: false, reason: `VOLTAGE persistence (${severity}): condition observed for ${firstSeenAge.toFixed(0)}s, need ${minSeconds}s` };
+            }
+            return { allowed: true, reason: `VOLTAGE persistence OK (${severity}): ${samples} samples spanning ${firstSeenAge.toFixed(0)}s` };
+        }
+
+        if (type === 'HEATING_FAILURE' && infrastructure_type === 'controller') {
+            const { heating } = sharedThresholds;
+            const result = await db.query(
+                `SELECT COUNT(*) AS samples, MIN(timestamp) AS first_seen
+                 FROM metrics
+                 WHERE controller_id = $1
+                   AND hot_water_in_temp IS NOT NULL
+                   AND hot_water_in_temp < $3
+                   AND timestamp >= NOW() - ($2::int * INTERVAL '1 second')`,
+                [infrastructure_id, lookbackSeconds, heating.hot_water_in_critical]
+            );
+            const samples = parseInt(result.rows[0].samples, 10);
+            const firstSeen = result.rows[0].first_seen;
+            if (samples < 2) {
+                return { allowed: false, reason: `HEATING persistence: only ${samples} sub-threshold samples in lookback window` };
+            }
+            const firstSeenAge = (Date.now() - new Date(firstSeen).getTime()) / 1000;
+            if (firstSeenAge < minSeconds) {
+                return { allowed: false, reason: `HEATING persistence: condition observed for ${firstSeenAge.toFixed(0)}s, need ${minSeconds}s` };
+            }
+            return { allowed: true, reason: `HEATING persistence OK: ${samples} samples spanning ${firstSeenAge.toFixed(0)}s` };
+        }
+
+        // Fail-open for unsupported type/infra combinations (TRANSFORMER_*
+        // still pending rolling-window aggregations in analyticsService).
         return { allowed: true, reason: `persistence not enforced for ${type}/${infrastructure_type} in v1` };
     }
 
@@ -945,6 +1200,32 @@ alertEvents.on(alertEvents.EVENTS.LEAK_CHECK, (payload) => {
         .then(() => singleton.checkLeak(controllerId))
         .catch(err => logger.error(
             `alertEvents leak.check handler: ${err.message}`
+        ));
+});
+
+// [B-005 / Sprint 11] VOLTAGE + HEATING auto-trigger listeners.
+// metricService emits these after persisting a metric carrying the
+// relevant non-null columns (electricity_ph* for voltage, hot_water_in_temp
+// for heating). Listener runs persistence-gated SQL aggregation inside
+// alertService.checkVoltage / checkHeating; cooldown bumped only on
+// successful createAlert (mirror checkLeak invariant — see e15436f).
+alertEvents.on(alertEvents.EVENTS.VOLTAGE_CHECK, (payload) => {
+    const { controllerId } = payload || {};
+    if (controllerId == null) return;
+    Promise.resolve()
+        .then(() => singleton.checkVoltage(controllerId))
+        .catch(err => logger.error(
+            `alertEvents voltage.check handler: ${err.message}`
+        ));
+});
+
+alertEvents.on(alertEvents.EVENTS.HEATING_CHECK, (payload) => {
+    const { controllerId } = payload || {};
+    if (controllerId == null) return;
+    Promise.resolve()
+        .then(() => singleton.checkHeating(controllerId))
+        .catch(err => logger.error(
+            `alertEvents heating.check handler: ${err.message}`
         ));
 });
 

@@ -186,6 +186,45 @@ class MetricService {
                 }
             }
 
+            // [B-005 / Sprint 11] VOLTAGE auto-trigger path. Emit when the
+            // metric carries any non-null phase voltage. Listener
+            // (alertService.checkVoltage) does its own threshold + persistence
+            // gating — emitter stays NULL-prefilter-only so single source of
+            // truth for ranges lives in thresholds.js.
+            if (controllerId && (
+                metricData.electricity_ph1 != null ||
+                metricData.electricity_ph2 != null ||
+                metricData.electricity_ph3 != null
+            )) {
+                try {
+                    alertEvents.emit(alertEvents.EVENTS.VOLTAGE_CHECK, {
+                        controllerId,
+                        metricId: newMetric.metric_id
+                    });
+                } catch (emitErr) {
+                    logger.warn(
+                        `Не удалось опубликовать voltage.check для контроллера ${controllerId}: ${emitErr.message}`
+                    );
+                }
+            }
+
+            // [B-005 / Sprint 11] HEATING auto-trigger path. Emit when the
+            // metric carries a hot-water inlet reading. checkHeating
+            // short-circuits on healthy controllers via a cheap SELECT 1
+            // predicate before touching createAlert.
+            if (controllerId && metricData.hot_water_in_temp != null) {
+                try {
+                    alertEvents.emit(alertEvents.EVENTS.HEATING_CHECK, {
+                        controllerId,
+                        metricId: newMetric.metric_id
+                    });
+                } catch (emitErr) {
+                    logger.warn(
+                        `Не удалось опубликовать heating.check для контроллера ${controllerId}: ${emitErr.message}`
+                    );
+                }
+            }
+
             logger.info(`Создана новая метрика для контроллера ${controllerId} (ID: ${newMetric.metric_id})`);
             return newMetric;
         } catch (error) {
