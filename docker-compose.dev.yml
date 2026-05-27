@@ -9,23 +9,20 @@ services:
     ports:
       - "8088:8080"
     volumes:
-      # Монтируем все статические файлы для мгновенного отражения изменений
-      - ./index.html:/usr/share/nginx/html/index.html:ro
-      - ./admin.html:/usr/share/nginx/html/admin.html:ro
-      - ./about.html:/usr/share/nginx/html/about.html:ro
-      - ./contacts.html:/usr/share/nginx/html/contacts.html:ro
-      - ./documentation.html:/usr/share/nginx/html/documentation.html:ro
-      - ./test-layers.html:/usr/share/nginx/html/test-layers.html:ro
-      - ./public/login.html:/usr/share/nginx/html/login.html:ro
-      - ./docs/MAP_LAYERS_GUIDE.md:/usr/share/nginx/html/MAP_LAYERS_GUIDE.md:ro
-      
-      # Монтируем CSS
+      # [B-002] HTML pages live in ./frontend-html/. The directory is
+      # bind-mounted to a SEPARATE target (/srv/frontend-html), not
+      # overlayed on /usr/share/nginx/html — Docker rejects sub-mounts
+      # on top of a ro parent mount, which broke the first attempt.
+      # nginx.dev.conf routes HTML requests there via a location block
+      # so `git pull` is picked up immediately (directory mounts resolve
+      # the filename through the dir entry on every request; individual
+      # file mounts captured the host inode at container start, leaving
+      # nginx serving stale markup until a `docker restart`).
+      - ./frontend-html:/srv/frontend-html:ro
+
+      # CSS / JS bundles / data — already directory mounts, kept as-is.
       - ./css:/usr/share/nginx/html/css:ro
-      
-      # Монтируем все публичные файлы
       - ./public:/usr/share/nginx/html/public:ro
-      
-      # Монтируем данные и изображения
       - ./data:/usr/share/nginx/html/data:ro
       
       # Монтируем конфигурацию nginx для быстрого изменения

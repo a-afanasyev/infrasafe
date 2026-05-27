@@ -46,9 +46,10 @@ COPY nginx.conf /etc/nginx/nginx.conf
 
 WORKDIR /usr/share/nginx/html
 
-# Копируем HTML файлы
-COPY index.html .
-COPY *.html .
+# [B-002] HTML pages live in /srv/frontend-html (mount target separate
+# from /usr/share/nginx/html where css/public/data live). nginx config
+# routes HTML via `root /srv/frontend-html;` in its location block.
+COPY frontend-html/ /srv/frontend-html/
 
 # Копируем статические ресурсы
 COPY css/ ./css/
