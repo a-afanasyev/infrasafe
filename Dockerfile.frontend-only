@@ -28,9 +28,13 @@ COPY nginx-frontend-only.conf /etc/nginx/nginx.conf
 
 WORKDIR /usr/share/nginx/html
 
-# HTML страницы и статика
-COPY index.html .
-COPY *.html .
+# [B-002] HTML pages live in /srv/frontend-html (separate from
+# /usr/share/nginx/html where css/public/data live) so the compose
+# bind-mount doesn't conflict with subdirectory overlays. nginx config
+# routes HTML requests to /srv/frontend-html via a location block.
+COPY frontend-html/ /srv/frontend-html/
+
+# Статика — остаётся в стандартной директории nginx.
 COPY css/ ./css/
 COPY data/ ./data/
 
