@@ -56,7 +56,11 @@ describe('[P1-3] DOMPurify self-hosted (no CDN, no SRI needed)', () => {
         const violations = [];
         for (const file of HTML_PAGES) {
             const html = read(file);
-            if (/cdn\.jsdelivr\.net/i.test(html)) {
+            // String.includes() rather than regex so CodeQL's "missing
+            // anchor on URL pattern" js/regex/missing-regexp-anchor rule
+            // does not flag us — we're not parsing URLs, just looking
+            // for an exact substring.
+            if (html.toLowerCase().includes('cdn.jsdelivr.net')) {
                 violations.push(file);
             }
         }
@@ -127,7 +131,10 @@ describe('[P1-3] nginx production CSP no longer permits unsafe-inline on script-
             /add_header\s+Content-Security-Policy\s+"([^"]+)"/
         );
         const scriptSrc = cspMatch[1].match(/script-src([^;]+);/)[1];
-        expect(scriptSrc).not.toMatch(/cdn\.jsdelivr\.net/);
+        // String.includes() instead of .not.toMatch(/url/) to avoid
+        // CodeQL's js/regex/missing-regexp-anchor warning — same
+        // reasoning as the HTML scan above.
+        expect(scriptSrc.includes('cdn.jsdelivr.net')).toBe(false);
     });
 
     // [1A-FU-S-L1] fonts.googleapis.com serves CSS, not JS, so it has
