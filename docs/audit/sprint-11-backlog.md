@@ -11,11 +11,31 @@
 
 > Во время раскатки PR #59 / #60 / #61 / #62 / #63 на прод (`95.46.96.105`) вскрылись пять явных drift'ов между декларированным compose-стеком и реальным состоянием контейнеров. Каждый из них стоил debug-петли (auth-fail → migration replay → network диагностика). Чинить пакетно до следующего серьёзного деплоя.
 
+### Re-verification 2026-05-28 (post-deploy, read-only probes)
+
+| ID | Статус | Изменение в формулировке |
+|---|---|---|
+| B-010 | ✅ verified | Уточнено: source-of-truth = `docker-compose.prod.yml` (не unified.yml); drift был от ручного `network connect uk-network`; решение по топологии — keep app OUT of uk-network |
+| B-011 | ✅ verified | `inspect` подтвердил alias `postgres` в обоих контейнерах; mechanism для B-010 |
+| B-012 | ✅ verified | bind-mount confirmed single-file |
+| B-013 | ✅ verified | `.env.prod` всё ещё имеет `DB_USER=infrasafe_runtime`; обе роли существуют на проде |
+| B-014 | 🔄 **re-rooted** | НЕ wget missing — `localhost`→IPv6 vs nginx IPv4 only. FailingStreak=1560 (~13ч) |
+| B-015 | ✅ verified | 0 containers, создана 2025-11-23 |
+| B-016 | n/a | design item |
+
+**Quick-wins для отдельного PR**:
+- B-014: 1-строчная правка в `unified.yml` (`localhost` → `127.0.0.1`).
+- B-015: 1 команда `docker network rm site-content_leaflet-network`.
+
 ### B-010 — Compose vs runtime network drift (`infrasafe-app-1`)
 
-**Что**. Контейнер `infrasafe-app-1` после `docker compose up -d --build --no-deps app` оказался прикреплён к `infrasafe_leaflet-network` + **`uk-network`**, хотя в `docker-compose.unified.yml` он декларирован только в `infrasafe-network` + `leaflet-network`. Сеть `infrasafe_infrasafe-network` (где живёт `infrasafe-postgres-1`) была недоступна — DNS lookup `postgres` уходил через uk-network к `uk-postgres`.
+**Re-verified 2026-05-28**. ✅ Подтверждена. Текущее состояние: app в `infrasafe_infrasafe-network` + `infrasafe_leaflet-network` (соответствует `docker-compose.prod.yml`). Мой `docker network disconnect uk-network` восстановил compose-state — drift был от прошлого ручного `network connect uk-network`.
 
-**Почему**. Compose recreate сохраняет существующие network attachments если они были добавлены руками через `docker network connect`. Никто не помнит когда и зачем app попал в uk-network — но дeploy сегодня показал что compose не отрегулирован.
+**Уточнение source-of-truth.** Прод развёрнут через `docker-compose.prod.yml` (несмотря на "DEPRECATED" комментарий в шапке), НЕ через `docker-compose.unified.yml`. Доказательство: реальная сеть `infrasafe_infrasafe-network` существует — она определена в `prod.yml:145`, не в `unified.yml`. В `unified.yml:81` app сидит в `leaflet-network + uk-network` (это by-design для приёма webhook от UK bot).
+
+**Что**. Контейнер `infrasafe-app-1` после прошлых deploy'ев оказался прикреплён к `infrasafe_leaflet-network` + **`uk-network`**, хотя `docker-compose.prod.yml:75-78` декларирует только `infrasafe-network` + `leaflet-network`. Сеть `infrasafe_infrasafe-network` (где живёт `infrasafe-postgres-1`) оказалась недоступна для DNS — lookup `postgres` уходил через uk-network к `uk-postgres`.
+
+**Почему**. Compose recreate сохраняет существующие network attachments добавленные через `docker network connect`. Кто-то когда-то `connect uk-network infrasafe-app-1` сделал руками (возможно для теста UK→InfraSafe webhook), и оно прижилось как state в .docker metadata.
 
 **Fix во время deploy** (ad-hoc):
 ```
@@ -24,11 +44,23 @@ docker network disconnect uk-network infrasafe-app-1
 docker restart infrasafe-app-1
 ```
 
-**Trigger**. До следующего PR который трогает compose / network. Иначе ad-hoc fix потеряется при следующем recreate.
+**Связь с B-011**. Drift был *триггером*, alias collision (`postgres` в обеих сетях) — *механизмом*. Чинить вместе.
 
-**Estimate**. ~1 час: явно прописать `infrasafe-network: {}` для app в compose + написать `--remove-orphans`-like assertion в deploy runbook.
+**Решение по топологии**. Поскольку UK→InfraSafe webhook идёт через **public HTTPS edge** (см. CLAUDE.md, network topology раздел), app *не должен* быть в `uk-network` напрямую. То есть `prod.yml` корректен; `unified.yml` имеет лишнюю attach.
+
+**Fix план**.
+- Удалить attach к `uk-network` из `unified.yml:81` (готовим миграцию на unified.yml в будущем).
+- Добавить assert в deploy-runbook: `docker inspect infrasafe-app-1 --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}'` должен НЕ содержать `uk-network`.
+
+**Trigger**. До следующего PR который трогает compose / network.
+
+**Estimate**. ~1 час.
 
 ### B-011 — DNS alias collisions между `infrasafe_*` и `uk-network`
+
+**Re-verified 2026-05-28**. ✅ Подтверждена. Inspect показал:
+- `uk-postgres` в `uk-network` имеет aliases `[uk-postgres, postgres]`
+- `infrasafe-postgres-1` в `infrasafe_infrasafe-network` имеет aliases `[infrasafe-postgres-1, postgres]`
 
 **Что**. Несколько алиасов резолвятся к разным контейнерам в зависимости от network attach order:
 
@@ -39,7 +71,7 @@ docker restart infrasafe-app-1
 | `frontend` | `infrasafe-frontend-1` | `uk-frontend` ⚠ | — |
 | `app` | `infrasafe-app-1` ✓ | `uk-management-bot` ⚠ | — |
 
-Контейнер сидящий в обеих сетях резолвит alias через первый DNS-hit — порядок зависит от docker DNS server и attach sequence. B-010 — именно этот сценарий: app получил `postgres` из uk-network.
+Контейнер сидящий в обеих сетях резолвит alias через первый DNS-hit — порядок зависит от docker DNS server и attach sequence. **B-010 — именно этот сценарий**: app получил `postgres` из uk-network → auth-fail на UK postgres'е.
 
 **Почему**. Архитектурная утечка: имена сервисов между двумя независимыми compose-проектами collide. Любая будущая ошибка attach → silent routing в чужую DB.
 
@@ -54,7 +86,14 @@ docker restart infrasafe-app-1
 
 ### B-012 — `nginx.production.conf` single-file bind-mount — та же inode-trap что HTML до B-002
 
-**Что**. `docker-compose.unified.yml` маунтит `./nginx.production.conf:/etc/nginx/nginx.conf:ro` как одиночный файл. После `git pull` (новый inode на хосте) `nginx -s reload` использует старый pinned inode → меняешь config, изменения не подхватываются до `--force-recreate`.
+**Re-verified 2026-05-28**. ✅ Подтверждена. `docker inspect infrasafe-nginx-1` показал:
+```
+bind /home/infrasafe/infrasafe/nginx.production.conf -> /etc/nginx/nginx.conf
+bind /home/infrasafe/infrasafe/frontend-html -> /srv/frontend-html
+```
+Frontend-html уже directory (B-002 закрыт), nginx.production.conf — single file (latent B-012).
+
+**Что**. `docker-compose.unified.yml:262` (и аналогично в `prod.yml` через старый deploy script) маунтит `./nginx.production.conf:/etc/nginx/nginx.conf:ro` как одиночный файл. После `git pull` (новый inode на хосте) `nginx -s reload` использует старый pinned inode → меняешь config, изменения не подхватываются до `--force-recreate`.
 
 Случилось сегодня: после моего фикса location-приоритета (#63) `git pull` + `nginx -s reload` не сменили serving поведение — пришлось делать полный `up -d --force-recreate --no-deps nginx`.
 
@@ -70,6 +109,8 @@ docker restart infrasafe-app-1
 **Estimate**. ~2 часа: рефакторинг + verify smoke.
 
 ### B-013 — `.env.prod` DB_USER drift vs migration 017
+
+**Re-verified 2026-05-28**. ✅ Подтверждена. `grep DB_USER ~/infrasafe/.env.prod` показал `DB_USER=infrasafe_runtime`. App при этом сейчас healthy → значит роль `infrasafe_runtime` всё ещё существует в `infrasafe-postgres-1` (миграция 017 НЕ дропнула старую при создании новой, либо seed создаёт обе).
 
 **Что**. `.env.prod` имеет `DB_USER=infrasafe_runtime`, миграция 017 переименовала runtime role в `infrasafe_app`. На проде оба роли существуют (`infrasafe_app` для migrations/admin, `infrasafe_runtime` для app), но рассинхрон паролей вылез сегодня — app не мог auth.
 
@@ -87,21 +128,40 @@ docker restart infrasafe-app-1
 
 **Estimate**. ~1 час: тестовый flow на staging (если есть), apply, restart, verify.
 
-### B-014 — `infrasafe-frontend-1` healthcheck wget vs curl / port mismatch
+### B-014 — `infrasafe-frontend-1` healthcheck `localhost` resolves to IPv6, nginx слушает только IPv4
 
-**Что**. `infrasafe-frontend-1` отображается как **unhealthy** (52+ min). Внутри контейнера `curl -sI http://localhost:8080/health` → 200 OK, но healthcheck (предположительно из Dockerfile HEALTHCHECK) использует `wget` и получает `Connection refused`.
+**Re-verified 2026-05-28**. 🔄 **Re-rooted**. Изначальная гипотеза (wget missing / curl needed) НЕВЕРНА — `wget` есть в alpine. Реальная причина:
 
-**Почему**. Контейнер функционально работает (public traffic через nginx идёт, статика отдаётся), но docker отмечает unhealthy → потенциально мешает orchestration / auto-restart policies / Prometheus alerts на наш мониторинг.
+```bash
+# Внутри infrasafe-frontend-1:
+$ wget -qO- http://localhost:8080/health
+wget: can't connect to remote host: Connection refused
+$ wget -qO- http://127.0.0.1:8080/health
+healthy
+```
 
-**Fix план**.
-- Проверить `HEALTHCHECK` директиву в `Dockerfile.frontend-only` — заменить wget на curl (curl уже доступен, см. `RUN apk add --no-cache curl`).
-- Или поправить compose-level healthcheck чтобы оверрайдил Dockerfile.
+Healthcheck использует hostname `localhost` который в современном alpine резолвится **сначала в `::1` (IPv6)**, но nginx в контейнере слушает только `0.0.0.0:8080` (IPv4). FailingStreak — 1560 (13ч на 30s interval) с момента старта контейнера.
 
-**Trigger**. Косметика, но раздражает в `docker ps`. Перед следующим frontend rebuild.
+**Что**. `infrasafe-frontend-1` отображается как **unhealthy** (12+ часов). Все 1560 health-проб упали с "Connection refused" — реальный сервис работает (`127.0.0.1:8080/health` отвечает `healthy`), но `localhost` lookup упирается в IPv6.
 
-**Estimate**. ~30 минут.
+**Почему**. Контейнер функционально работает (public traffic через nginx идёт, статика отдаётся), но docker отмечает unhealthy → потенциально мешает orchestration / auto-restart policies / любые мониторинг alerts на этот healthcheck.
+
+**Fix план** (тривиальный).
+- В `docker-compose.unified.yml:26` заменить:
+  ```diff
+  - test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+  + test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+  ```
+- Аналогично для `app` service line 93: `http://localhost:3000/health` → `http://127.0.0.1:3000/health`.
+- Альтернатива (если хочется keep `localhost`): добавить в nginx config `listen [::]:8080;` — но IPv4 explicit проще.
+
+**Trigger**. Косметика, но раздражает в `docker ps` и портит любой мониторинг. Включить в следующий compose-touch PR.
+
+**Estimate**. ~10 минут (edit + verify).
 
 ### B-015 — Orphan network `site-content_leaflet-network`
+
+**Re-verified 2026-05-28**. ✅ Подтверждена. `docker network inspect site-content_leaflet-network` → `0 containers, created 2025-11-23 23:20:04` (~6 месяцев назад).
 
 **Что**. Сеть `site-content_leaflet-network` (172.18.0.0/16) существует на проде но пустая (нет контейнеров). Остаток от какого-то предыдущего compose проекта `site-content`.
 
