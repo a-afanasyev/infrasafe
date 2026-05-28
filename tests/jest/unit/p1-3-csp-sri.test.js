@@ -21,32 +21,64 @@ function read(p) {
     return fs.readFileSync(path.resolve(REPO_ROOT, p), 'utf8');
 }
 
+// [B-017] HTML pages moved to frontend-html/ during Sprint 10 PR-5
+// (B-002 directory mount fix). login.html was also relocated from
+// public/ into frontend-html/ at the same time.
 const HTML_PAGES = [
-    'index.html',
-    'admin.html',
-    'about.html',
-    'contacts.html',
-    'documentation.html',
-    'public/login.html'
+    'frontend-html/index.html',
+    'frontend-html/admin.html',
+    'frontend-html/about.html',
+    'frontend-html/contacts.html',
+    'frontend-html/documentation.html',
+    'frontend-html/login.html'
 ];
 
-describe('[P1-3] SRI on CDN <script> tags', () => {
+// [B-017] DOMPurify moved from cdn.jsdelivr.net to self-hosted (see
+// public/libs/dompurify/purify.min.js) in commit dated 2026-05-25. The
+// CDN <script src=…cdn.jsdelivr.net…> tag no longer exists in HTML and
+// the SRI contract on it is moot; instead we assert the self-hosted tag
+// is present (no external load means SRI is intrinsically irrelevant —
+// the integrity is the local file itself).
+describe('[P1-3] DOMPurify self-hosted (no CDN, no SRI needed)', () => {
     test.each([
-        'index.html',
-        'admin.html',
-        'public/login.html'
-    ])('%s — DOMPurify CDN tag carries integrity + crossorigin + referrerpolicy', (file) => {
+        'frontend-html/index.html',
+        'frontend-html/admin.html',
+        'frontend-html/login.html'
+    ])('%s — loads DOMPurify from local public/libs/dompurify', (file) => {
         const html = read(file);
-        const dompurifyTag = html.match(
-            /<script[^>]*src="https:\/\/cdn\.jsdelivr\.net\/npm\/dompurify@[^"]+\.min\.js"[^>]*>/i
+        const localTag = html.match(
+            /<script[^>]*src="public\/libs\/dompurify\/purify\.min\.js[^"]*"[^>]*>/i
         );
-        expect(dompurifyTag).toBeTruthy();
-        expect(dompurifyTag[0]).toMatch(/integrity="sha(?:256|384|512)-[A-Za-z0-9+/=]+"/);
-        expect(dompurifyTag[0]).toMatch(/crossorigin="anonymous"/);
-        expect(dompurifyTag[0]).toMatch(/referrerpolicy="no-referrer"/);
+        expect(localTag).toBeTruthy();
     });
 
-    test('no CDN <script> tag in repo is missing integrity=', () => {
+    test('no HTML page in repo loads a script from cdn.jsdelivr.net (self-hosted policy)', () => {
+        // Parse every <script src=…> and inspect its hostname via URL().
+        // Avoids both the unanchored-regex CodeQL warning AND the
+        // incomplete-url-substring-sanitization warning — we're doing
+        // proper URL parsing, exact hostname equality.
+        const FORBIDDEN_HOST = 'cdn.jsdelivr.net';
+        const violations = [];
+        for (const file of HTML_PAGES) {
+            const html = read(file);
+            const tags = html.match(/<script\b[^>]*\bsrc="([^"]+)"/gi) || [];
+            for (const tag of tags) {
+                const m = tag.match(/src="([^"]+)"/i);
+                if (!m) continue;
+                const src = m[1];
+                if (!src.startsWith('http://') && !src.startsWith('https://')) continue;
+                let host;
+                try { host = new URL(src).hostname.toLowerCase(); }
+                catch (_) { continue; }
+                if (host === FORBIDDEN_HOST) {
+                    violations.push(`${file}: ${src}`);
+                }
+            }
+        }
+        expect(violations).toEqual([]);
+    });
+
+    test('no CDN <script> tag in repo is missing integrity= (still applies if a CDN re-introduced)', () => {
         const violations = [];
         for (const file of HTML_PAGES) {
             const html = read(file);
@@ -102,12 +134,26 @@ describe('[P1-3] nginx production CSP no longer permits unsafe-inline on script-
         expect(scriptSrc).not.toMatch(/'unsafe-eval'/);
     });
 
-    test('script-src still allows jsdelivr (DOMPurify CDN)', () => {
+    // [B-017] cdn.jsdelivr.net removed from script-src on 2026-05-25 once
+    // DOMPurify went self-hosted. The CSP must NOT re-introduce it without
+    // a matching <script src> review.
+    test('script-src does NOT allow cdn.jsdelivr.net (self-hosted DOMPurify policy)', () => {
         const cspMatch = nginxConf.match(
             /add_header\s+Content-Security-Policy\s+"([^"]+)"/
         );
         const scriptSrc = cspMatch[1].match(/script-src([^;]+);/)[1];
-        expect(scriptSrc).toMatch(/https:\/\/cdn\.jsdelivr\.net/);
+        // Tokenize the directive, parse the http/https sources as URLs
+        // and check exact hostname. Avoids CodeQL's URL-substring
+        // sanitisation warning — same reasoning as the HTML scan above.
+        const FORBIDDEN_HOST = 'cdn.jsdelivr.net';
+        const tokens = scriptSrc.split(/\s+/).filter(Boolean);
+        const allowedHosts = [];
+        for (const tok of tokens) {
+            if (!tok.startsWith('http://') && !tok.startsWith('https://')) continue;
+            try { allowedHosts.push(new URL(tok).hostname.toLowerCase()); }
+            catch (_) { /* ignore non-URL tokens */ }
+        }
+        expect(allowedHosts).not.toContain(FORBIDDEN_HOST);
     });
 
     // [1A-FU-S-L1] fonts.googleapis.com serves CSS, not JS, so it has
