@@ -41,8 +41,10 @@ ENV NODE_ENV=production \
 USER nodejs
 
 # Улучшенный healthcheck
+# [B-014] 127.0.0.1, not localhost — alpine resolves localhost to ::1 first
+# but the app binds only to IPv4. See docker-compose.unified.yml comment.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:3000/health || exit 1
+    CMD curl -f http://127.0.0.1:3000/health || exit 1
 
 EXPOSE 3000
 

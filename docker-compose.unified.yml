@@ -23,7 +23,11 @@ services:
           cpus: '0.1'
           memory: 64M
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      # [B-014] Use 127.0.0.1 instead of `localhost`: alpine resolves localhost
+      # to ::1 (IPv6) first, but nginx binds only to 0.0.0.0 (IPv4). Result was
+      # `Connection refused` on every health probe — FailingStreak=1560 (~13ч)
+      # despite the public site working fine.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -90,7 +94,9 @@ services:
           cpus: '0.5'
           memory: 256M
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      # [B-014] Same IPv6/IPv4 fix as frontend — use 127.0.0.1 explicitly so
+      # we don't depend on the resolver's default v6/v4 preference.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
