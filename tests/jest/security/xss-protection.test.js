@@ -97,10 +97,13 @@ describe('XSS Protection Tests', () => {
     describe('DOMPurify Integration', () => {
         // Проверка подключения DOMPurify
         
+        // [B-017] HTML pages live in frontend-html/ since Sprint 10 PR-5
+        // (B-002 directory mount fix). login.html moved off public/ at the
+        // same time so all HTML lives in one mount target.
         const htmlFiles = [
-            'index.html',
-            'admin.html',
-            'public/login.html'
+            'frontend-html/index.html',
+            'frontend-html/admin.html',
+            'frontend-html/login.html'
         ];
         
         htmlFiles.forEach(file => {
@@ -249,13 +252,13 @@ describe('XSS Protection Tests', () => {
         });
         
         test('login flow should use safe DOM methods for error messages', () => {
-            // [P1-3] Inline <script> in public/login.html was extracted to
+            // [P1-3] Inline <script> in login.html was extracted to
             // public/login.js so the production CSP can drop 'unsafe-inline'.
-            // The safe-DOM assertion now reads BOTH files and passes if
-            // either contains textContent / DOMSecurity (the JS is what
-            // matters; the HTML is the loader).
+            // [B-017] login.html moved from public/ to frontend-html/ during
+            // the Sprint 10 PR-5 directory mount migration; login.js stays
+            // in public/ because it's a bundled JS asset, not a page.
             const html = fs.readFileSync(
-                path.join(__dirname, '../../../public/login.html'),
+                path.join(__dirname, '../../../frontend-html/login.html'),
                 'utf8'
             );
             const js = fs.readFileSync(
