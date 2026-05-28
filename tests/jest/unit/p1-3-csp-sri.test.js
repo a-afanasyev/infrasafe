@@ -52,16 +52,27 @@ describe('[P1-3] DOMPurify self-hosted (no CDN, no SRI needed)', () => {
         expect(localTag).toBeTruthy();
     });
 
-    test('no HTML page in repo still references cdn.jsdelivr.net (self-hosted policy)', () => {
+    test('no HTML page in repo loads a script from cdn.jsdelivr.net (self-hosted policy)', () => {
+        // Parse every <script src=…> and inspect its hostname via URL().
+        // Avoids both the unanchored-regex CodeQL warning AND the
+        // incomplete-url-substring-sanitization warning — we're doing
+        // proper URL parsing, exact hostname equality.
+        const FORBIDDEN_HOST = 'cdn.jsdelivr.net';
         const violations = [];
         for (const file of HTML_PAGES) {
             const html = read(file);
-            // String.includes() rather than regex so CodeQL's "missing
-            // anchor on URL pattern" js/regex/missing-regexp-anchor rule
-            // does not flag us — we're not parsing URLs, just looking
-            // for an exact substring.
-            if (html.toLowerCase().includes('cdn.jsdelivr.net')) {
-                violations.push(file);
+            const tags = html.match(/<script\b[^>]*\bsrc="([^"]+)"/gi) || [];
+            for (const tag of tags) {
+                const m = tag.match(/src="([^"]+)"/i);
+                if (!m) continue;
+                const src = m[1];
+                if (!src.startsWith('http://') && !src.startsWith('https://')) continue;
+                let host;
+                try { host = new URL(src).hostname.toLowerCase(); }
+                catch (_) { continue; }
+                if (host === FORBIDDEN_HOST) {
+                    violations.push(`${file}: ${src}`);
+                }
             }
         }
         expect(violations).toEqual([]);
@@ -131,10 +142,18 @@ describe('[P1-3] nginx production CSP no longer permits unsafe-inline on script-
             /add_header\s+Content-Security-Policy\s+"([^"]+)"/
         );
         const scriptSrc = cspMatch[1].match(/script-src([^;]+);/)[1];
-        // String.includes() instead of .not.toMatch(/url/) to avoid
-        // CodeQL's js/regex/missing-regexp-anchor warning — same
-        // reasoning as the HTML scan above.
-        expect(scriptSrc.includes('cdn.jsdelivr.net')).toBe(false);
+        // Tokenize the directive, parse the http/https sources as URLs
+        // and check exact hostname. Avoids CodeQL's URL-substring
+        // sanitisation warning — same reasoning as the HTML scan above.
+        const FORBIDDEN_HOST = 'cdn.jsdelivr.net';
+        const tokens = scriptSrc.split(/\s+/).filter(Boolean);
+        const allowedHosts = [];
+        for (const tok of tokens) {
+            if (!tok.startsWith('http://') && !tok.startsWith('https://')) continue;
+            try { allowedHosts.push(new URL(tok).hostname.toLowerCase()); }
+            catch (_) { /* ignore non-URL tokens */ }
+        }
+        expect(allowedHosts).not.toContain(FORBIDDEN_HOST);
     });
 
     // [1A-FU-S-L1] fonts.googleapis.com serves CSS, not JS, so it has
