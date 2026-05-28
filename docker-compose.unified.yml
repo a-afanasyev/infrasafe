@@ -78,11 +78,18 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      # leaflet-network — обращение к postgres и frontend
+      # [B-010 2026-05-28] uk-network убран — все UK→InfraSafe webhook'и
+      # приходят через public HTTPS edge (см. CLAUDE.md «Network topology»),
+      # InfraSafe→UK outbound — через nginx /uk/api/* rewrite. Никаких прямых
+      # docker-DNS вызовов между app и uk-network контейнерами нет.
+      # Оставить только app здесь = вернёт B-011 alias collision на `postgres`
+      # (uk-postgres и infrasafe-postgres-1 оба имеют alias `postgres` в своих сетях).
+      #
+      # infrasafe-network — где живёт postgres на проде (наследие prod.yml топологии).
+      # Объявлен как external ниже чтобы compose не пересоздавал существующую сеть.
+      - infrasafe-network
+      # leaflet-network — общая шина с frontend / redis / nginx.
       - leaflet-network
-      # uk-network — приём webhook'ов от UK (uk-management-bot → infrasafe-app:3000)
-      # external network создаётся при поднятии UK-стека первым.
-      - uk-network
     restart: unless-stopped
     # [Sprint 6 / P1-V13] Hardening ported from docker-compose.prod.yml.
     deploy:
@@ -312,10 +319,21 @@ volumes:
 networks:
   leaflet-network:
     driver: bridge
+  # [B-010 2026-05-28] infrasafe-network существует на проде с момента когда
+  # `docker-compose.prod.yml` был активным compose-файлом. postgres всё ещё
+  # привязан только к этой сети (не пересоздавали с unified.yml). Объявляем
+  # её здесь как external чтобы app мог зарегиться в той же сети где postgres
+  # и DNS-резолв `postgres` → `infrasafe-postgres-1` работал детерминированно.
+  # Если когда-то будете чистить и пересоздавать postgres через unified.yml —
+  # переведите postgres + app полностью на leaflet-network и уберите этот блок.
+  infrasafe-network:
+    external: true
+    name: infrasafe_infrasafe-network
   # uk-network создаётся UK-стеком (docker-compose.production.yml в репо UK).
   # external: true → этот compose ожидает, что сеть уже существует.
   # Поэтому ПЕРЕД поднятием InfraSafe нужно поднять UK-стек:
   #   docker compose -f ~/uk/docker-compose.production.yml up -d
+  # NB: app в этой сети НЕ должен быть (B-010 + B-011). Только nginx ниже.
   uk-network:
     external: true
     name: uk-network

@@ -27,35 +27,6 @@
 - B-014: 1-строчная правка в `unified.yml` (`localhost` → `127.0.0.1`).
 - B-015: 1 команда `docker network rm site-content_leaflet-network`.
 
-### B-010 — Compose vs runtime network drift (`infrasafe-app-1`)
-
-**Re-verified 2026-05-28**. ✅ Подтверждена. Текущее состояние: app в `infrasafe_infrasafe-network` + `infrasafe_leaflet-network` (соответствует `docker-compose.prod.yml`). Мой `docker network disconnect uk-network` восстановил compose-state — drift был от прошлого ручного `network connect uk-network`.
-
-**Уточнение source-of-truth.** Прод развёрнут через `docker-compose.prod.yml` (несмотря на "DEPRECATED" комментарий в шапке), НЕ через `docker-compose.unified.yml`. Доказательство: реальная сеть `infrasafe_infrasafe-network` существует — она определена в `prod.yml:145`, не в `unified.yml`. В `unified.yml:81` app сидит в `leaflet-network + uk-network` (это by-design для приёма webhook от UK bot).
-
-**Что**. Контейнер `infrasafe-app-1` после прошлых deploy'ев оказался прикреплён к `infrasafe_leaflet-network` + **`uk-network`**, хотя `docker-compose.prod.yml:75-78` декларирует только `infrasafe-network` + `leaflet-network`. Сеть `infrasafe_infrasafe-network` (где живёт `infrasafe-postgres-1`) оказалась недоступна для DNS — lookup `postgres` уходил через uk-network к `uk-postgres`.
-
-**Почему**. Compose recreate сохраняет существующие network attachments добавленные через `docker network connect`. Кто-то когда-то `connect uk-network infrasafe-app-1` сделал руками (возможно для теста UK→InfraSafe webhook), и оно прижилось как state в .docker metadata.
-
-**Fix во время deploy** (ad-hoc):
-```
-docker network connect infrasafe_infrasafe-network infrasafe-app-1
-docker network disconnect uk-network infrasafe-app-1
-docker restart infrasafe-app-1
-```
-
-**Связь с B-011**. Drift был *триггером*, alias collision (`postgres` в обеих сетях) — *механизмом*. Чинить вместе.
-
-**Решение по топологии**. Поскольку UK→InfraSafe webhook идёт через **public HTTPS edge** (см. CLAUDE.md, network topology раздел), app *не должен* быть в `uk-network` напрямую. То есть `prod.yml` корректен; `unified.yml` имеет лишнюю attach.
-
-**Fix план**.
-- Удалить attach к `uk-network` из `unified.yml:81` (готовим миграцию на unified.yml в будущем).
-- Добавить assert в deploy-runbook: `docker inspect infrasafe-app-1 --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}'` должен НЕ содержать `uk-network`.
-
-**Trigger**. До следующего PR который трогает compose / network.
-
-**Estimate**. ~1 час.
-
 ### B-011 — DNS alias collisions между `infrasafe_*` и `uk-network`
 
 **Re-verified 2026-05-28**. ✅ Подтверждена. Inspect показал:
@@ -269,6 +240,22 @@ docker network rm site-content_leaflet-network
 ---
 
 ## Closed / removed
+
+### ✅ B-010 — Compose vs runtime network drift (`infrasafe-app-1`) (closed 2026-05-28)
+
+**Shipped**: PR `chore/b-010-app-uk-network-detach` (см. soon-merged ссылку).
+
+**Что сделано**.
+- `docker-compose.unified.yml` (app.networks L80-92): убрали `uk-network`, явно добавили `infrasafe-network` (external, ссылка на существующий `infrasafe_infrasafe-network`). Теперь app сидит только в `[infrasafe-network, leaflet-network]` — общая шина с postgres сохраняется, а DNS `postgres` детерминированно резолвится в `infrasafe-postgres-1`.
+- `docker-compose.unified.yml` (networks block L312-327): добавлено объявление `infrasafe-network: external: true, name: infrasafe_infrasafe-network` с комментарием о наследии prod.yml топологии.
+- `CLAUDE.md` (Network topology paragraph): удалена устаревшая «If you ever need to restore» парентеза; заменена явным запретом re-attach app в uk-network + ссылкой на B-011 alias collision как причину.
+
+**Verified**.
+- R3 pre-deploy check: postgres только в `infrasafe_infrasafe-network` — потому external ref в unified.yml корректная.
+- Post-merge prod deploy: `git pull` + `docker compose -f docker-compose.unified.yml up -d --force-recreate --no-deps app`. App пересоздан, остался в `[infrasafe_infrasafe-network, infrasafe_leaflet-network]`, не вернулся в uk-network. healthy через ~60 сек. B-014 healthcheck IPv4 fix активирован одновременно (Dockerfile.prod HEALTHCHECK CMD).
+- Public site продолжает отвечать (`/api/health` → 401 ожидаемо для default-deny).
+
+**Связь с B-011**. Теперь app физически не в uk-network → alias collision на `postgres` не может произойти даже теоретически. Но B-011 остаётся как latent risk для будущих add-network операций; полное закрытие через alias rename — отдельный PR с UK координацией.
 
 ### ✅ B-005-VOLTAGE + B-005-HEATING — auto-trigger checkers (closed 2026-05-28, deployed 2026-05-28 ~00:33 UTC)
 
