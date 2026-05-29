@@ -166,6 +166,12 @@ class AlertVerification {
     /**
      * Mark verification passed — sensor recovered, no reopen needed.
      * Increments attempts (audit trail) and stamps processed_at.
+     *
+     * [B-020] All terminal mark* methods carry `AND status = 'pending'` so a
+     * crash-retry is a true no-op: alertVerificationService finalizes the
+     * parent alert FIRST then calls mark*; if it crashes between the two, the
+     * row stays 'pending' and the next drain re-runs without re-stamping
+     * processed_at / double-bumping attempts. Mirrors markDispatched's guard.
      */
     static async markPassed(id) {
         try {
@@ -174,7 +180,7 @@ class AlertVerification {
                  SET status = 'passed',
                      attempts = attempts + 1,
                      processed_at = NOW()
-                 WHERE id = $1
+                 WHERE id = $1 AND status = 'pending'
                  RETURNING *`,
                 [id]
             );
@@ -201,7 +207,7 @@ class AlertVerification {
                      attempts = attempts + 1,
                      processed_at = NOW(),
                      new_alert_id = $2
-                 WHERE id = $1
+                 WHERE id = $1 AND status = 'pending'
                  RETURNING *`,
                 [id, newAlertId]
             );
@@ -224,7 +230,7 @@ class AlertVerification {
                  SET status = 'suppressed',
                      attempts = attempts + 1,
                      processed_at = NOW()
-                 WHERE id = $1
+                 WHERE id = $1 AND status = 'pending'
                  RETURNING *`,
                 [id]
             );
@@ -246,7 +252,7 @@ class AlertVerification {
                  SET status = 'engineer_required',
                      attempts = attempts + 1,
                      processed_at = NOW()
-                 WHERE id = $1
+                 WHERE id = $1 AND status = 'pending'
                  RETURNING *`,
                 [id]
             );
@@ -269,7 +275,7 @@ class AlertVerification {
                  SET status = 'skipped',
                      attempts = attempts + 1,
                      processed_at = NOW()
-                 WHERE id = $1
+                 WHERE id = $1 AND status = 'pending'
                  RETURNING *`,
                 [id]
             );

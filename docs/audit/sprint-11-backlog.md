@@ -163,6 +163,47 @@ docker network rm site-content_leaflet-network
 
 ---
 
+## P1 — Correctness
+
+### B-020 — `resolved_verifying` alerts осиротевают (нет write-back в `infrastructure_alerts.status`)
+
+**Найдено 2026-05-29** при анализе alert-lifecycle (#25 завис на 5 дней).
+
+**Что**. `infrastructure_alerts.status = 'resolved_verifying'` — транзитное состояние, из которого НЕТ ни одного перехода обратно. `alertService.js:926` — единственное место, которое пишет этот статус (вход в verification cycle). Все 5 terminal-методов `AlertVerification` (`markPassed`/`markReopened`/`markSuppressed`/`markEngineerRequired`/`markSkipped`) обновляют только таблицу `alert_verifications` — родительский `infrastructure_alerts.status` не трогается. Результат: каждый авто-resolved алерт, прошедший verification, навсегда застревает в `resolved_verifying`.
+
+**Прод-доказательство** (2026-05-29):
+| alert | status | verification | осиротел |
+|---|---|---|---|
+| 25 | `resolved_verifying` (05-24 22:32) | id=2 **passed** 22:47 | 5 дней |
+| 26 | `resolved_verifying` (05-28 17:25) | id=3 **passed** 17:40 | сегодня |
+
+**Почему это важно**. Систематический (не единичный) баг. Затронуты все 5 terminal-путей:
+- `passed` (сенсор восстановился — частый кейс) → должен `resolved`, застревает
+- `reopened` (создан новый alert) → старый должен `resolved` (вытеснен), застревает
+- `suppressed` → должен `resolved`, застревает
+- `engineer_required` (превышена reopen-квота) → должен `engineer_required` (enum есть с migration 027), застревает → **эскалация на инженера не видна в alert UI**
+- `skipped` (window истёк) → должен `resolved`, застревает
+
+Смягчающие факторы: `getActiveAlerts` дефолтит на `status='active'` (стр.1049) → осиротевшие не засоряют дефолтный список; dedup-индекс исключает `resolved_verifying` → новые алерты не блокируются. Поэтому не аварийный P0, но: lifecycle не завершается, аналитика по resolved теряет их, `resolveAlert` SELECT-guard `IN ('active','acknowledged')` не даёт закрыть вручную → truly stuck.
+
+**Где потерялось**. `alertVerificationService.js:28-30` комментарий обещал «PR-3 adds the post-window passed/reopened reconciliation» — reconciliation на сторону `alert_verifications` сделали, но write-back в `infrastructure_alerts.status` забыли. Hotfix 2026-05-24 (alert 24) добавил только env-gate входа, не выход.
+
+**Fix план**.
+- Новый метод `alertService.finalizeVerification(originalAlertId, outcome)`: один `UPDATE infrastructure_alerts SET status=$2 WHERE alert_id=$1 AND status='resolved_verifying'` (guard на verifying = идемпотентность). Mapping: passed/reopened/suppressed/skipped → `resolved`; engineer_required → `engineer_required`.
+- Вызов из `alertVerificationService._drainOne` (после mark*) + из `ALERT_REOPENED` listener (после markReopened).
+- Backfill: одноразовый SQL для застрявших 25/26 на проде → `resolved`.
+- Тесты: 5 outcome→status переходов + идемпотентность guard'а.
+
+**Сопутствующие (Low)**:
+- L1: stale comment `alertVerificationService.js:221-224` («suppressions table doesn't exist yet») — таблица есть с migration 026; `MODULE_NOT_FOUND`-ветка мертва.
+- L2: `reopen_sequence` инкремент разнесён (`resolveAlert:953` vs `alertVerificationService.js:299`) — риск рассинхрона.
+
+**Trigger**. Сейчас — реальный correctness gap, влияет на каждый verified alert.
+
+**Estimate**. ~2-3 часа (TDD + backfill + dev smoke).
+
+---
+
 ## P2 — Tech debt
 
 ### B-003 — Rate-limiter и in-memory cache → Redis для multi-replica
@@ -184,6 +225,22 @@ docker network rm site-content_leaflet-network
 **Trigger**. Когда `admin.js` перевалит за 4500 LoC ИЛИ когда `feature/frontend-redesign` merge даст естественный повод переписать.
 
 **Estimate**. ~1-2 дня: разделить на ~6-8 feature-scoped модулей, миграция через esbuild multi-entry config.
+
+### B-021 — Durability hardening verification reconciliation (carve-out из B-020 review)
+
+**Найдено 2026-05-29** adversarial-ревью workflow'ом фикса B-020. Три pre-existing (НЕ внесённых B-020) архитектурных слабости в reconciliation между `alert_verifications` и `infrastructure_alerts`. Все три смягчены B-020 (finalize-first self-healing), но не устранены полностью.
+
+**1. ALERT_REOPENED — ephemeral EventEmitter без replay.** `createAlert` emit'ит `ALERT_REOPENED` в in-process emitter; listener в `alertVerificationService` делает finalize + markReopened. Если процесс упадёт после emit но до завершения listener'а — событие потеряно, не реплеится при рестарте. B-020 finalize-first гарантирует что alert не осиротеет (verification остаётся `pending` → `_drainOne` подберёт по window-expired), но verification закончит `passed` вместо `reopened` (минорная audit-неточность). **Полный fix**: durable outbox для reopen-событий по образцу `ukOutboxService` (Sprint 9).
+
+**2. Нет explicit transaction вокруг двух UPDATE в `_drainOne`/listener.** `_finalizeAlertStatus` (table infrastructure_alerts) и `mark*` (table alert_verifications) — два отдельных autocommit-стейтмента. Атомарности нет; полагаемся на finalize-first + idempotent guard'ы (`status='resolved_verifying'` / `status='pending'`) + self-heal на следующем тике. Работает, но хрупко. **Полный fix**: обернуть в `BEGIN/COMMIT` на одном checked-out client'е (`db.query` сейчас pool-based — нужен `pool.connect()`).
+
+**3. Advisory-lock не защищает system-`resolveAlert` от гонки с `_drainOne`.** `_drainOne` держит `pg_try_advisory_lock(849608648)`, но `resolveAlert` его не берёт. Оператор/UK-feedback может вызвать resolve пока verifier finalize'ит. Data-safe (idempotent guard), но возможен confusing «alert not found or already closed». **Полный fix**: брать тот же advisory-lock в `resolveAlert` при `userId === null`.
+
+**Почему не в B-020**: всё pre-existing (reconciliation на EventEmitter построена в Sprint 10 PR-2/PR-3), каждый — самостоятельное изменение архитектуры. B-020 закрыл функциональный orphan-bug + finalize-first crash-safety; durability-hardening вынесен чтобы PR оставался focused/reviewable.
+
+**Trigger**. Перед multi-replica scale-out (B-003) ИЛИ если в проде увидим verification, закончившуюся `passed` там где ожидался `reopened` (признак потери ALERT_REOPENED при рестарте).
+
+**Estimate**. ~4-6 часов (outbox для reopen) + ~2ч (transaction wrap) + ~1ч (advisory-lock в resolveAlert).
 
 ---
 

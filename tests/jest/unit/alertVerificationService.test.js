@@ -44,6 +44,13 @@ describe('alertVerificationService', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        // jest.clearAllMocks() resets calls/results but does NOT drain
+        // mockResolvedValueOnce queues. A test whose code path never
+        // consumes its queued Once value (e.g. the quota=0 path skips
+        // countRecentReopensForChain) leaks that value into the next test,
+        // causing order-dependent failures. mockReset drains the queues.
+        AlertVerification.pickDue.mockReset();
+        AlertVerification.countRecentReopensForChain.mockReset();
         service = new AlertVerificationService();
     });
 
@@ -361,6 +368,153 @@ describe('alertVerificationService', () => {
         });
     });
 
+    // [B-020] Parent-alert status write-back. The verifier's terminal
+    // outcomes must transition infrastructure_alerts.status OUT of the
+    // transient 'resolved_verifying' state — otherwise the alert orphans
+    // there forever (prod alerts 25, 26). Every mark* path must issue an
+    // idempotent `UPDATE infrastructure_alerts SET status=$2 WHERE
+    // alert_id=$1 AND status='resolved_verifying'`.
+    describe('[B-020] parent-alert status write-back', () => {
+        const setupDbQueryRouter = (overrides = {}) => {
+            db.query.mockImplementation((sql) => {
+                if (sql.includes('pg_try_advisory_lock')) {
+                    return Promise.resolve({ rows: [{ locked: true }] });
+                }
+                if (sql.includes('pg_advisory_unlock')) {
+                    return Promise.resolve({ rows: [{}] });
+                }
+                if (sql.includes('max_reopens_per_24h')) {
+                    return Promise.resolve({
+                        rows: [{ quota: overrides.quota === undefined ? null : overrides.quota }]
+                    });
+                }
+                return Promise.resolve({ rows: [] });
+            });
+        };
+
+        const baseRow = {
+            id: 1,
+            original_alert_id: 21,
+            reopen_chain_id: 'chain-uuid',
+            reopen_sequence: 1,
+            infrastructure_type: 'controller',
+            infrastructure_id: 1,
+            alert_type: 'LEAK_DETECTED',
+            run_at: new Date(Date.now() - 1000).toISOString(),
+            window_until: new Date(Date.now() + 60000).toISOString(),
+            attempts: 0
+        };
+
+        // Find the write-back UPDATE among all db.query calls.
+        const findFinalizeCall = () =>
+            db.query.mock.calls.find((c) => /UPDATE\s+infrastructure_alerts/i.test(c[0]));
+
+        test('passed (window expired, dispatched) → alert status resolved', async () => {
+            setupDbQueryRouter();
+            AlertVerification.pickDue.mockResolvedValueOnce({
+                ...baseRow,
+                window_until: new Date(Date.now() - 60000).toISOString(),
+                attempts: 1
+            });
+
+            await service._tick();
+
+            const call = findFinalizeCall();
+            expect(call).toBeDefined();
+            // Idempotency guard — only flip rows still in the transient state
+            expect(call[0]).toMatch(/status\s*=\s*'resolved_verifying'/);
+            expect(call[1]).toEqual([21, 'resolved']);
+        });
+
+        test('skipped (window expired, never dispatched) → alert status resolved', async () => {
+            setupDbQueryRouter();
+            AlertVerification.pickDue.mockResolvedValueOnce({
+                ...baseRow,
+                window_until: new Date(Date.now() - 60000).toISOString(),
+                attempts: 0
+            });
+
+            await service._tick();
+
+            const call = findFinalizeCall();
+            expect(call).toBeDefined();
+            expect(call[1]).toEqual([21, 'resolved']);
+        });
+
+        test('engineer_required (quota exceeded) → alert status engineer_required', async () => {
+            setupDbQueryRouter({ quota: 3 });
+            AlertVerification.pickDue.mockResolvedValueOnce(baseRow);
+            AlertVerification.countRecentReopensForChain.mockResolvedValueOnce(3);
+
+            await service._tick();
+
+            const call = findFinalizeCall();
+            expect(call).toBeDefined();
+            expect(call[1]).toEqual([21, 'engineer_required']);
+        });
+
+        test('suppressed → alert status resolved', async () => {
+            setupDbQueryRouter({ quota: 3 });
+            AlertVerification.pickDue.mockResolvedValueOnce(baseRow);
+            AlertSuppression.isActive.mockResolvedValueOnce(true);
+
+            await service._tick();
+
+            const call = findFinalizeCall();
+            expect(call).toBeDefined();
+            expect(call[1]).toEqual([21, 'resolved']);
+        });
+
+        test('no VERIFY mapping (skipped) → alert status resolved', async () => {
+            setupDbQueryRouter({ quota: null });
+            AlertVerification.pickDue.mockResolvedValueOnce({
+                ...baseRow,
+                alert_type: 'UNKNOWN_TYPE'
+            });
+            AlertVerification.countRecentReopensForChain.mockResolvedValueOnce(0);
+
+            await service._tick();
+
+            const call = findFinalizeCall();
+            expect(call).toBeDefined();
+            expect(call[1]).toEqual([21, 'resolved']);
+        });
+
+        test('happy path (VERIFY emitted, row still pending) does NOT finalize the alert', async () => {
+            setupDbQueryRouter({ quota: 3 });
+            AlertVerification.pickDue.mockResolvedValueOnce(baseRow);
+            AlertVerification.countRecentReopensForChain.mockResolvedValueOnce(0);
+
+            await service._tick();
+
+            // Alert is still verifying — must NOT be closed yet.
+            expect(findFinalizeCall()).toBeUndefined();
+        });
+
+        // [B-020 review] _finalizeAlertStatus guards + error handling.
+        test('_finalizeAlertStatus returns early (no db.query) for falsy alertId', async () => {
+            db.query.mockResolvedValue({ rows: [] });
+
+            await service._finalizeAlertStatus(null, 'resolved');
+            await service._finalizeAlertStatus(0, 'resolved');
+            await service._finalizeAlertStatus(undefined, 'resolved');
+
+            expect(db.query).not.toHaveBeenCalled();
+            expect(logger.warn).not.toHaveBeenCalled();
+        });
+
+        test('_finalizeAlertStatus swallows db errors (logs warn, does not throw)', async () => {
+            db.query.mockRejectedValueOnce(new Error('connection timeout'));
+
+            // Must not reject — the verification-row transition is the source
+            // of truth and must not be blocked by a write-back hiccup.
+            await expect(service._finalizeAlertStatus(21, 'resolved')).resolves.toBeUndefined();
+            expect(logger.warn).toHaveBeenCalledWith(
+                expect.stringContaining('finalize alert 21 → resolved failed')
+            );
+        });
+    });
+
     // [Sprint 10 PR-3] ALERT_REOPENED listener wires the reconciliation:
     // when a checker creates a reopen alert via alertService.createAlert,
     // ALERT_REOPENED fires; this listener finds the matching pending
@@ -381,6 +535,60 @@ describe('alertVerificationService', () => {
 
             expect(AlertVerification.findPendingByChainId).toHaveBeenCalledWith('chain-uuid-listen');
             expect(AlertVerification.markReopened).toHaveBeenCalledWith(7, 200);
+        });
+
+        // [B-020] When the reopen fires, the OLD alert (the one being
+        // superseded) must leave 'resolved_verifying' → 'resolved'. The new
+        // reopen alert (active) carries the fault forward.
+        test('[B-020] markReopened also finalizes the OLD alert → resolved', async () => {
+            db.query.mockResolvedValue({ rows: [] });
+            AlertVerification.findPendingByChainId.mockResolvedValueOnce({
+                id: 7,
+                original_alert_id: 100
+            });
+
+            alertEvents.emit(alertEvents.EVENTS.ALERT_REOPENED, {
+                alertId: 200,
+                reopenChainId: 'chain-uuid-wb',
+                reopenSequence: 2,
+                previousAlertId: 100
+            });
+
+            await new Promise((r) => setImmediate(r));
+
+            const call = db.query.mock.calls.find((c) => /UPDATE\s+infrastructure_alerts/i.test(c[0]));
+            expect(call).toBeDefined();
+            expect(call[0]).toMatch(/status\s*=\s*'resolved_verifying'/);
+            expect(call[1]).toEqual([100, 'resolved']);
+        });
+
+        // [B-020 review — CRITICAL] The listener must finalize the OLD alert
+        // BEFORE marking the verification reopened (finalize-first), matching
+        // the crash-safe ordering in _drainOne. If markReopened ran first and
+        // the process crashed before finalize, the verification leaves
+        // 'pending' (pickDue never re-selects it) while the alert stays stuck
+        // in 'resolved_verifying' forever — re-introducing B-020.
+        test('[B-020] listener finalizes OLD alert BEFORE markReopened (crash-safe order)', async () => {
+            db.query.mockResolvedValue({ rows: [] });
+            AlertVerification.findPendingByChainId.mockResolvedValueOnce({
+                id: 7,
+                original_alert_id: 100
+            });
+
+            alertEvents.emit(alertEvents.EVENTS.ALERT_REOPENED, {
+                alertId: 200,
+                reopenChainId: 'chain-order',
+                reopenSequence: 2,
+                previousAlertId: 100
+            });
+
+            await new Promise((r) => setImmediate(r));
+
+            const updateIdx = db.query.mock.calls.findIndex((c) => /UPDATE\s+infrastructure_alerts/i.test(c[0]));
+            expect(updateIdx).toBeGreaterThanOrEqual(0);
+            const finalizeOrder = db.query.mock.invocationCallOrder[updateIdx];
+            const markReopenedOrder = AlertVerification.markReopened.mock.invocationCallOrder[0];
+            expect(finalizeOrder).toBeLessThan(markReopenedOrder);
         });
 
         test('listener no-ops when no pending verification matches', async () => {

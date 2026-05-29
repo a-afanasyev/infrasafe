@@ -103,7 +103,11 @@ describe('AlertVerification model', () => {
     });
 
     describe('status transition helpers', () => {
-        test('markPassed updates status + stamps processed_at + bumps attempts', async () => {
+        // [B-020 review] All terminal mark* methods carry a `status='pending'`
+        // guard so a crash-retry (finalize-first leaves the row pending, the
+        // next drain re-runs mark*) is a true no-op rather than re-stamping
+        // processed_at / re-bumping attempts. Mirrors markDispatched's guard.
+        test('markPassed updates status + stamps processed_at + bumps attempts (pending guard)', async () => {
             db.query.mockResolvedValueOnce({ rows: [{ id: 1, status: 'passed', attempts: 1 }] });
 
             await AlertVerification.markPassed(1);
@@ -112,9 +116,10 @@ describe('AlertVerification model', () => {
             expect(sql).toContain("status = 'passed'");
             expect(sql).toContain('attempts = attempts + 1');
             expect(sql).toContain('processed_at = NOW()');
+            expect(sql).toContain("status = 'pending'");
         });
 
-        test('markReopened requires newAlertId and links it', async () => {
+        test('markReopened requires newAlertId and links it (pending guard)', async () => {
             db.query.mockResolvedValueOnce({ rows: [{ id: 1, new_alert_id: 99 }] });
 
             await AlertVerification.markReopened(1, 99);
@@ -124,28 +129,32 @@ describe('AlertVerification model', () => {
             const sql = db.query.mock.calls[0][0];
             expect(sql).toContain("status = 'reopened'");
             expect(sql).toContain('new_alert_id = $2');
+            expect(sql).toContain("status = 'pending'");
         });
 
         test('markReopened throws when newAlertId missing', async () => {
             await expect(AlertVerification.markReopened(1, null)).rejects.toThrow('newAlertId is required');
         });
 
-        test('markSuppressed sets suppressed status', async () => {
+        test('markSuppressed sets suppressed status (pending guard)', async () => {
             db.query.mockResolvedValueOnce({ rows: [{ id: 1, status: 'suppressed' }] });
             await AlertVerification.markSuppressed(1);
             expect(db.query.mock.calls[0][0]).toContain("status = 'suppressed'");
+            expect(db.query.mock.calls[0][0]).toContain("status = 'pending'");
         });
 
-        test('markEngineerRequired sets engineer_required status', async () => {
+        test('markEngineerRequired sets engineer_required status (pending guard)', async () => {
             db.query.mockResolvedValueOnce({ rows: [{ id: 1, status: 'engineer_required' }] });
             await AlertVerification.markEngineerRequired(1);
             expect(db.query.mock.calls[0][0]).toContain("status = 'engineer_required'");
+            expect(db.query.mock.calls[0][0]).toContain("status = 'pending'");
         });
 
-        test('markSkipped sets skipped status', async () => {
+        test('markSkipped sets skipped status (pending guard)', async () => {
             db.query.mockResolvedValueOnce({ rows: [{ id: 1, status: 'skipped' }] });
             await AlertVerification.markSkipped(1, 'test reason');
             expect(db.query.mock.calls[0][0]).toContain("status = 'skipped'");
+            expect(db.query.mock.calls[0][0]).toContain("status = 'pending'");
         });
     });
 
