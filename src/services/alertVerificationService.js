@@ -201,10 +201,16 @@ class AlertVerificationService {
             if (row.attempts > 0) {
                 // We dispatched the VERIFY event earlier, no reopen happened
                 // in the window → sensor recovered. Mark passed.
+                // [B-020] finalize the parent alert FIRST so a crash between
+                // the two UPDATEs self-heals: the verification row stays
+                // pending and a future tick re-runs this branch (the finalize
+                // is idempotent via its `status='resolved_verifying'` guard).
+                await this._finalizeAlertStatus(row.original_alert_id, 'resolved');
                 await AlertVerification.markPassed(row.id);
                 logger.info(`alertVerificationService: verification ${row.id} passed (no reopen within window)`);
             } else {
                 // We never even got to fire — drain was starved.
+                await this._finalizeAlertStatus(row.original_alert_id, 'resolved');
                 await AlertVerification.markSkipped(row.id, `window expired (${row.window_until})`);
             }
             return;
@@ -231,6 +237,8 @@ class AlertVerificationService {
                     row.alert_type
                 );
                 if (suppressed) {
+                    // [B-020] operator chose to ignore — close the alert.
+                    await this._finalizeAlertStatus(row.original_alert_id, 'resolved');
                     await AlertVerification.markSuppressed(row.id);
                     logger.info(`alertVerificationService: verification ${row.id} suppressed (${row.infrastructure_type}:${row.infrastructure_id}/${row.alert_type})`);
                     return;
@@ -251,6 +259,9 @@ class AlertVerificationService {
                 row.reopen_chain_id, 24
             );
             if (recentReopens >= ruleQuota) {
+                // [B-020] escalate the alert itself — the operator/UI needs
+                // to see engineer_required, not a stuck resolved_verifying.
+                await this._finalizeAlertStatus(row.original_alert_id, 'engineer_required');
                 await AlertVerification.markEngineerRequired(row.id);
                 alertEvents.emit(
                     alertEvents.EVENTS.ALERT_ENGINEER_REQUIRED,
@@ -268,6 +279,8 @@ class AlertVerificationService {
         // Dispatch the VERIFY event to the appropriate checker
         const verifyEvent = TYPE_TO_VERIFY_EVENT[row.alert_type];
         if (!verifyEvent) {
+            // [B-020] nothing to verify — don't leave the alert hanging.
+            await this._finalizeAlertStatus(row.original_alert_id, 'resolved');
             await AlertVerification.markSkipped(row.id, `no VERIFY mapping for alert_type=${row.alert_type}`);
             return;
         }
@@ -332,6 +345,36 @@ class AlertVerificationService {
         }
     }
 
+    /**
+     * [B-020] Transition the parent alert OUT of the transient
+     * 'resolved_verifying' state once its verification reaches a terminal
+     * outcome. Without this the alert orphans in resolved_verifying forever
+     * (prod alerts 25, 26 sat there for days).
+     *
+     * Outcome → status mapping (caller-supplied):
+     *   passed / reopened / suppressed / skipped → 'resolved'
+     *   engineer_required (reopen quota hit)     → 'engineer_required'
+     *
+     * The `status = 'resolved_verifying'` guard makes this idempotent and
+     * safe against races: a second call (e.g. crash-retry, or an operator
+     * who already closed it) matches zero rows and is a no-op. Failures are
+     * logged but never thrown — the verification row transition is the
+     * source of truth and must not be blocked by a write-back hiccup.
+     */
+    async _finalizeAlertStatus(originalAlertId, newStatus) {
+        if (!originalAlertId) return;
+        try {
+            await db.query(
+                `UPDATE infrastructure_alerts
+                 SET status = $2
+                 WHERE alert_id = $1 AND status = 'resolved_verifying'`,
+                [originalAlertId, newStatus]
+            );
+        } catch (err) {
+            logger.warn(`alertVerificationService: finalize alert ${originalAlertId} → ${newStatus} failed: ${err.message}`);
+        }
+    }
+
     _logFailure(err) {
         const now = Date.now();
         const isFirst = this._consecutiveFailures === 1;
@@ -372,6 +415,17 @@ alertEvents.on(alertEvents.EVENTS.ALERT_REOPENED, async (payload) => {
         if (!pending) {
             logger.debug(`alertVerificationService: ALERT_REOPENED chain ${reopenChainId} has no pending verification`);
             return;
+        }
+        // [B-020] finalize-FIRST (same crash-safe ordering as _drainOne): the
+        // OLD alert is superseded by the freshly-created reopen alert (active),
+        // so move it out of resolved_verifying → resolved BEFORE marking the
+        // verification reopened. If the process crashes between the two, the
+        // verification row stays 'pending' so _drainOne re-runs and the alert
+        // never orphans. Doing markReopened first would leave the row
+        // non-pending (pickDue skips it) with the alert stuck — re-introducing
+        // the very B-020 bug this fix closes.
+        if (pending.original_alert_id) {
+            await singleton._finalizeAlertStatus(pending.original_alert_id, 'resolved');
         }
         await AlertVerification.markReopened(pending.id, alertId);
         logger.info(`alertVerificationService: verification ${pending.id} → reopened (new alert_id=${alertId}, chain=${reopenChainId})`);
