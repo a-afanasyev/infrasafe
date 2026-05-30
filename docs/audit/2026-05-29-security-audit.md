@@ -212,8 +212,11 @@ app container) + `--force-recreate --no-deps app frontend`.
   rotated 2026-05-30 with UK team. Verified on prod: app healthy; both vars hold the same 64-char
   value; a request signed with the new secret → 400 (signature accepted, payload rejected), a
   bad-signature request → 401 (verifier enforcing). Full e2e confirmed on next real UK webhook.
-- ⏳ **TOTP_ENCRYPTION_KEY** — pending; **must NOT be blind-rotated** (existing admin 2FA secrets
-  become undecryptable). Plan: `docs/audit/2026-05-30-totp-key-rotation-plan.md`.
+- ✅ **TOTP_ENCRYPTION_KEY** — rotated 2026-05-30 via **Strategy B** (full reset, plan in
+  `docs/audit/2026-05-30-totp-key-rotation-plan.md`). Blast radius was 1 account (`admin`); snapshot
+  taken (`~/totp_users_snapshot.*.csv`). New key generated host-side, all 2FA state cleared, app
+  recreated. Admin re-enrolled: `totp_enabled=true` with a fresh secret encrypted under the new key
+  (`confirmSetup` success = encrypt+decrypt verified e2e). **SEC-3 secret rotation complete.**
 
 **Still open after deploy (operator action):**
 - **Host firewall** (P-PENTEST-1 belt-and-suspenders): `sudo` needs a password; ports are already
