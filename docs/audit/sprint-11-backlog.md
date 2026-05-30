@@ -26,14 +26,14 @@
 |---|---|---|
 | **B-011** alias collision | app теперь только в `infrasafe`+`leaflet` (B-010) | **актуален, но latent** — рванёт лишь при re-attach app в `uk-network`; обычный путь безопасен |
 | **B-012** nginx single-file mount | `inspect`: `nginx.production.conf -> /etc/nginx/nginx.conf` всё ещё одиночный файл | **актуален** (recreate при каждой правке конфига) |
-| **B-013** DB_USER drift | `pg_roles`: `infrasafe_app`=**superuser**+login, `infrasafe_runtime`=login non-super, `postgres`=**НЕТ** | **переосмыслен ↓** — app корректно работает под non-super `infrasafe_runtime`; рекомендация «перейти на `infrasafe_app`» **неверна** (тот superuser — least-privilege нарушение). Остаётся косметика: убрать мёртвый `POSTGRES_USER=postgres` из `.env.prod` + поправить role-заметку в CLAUDE.md |
+| **B-013** DB_USER drift | `pg_roles`: `infrasafe_app`=**superuser**+login, `infrasafe_runtime`=login non-super, `postgres`=**НЕТ** | **✅ ЗАКРЫТО (doc)** — CLAUDE.md role-заметка исправлена; рекомендация «перейти на `infrasafe_app`» снята как неверная (superuser). Опц. prod-ops: убрать мёртвый `POSTGRES_USER` из `.env.prod` |
 | **B-003** Redis | SEC-6 (#69) добавил size-cap на обе in-memory Map | **актуален частично** — memory-growth снят; multi-replica bypass (SEC-8) остаётся; single-replica → триггер не наступил |
 | **B-004** admin.js split | `wc -l`: admin.js **3826** (+~400 от B-001), script.js **2384** | **актуален**, растёт; триггер 4500 LoC ещё не достигнут |
-| **B-016** drift-script | после P-PENTEST-4 | **актуален + расширить**: добавить проверку «нет лишних `0.0.0.0`-публикаций docker» |
+| **B-016** drift-script | после P-PENTEST-4 | **✅ ЗАКРЫТО** — `scripts/compose-drift-check.sh` (network + 0.0.0.0-publish whitelist) + pre-flight в runbook |
 | B-021 / B-006 / B-007 / B-008 / B-009 | — | без изменений |
 
 ### Рекомендация по следующему спринту
-Быстрый пакет: **B-013** (убрать dead `POSTGRES_USER`, ~30мин) + **B-012** (nginx directory-mount, ~2ч) + **B-016** (drift-script с 0.0.0.0-проверкой, ~3ч). Крупное (B-003 / B-004 / B-008) — отдельным спринтом по триггеру.
+**B-013 + B-016 зашиплены 2026-05-30.** Остаётся **B-012** (nginx directory-mount, ~2ч) — отложен: требует пересоздания публичного edge (80/443), отдельным усилием с maintenance-окном + rollback. Крупное (B-003 / B-004 / B-008) — отдельным спринтом по триггеру.
 
 ---
 
@@ -112,6 +112,8 @@ Frontend-html уже directory (B-002 закрыт), nginx.production.conf — s
 ### B-013 — `.env.prod` DB_USER drift vs migration 017
 
 > **⚠️ ПЕРЕОСМЫСЛЕНО 2026-05-30 (severity ↓).** Инвентарь `pg_roles` на проде: `infrasafe_app` = **superuser**+login, `infrasafe_runtime` = login non-super, `postgres` = **не существует**. App корректно работает под non-super `infrasafe_runtime` (least-privilege). **Рекомендация ниже «перейти на `infrasafe_app`» НЕВЕРНА** — это superuser, переключение ухудшит безопасность. Реальный остаток: убрать мёртвый `POSTGRES_USER=postgres` из `.env.prod` + поправить role-заметку в CLAUDE.md. Из P0-bug → cosmetic cleanup.
+>
+> **✅ ЗАКРЫТО (doc-часть) 2026-05-30** — CLAUDE.md role-заметка исправлена (017 *создаёт* `infrasafe_runtime`, `infrasafe_app` остаётся superuser; не переключать `DB_USER` на superuser). Опциональная prod-ops чистка `.env.prod` (`POSTGRES_USER`/`POSTGRES_DB`) — отдельно, по желанию. См. Closed.
 
 **Re-verified 2026-05-28**. ✅ Подтверждена. `grep DB_USER ~/infrasafe/.env.prod` показал `DB_USER=infrasafe_runtime`. App при этом сейчас healthy → значит роль `infrasafe_runtime` всё ещё существует в `infrasafe-postgres-1` (миграция 017 НЕ дропнула старую при создании новой, либо seed создаёт обе).
 
@@ -184,6 +186,8 @@ docker network rm site-content_leaflet-network
 **Estimate**. 1 минута.
 
 ### B-016 — Compose drift audit (`docker compose config` vs `docker inspect` reality)
+
+> **✅ ЗАКРЫТО 2026-05-30** — `scripts/compose-drift-check.sh` (network drift + 0.0.0.0-publish whitelist), добавлен pre-flight шаг в prod-ops runbook. См. Closed.
 
 **Что**. Не отдельный bug, а **процесс**: добавить в deploy-runbook шаг сравнения декларированного compose-стека с реальностью. B-010..B-015 — это просто примеры того что drift накапливается без detection.
 
@@ -340,6 +344,14 @@ docker network rm site-content_leaflet-network
 ---
 
 ## Closed / removed
+
+### ✅ B-016 — Compose drift-check script (closed 2026-05-30)
+
+**Shipped**: `scripts/compose-drift-check.sh` — read-only deploy-host диагностик (стиль `scripts/deploy-uk.sh`). Check A: per-service network drift (declared via `docker compose config --format json` → python3, vs runtime `docker inspect`). Check B: флажит любой `0.0.0.0`/`::` publish вне whitelist (`80`/`443`/`51820`) — всё прочее обязано быть на `127.0.0.1` (урок P-PENTEST-1/-4). Exit non-zero при дрейфе. Pre-flight шаг добавлен в `docs/audit/2026-05-30-prod-ops-runbook.md` §0. НЕ в CI (на раннере нет запущенного стека).
+
+### ✅ B-013 — DB-role doc correction (closed 2026-05-30, doc-часть)
+
+**Shipped**: `CLAUDE.md` role-заметка исправлена. Факт (прод `pg_roles`): `infrasafe_app` = SUPERUSER bootstrap, `infrasafe_runtime` = non-super login (рабочая роль app, `DB_USER`), `postgres` отсутствует. Migration 017 *создаёт* `infrasafe_runtime` (не переименовывает `infrasafe_app`). Исправлена ложная фраза «017 renamed runtime role to infrasafe_app» + добавлен явный запрет ставить `DB_USER`=superuser. **Опциональный prod-ops остаток** (не в PR): убрать мёртвый `POSTGRES_USER=postgres`/`POSTGRES_DB` из прод `.env.prod` (перекрыты hardcode `POSTGRES_USER=infrasafe_app` в unified.yml; `POSTGRES_PASSWORD` оставить).
 
 ### ✅ Security audit 2026-05-29/30 — SEC-1..12 + P-PENTEST-1/2/3/4 + ротации (closed 2026-05-30)
 
