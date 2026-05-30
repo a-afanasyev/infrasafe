@@ -511,3 +511,45 @@ Inode-pinning ушёл — `git pull` обновляет HTML мгновенно
 
 Этот же паттерн нужно перенести в `checkVoltage` / `checkHeating` когда будем делать B-005 (VOLTAGE + HEATING).
 
+
+---
+
+## Sprint 11 — docs/tooling closures (2026-05-30, rev 2)
+
+### B-013 — DB-role documentation correctness — CLOSED
+Corrected the false "migration 017 *renamed* the runtime role to `infrasafe_app`" story.
+Reality: `infrasafe_app` = SUPERUSER bootstrap (created from `POSTGRES_USER` at container init);
+`infrasafe_runtime` = non-super LOGIN role the app connects as (`DB_USER`), **created** — not renamed —
+by `017_runtime_role.sql`; the `postgres` role is absent on prod.
+- `CLAUDE.md` — already accurate on main (DB-roles bullet, verified).
+- `docker-compose.prod.yml` — postgres healthcheck comment rewritten (was "017 renamed … to infrasafe_app").
+- `docs/audit/2026-05-30-prod-ops-runbook.md` §3b — **real bug fixed**: DB-password rotation said
+  `ALTER USER infrasafe_app`; it must target `infrasafe_runtime` (the app credential / `DB_PASSWORD`),
+  which is what the live 2026-05-30 rotation actually did. Clarified it is distinct from
+  `POSTGRES_PASSWORD` (the bootstrap-superuser secret).
+
+### B-016 — compose drift-check tooling — CLOSED
+`scripts/compose-drift-check.sh` — read-only deploy-host diagnostic.
+- **Check A (network drift):** per declared service, DECLARED vs RUNTIME compared on **real** Docker
+  network names (declared keys resolved via top-level `networks.<key>.name`), so logical
+  (`leaflet-network`) vs runtime (`infrasafe_leaflet-network`) cannot false-positive. Container→service
+  mapping strictly via the `com.docker.compose.service` label. Running-but-undeclared = informational.
+- **Check B (publish drift): HOST-WIDE** — scans every running container (no project filter), so it
+  covers the separate UK compose stack. Flags any `0.0.0.0`/`[::]` publish whose host port ∉
+  `ALLOWED_PUBLIC_PORTS` (default `80 443 51820`). This is the class P-PENTEST-4 fell into; the host-wide
+  scope is the standing guard against recurrence in **any** stack. (The script did not exist when
+  P-PENTEST-4 was found — UK closed those ports manually; this is the forward guard, not a detection
+  credit.)
+- **Companion fix:** `docker-compose.unified.yml` postgres `networks:` aligned `leaflet-network` →
+  `infrasafe-network` to match prod runtime (declaration-only; removes a real Check-A drift; no recreate
+  needed since runtime already matches).
+- Runbook §0 / pre-deploy bullet added.
+
+### B-023 — POSTGRES_PASSWORD env_file-vs-interpolation footgun (NEW, low) — OPEN
+`docker-compose.unified.yml` postgres `environment: POSTGRES_PASSWORD=${POSTGRES_PASSWORD}` is resolved by
+**compose interpolation from the shell / `.env`** at parse time — NOT from `env_file`. `docker compose
+config` warns "POSTGRES_PASSWORD variable is not set, defaulting to a blank string" when only `.env.prod`
+carries it, and the `environment:` line can then override the env_file value with empty. Also
+`POSTGRES_USER=postgres` in `.env.prod` is dead config (the service hardcodes
+`POSTGRES_USER=infrasafe_app`). **Record-only** — do not touch prod DB config blindly; needs a tested
+container-recreate window.

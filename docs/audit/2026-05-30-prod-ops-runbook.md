@@ -82,12 +82,16 @@ docker compose -f docker-compose.unified.yml up -d --force-recreate --no-deps ap
 ```
 
 ### 3b. DB password (lockstep)
+This rotates the **app's runtime DB credential** — role `infrasafe_runtime` (`DB_USER`),
+whose password is `DB_PASSWORD`. NOT `infrasafe_app` (the bootstrap SUPERUSER) and NOT
+`POSTGRES_PASSWORD` (the bootstrap-superuser secret, a separate credential — see B-023).
+`infrasafe_runtime` is a LOGIN role and can change its own password (self-ALTER).
 ```bash
 NEW_DBPW=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)
-# 1) change in Postgres:
-docker exec -it infrasafe-postgres-1 psql -U infrasafe_app -d infrasafe \
-  -c "ALTER USER infrasafe_app WITH PASSWORD '$NEW_DBPW';"
-# 2) update .env.prod: POSTGRES_PASSWORD=$NEW_DBPW  (and DB_PASSWORD if separate)
+# 1) change in Postgres (connect as the runtime role; it self-ALTERs):
+docker exec -it infrasafe-postgres-1 psql -U infrasafe_runtime -d infrasafe \
+  -c "ALTER USER infrasafe_runtime WITH PASSWORD '$NEW_DBPW';"
+# 2) update .env.prod: DB_PASSWORD=$NEW_DBPW
 # 3) recreate app (NOT postgres — password already changed live):
 docker compose -f docker-compose.unified.yml up -d --force-recreate --no-deps app
 # Verify: app logs show no auth-fail loop; /api/health 200 via edge.
@@ -144,3 +148,26 @@ Any FAIL → rollback step 1 and investigate before declaring done.
 - [ ] Step 3d TOTP key — deferred (needs re-enrollment plan)
 - [ ] Step 4 pentest + smoke all green
 - [ ] Audit doc + backlog updated with deploy timestamp
+
+---
+
+## Pre-flight / post-deploy: compose drift check [B-016]
+
+Run on the **deploy host** before a deploy (baseline) and after (`docker compose up -d`) to confirm no
+network or public-port drift crept in:
+
+```bash
+bash scripts/compose-drift-check.sh docker-compose.unified.yml
+# exit 0 = clean; 1 = drift (review ✗ lines); 2 = usage/precondition error
+```
+
+What it catches:
+- **Check A — network drift** (per declared service, real-name normalized): a service attached to a
+  different network set than it declares (B-010/B-011 class). `?`/`·` lines are informational.
+- **Check B — public-publish drift (HOST-WIDE)**: ANY container on the host publishing on `0.0.0.0`/`[::]`
+  a port not in `ALLOWED_PUBLIC_PORTS` (default `80 443 51820`). Host-wide so it also covers the separate
+  UK compose stack (the P-PENTEST-4 class). Override the whitelist via the env var if the public surface
+  legitimately changes.
+
+Expected clean prod output: app/frontend/postgres/redis on their declared real networks; only
+`nginx 80/443` and `wireguard 51820` published publicly; everything else on `127.0.0.1`.

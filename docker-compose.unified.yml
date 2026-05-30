@@ -168,8 +168,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    # [B-016] postgres lives on infrasafe-network — the shared app↔DB bus and the
+    # network the prod container actually runs in. The earlier `leaflet-network`
+    # declaration was drift vs runtime (app reaches the DB over infrasafe-network,
+    # which both share; leaflet is the nginx/frontend edge bus). Declaration-only
+    # alignment — prod runtime already matches, so no recreate is required.
     networks:
-      - leaflet-network
+      - infrasafe-network
     restart: unless-stopped
     # [Sprint 6 / P1-V13] Hardening ported from docker-compose.prod.yml.
     deploy:
