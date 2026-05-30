@@ -2,7 +2,7 @@
  * [1A-FU-C-M4] Live CSP header check.
  *
  * The file-content unit tests in tests/jest/unit/p1-3-csp-sri.test.js
- * verify the directive text exists in nginx.production.conf and
+ * verify the directive text exists in nginx-config/nginx.production.conf and
  * src/server.js. They CANNOT catch:
  *   - whitespace/quoting bugs in nginx.conf that prevent the header
  *     from ever being sent
