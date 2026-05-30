@@ -5,7 +5,6 @@ jest.mock('../../../src/utils/logger', () => ({
     debug: jest.fn(),
 }));
 
-const logger = require('../../../src/utils/logger');
 const { validateEnv } = require('../../../src/config/env');
 
 describe('validateEnv — NODE_ENV assertion (SEC-12)', () => {

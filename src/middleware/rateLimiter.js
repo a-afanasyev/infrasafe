@@ -84,7 +84,7 @@ class SimpleRateLimiter {
         }
 
         logger.warn(
-            `Rate limiter: store at cap (${this.maxStoreEntries}); evicted oldest entries. ` +
+            'Rate limiter: in-memory store reached its size cap; evicted oldest entries. ' +
             'Configure REDIS_URL for multi-replica-safe rate limiting.'
         );
     }
@@ -275,7 +275,7 @@ class SimpleSlowDown {
         }
 
         logger.warn(
-            `Slow down: store at cap (${this.maxStoreEntries}); evicted oldest entries. ` +
+            'Slow down: in-memory store reached its size cap; evicted oldest entries. ' +
             'Configure REDIS_URL for multi-replica-safe rate limiting.'
         );
     }
