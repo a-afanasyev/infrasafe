@@ -60,6 +60,9 @@ log "Check A: network drift (compose '$COMPOSE_FILE' vs runtime)"
 # Rendered config → project name + "service<TAB>realNet1,realNet2,..." per service.
 config_json="$(docker compose -f "$COMPOSE_FILE" config --format json 2>/dev/null)" \
   || die "could not render '$COMPOSE_FILE' (docker compose config failed)"
+# A transient daemon hiccup can return empty stdout with exit 0; fail cleanly
+# rather than feeding empty input to the JSON parser below (ugly traceback).
+[ -n "$config_json" ] || die "rendered config was empty — re-run on the deploy host"
 
 PROJECT="$(printf '%s' "$config_json" | python3 -c 'import sys,json; print((json.load(sys.stdin).get("name") or ""))')"
 [ -n "$PROJECT" ] || PROJECT="${PROJECT:-infrasafe}"
@@ -98,9 +101,12 @@ while IFS=$'\t' read -r name svc; do
   seen_svcs="$seen_svcs $svc"
   # Runtime real network names: one per line; drop empties (trailing newline
   # from the Go-template range), sort, csv. (Fixes the rev-1 leading-comma bug.)
+  # `|| true`: a container with zero networks (mid-restart / detached) makes the
+  # grep return 1 on all-empty input, which under `set -e`+pipefail would abort
+  # the whole run before Check B — we want an empty rnets (→ reported as drift).
   rnets="$(
     docker inspect "$name" --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}' 2>/dev/null \
-    | grep -v '^[[:space:]]*$' | sort | paste -sd, -
+    | grep -v '^[[:space:]]*$' | sort | paste -sd, - || true
   )"
   dnets="$(printf '%s\n' "$declared_map" | awk -F'\t' -v s="$svc" '$1==s {print $2}')"
   if [ "$dnets" = "$rnets" ]; then
