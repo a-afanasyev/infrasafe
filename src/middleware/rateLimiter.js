@@ -10,6 +10,13 @@ const redisClient = require('../utils/redisClient');
 const REDIS_KEY_PREFIX = 'ratelimit:';
 const REDIS_KEY_PREFIX_SD = 'slowdown:';
 
+// [SEC-6] Hard cap on the in-memory fallback store so a high-cardinality
+// IP flood cannot grow memory unboundedly between the 60s cleanup sweeps.
+// Mirrors webhookVerifier's SEEN_SIGNATURE_MAX_ENTRIES pattern: when the
+// Map reaches the cap, expired entries are swept first, then the oldest
+// surviving entry is evicted FIFO. Redis-backed deployments are unaffected.
+const DEFAULT_MAX_STORE_ENTRIES = 10000;
+
 class SimpleRateLimiter {
     constructor(options = {}) {
         this.windowMs = options.windowMs || 60000; // 1 минута
@@ -23,6 +30,8 @@ class SimpleRateLimiter {
         // Per-instance namespace prefix — for stats / reset isolation
         // when multiple limiter instances share one Redis.
         this.namespace = options.namespace || `g${Math.floor(Math.random() * 1e6)}`;
+        // [SEC-6] Size cap for the in-memory fallback store.
+        this.maxStoreEntries = options.maxStoreEntries || DEFAULT_MAX_STORE_ENTRIES;
 
         // In-memory fallback store. Used when Redis is not configured
         // OR when it temporarily becomes unhealthy (degraded mode).
@@ -55,6 +64,29 @@ class SimpleRateLimiter {
         if (cleanedCount > 0) {
             logger.debug(`Rate limiter: очищено ${cleanedCount} устаревших записей`);
         }
+    }
+
+    // [SEC-6] Enforce the store size cap before inserting a new key. Sweep
+    // expired entries first (cheap), then FIFO-evict the oldest survivor if
+    // still at the cap. Mirrors webhookVerifier's nonce-map hard cap.
+    _enforceStoreCap() {
+        if (this.store.size < this.maxStoreEntries) return;
+
+        const now = Date.now();
+        for (const [key, data] of this.store) {
+            if (now > data.resetTime) this.store.delete(key);
+        }
+
+        while (this.store.size >= this.maxStoreEntries) {
+            const oldestKey = this.store.keys().next().value;
+            if (oldestKey === undefined) break;
+            this.store.delete(oldestKey);
+        }
+
+        logger.warn(
+            `Rate limiter: store at cap (${this.maxStoreEntries}); evicted oldest entries. ` +
+            'Configure REDIS_URL for multi-replica-safe rate limiting.'
+        );
     }
 
     async _redisIncrement(key, now) {
@@ -92,6 +124,8 @@ class SimpleRateLimiter {
             if (!hitData) {
                 let memData = this.store.get(key);
                 if (!memData) {
+                    // [SEC-6] Cap the store before inserting a brand-new key.
+                    this._enforceStoreCap();
                     memData = { hits: 0, resetTime: now + this.windowMs };
                     this.store.set(key, memData);
                 }
@@ -188,6 +222,8 @@ class SimpleSlowDown {
         this.keyGenerator = options.keyGenerator || this.defaultKeyGenerator;
         this.skip = options.skip || (() => false);
         this.namespace = options.namespace || `sd${Math.floor(Math.random() * 1e6)}`;
+        // [SEC-6] Size cap for the in-memory fallback store (same as SimpleRateLimiter).
+        this.maxStoreEntries = options.maxStoreEntries || DEFAULT_MAX_STORE_ENTRIES;
 
         this.store = new Map();
 
@@ -219,6 +255,29 @@ class SimpleSlowDown {
         if (cleanedCount > 0) {
             logger.debug(`Slow down: очищено ${cleanedCount} устаревших записей`);
         }
+    }
+
+    // [SEC-6] Enforce the store size cap before inserting a new key. Sweep
+    // expired entries first (cheap), then FIFO-evict the oldest survivor if
+    // still at the cap. Mirrors SimpleRateLimiter._enforceStoreCap.
+    _enforceStoreCap() {
+        if (this.store.size < this.maxStoreEntries) return;
+
+        const now = Date.now();
+        for (const [key, data] of this.store) {
+            if (now > data.resetTime) this.store.delete(key);
+        }
+
+        while (this.store.size >= this.maxStoreEntries) {
+            const oldestKey = this.store.keys().next().value;
+            if (oldestKey === undefined) break;
+            this.store.delete(oldestKey);
+        }
+
+        logger.warn(
+            `Slow down: store at cap (${this.maxStoreEntries}); evicted oldest entries. ` +
+            'Configure REDIS_URL for multi-replica-safe rate limiting.'
+        );
     }
 
     async _redisIncrement(key, now) {
@@ -255,6 +314,8 @@ class SimpleSlowDown {
             if (!hitData) {
                 let memData = this.store.get(key);
                 if (!memData) {
+                    // [SEC-6] Cap the store before inserting a brand-new key.
+                    this._enforceStoreCap();
                     memData = { hits: 0, resetTime: now + this.windowMs };
                     this.store.set(key, memData);
                 }

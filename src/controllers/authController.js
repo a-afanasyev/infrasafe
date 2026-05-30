@@ -73,7 +73,13 @@ const login = async (req, res, next) => {
             return res.status(403).json({ error: error.message });
         }
         if (error.code === 'ACCOUNT_LOCKED') {
-            return res.status(423).json({ error: error.message });
+            // SEC-11: do NOT special-case locked accounts with HTTP 423 — that
+            // status is a state oracle (locked vs not) an attacker can use to
+            // time distributed spraying. Return the SAME 401 + generic message
+            // as INVALID_CREDENTIALS so a locked account is indistinguishable
+            // from a wrong password. Lockout detail is logged server-side in
+            // authService.checkAccountLockout, never surfaced to the client.
+            return res.status(401).json({ error: 'Неверное имя пользователя или пароль' });
         }
 
         logger.error(`Login error: ${error.message}`);

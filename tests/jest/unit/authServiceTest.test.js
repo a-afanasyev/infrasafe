@@ -612,6 +612,28 @@ describe('AuthService', () => {
             ).rejects.toMatchObject({ code: 'ACCOUNT_LOCKED' });
         });
 
+        // SEC-11: response-latency timing oracle. A locked account must NOT
+        // return faster than a not-locked wrong-password attempt, otherwise an
+        // attacker measuring latency can distinguish locked vs not-locked
+        // accounts. The locked path therefore performs a dummy bcrypt.compare
+        // (constant work) before throwing ACCOUNT_LOCKED, equalizing timing
+        // with the real verifyPassword bcrypt.compare on the unlocked path.
+        test('performs a dummy bcrypt.compare before throwing ACCOUNT_LOCKED (timing equalization)', async () => {
+            const compareSpy = jest.spyOn(bcrypt, 'compare');
+            AccountLockout.get.mockResolvedValueOnce({
+                failed_attempts: 5,
+                locked_until: new Date(Date.now() + 900000),
+            });
+
+            await expect(
+                authService.checkAccountLockout('user')
+            ).rejects.toMatchObject({ code: 'ACCOUNT_LOCKED' });
+
+            // bcrypt work must have happened on the locked path
+            expect(compareSpy).toHaveBeenCalled();
+            compareSpy.mockRestore();
+        });
+
         test('clears attempts and does not throw when lockout has expired', async () => {
             AccountLockout.get.mockResolvedValueOnce({
                 failed_attempts: 5,
@@ -625,6 +647,9 @@ describe('AuthService', () => {
 
     describe('recordFailedAttempt', () => {
         test('delegates to AccountLockout.recordFailedAttempt with config', async () => {
+            // SEC-11: pin jitter to 0 so the base lockout window is asserted
+            const crypto = require('crypto');
+            const randomIntSpy = jest.spyOn(crypto, 'randomInt').mockReturnValue(0);
             AccountLockout.recordFailedAttempt.mockResolvedValueOnce({ failed_attempts: 1, locked_until: null });
 
             await authService.recordFailedAttempt('user1');
@@ -632,8 +657,9 @@ describe('AuthService', () => {
             expect(AccountLockout.recordFailedAttempt).toHaveBeenCalledWith(
                 'user1',
                 5,               // maxLoginAttempts
-                15 * 60 * 1000   // lockoutDuration
+                15 * 60 * 1000   // lockoutDuration (base, jitter pinned to 0)
             );
+            randomIntSpy.mockRestore();
         });
 
         test('logs lockout warning when max attempts reached', async () => {
@@ -648,6 +674,32 @@ describe('AuthService', () => {
             expect(logger.warn).toHaveBeenCalledWith(
                 expect.stringContaining('заблокирован')
             );
+        });
+
+        // SEC-11: the 15-min lockout window must carry cryptographic jitter so
+        // it is not a fixed, predictable interval an attacker can synchronize
+        // against. Jitter MUST come from crypto.randomInt (CSPRNG), never a JS
+        // Math.random PRNG.
+        test('adds crypto.randomInt jitter to the lockout window', async () => {
+            const crypto = require('crypto');
+            const randomIntSpy = jest.spyOn(crypto, 'randomInt').mockReturnValue(42000);
+            AccountLockout.recordFailedAttempt.mockResolvedValueOnce({ failed_attempts: 1, locked_until: null });
+
+            await authService.recordFailedAttempt('user1');
+
+            // crypto.randomInt must be consulted for the jitter
+            expect(randomIntSpy).toHaveBeenCalled();
+
+            const [login, maxAttempts, lockoutMs] = AccountLockout.recordFailedAttempt.mock.calls[0];
+            expect(login).toBe('user1');
+            expect(maxAttempts).toBe(5);
+            // base window (15 min) + the mocked jitter (42000 ms)
+            expect(lockoutMs).toBe(15 * 60 * 1000 + 42000);
+            // bounded: base ≤ window ≤ base + max jitter (LOCKOUT_JITTER_MAX_MS = 3 min)
+            expect(lockoutMs).toBeGreaterThanOrEqual(15 * 60 * 1000);
+            expect(lockoutMs).toBeLessThanOrEqual(15 * 60 * 1000 + 3 * 60 * 1000);
+
+            randomIntSpy.mockRestore();
         });
     });
 

@@ -10,6 +10,27 @@ const AccountLockout = require('../models/AccountLockout');
 // Phase 13: clock-skew tolerance for JWT-cutoff comparison
 const JWT_CUTOFF_SKEW_MS = 5000;
 
+// SEC-11: upper bound (exclusive) for the randomized lockout jitter added on
+// top of the base 15-min window. A few minutes of crypto-random jitter makes
+// the lockout window non-deterministic so it cannot be synchronized against
+// by a distributed brute-force attack. crypto.randomInt is a CSPRNG — never
+// use Math.random for this.
+const LOCKOUT_JITTER_MAX_MS = 3 * 60 * 1000; // up to 3 minutes
+
+// SEC-11: response-latency timing oracle defense. The locked path throws
+// ACCOUNT_LOCKED *before* reaching the real verifyPassword bcrypt.compare, so a
+// locked account would otherwise respond noticeably faster than a not-locked
+// wrong-password attempt (which pays the full bcrypt cost at saltRounds=12). An
+// attacker measuring latency could distinguish locked vs not-locked accounts.
+// To equalize timing we run a dummy bcrypt.compare against this pre-computed
+// hash before throwing. The hash is computed once at module load with the same
+// cost factor (12) used for real password hashing. The comparison result is
+// always discarded and can never influence control flow. The hash is a
+// hardcoded, precomputed cost-12 bcrypt of 'infrasafe-timing-equalizer' so we
+// never call bcrypt at module load (calling bcrypt.hashSync at import time
+// crashes under test suites that mock bcrypt before requiring this module).
+const DUMMY_BCRYPT_HASH = '$2b$12$jfn044haTXlloOeWWFxnveZDkZDp/Vj9q/KUmUy.SDnF3etQaaBTm';
+
 class AuthService {
     constructor() {
         this.saltRounds = 12;
@@ -175,7 +196,10 @@ class AuthService {
     }
 
     // Верификация временного токена для 2FA
-    verifyTempToken(token) {
+    // SEC-4: also reject temp tokens issued before the user's most recent
+    // password change so a mid-session password change invalidates any
+    // outstanding 2FA temp token (mirrors the access/refresh cutoff check).
+    async verifyTempToken(token) {
         const decoded = jwt.verify(token, this.jwtSecret, {
             algorithms: ['HS256'],
             issuer: 'infrasafe-api',
@@ -184,6 +208,15 @@ class AuthService {
         if (decoded.scope !== '2fa') {
             throw new Error('Invalid token scope');
         }
+
+        const user = await this.findUserById(decoded.user_id);
+        if (!user) {
+            throw new Error('User not found');
+        }
+        if (this._isIssuedBeforeCutoff(decoded, user)) {
+            throw new Error('Temp token issued before password change');
+        }
+
         return decoded;
     }
 
@@ -508,6 +541,14 @@ class AuthService {
             // already strips it from the HTML response, but raw API consumers
             // bypassed that. Now the timestamp is only logged server-side.
             logger.warn(`Account lockout active for login=${login} until=${new Date(lockedUntilMs).toISOString()}`);
+            // SEC-11: equalize response latency with the unlocked wrong-password
+            // path by paying the same bcrypt cost before throwing. Result is
+            // intentionally discarded — it never affects control flow.
+            try {
+                await bcrypt.compare('infrasafe-timing-equalizer', DUMMY_BCRYPT_HASH);
+            } catch (_) {
+                // A failure in the dummy compare must not change the lockout outcome.
+            }
             const error = new Error('Аккаунт временно заблокирован. Попробуйте позже.');
             error.code = 'ACCOUNT_LOCKED';
             throw error;
@@ -519,10 +560,15 @@ class AuthService {
 
     // Запись неудачной попытки входа (atomic UPSERT, survives restart / scale-out)
     async recordFailedAttempt(login) {
+        // SEC-11: add cryptographically-random jitter to the base lockout
+        // window so the unlock time is not a fixed, predictable interval.
+        const jitterMs = crypto.randomInt(LOCKOUT_JITTER_MAX_MS);
+        const lockoutDuration = this.lockoutDuration + jitterMs;
+
         const result = await AccountLockout.recordFailedAttempt(
             login,
             this.maxLoginAttempts,
-            this.lockoutDuration
+            lockoutDuration
         );
         const failedAttempts = result?.failed_attempts ?? 0;
         const lockedUntil = result?.locked_until ?? null;

@@ -241,12 +241,67 @@ describe('MetricController', () => {
         });
 
         test('calls next on generic error', async () => {
-            req.body = {};
+            req.body = { serial_number: 'SN-001', metrics: { temperature: 22.5 } };
             metricService.processTelemetry.mockRejectedValue(new Error('Processing error'));
 
             await receiveTelemetry(req, res, next);
 
             expect(next).toHaveBeenCalledWith(expect.any(Error));
+        });
+
+        test('returns 400 (not 500) on empty body without touching the service', async () => {
+            req.body = {};
+
+            await receiveTelemetry(req, res, next);
+
+            expect(metricService.processTelemetry).not.toHaveBeenCalled();
+            expect(next).not.toHaveBeenCalled();
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    success: false,
+                    error: expect.objectContaining({ status: 400 })
+                })
+            );
+        });
+
+        test('returns 400 on missing/blank serial_number (partial body)', async () => {
+            req.body = { metrics: { temperature: 22.5 } };
+
+            await receiveTelemetry(req, res, next);
+
+            expect(metricService.processTelemetry).not.toHaveBeenCalled();
+            expect(res.status).toHaveBeenCalledWith(400);
+        });
+
+        test('returns 400 when metrics is present but not an object', async () => {
+            req.body = { serial_number: 'SN-001', metrics: 'not-an-object' };
+
+            await receiveTelemetry(req, res, next);
+
+            expect(metricService.processTelemetry).not.toHaveBeenCalled();
+            expect(res.status).toHaveBeenCalledWith(400);
+        });
+
+        test('returns 400 when body is missing entirely', async () => {
+            req.body = undefined;
+
+            await receiveTelemetry(req, res, next);
+
+            expect(metricService.processTelemetry).not.toHaveBeenCalled();
+            expect(res.status).toHaveBeenCalledWith(400);
+        });
+
+        test('still processes a valid telemetry body (success path unchanged)', async () => {
+            req.body = { serial_number: 'SN-001', metrics: { temperature: 22.5 } };
+            const mockResult = { success: true, metric_id: 1 };
+            metricService.processTelemetry.mockResolvedValue(mockResult);
+
+            await receiveTelemetry(req, res, next);
+
+            expect(metricService.processTelemetry).toHaveBeenCalledWith(req.body);
+            expect(res.status).toHaveBeenCalledWith(201);
+            expect(res.json).toHaveBeenCalledWith(mockResult);
         });
     });
 

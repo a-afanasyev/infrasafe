@@ -56,6 +56,18 @@ const authenticateJWT = async (req, res, next) => {
             audience: 'infrasafe-client'
         });
 
+        // SEC-1: reject scoped tokens (e.g. the 2FA temp-token, scope:'2fa') on
+        // normal routes. generateTempToken signs with the SAME JWT_SECRET, so a
+        // pre-2FA temp-token would otherwise be accepted as a full access token,
+        // bypassing 2FA. Normal access tokens (generateTokens) carry NO scope.
+        if (decoded.scope) {
+            logger.warn(`Scoped token (scope=${decoded.scope}) rejected on access-token route`);
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid or expired token'
+            });
+        }
+
         const user = await authService.findUserById(decoded.user_id);
         if (!user) {
             return res.status(401).json({
@@ -218,6 +230,15 @@ const optionalAuth = async (req, res, next) => {
             audience: 'infrasafe-client'
         });
 
+        // SEC-1 (consistency): mirror authenticateJWT's scope guard. A scoped
+        // token (e.g. the 2FA temp-token, scope:'2fa') must never grant req.user
+        // here either — degrade gracefully to the anonymous path like an invalid
+        // token does. Normal access tokens (generateTokens) carry NO scope.
+        if (decoded.scope) {
+            req.user = null;
+            return next();
+        }
+
         const user = await authService.findUserById(decoded.user_id);
         if (user && !(user.account_locked_until && new Date(user.account_locked_until) > new Date())) {
             req.user = mapUserToReqUser(user);
@@ -257,7 +278,7 @@ const authenticateTempToken = async (req, res, next) => {
             });
         }
 
-        const decoded = authService.verifyTempToken(tempToken);
+        const decoded = await authService.verifyTempToken(tempToken);
         req.tempUser = decoded;
         req.tempToken = tempToken; // Pass to controller for blacklisting after use
         next();

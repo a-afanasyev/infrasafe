@@ -9,6 +9,13 @@ const alertEvents = require('../events/alertEvents');
 // overloaded transformer list), which is a plain function call.
 const analyticsService = require('./analyticsService');
 
+// [SEC-7] Cap on the number of alert_request_map rows aggregated into the
+// inline uk_requests array per alert in getActiveAlerts(). A mass/transformer
+// outage can map thousands of buildings to a single alert; bounding the
+// per-alert sub-array prevents an unbounded JSON build (memory spike) on the
+// admin endpoint. The array is truncated (most-recent first), not the request.
+const UK_REQUESTS_MAX_PER_ALERT = 100;
+
 class InfrastructureAlertService {
     constructor() {
         // Circuit breaker для операций с БД
@@ -1081,6 +1088,13 @@ class InfrastructureAlertService {
         // Postgres allows SELECT ia.* with GROUP BY ia.alert_id (primary key —
         // functional-dependency rule, since 9.1). This keeps the explicit
         // column list out of sync with the table schema as the model evolves.
+        //
+        // [SEC-7] The mappings sub-array is bounded to UK_REQUESTS_MAX_PER_ALERT
+        // rows per alert via a LATERAL subquery with LIMIT *before* json_agg.
+        // A mass/transformer outage can map thousands of buildings to a single
+        // alert; without this cap an admin page-load would build an unbounded
+        // JSON array per row → memory spike. The array is intentionally
+        // truncated (most-recent first) rather than failing the request.
         const dataQuery = `
             SELECT
                 ia.*,
@@ -1099,7 +1113,15 @@ class InfrastructureAlertService {
             FROM infrastructure_alerts ia
             LEFT JOIN users u1 ON ia.acknowledged_by = u1.user_id
             LEFT JOIN users u2 ON ia.resolved_by = u2.user_id
-            LEFT JOIN alert_request_map arm ON arm.infrasafe_alert_id = ia.alert_id
+            LEFT JOIN LATERAL (
+                SELECT arm_inner.uk_request_number,
+                       arm_inner.building_external_id,
+                       arm_inner.status
+                FROM alert_request_map arm_inner
+                WHERE arm_inner.infrasafe_alert_id = ia.alert_id
+                ORDER BY arm_inner.id DESC
+                LIMIT ${UK_REQUESTS_MAX_PER_ALERT}
+            ) arm ON true
             WHERE ${whereClause}
             GROUP BY ia.alert_id, u1.username, u2.username
             ORDER BY ia.${sortColumn} ${sortOrder}

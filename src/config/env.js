@@ -17,9 +17,26 @@ const PRODUCTION_REQUIRED_VARS = [
     'CORS_ORIGINS',
 ];
 
+// [SEC-12] NODE_ENV gates the security posture (Helmet CSP, Swagger exposure).
+// An unset/unknown value silently falls back to the weaker dev posture, so we
+// fail fast unless NODE_ENV is one of the known environments.
+const VALID_NODE_ENVS = ['development', 'production', 'test'];
+
 function validateEnv() {
+    // [SEC-12] Assert NODE_ENV BEFORE any other branch (incl. the test
+    // early-return below) so an unset/unknown value can never ship the dev
+    // security posture by accident.
+    const nodeEnv = process.env.NODE_ENV;
+    if (!VALID_NODE_ENVS.includes(nodeEnv)) {
+        const message =
+            `Invalid NODE_ENV: ${nodeEnv === undefined ? '(unset)' : `"${nodeEnv}"`}. ` +
+            `Must be one of: ${VALID_NODE_ENVS.join(', ')}.`;
+        logger.error(message);
+        throw new Error(message);
+    }
+
     // В тестовой среде пропускаем валидацию — тесты используют моки
-    if (process.env.NODE_ENV === 'test') {
+    if (nodeEnv === 'test') {
         return;
     }
 
