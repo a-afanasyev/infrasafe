@@ -185,6 +185,36 @@ FILTER (display under-report only, array stays bounded); `isXSSFree` remains a d
 behind edge CSP); `authService` nonexistent-user path has no bcrypt (separate user-enumeration timing
 oracle, pre-existing, out of SEC-11 scope).
 
+## Deploy outcome (2026-05-30, prod `infrasafe.uz` / 95.46.96.105)
+
+PR #69 squash-merged to `main` (`3c23225`), CI fully green (incl. CodeQL after resolving a
+false-positive clear-text-logging alert). Deployed via `git pull` (repo is bind-mounted to the
+app container) + `--force-recreate --no-deps app frontend`.
+
+- **Step 1 — code/compose:** app+frontend recreated healthy. Ports flipped `0.0.0.0`→`127.0.0.1`
+  for `:3000`/`:8080` (P-PENTEST-1 closed — verified `blocked` from the internet). NODE_ENV assert
+  (SEC-12) did not block startup.
+- **Step 3a — JWT rotation:** `JWT_SECRET` + `JWT_REFRESH_SECRET` rotated (host-generated, `.env.prod`
+  backed up), app recreated healthy, auth path works, all prior sessions invalidated.
+- **Step 3b — DB password rotation:** app role is `infrasafe_runtime` (not `infrasafe_app`); the
+  `.env.prod` `POSTGRES_USER=postgres` references a **non-existent role** (stale — left untouched).
+  Rotated only `infrasafe_runtime` via self-`ALTER USER` (gated on `ALTER ROLE` success), updated only
+  `DB_PASSWORD`. App reconnected cleanly (no auth-fail loop; DB-backed endpoint 200).
+- **Step 4 — post-deploy pentest + smoke: 14/14 green** — ports closed, postgres/redis not exposed,
+  HSTS+CSP+no x-powered-by, default-deny 401, telemetry empty-body→400 (P-PENTEST-2), anon
+  buildings-metrics has no `external_id` (P-PENTEST-3), unsigned UK webhook→401, TRACE blocked, site
+  200, login→401 generic (SEC-11 uniform response live).
+
+**Still open after deploy (operator action):**
+- **Host firewall** (P-PENTEST-1 belt-and-suspenders): `sudo` needs a password; ports are already
+  loopback-closed so this is redundant but recommended. Commands handed to operator.
+- **TOTP_ENCRYPTION_KEY rotation** (SEC-3): deferred — rotating locks out enrolled admins; needs a
+  re-enrollment plan.
+- **UK_WEBHOOK_SECRET / INFRASAFE_WEBHOOK_SECRET rotation** (SEC-3): deferred — needs UK-team
+  coordination (use the `UK_WEBHOOK_SECRET_NEXT` dual-secret window).
+- **SEC-3 git-history scrub:** rotation done for JWT+DB; UK+TOTP secrets pending per above.
+- **SEC-1 live replay** not executed (no prod admin creds on hand); verified by tests + re-audit.
+
 ## What was checked and found clean
 SQL injection (parametrized + IDENT_RE whitelist + ALLOWED_UPDATE_TABLES — solid), XSS/CSP at
 the edge (self-hosted DOMPurify, strict CSP), webhook HMAC + replay (timing-safe, 300s window),
