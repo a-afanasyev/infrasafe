@@ -221,7 +221,11 @@ app container) + `--force-recreate --no-deps app frontend`.
 **Still open after deploy (operator action):**
 - **Host firewall** (P-PENTEST-1 belt-and-suspenders): `sudo` needs a password; ports are already
   loopback-closed so this is redundant but recommended. Commands handed to operator.
-- **SEC-1 live replay** not executed (no prod admin creds on hand); verified by tests + re-audit.
+- ✅ **SEC-1 live replay** verified on prod 2026-05-30: a fresh admin `tempToken` (payload
+  `role:"admin", scope:"2fa"`, NOT expired, valid signature) replayed as `Authorization: Bearer`
+  on `GET /api/buildings` and `/api/integration/config` → **401 "Invalid or expired token"** on both.
+  Since the token was unexpired + signature-valid, the 401 comes from the `decoded.scope` guard
+  (the SEC-1 fix), not expiry. Pre-fix this token would have returned 200 with admin data. Bypass closed.
 
 ## What was checked and found clean
 SQL injection (parametrized + IDENT_RE whitelist + ALLOWED_UPDATE_TABLES — solid), XSS/CSP at
