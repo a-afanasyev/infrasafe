@@ -6,6 +6,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend.dev
+    # [B-012] Run from the ./nginx-config directory mount (see volumes), symmetric
+    # with prod (docker-compose.unified.yml). Directory mount + `-c` so config
+    # edits are picked up on reload without a container recreate.
+    command: ["nginx", "-c", "/etc/nginx/custom/nginx.dev.conf", "-g", "daemon off;"]
     ports:
       - "8088:8080"
     volumes:
@@ -25,8 +29,8 @@ services:
       - ./public:/usr/share/nginx/html/public:ro
       - ./data:/usr/share/nginx/html/data:ro
       
-      # Монтируем конфигурацию nginx для быстрого изменения
-      - ./nginx.dev.conf:/etc/nginx/nginx.conf:ro
+      # [B-012] Directory mount (was ./nginx.dev.conf:/etc/nginx/nginx.conf).
+      - ./nginx-config:/etc/nginx/custom:ro
     depends_on:
       - app
     networks:

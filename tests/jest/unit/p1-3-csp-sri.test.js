@@ -113,7 +113,7 @@ describe('[P1-3] inline <script> blocks have been extracted', () => {
 });
 
 describe('[P1-3] nginx production CSP no longer permits unsafe-inline on script-src', () => {
-    const nginxConf = read('nginx.production.conf');
+    const nginxConf = read('nginx-config/nginx.production.conf'); // [B-012] moved to nginx-config/
 
     test('Content-Security-Policy header exists in https server block', () => {
         expect(nginxConf).toMatch(/add_header\s+Content-Security-Policy\s+"[^"]+"/);

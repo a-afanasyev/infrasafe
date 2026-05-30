@@ -131,7 +131,7 @@ Bidirectional integration with UK Management Bot (Управляющая Ком�
 
 **Network topology** (2026-05-24, post-Sprint-9.x): **both directions** of the UK channel flow through the **public HTTPS edge**, NOT the internal docker `uk-network`. The Sprint 9.x compose changes (and subsequent compose-fix PR #51) removed `infrasafe-app-1` from `uk-network`; the public edge became the canonical target for inbound, and after the e2e smoke on 2026-05-24 (alert 24 → ticket 260524-001) we confirmed the same for outbound:
 - **UK→InfraSafe** (inbound): `https://infrasafe.uz/webhooks/uk/*` and `/api/uk-requests-metrics` → nginx → `infrasafe-app-1:3000` over the `leaflet-network` bridge.
-- **InfraSafe→UK** (outbound): `UK_API_URL=https://infrasafe.uz/uk` → nginx `location ^~ /uk/api/` (nginx.production.conf:192) → rewrite `/uk/api/*` → `http://uk-management-api:8080/api/*` over the `uk-network` bridge (only `infrasafe-nginx-1` is in that network, not the app).
+- **InfraSafe→UK** (outbound): `UK_API_URL=https://infrasafe.uz/uk` → nginx `location ^~ /uk/api/` (nginx-config/nginx.production.conf:192) → rewrite `/uk/api/*` → `http://uk-management-api:8080/api/*` over the `uk-network` bridge (only `infrasafe-nginx-1` is in that network, not the app).
 
 Defense-in-depth: nginx TLS + HMAC-SHA256 webhook signatures (both directions, same `UK_WEBHOOK_SECRET`) + 60/мин rate limit. **Do NOT re-attach `infrasafe-app-1` to `uk-network`** — это вернёт B-011 alias collision: `uk-postgres` имеет alias `postgres` в `uk-network`, и app может зарезолвить DB hostname в чужой контейнер с другим паролем (auth-fail loop, debugged 2026-05-28; fix B-010 закрепил `docker-compose.unified.yml` так чтобы app сидел только в `infrasafe-network + leaflet-network`, без uk-network). Если когда-то понадобится альтернативный internal-docker путь для UK↔InfraSafe — сначала переименуйте generic alias'ы (`postgres`/`redis`/`frontend`/`app`) в обоих compose-проектах на уникальные (`uk-postgres`/`infrasafe-postgres`), задокументируйте в B-011 closure, и только потом обсуждайте network sharing.
 
@@ -253,7 +253,7 @@ UK_WEBHOOK_SECRET_NEXT     # Optional: NEW value during rotation window. Sprint 
 UK_USE_NEXT_SECRET=false   # Set to 'true' to switch sender to UK_WEBHOOK_SECRET_NEXT.
 UK_API_URL                 # Bare host — client appends /api/v2/webhooks/infrasafe/alert.
                            # Canonical for prod (2026-05-24): https://infrasafe.uz/uk
-                           # The nginx `location ^~ /uk/api/` (nginx.production.conf:192)
+                           # The nginx `location ^~ /uk/api/` (nginx-config/nginx.production.conf:192)
                            # rewrites /uk/api/* → http://uk-management-api:8080/api/* over
                            # the existing uk-network bridge. Symmetric with UK's inbound:
                            # both directions go through our public HTTPS edge (TLS + HMAC),
@@ -308,7 +308,7 @@ ALERT_VERIFICATION_TICK_MS=15000       # Drain interval (clamped [5000, 60000])
 - Duplication across water-related route files remains (Phase 6 factory covers models only).
 - Rate-limiter and cache are still in-memory — multi-replica deployments will need Redis (tracked in audit plan Phase 11.1/11.2). Sprint 9 outbox is already DB-backed (`uk_outbox`) and Sprint 10 verification queue is DB-backed (`alert_verifications`), both with `pg_try_advisory_lock` for cross-replica coordination.
 - Frontend redesign (`feature/frontend-redesign`) not yet merged to main.
-- Prod nginx bind-mounts individual HTML files (not the directory) — `git pull` creates new inodes and nginx keeps reading the old one until a restart. A Sprint-10-era deploy that touched `admin.html` served stale HTML until `docker restart infrasafe-nginx-1`. Recommend migrating to a directory mount + nginx `try_files` whitelist in a separate cleanup PR.
+- ~~Prod nginx bind-mounts individual HTML files~~ — **resolved**: HTML moved to a directory mount in B-002 (`frontend-html/`), and the nginx **config** moved to a directory mount in B-012 (`nginx-config/`, run via `nginx -c /etc/nginx/custom/nginx.production.conf`). Both inode-traps are closed; `git pull` + `nginx -s reload` now picks up changes without `--force-recreate`.
 - `alertService` persistence gate only fully implemented for LEAK_DETECTED+controller path (SQL aggregation on `metrics`). Other types fail-open in v1, pending rolling-window metric aggregations.
 - **LEAK auto-trigger now live (B-005-LEAK, 2026-05-26)**: `metricService.createMetric` эмитит `alertEvents.LEAK_CHECK` после `leak_sensor=true` insert; `alertService.checkLeak(controllerId)` listener → persistence-gated `createAlert` → UK pipeline. End-to-end ~5 сек в проде verified. **VOLTAGE/HEATING всё ещё manual-only** — следующий тикет B-005 (VOLTAGE+HEATING) в `docs/audit/sprint-11-backlog.md`. Cooldown gotcha (commit `e15436f`): для checkLeak/checkVoltage/checkHeating bump `lastChecks` ТОЛЬКО на success — gate denial должен оставлять cooldown unset, иначе persistence-gate маскируется до конца cooldown window'а.
 

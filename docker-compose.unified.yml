@@ -147,17 +147,24 @@ services:
   postgres:
     image: postgis/postgis:15-3.3
 
-    # [SEC-2] DB credentials sourced from .env / .env.prod (both gitignored),
-    # mirroring docker-compose.prod.yml. No inline default — POSTGRES_PASSWORD
-    # MUST come from the env_file. Same dual-file pattern as the app service:
-    # dev uses .env, prod uses .env.prod; the absent one is silently skipped.
+    # [SEC-2] DB credentials sourced from .env / .env.prod (both gitignored).
+    # Same dual-file pattern as the app service: dev uses .env, prod uses
+    # .env.prod; the absent one is silently skipped.
     env_file:
       - path: .env
         required: false
       - path: .env.prod
         required: false
+    # [B-023] POSTGRES_PASSWORD comes straight from the env_file above — do NOT
+    # add `- POSTGRES_PASSWORD=${POSTGRES_PASSWORD}` here. That form is resolved
+    # by COMPOSE INTERPOLATION from the shell / a root `.env`, NOT from env_file,
+    # so when the password lives only in .env.prod compose warns "variable is not
+    # set, defaulting to a blank string" and the empty `environment:` value then
+    # OVERRIDES the correct env_file value → postgres bootstraps with a blank
+    # password. POSTGRES_USER/DB are kept as literals on purpose: they shield the
+    # bootstrap against a stale `POSTGRES_USER=postgres` in .env.prod (dead config,
+    # see B-023 runbook note) and, being literals not `${...}`, raise no warning.
     environment:
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_USER=infrasafe_app
       - POSTGRES_DB=infrasafe
     volumes:
@@ -289,14 +296,20 @@ services:
   #   - uk-network: uk-frontend, uk-management-api (UK stack, external)
   nginx:
     image: nginx:alpine
+    # [B-012] Run from a DIRECTORY mount, not a single-file mount. The config is
+    # a full top-level nginx.conf, so we mount ./nginx-config as a directory and
+    # point nginx at it with `-c`. Directory mounts resolve the filename through
+    # the dir entry on every read, so `git pull` is picked up on `nginx -s reload`
+    # — the single-file mount captured the host inode at container start, which is
+    # why every config change used to need a `--force-recreate nginx` (same
+    # inode-trap as the HTML files before B-002).
+    command: ["nginx", "-c", "/etc/nginx/custom/nginx.production.conf", "-g", "daemon off;"]
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      # Production конфигурация Nginx из проекта
-      # ВАЖНО: Файл должен находиться в корне проекта
-      # Альтернатива: используйте абсолютный путь /home/infrasafe/nginx-docker/nginx.production.conf
-      - ./nginx.production.conf:/etc/nginx/nginx.conf:ro
+      # [B-012] Directory mount (was ./nginx.production.conf:/etc/nginx/nginx.conf).
+      - ./nginx-config:/etc/nginx/custom:ro
       # SSL сертификаты — SAN-сертификат на infrasafe.uz + infrasafe.aisolutions.uz
       # Создать на сервере: sudo certbot certonly --webroot -w ~/infrasafe/certbot-webroot
       #                      -d infrasafe.uz -d infrasafe.aisolutions.uz
@@ -329,7 +342,9 @@ services:
       - uk-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "nginx", "-t"]
+      # [B-012] -c must match the command above, else `nginx -t` validates the
+      # default /etc/nginx/nginx.conf (no longer mounted) instead of our config.
+      test: ["CMD", "nginx", "-t", "-c", "/etc/nginx/custom/nginx.production.conf"]
       interval: 30s
       timeout: 5s
       retries: 3

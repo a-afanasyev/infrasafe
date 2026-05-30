@@ -1,7 +1,10 @@
 FROM nginx:alpine
 
 # Копируем dev конфигурацию nginx
-COPY nginx.dev.conf /etc/nginx/nginx.conf
+# [B-012] Config moved to nginx-config/ and baked at the same path the runtime
+# `command: nginx -c /etc/nginx/custom/...` expects, so the image works even if
+# the ./nginx-config bind mount is absent (mount overrides at runtime).
+COPY nginx-config/nginx.dev.conf /etc/nginx/custom/nginx.dev.conf
 
 # Устанавливаем curl для healthcheck
 RUN apk add --no-cache curl
@@ -43,4 +46,5 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=5s \
     CMD curl -f http://localhost:8080/health || exit 1
 
 # Запускаем nginx
-CMD ["nginx", "-g", "daemon off;"] 
+# [B-012] -c matches the compose `command` and the baked config path above.
+CMD ["nginx", "-c", "/etc/nginx/custom/nginx.dev.conf", "-g", "daemon off;"]

@@ -545,11 +545,30 @@ by `017_runtime_role.sql`; the `postgres` role is absent on prod.
   needed since runtime already matches).
 - Runbook §0 / pre-deploy bullet added.
 
-### B-023 — POSTGRES_PASSWORD env_file-vs-interpolation footgun (NEW, low) — OPEN
-`docker-compose.unified.yml` postgres `environment: POSTGRES_PASSWORD=${POSTGRES_PASSWORD}` is resolved by
-**compose interpolation from the shell / `.env`** at parse time — NOT from `env_file`. `docker compose
-config` warns "POSTGRES_PASSWORD variable is not set, defaulting to a blank string" when only `.env.prod`
-carries it, and the `environment:` line can then override the env_file value with empty. Also
-`POSTGRES_USER=postgres` in `.env.prod` is dead config (the service hardcodes
-`POSTGRES_USER=infrasafe_app`). **Record-only** — do not touch prod DB config blindly; needs a tested
-container-recreate window.
+### B-012 — nginx config single-file mount (inode-trap) — CLOSED (2026-05-31)
+`nginx.production.conf` + `nginx.dev.conf` were full top-level configs mounted as single files
+(`/etc/nginx/nginx.conf`) → after `git pull`, `nginx -s reload` kept the inode captured at container start,
+so config edits needed a `--force-recreate` (same class as B-002 for HTML).
+**Fix:** `git mv` both into `nginx-config/`; mount the **directory** (`./nginx-config:/etc/nginx/custom:ro`)
+and run `nginx -c /etc/nginx/custom/<conf>` with a matching `nginx -t -c …` healthcheck.
+- `docker-compose.unified.yml` (nginx) + `docker-compose.dev.yml` (frontend): directory mount + `command` + healthcheck.
+- `Dockerfile.frontend.dev`: bakes `nginx-config/nginx.dev.conf` at the same `-c` path (image self-contained).
+- Tests repointed: `p1-3-csp-sri.test.js`, `xss-protection.test.js`, `cspHeaders.e2e.test.js` comment.
+- `Dockerfile.unified`/`Dockerfile.frontend-only` bake a different file (`nginx.conf`) — untouched.
+**Verified:** `nginx -t -c …/nginx.dev.conf` on the dev network → "syntax is ok / test is successful";
+prod config parses (only missing-cert off-prod, expected); full suite 2232/2232 green; lint clean.
+**Deploy:** one final `--force-recreate nginx` (mount target file→dir) — see runbook B-012 note; after that
+config changes ride `git pull` + `nginx -s reload`.
+
+### B-023 — POSTGRES_PASSWORD env_file-vs-interpolation footgun — CLOSED (2026-05-31, decl) + 1 operator step
+`docker-compose.unified.yml` postgres carried `environment: - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}`,
+resolved by **compose interpolation from shell / root `.env`** (NOT `env_file`) → "variable not set,
+defaulting to a blank string" warning, and the empty `environment:` value could override the correct
+env_file value → postgres bootstraps blank.
+**Fix:** removed the `${POSTGRES_PASSWORD}` line; password now flows from `env_file: .env.prod`.
+`POSTGRES_USER=infrasafe_app` / `POSTGRES_DB` kept as **literals** (shield against a stale
+`POSTGRES_USER=postgres` in `.env.prod`; literals raise no warning). `docker compose config` now renders
+with **zero** warnings.
+**Residual operator step (NOT done here — needs prod `.env.prod` edit + postgres-recreate window):** remove
+the dead `POSTGRES_USER=postgres` line from `.env.prod`; the declaration change itself only applies on a
+postgres recreate. Documented in the runbook (B-023 note) — do not recreate postgres just for this.

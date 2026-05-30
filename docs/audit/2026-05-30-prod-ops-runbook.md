@@ -196,3 +196,43 @@ Reading:
   up if/when `prod.yml` is reconciled or retired in favour of `unified.yml`.
 - **Canonical compose on prod is still `docker-compose.prod.yml`** (per the working tree); when the host
   migrates to `unified.yml`, the pre-flight command above is already correct.
+
+---
+
+## B-012 + B-023 deploy notes (nginx directory-mount + postgres env)
+
+### B-012 — nginx config moved to a directory mount
+`nginx.production.conf` / `nginx.dev.conf` moved to `nginx-config/`; the nginx service now runs
+`nginx -c /etc/nginx/custom/nginx.production.conf` with `./nginx-config:/etc/nginx/custom:ro` (directory
+mount) and a matching `nginx -t -c …` healthcheck. This closes the last inode-trap (same class as B-002
+for HTML).
+
+**One-time recreate required** (the mount target changed from a file to a directory):
+```bash
+cd ~/infrasafe && git pull --ff-only origin main
+docker compose -f docker-compose.unified.yml up -d --force-recreate --no-deps nginx
+# verify the new config path is what nginx loaded:
+docker exec infrasafe-nginx-1 nginx -t -c /etc/nginx/custom/nginx.production.conf   # syntax ok + test successful
+curl -sS -o /dev/null -w 'edge %{http_code}\n' https://infrasafe.uz/                # 200
+curl -sSI https://infrasafe.uz/ | grep -iE 'strict-transport|content-security'     # headers intact
+```
+After this recreate, future nginx config edits land via `git pull` + `docker exec infrasafe-nginx-1 nginx -s reload` — **no more `--force-recreate` for config changes.**
+
+**Rollback:** `git revert HEAD --no-edit && docker compose -f docker-compose.unified.yml up -d --force-recreate --no-deps nginx`.
+
+### B-023 — postgres env footgun (declaration fixed; one operator cleanup left)
+`docker-compose.unified.yml` no longer carries `- POSTGRES_PASSWORD=${POSTGRES_PASSWORD}` (that form
+interpolated from shell/`.env`, warned "variable not set → blank string", and could override the env_file
+value with empty). The password now comes straight from `env_file: .env.prod`. `POSTGRES_USER`/`DB` stay
+as literals on purpose (shield against a stale `POSTGRES_USER=postgres` in `.env.prod`; literals raise no
+warning). **This declaration change only takes effect on a postgres recreate — do NOT recreate postgres
+just for this; it rides along the next planned postgres maintenance window.**
+
+**Operator cleanup (same window, NOT blind):** remove the dead `POSTGRES_USER=postgres` line from
+`.env.prod` if present, then confirm a clean render:
+```bash
+grep -n '^POSTGRES_USER=' .env.prod        # if it says =postgres, it's dead config (service hardcodes infrasafe_app)
+# edit .env.prod to delete that line (editor, not echo)
+docker compose -f docker-compose.unified.yml config >/dev/null   # expect NO "variable is not set" warning
+```
+Do not touch `POSTGRES_PASSWORD` / `DB_PASSWORD` values here — that's the rotation flow in §3b.

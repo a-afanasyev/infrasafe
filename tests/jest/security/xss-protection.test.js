@@ -132,7 +132,7 @@ describe('XSS Protection Tests', () => {
         
         test('nginx.dev.conf should have CSP headers', () => {
             const content = fs.readFileSync(
-                path.join(__dirname, '../../../nginx.dev.conf'),
+                path.join(__dirname, '../../../nginx-config/nginx.dev.conf'), // [B-012] moved to nginx-config/
                 'utf8'
             );
             
