@@ -4,6 +4,36 @@
 > Каждый пункт: **что** + **почему** + **trigger to ship** (когда становится приоритетным).
 > Создан 2026-05-25 после закрытия Sprint 10 + INT-120.
 > Обновлён 2026-05-28 после deploy 4 PR'ов на прод (см. P0 — production infra drift).
+> Обновлён 2026-05-30: закрыты B-014/B-015/B-017/B-020 + security audit (#69) + ротации секретов + P-PENTEST-4; перепроверена актуальность открытых пунктов (блок ниже).
+
+---
+
+## Статус на 2026-05-30 — обновление + анализ актуальности
+
+### Закрыто с прошлого обновления (перенесено в Closed-секцию)
+| Пункт | PR / способ | Статус |
+|---|---|---|
+| B-014 — healthcheck `localhost`→IPv6 | #65 (`836e1be`) + app-side активирован в deploy 05-30 | ✅ |
+| B-017 — CSP/SRI test baseline | #66 (`21c731e`) | ✅ |
+| B-020 — `resolved_verifying` orphan | #68 (`a836fdc`) + migration 031, deployed 05-29 | ✅ |
+| B-015 — orphan network `site-content` | удалена (подтверждено `docker network ls`) | ✅ |
+| **Security audit** — SEC-1..12, P-PENTEST-1/2/3 | #69 (`3c23225`), deployed 05-30, 2232 теста + CodeQL | ✅ |
+| **SEC-3 ротации** — JWT / DB / UK-secret / TOTP + admin-пароль | 05-30, проверено на проде | ✅ |
+| **P-PENTEST-4** — UK-порты на `0.0.0.0` | закрыто UK (loopback + удаление), проверено снаружи | ✅ |
+
+### Анализ актуальности открытых пунктов (сверено с прод/кодом 2026-05-30)
+| Пункт | Проверка | Вердикт |
+|---|---|---|
+| **B-011** alias collision | app теперь только в `infrasafe`+`leaflet` (B-010) | **актуален, но latent** — рванёт лишь при re-attach app в `uk-network`; обычный путь безопасен |
+| **B-012** nginx single-file mount | `inspect`: `nginx.production.conf -> /etc/nginx/nginx.conf` всё ещё одиночный файл | **актуален** (recreate при каждой правке конфига) |
+| **B-013** DB_USER drift | `pg_roles`: `infrasafe_app`=**superuser**+login, `infrasafe_runtime`=login non-super, `postgres`=**НЕТ** | **переосмыслен ↓** — app корректно работает под non-super `infrasafe_runtime`; рекомендация «перейти на `infrasafe_app`» **неверна** (тот superuser — least-privilege нарушение). Остаётся косметика: убрать мёртвый `POSTGRES_USER=postgres` из `.env.prod` + поправить role-заметку в CLAUDE.md |
+| **B-003** Redis | SEC-6 (#69) добавил size-cap на обе in-memory Map | **актуален частично** — memory-growth снят; multi-replica bypass (SEC-8) остаётся; single-replica → триггер не наступил |
+| **B-004** admin.js split | `wc -l`: admin.js **3826** (+~400 от B-001), script.js **2384** | **актуален**, растёт; триггер 4500 LoC ещё не достигнут |
+| **B-016** drift-script | после P-PENTEST-4 | **актуален + расширить**: добавить проверку «нет лишних `0.0.0.0`-публикаций docker» |
+| B-021 / B-006 / B-007 / B-008 / B-009 | — | без изменений |
+
+### Рекомендация по следующему спринту
+Быстрый пакет: **B-013** (убрать dead `POSTGRES_USER`, ~30мин) + **B-012** (nginx directory-mount, ~2ч) + **B-016** (drift-script с 0.0.0.0-проверкой, ~3ч). Крупное (B-003 / B-004 / B-008) — отдельным спринтом по триггеру.
 
 ---
 
@@ -81,6 +111,8 @@ Frontend-html уже directory (B-002 закрыт), nginx.production.conf — s
 
 ### B-013 — `.env.prod` DB_USER drift vs migration 017
 
+> **⚠️ ПЕРЕОСМЫСЛЕНО 2026-05-30 (severity ↓).** Инвентарь `pg_roles` на проде: `infrasafe_app` = **superuser**+login, `infrasafe_runtime` = login non-super, `postgres` = **не существует**. App корректно работает под non-super `infrasafe_runtime` (least-privilege). **Рекомендация ниже «перейти на `infrasafe_app`» НЕВЕРНА** — это superuser, переключение ухудшит безопасность. Реальный остаток: убрать мёртвый `POSTGRES_USER=postgres` из `.env.prod` + поправить role-заметку в CLAUDE.md. Из P0-bug → cosmetic cleanup.
+
 **Re-verified 2026-05-28**. ✅ Подтверждена. `grep DB_USER ~/infrasafe/.env.prod` показал `DB_USER=infrasafe_runtime`. App при этом сейчас healthy → значит роль `infrasafe_runtime` всё ещё существует в `infrasafe-postgres-1` (миграция 017 НЕ дропнула старую при создании новой, либо seed создаёт обе).
 
 **Что**. `.env.prod` имеет `DB_USER=infrasafe_runtime`, миграция 017 переименовала runtime role в `infrasafe_app`. На проде оба роли существуют (`infrasafe_app` для migrations/admin, `infrasafe_runtime` для app), но рассинхрон паролей вылез сегодня — app не мог auth.
@@ -100,6 +132,8 @@ Frontend-html уже directory (B-002 закрыт), nginx.production.conf — s
 **Estimate**. ~1 час: тестовый flow на staging (если есть), apply, restart, verify.
 
 ### B-014 — `infrasafe-frontend-1` healthcheck `localhost` resolves to IPv6, nginx слушает только IPv4
+
+> **✅ ЗАКРЫТО 2026-05-30** — PR #65 (`836e1be`), app-side активирован в deploy 05-30. Секция оставлена для истории; см. Closed.
 
 **Re-verified 2026-05-28**. 🔄 **Re-rooted**. Изначальная гипотеза (wget missing / curl needed) НЕВЕРНА — `wget` есть в alpine. Реальная причина:
 
@@ -132,6 +166,8 @@ Healthcheck использует hostname `localhost` который в совр
 
 ### B-015 — Orphan network `site-content_leaflet-network`
 
+> **✅ ЗАКРЫТО 2026-05-30** — сеть удалена (подтверждено `docker network ls`: site-content отсутствует). См. Closed.
+
 **Re-verified 2026-05-28**. ✅ Подтверждена. `docker network inspect site-content_leaflet-network` → `0 containers, created 2025-11-23 23:20:04` (~6 месяцев назад).
 
 **Что**. Сеть `site-content_leaflet-network` (172.18.0.0/16) существует на проде но пустая (нет контейнеров). Остаток от какого-то предыдущего compose проекта `site-content`.
@@ -154,6 +190,7 @@ docker network rm site-content_leaflet-network
 **Fix план**. Скрипт `scripts/compose-drift-check.sh` который:
 - Парсит `docker compose -f docker-compose.unified.yml config` (rendered spec).
 - Для каждого сервиса проверяет: сети контейнера = декларированным.
+- **(добавлено 2026-05-30 по следам P-PENTEST-4)** проверка публикаций: ни один контейнер не должен слушать `0.0.0.0`/`::` кроме whitelist (`nginx 80/443`, `wireguard 51820`); всё прочее обязано быть на `127.0.0.1`.
 - Diff'ит — printа warnings.
 - Можно запускать в CI на staging или вручную перед каждым prod deploy.
 
@@ -166,6 +203,8 @@ docker network rm site-content_leaflet-network
 ## P1 — Correctness
 
 ### B-020 — `resolved_verifying` alerts осиротевают (нет write-back в `infrastructure_alerts.status`)
+
+> **✅ ЗАКРЫТО 2026-05-29** — PR #68 (`a836fdc`) + migration 031 (backfill alerts 25/26 → resolved), deployed. Секция оставлена для истории; см. Closed. Durability-остаток вынесен в B-021.
 
 **Найдено 2026-05-29** при анализе alert-lifecycle (#25 завис на 5 дней).
 
@@ -208,6 +247,8 @@ docker network rm site-content_leaflet-network
 
 ### B-003 — Rate-limiter и in-memory cache → Redis для multi-replica
 
+> **Обновлено 2026-05-30 (#69 / SEC-6):** добавлен FIFO size-cap на обе in-memory Map (`SimpleRateLimiter` + `SimpleSlowDown`) → риск unbounded memory-growth при IP-флуде **снят**. Остаётся multi-replica bypass (**SEC-8**): per-process rate-limit + webhook-nonce при N репликах без Redis. Single-replica → не эксплуатируется. SEC-8 ⊂ этот пункт.
+
 **Что**. `src/middleware/rateLimiter.js` и `src/services/cacheService.js` хранят state в памяти процесса. Для горизонтального scale-out (несколько реплик app) нужен общий Redis.
 
 **Почему**. Уже отмечено как known issue в CLAUDE.md «Known Architecture Issues». Sprint 9 outbox + Sprint 10 verification queue уже multi-replica-safe (DB + advisory_lock). Rate-limiter не safe — DDoS / brute-force с обходом одной реплики через round-robin LB.
@@ -216,7 +257,9 @@ docker network rm site-content_leaflet-network
 
 **Estimate**. ~6-8 часов: Redis Docker service + два модуля переписать на ioredis + tests.
 
-### B-004 — Monolithic `public/admin.js` (~3,429 LoC) + `public/script.js` (~2,335 LoC) split
+### B-004 — Monolithic `public/admin.js` (~3,826 LoC) + `public/script.js` (~2,384 LoC) split
+
+> **Обновлено 2026-05-30:** `admin.js` вырос 3,429 → **3,826** (+~400 от B-001 «Открыть в УК»), `script.js` 2,335 → **2,384**. Триггер 4,500 LoC ещё не достигнут, но приближается.
 
 **Что**. Phase 12B.4 (Sprint 10-era) активировал esbuild bundling, но НЕ разделил entry points. Оба файла остались монолитами с разнородной логикой.
 
@@ -298,9 +341,44 @@ docker network rm site-content_leaflet-network
 
 ## Closed / removed
 
+### ✅ Security audit 2026-05-29/30 — SEC-1..12 + P-PENTEST-1/2/3/4 + ротации (closed 2026-05-30)
+
+**Shipped**: PR [#69](https://github.com/a-afanasyev/infrasafe/pull/69) (`3c23225`) + doc-commits `3a31f30`..`ab5dd19`. Deployed на прод 2026-05-30; пост-деплой смоук 14/14; 2232 теста + CodeQL зелёные.
+
+**Код (все TDD + adversarial re-audit, 3 раунда workflow):**
+- **SEC-1/4** (CRITICAL 2FA-bypass): `authenticateJWT` режет токены со `scope`; `optionalAuth` degrade-to-anon; `verifyTempToken` async + issued-before-cutoff. **Live-replay на проде подтверждён** (temp-token → 401).
+- **SEC-5** SSRF: валидация `UK_API_URL` + allowlist optional + IPv6 bracket/mapped/compat normalization.
+- **SEC-6** size-cap на обе rate-limiter Map (→ B-003 annotation). **SEC-7** bounded `json_agg`. **SEC-10** ReDoS→linear. **SEC-11** lockout-oracle (status+latency). **SEC-12** NODE_ENV assert.
+- **P-PENTEST-2** telemetry→400. **P-PENTEST-3** anon `external_id` removed.
+- Compose: **SEC-2** DB-pw в env_file, **SEC-9** dev-fallbacks removed, **P-PENTEST-1** app/frontend → `127.0.0.1`.
+
+**Ротации (SEC-3) — все проверены на проде:** JWT + refresh; DB-пароль (`infrasafe_runtime` self-ALTER); UK webhook secret (общий, обе переменные); **TOTP_ENCRYPTION_KEY** (Strategy B — полный сброс + ре-энролл admin); + засветившийся admin-пароль (старый → 401).
+
+**P-PENTEST-4** (найдено при проверке P-PENTEST-1): 3 контейнера UK-стека (`8085 uk-management-api`, `8000 uk-web-registration`, `3002 uk-frontend`) торчали на `0.0.0.0` plaintext, в обход TLS+nft (docker FORWARD bypass). UK-сторона закрыла (loopback + удаление 8000); проверено снаружи CLOSED, `/uk/` через TLS работает.
+
+**Docs:** `2026-05-29-security-audit.md`, `2026-05-30-prod-ops-runbook.md`, `2026-05-30-totp-key-rotation-plan.md`, `secret-hygiene-checklist.md`.
+
+**Урок:** host-nft `input policy drop` НЕ ловит docker-проброшенные порты (идут через `nat`/`FORWARD`) — защита публикаций только через `127.0.0.1`-bind в compose или TLS-edge. Зафиксировано в P-PENTEST-4 + B-016.
+
+### ✅ B-020 — `resolved_verifying` alerts orphan write-back (closed 2026-05-29)
+
+**Shipped**: PR [#68](https://github.com/a-afanasyev/infrasafe/pull/68) (`a836fdc`) + migration 031 (backfill 25/26 → resolved), deployed 2026-05-29. `alertVerificationService._finalizeAlertStatus` (finalize-first, idempotent) во всех 5 terminal-путях + ALERT_REOPENED listener. Durability-остаток → B-021.
+
+### ✅ B-017 — CSP/SRI test baseline (closed 2026-05-28)
+
+**Shipped**: PR [#66](https://github.com/a-afanasyev/infrasafe/pull/66) (`21c731e`) — обновлены тесты под HTML→`frontend-html/` + self-hosted DOMPurify; CodeQL unanchored-regex fix через `new URL().hostname` parsing.
+
+### ✅ B-015 — Orphan network `site-content_leaflet-network` (closed 2026-05-30)
+
+Удалена; `docker network ls` подтверждает отсутствие. На `0.0.0.0` остались только edge (80/443) + WireGuard (51820).
+
+### ✅ B-014 — healthcheck `localhost`→IPv6 (closed 2026-05-30)
+
+**Shipped**: PR [#65](https://github.com/a-afanasyev/infrasafe/pull/65) (`836e1be`) — `localhost`→`127.0.0.1` в healthcheck'ах `unified.yml`/`Dockerfile.prod`. Frontend задеплоен 05-28; app-side активирован при recreate в security-deploy 05-30 (app healthy).
+
 ### ✅ B-010 — Compose vs runtime network drift (`infrasafe-app-1`) (closed 2026-05-28)
 
-**Shipped**: PR `chore/b-010-app-uk-network-detach` (см. soon-merged ссылку).
+**Shipped**: PR [#67](https://github.com/a-afanasyev/infrasafe/pull/67) (`8eeafe7`) `chore(compose): detach app from uk-network, declare infrasafe-network as external`.
 
 **Что сделано**.
 - `docker-compose.unified.yml` (app.networks L80-92): убрали `uk-network`, явно добавили `infrasafe-network` (external, ссылка на существующий `infrasafe_infrasafe-network`). Теперь app сидит только в `[infrasafe-network, leaflet-network]` — общая шина с postgres сохраняется, а DNS `postgres` детерминированно резолвится в `infrasafe-postgres-1`.
