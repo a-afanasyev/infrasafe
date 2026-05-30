@@ -171,3 +171,28 @@ What it catches:
 
 Expected clean prod output: app/frontend/postgres/redis on their declared real networks; only
 `nginx 80/443` and `wireguard 51820` published publicly; everything else on `127.0.0.1`.
+
+### Recorded baseline — prod host `95.46.96.105`, 2026-05-31 00:07 (UTC+5)
+
+First run on the live host (working tree still at PR #69 `3c23225`; script + post-merge unified.yml
+pulled read-only from `origin/main`, no working-tree change). Five core services + the optional stack
+(nodered/mosquitto/grafana/influxdb/wireguard) and the UK stack all running.
+
+| Run | Compose file | Check A | Check B | Exit |
+|---|---|---|---|---|
+| 1 | `docker-compose.unified.yml` **@3c23225 (pre-merge on disk)** | postgres ✗ (declared `leaflet-network`, runtime `infrasafe-network`); app/frontend/nginx/redis ✓; optional stack `?` | **clean** | 1 |
+| 2 | `docker-compose.prod.yml` @3c23225 | postgres ✓; frontend ✗ (declares `infrasafe-network`+`leaflet-network`, runtime only `leaflet-network`); nginx/redis/optional `?` | **clean** | 1 |
+| 3b | `unified.yml` **@origin/main (post-merge B-016 fix)** | **all 5 core ✓** incl. postgres `infrasafe_infrasafe-network`; optional stack `?` | **clean** | **0** |
+
+Reading:
+- **Check B clean on every run** — re-confirms P-PENTEST-1/-4: no infrasafe/UK container publishes a
+  non-whitelisted port on a public interface (UK ports were closed at the host edge by the UK team).
+- **The merged B-016 fix is verified against the live host** (Run 3b, exit 0): the postgres declaration
+  now matches runtime, so a `docker compose up` will NOT try to recreate postgres. Run 1's postgres ✗ is
+  the *pre-merge* on-disk state — it resolves the moment the deploy host does `git pull`.
+- **`prod.yml` Run 2 frontend ✗** is a *separate, pre-existing* drift in the legacy prod-only file
+  (frontend declares `infrasafe-network` it isn't actually on). Harmless today (frontend only needs
+  `leaflet-network` for the nginx edge) and out of scope for B-016 — noted here for the record; clean it
+  up if/when `prod.yml` is reconciled or retired in favour of `unified.yml`.
+- **Canonical compose on prod is still `docker-compose.prod.yml`** (per the working tree); when the host
+  migrates to `unified.yml`, the pre-flight command above is already correct.
