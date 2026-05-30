@@ -51,6 +51,26 @@ so DoS amplification is bounded). **Fix**: validate `controller_id` + payload sh
 By-design for the public map, but the UK `external_id` (UUID) is the cross-system reference for
 the UK integration. Consider omitting `external_id` from the anonymous projection.
 
+### P-PENTEST-4 — [HIGH] UK-stack containers published to `0.0.0.0` over plaintext (shared host) — RESOLVED 2026-05-30
+While verifying P-PENTEST-1 we found **three UK-stack containers** (same host `95.46.96.105`)
+publishing ports on all interfaces over plaintext HTTP, bypassing both TLS and the host nftables
+firewall:
+- `8085` `uk-management-api` → :8080 (UK API directly internet-exposed), `8000` `uk-web-registration`,
+  `3002` `uk-frontend`. Confirmed externally OPEN (`nc`/`curl` 200/404).
+- **Root cause:** Docker publishes via `nat`/PREROUTING→DNAT + the `FORWARD` chain (policy accept),
+  bypassing the nft `input` chain (`policy drop`, allows only lo/icmp/established/22323/80/443/51820).
+  The host firewall is correct for *host* services but cannot see docker-forwarded traffic. InfraSafe's
+  own ports carried `-d 127.0.0.1` in their DNAT rules (loopback-only) and were never exposed; the UK
+  rules lacked that restriction.
+- **Fix (UK team, their compose):** `8085` and `3002` repinned to `127.0.0.1:`; `8000`
+  (`uk-web-registration`) container removed. Public access for residents/dashboard preserved via the
+  nginx TLS edge (`/uk/` → `uk-frontend:80`, `/uk/api/` → `uk-management-api:8080` over the internal
+  `uk-network` bridge), unaffected.
+- **Verified externally 2026-05-30:** `8085/3002/8000` → CLOSED; `https://infrasafe.uz/uk/` → 200,
+  `/uk/api/v2/registration/start` → 405 (alive, POST-only). Host `docker ps`: only `nginx 80/443` +
+  `wireguard 51820/udp` remain on `0.0.0.0`. DOCKER-USER firewall hardening deemed unnecessary (no
+  rogue `0.0.0.0` publishes remain; everything sensitive is loopback-bound).
+
 ---
 
 ## Code audit — confirmed findings (auditor-triaged)
