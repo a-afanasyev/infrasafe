@@ -112,12 +112,13 @@ services:
     healthcheck:
       # pg_isready without -U: returns 0 as soon as the postmaster accepts
       # connections, regardless of which roles exist. The earlier check
-      # hard-coded `$POSTGRES_USER` and broke on prod after migration 017
-      # renamed the runtime role to `infrasafe_app` (the `postgres` role no
-      # longer exists, so the SELECT 1 probe failed with FATAL: role does
-      # not exist and the container went unhealthy on every recreate). The
-      # real liveness signal we need is "accepting TCP connections", which
-      # is exactly what pg_isready gives us.
+      # hard-coded `$POSTGRES_USER`, which resolved to `postgres` — a role
+      # that does not exist on prod (the bootstrap superuser is `infrasafe_app`;
+      # migration 017 *adds* the non-super runtime role `infrasafe_runtime`,
+      # it does NOT rename anything). So the SELECT 1 probe failed with
+      # FATAL: role "postgres" does not exist and the container went unhealthy
+      # on every recreate. The real liveness signal we need is "accepting TCP
+      # connections", which is exactly what pg_isready gives us.
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432"]
       interval: 10s
       timeout: 5s

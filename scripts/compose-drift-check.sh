@@ -5,15 +5,18 @@
 # Read-only diagnostic. Compares the DECLARED docker-compose stack against the
 # RUNTIME reality on the host where the stack actually runs. Catches two classes
 # of drift that bit us in prod:
-#   A) network drift   — a service attached to a network it does not declare
-#                        (B-010/B-011: app silently joined uk-network → auth-fail).
-#   B) publish drift   — a container publishing a port on 0.0.0.0/:: that is NOT
-#                        in the public whitelist (P-PENTEST-1/-4: app/frontend and
-#                        UK-stack containers exposed plaintext to the internet).
+#   A) network drift   — a declared service attached to a different set of
+#                        networks than it declares (B-010/B-011: app silently
+#                        joined uk-network → auth-fail on the wrong postgres).
+#   B) publish drift   — ANY container on the host publishing a port on
+#                        0.0.0.0/:: that is NOT in the public whitelist
+#                        (P-PENTEST-1/-4: app/frontend AND the separate UK-stack
+#                        containers exposed plaintext to the internet).
 #
 # Usage:
 #   bash scripts/compose-drift-check.sh [compose-file]
-#   COMPOSE_FILE=docker-compose.unified.yml PROJECT=infrasafe bash scripts/compose-drift-check.sh
+#   COMPOSE_FILE=docker-compose.unified.yml bash scripts/compose-drift-check.sh
+#   ALLOWED_PUBLIC_PORTS="80 443 51820" bash scripts/compose-drift-check.sh
 #
 # Exit code: 0 = clean, 1 = drift found, 2 = usage/precondition error.
 # NOTE: must run on the deploy HOST (needs the running containers). Not a CI check.
@@ -27,113 +30,140 @@ warn() { printf '[drift-check WARN] %s\n' "$*" >&2; }
 die()  { printf '[drift-check FATAL] %s\n' "$*" >&2; exit 2; }
 
 COMPOSE_FILE="${1:-${COMPOSE_FILE:-docker-compose.unified.yml}}"
-PROJECT="${PROJECT:-infrasafe}"
 # Ports allowed to be published on 0.0.0.0/:: (public edge + VPN). Everything
 # else MUST bind 127.0.0.1. Override with ALLOWED_PUBLIC_PORTS="80 443 ...".
 ALLOWED_PUBLIC_PORTS="${ALLOWED_PUBLIC_PORTS:-80 443 51820}"
 
-command -v docker >/dev/null 2>&1 || die "docker not found"
+command -v docker  >/dev/null 2>&1 || die "docker not found"
 command -v python3 >/dev/null 2>&1 || die "python3 not found"
 [ -f "$COMPOSE_FILE" ] || die "compose file not found: $COMPOSE_FILE"
 
 drift=0
 
 # ---------------------------------------------------------------------------
-# Check A — network drift (declared vs runtime, per service)
+# Check A — network drift (declared vs runtime, per declared service)
+#
+# Both sides are compared on REAL Docker network names. The rendered compose
+# config carries the canonical real name for every network under top-level
+# `networks.<key>.name` (external nets keep their explicit name; project nets
+# default to "<project>_<key>"). Runtime `NetworkSettings.Networks` keys are
+# already real names. We resolve declared keys → real names via the rendered
+# config so logical (leaflet-network) and runtime (infrasafe_leaflet-network)
+# never produce a false positive.
+#
+# Container → service mapping is STRICTLY via the com.docker.compose.service
+# label (infrasafe-app-1 != app). A running container whose service is not in
+# the compose is reported informationally (?) and does NOT fail the run.
 # ---------------------------------------------------------------------------
-log "Check A: network drift (compose '$COMPOSE_FILE' vs runtime project '$PROJECT')"
+log "Check A: network drift (compose '$COMPOSE_FILE' vs runtime)"
 
-declared_json="$(docker compose -f "$COMPOSE_FILE" config --format json 2>/dev/null)" \
+# Rendered config → project name + "service<TAB>realNet1,realNet2,..." per service.
+config_json="$(docker compose -f "$COMPOSE_FILE" config --format json 2>/dev/null)" \
   || die "could not render '$COMPOSE_FILE' (docker compose config failed)"
 
-# Map of running container -> compose service + runtime network names (JSON).
-runtime_rows="$(
-  docker ps --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Names}}' \
-  | while read -r name; do
-      [ -n "$name" ] || continue
-      svc="$(docker inspect "$name" --format '{{index .Config.Labels "com.docker.compose.service"}}')"
-      nets="$(docker inspect "$name" --format '{{json .NetworkSettings.Networks}}')"
-      printf '%s\t%s\t%s\n' "$svc" "$name" "$nets"
-    done
+PROJECT="$(printf '%s' "$config_json" | python3 -c 'import sys,json; print((json.load(sys.stdin).get("name") or ""))')"
+[ -n "$PROJECT" ] || PROJECT="${PROJECT:-infrasafe}"
+
+declared_map="$(
+  printf '%s' "$config_json" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+project = d.get("name") or ""
+topnets = d.get("networks") or {}
+def real(key):
+    n = topnets.get(key) or {}
+    return n.get("name") or ((project + "_" + key) if project else key)
+for svc, body in (d.get("services") or {}).items():
+    nets = body.get("networks") or {}
+    keys = list(nets.keys()) if isinstance(nets, dict) else list(nets)
+    reals = sorted(real(k) for k in keys)
+    print(svc + "\t" + ",".join(reals))
+'
 )"
 
-A_OUT="$(
-  DECLARED_JSON="$declared_json" RUNTIME_ROWS="$runtime_rows" PROJECT="$PROJECT" \
-  python3 - <<'PY'
-import json, os, sys
+declared_svcs="$(printf '%s\n' "$declared_map" | cut -f1)"
+seen_svcs=""
 
-cfg = json.loads(os.environ["DECLARED_JSON"])
-project = os.environ["PROJECT"]
-top_nets = cfg.get("networks", {}) or {}
+while IFS=$'\t' read -r name svc; do
+  [ -n "${name:-}" ] || continue
+  # Strict label mapping — no name-derivation fallback.
+  if [ -z "${svc:-}" ]; then
+    printf '  ? %s: no com.docker.compose.service label — cannot map to a service\n' "$name"
+    continue
+  fi
+  if ! printf '%s\n' "$declared_svcs" | grep -qxF "$svc"; then
+    printf '  ? %s (%s): running but service not declared in %s (optional/other stack)\n' "$svc" "$name" "$COMPOSE_FILE"
+    continue
+  fi
+  seen_svcs="$seen_svcs $svc"
+  # Runtime real network names: one per line; drop empties (trailing newline
+  # from the Go-template range), sort, csv. (Fixes the rev-1 leading-comma bug.)
+  rnets="$(
+    docker inspect "$name" --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}' 2>/dev/null \
+    | grep -v '^[[:space:]]*$' | sort | paste -sd, -
+  )"
+  dnets="$(printf '%s\n' "$declared_map" | awk -F'\t' -v s="$svc" '$1==s {print $2}')"
+  if [ "$dnets" = "$rnets" ]; then
+    printf '  ✓ %s (%s): [%s]\n' "$svc" "$name" "$rnets"
+  else
+    printf '  ✗ %s (%s): declared=[%s] runtime=[%s]\n' "$svc" "$name" "$dnets" "$rnets"
+    drift=1
+  fi
+done < <(docker ps --filter "label=com.docker.compose.project=$PROJECT" \
+           --format '{{.Names}}'$'\t''{{.Label "com.docker.compose.service"}}')
 
-def real_name(key):
-    n = top_nets.get(key) or {}
-    # external/explicit name wins; otherwise compose prefixes the project.
-    return n.get("name") or f"{project}_{key}"
-
-declared = {}
-for svc, body in (cfg.get("services", {}) or {}).items():
-    nets = body.get("networks", {}) or {}
-    keys = nets.keys() if isinstance(nets, dict) else nets
-    declared[svc] = sorted(real_name(k) for k in keys)
-
-drift = 0
-seen = set()
-for line in os.environ["RUNTIME_ROWS"].splitlines():
-    if not line.strip():
-        continue
-    svc, name, nets_json = line.split("\t", 2)
-    seen.add(svc)
-    runtime = sorted((json.loads(nets_json) or {}).keys())
-    want = declared.get(svc)
-    if want is None:
-        print(f"  ? {svc} ({name}): running but not declared in compose")
-        drift += 1
-        continue
-    if set(runtime) != set(want):
-        extra = sorted(set(runtime) - set(want))
-        missing = sorted(set(want) - set(runtime))
-        msg = []
-        if extra:   msg.append(f"extra={extra}")
-        if missing: msg.append(f"missing={missing}")
-        print(f"  ✗ {svc} ({name}): {' '.join(msg)}  declared={want} runtime={runtime}")
-        drift += 1
-    else:
-        print(f"  ✓ {svc} ({name}): {runtime}")
-
-for svc in declared:
-    if svc not in seen:
-        print(f"  · {svc}: declared but no running container (skipped/optional)")
-
-sys.exit(1 if drift else 0)
-PY
-)" && a_rc=0 || a_rc=$?
-printf '%s\n' "$A_OUT"
-[ "${a_rc:-0}" -eq 0 ] || drift=1
+# Declared services with no running container (optional/profile/stopped) — info only.
+while read -r svc; do
+  [ -n "$svc" ] || continue
+  case " $seen_svcs " in
+    *" $svc "*) : ;;
+    *) printf '  · %s: declared but no running container (optional/stopped)\n' "$svc" ;;
+  esac
+done <<< "$declared_svcs"
 
 # ---------------------------------------------------------------------------
-# Check B — publish drift (0.0.0.0/:: outside the public whitelist)
+# Check B — publish drift (HOST-WIDE: every container, not just this project)
+#
+# P-PENTEST-4 lived in the *UK* stack (a different compose project). A
+# project-scoped scan is blind to it, so this pass deliberately drops the
+# project filter and inspects every running container on the host.
 # Cross-ref: hardening.sh Phase K uses `ss -tln` for the same intent at the OS level.
 # ---------------------------------------------------------------------------
-log "Check B: public-publish drift (allowed public ports: $ALLOWED_PUBLIC_PORTS)"
+log "Check B: public-publish drift HOST-WIDE (allowed public ports: $ALLOWED_PUBLIC_PORTS)"
 
 b_drift=0
-while IFS=$'\t' read -r name ports; do
+# Iterate in the MAIN shell via process substitution so b_drift mutations stick
+# (a pipe-fed while runs in a subshell) and we avoid nesting a `case` with the
+# [::] glob inside a command substitution (which mis-parses in some bash builds).
+# Ports is a comma-separated list; only segments on a public bind (0.0.0.0: or
+# [::]:) are internet-facing — loopback (127.0.0.1:) and bare container ports
+# ("6379/tcp") are fine. Host port = text after the LAST ':' of the bind side
+# (before '->'): handles "0.0.0.0:80->.." and "[::]:80->..".
+b_seen=" "   # dedup key "name:hostport" — IPv4 and IPv6 rows are the same publish
+while IFS='|' read -r name ports; do
   [ -n "${name:-}" ] || continue
-  # Each publish segment looks like: 0.0.0.0:80->80/tcp  or  :::80->80/tcp
-  while read -r hostport; do
-    [ -n "$hostport" ] || continue
-    ok=0
-    for p in $ALLOWED_PUBLIC_PORTS; do [ "$hostport" = "$p" ] && ok=1 && break; done
-    if [ "$ok" -eq 0 ]; then
-      printf '  ✗ %s publishes :%s on a public interface (0.0.0.0/::) — should be 127.0.0.1\n' "$name" "$hostport"
-      b_drift=1
-    fi
-  done < <(printf '%s\n' "$ports" | grep -oE '(0\.0\.0\.0|::|\[::\]):[0-9]+->' | grep -oE ':[0-9]+->' | tr -d ':->')
-done < <(docker ps --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Names}}\t{{.Ports}}')
+  ports="${ports// /}"        # strip spaces
+  ports="${ports//,/ }"       # commas -> spaces so the default-IFS split works
+  set -f                      # no pathname expansion on the unquoted $ports
+  for seg in $ports; do
+    case "$seg" in
+      0.0.0.0:*|\[::\]:*)
+        hostport="${seg%%->*}"; hostport="${hostport##*:}"
+        ok=0
+        for p in $ALLOWED_PUBLIC_PORTS; do [ "$hostport" = "$p" ] && { ok=1; break; }; done
+        [ "$ok" -eq 1 ] && continue
+        case "$b_seen" in *" ${name}:${hostport} "*) continue ;; esac
+        b_seen="${b_seen}${name}:${hostport} "
+        printf '  ✗ %s publishes :%s on a public interface — should bind 127.0.0.1\n' "$name" "$hostport"
+        b_drift=1
+        ;;
+    esac
+  done
+  set +f
+done < <(docker ps --format '{{.Names}}|{{.Ports}}')
 
 if [ "$b_drift" -eq 0 ]; then
-  log "Check B: clean — only whitelisted ports are public"
+  log "Check B: clean — only whitelisted ports are public host-wide"
 else
   drift=1
 fi
@@ -144,5 +174,5 @@ if [ "$drift" -eq 0 ]; then
   log "RESULT: no drift ✓"
   exit 0
 fi
-warn "RESULT: drift detected — review the ✗ lines above"
+warn "RESULT: drift detected — review the ✗ lines above (? / · lines are informational)"
 exit 1
