@@ -205,14 +205,19 @@ app container) + `--force-recreate --no-deps app frontend`.
   buildings-metrics has no `external_id` (P-PENTEST-3), unsigned UK webhook→401, TRACE blocked, site
   200, login→401 generic (SEC-11 uniform response live).
 
+**Secret rotation progress (SEC-3):**
+- ✅ **JWT_SECRET + JWT_REFRESH_SECRET** — rotated 2026-05-30 (Step 3a).
+- ✅ **DB password** (`infrasafe_runtime`) — rotated 2026-05-30 (Step 3b).
+- ✅ **UK webhook secret** (`INFRASAFE_WEBHOOK_SECRET` + `UK_WEBHOOK_SECRET`, single shared value) —
+  rotated 2026-05-30 with UK team. Verified on prod: app healthy; both vars hold the same 64-char
+  value; a request signed with the new secret → 400 (signature accepted, payload rejected), a
+  bad-signature request → 401 (verifier enforcing). Full e2e confirmed on next real UK webhook.
+- ⏳ **TOTP_ENCRYPTION_KEY** — pending; **must NOT be blind-rotated** (existing admin 2FA secrets
+  become undecryptable). Plan: `docs/audit/2026-05-30-totp-key-rotation-plan.md`.
+
 **Still open after deploy (operator action):**
 - **Host firewall** (P-PENTEST-1 belt-and-suspenders): `sudo` needs a password; ports are already
   loopback-closed so this is redundant but recommended. Commands handed to operator.
-- **TOTP_ENCRYPTION_KEY rotation** (SEC-3): deferred — rotating locks out enrolled admins; needs a
-  re-enrollment plan.
-- **UK_WEBHOOK_SECRET / INFRASAFE_WEBHOOK_SECRET rotation** (SEC-3): deferred — needs UK-team
-  coordination (use the `UK_WEBHOOK_SECRET_NEXT` dual-secret window).
-- **SEC-3 git-history scrub:** rotation done for JWT+DB; UK+TOTP secrets pending per above.
 - **SEC-1 live replay** not executed (no prod admin creds on hand); verified by tests + re-audit.
 
 ## What was checked and found clean
