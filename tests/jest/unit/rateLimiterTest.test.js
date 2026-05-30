@@ -224,6 +224,43 @@ describe('SimpleRateLimiter', () => {
         });
     });
 
+    // [SEC-6] In-memory store must be size-capped (FIFO eviction) so a
+    // high-cardinality IP flood cannot grow memory unboundedly between the
+    // 60s cleanup sweeps. Mirrors webhookVerifier's nonce-map hard cap.
+    describe('store size cap (SEC-6)', () => {
+        test('never exceeds the configured cap when flooded with distinct keys', async () => {
+            const cap = 50;
+            limiter = new SimpleRateLimiter({ windowMs: 60000, max: 100, maxStoreEntries: cap });
+            const mw = limiter.middleware();
+            const res = { set: jest.fn(), status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+            // Insert far more distinct keys than the cap, all within the window
+            // (so the 60s cleanup would NOT remove them — only the cap can).
+            for (let i = 0; i < cap * 4; i++) {
+                await mw({ ip: `10.0.0.${i}` }, res, jest.fn());
+                expect(limiter.store.size).toBeLessThanOrEqual(cap);
+            }
+
+            expect(limiter.store.size).toBe(cap);
+        });
+
+        test('evicts the oldest entries first (FIFO)', async () => {
+            const cap = 10;
+            limiter = new SimpleRateLimiter({ windowMs: 60000, max: 100, maxStoreEntries: cap });
+            const mw = limiter.middleware();
+            const res = { set: jest.fn(), status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+            for (let i = 0; i < cap * 2; i++) {
+                await mw({ ip: `172.16.0.${i}` }, res, jest.fn());
+            }
+
+            // The earliest-inserted keys must have been evicted.
+            expect(limiter.store.has('172.16.0.0')).toBe(false);
+            // The most-recent keys must still be present.
+            expect(limiter.store.has(`172.16.0.${cap * 2 - 1}`)).toBe(true);
+        });
+    });
+
     describe('getStats', () => {
         test('returns correct statistics', async () => {
             limiter = new SimpleRateLimiter({ windowMs: 60000, max: 100 });
@@ -336,6 +373,44 @@ describe('SimpleSlowDown', () => {
             slowDown.store.set('old', { hits: 10, resetTime: Date.now() - 120000 });
             slowDown.cleanup();
             expect(slowDown.store.has('old')).toBe(false);
+        });
+    });
+
+    // [SEC-6] SimpleSlowDown shares the identical uncapped in-memory Map as
+    // SimpleRateLimiter. Its in-memory store must be size-capped (FIFO
+    // eviction) so a high-cardinality IP flood cannot grow memory unboundedly
+    // between the 60s cleanup sweeps. Mirrors the SimpleRateLimiter cap tests.
+    describe('store size cap (SEC-6)', () => {
+        test('never exceeds the configured cap when flooded with distinct keys', async () => {
+            const cap = 50;
+            slowDown = new SimpleSlowDown({ windowMs: 60000, delayAfter: 1000, maxStoreEntries: cap });
+            const mw = slowDown.middleware();
+            const res = { set: jest.fn() };
+
+            // Insert far more distinct keys than the cap, all within the window
+            // (so the 60s cleanup would NOT remove them — only the cap can).
+            for (let i = 0; i < cap * 4; i++) {
+                await mw({ ip: `10.0.0.${i}` }, res, jest.fn());
+                expect(slowDown.store.size).toBeLessThanOrEqual(cap);
+            }
+
+            expect(slowDown.store.size).toBe(cap);
+        });
+
+        test('evicts the oldest entries first (FIFO)', async () => {
+            const cap = 10;
+            slowDown = new SimpleSlowDown({ windowMs: 60000, delayAfter: 1000, maxStoreEntries: cap });
+            const mw = slowDown.middleware();
+            const res = { set: jest.fn() };
+
+            for (let i = 0; i < cap * 2; i++) {
+                await mw({ ip: `172.16.0.${i}` }, res, jest.fn());
+            }
+
+            // The earliest-inserted keys must have been evicted.
+            expect(slowDown.store.has('172.16.0.0')).toBe(false);
+            // The most-recent keys must still be present.
+            expect(slowDown.store.has(`172.16.0.${cap * 2 - 1}`)).toBe(true);
         });
     });
 

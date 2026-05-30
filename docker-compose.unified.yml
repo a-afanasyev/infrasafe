@@ -6,7 +6,12 @@ services:
       dockerfile: Dockerfile.unified
       target: frontend
     ports:
-      - "8080:8080"
+      # [P-PENTEST-1] Bind to loopback only. The TLS-terminating prod nginx is
+      # the sole internet-facing edge and reaches this service via docker-DNS
+      # over leaflet-network (proxy_pass http://frontend in nginx config), NOT
+      # via the host-published port. Loopback-binding keeps :8080 off the
+      # public interface without breaking the edge.
+      - "127.0.0.1:8080:8080"
     depends_on:
       - app
     networks:
@@ -45,7 +50,12 @@ services:
       dockerfile: Dockerfile.unified
       target: backend
     ports:
-      - "3000:3000"
+      # [P-PENTEST-1] Bind to loopback only. The TLS-terminating prod nginx is
+      # the sole internet-facing edge and reaches this service via docker-DNS
+      # over leaflet-network (proxy_pass http://app:3000 in nginx config), NOT
+      # via the host-published port. Loopback-binding keeps :3000 off the
+      # public interface without breaking the edge.
+      - "127.0.0.1:3000:3000"
     volumes:
       - .:/app
       - /app/node_modules
@@ -137,8 +147,17 @@ services:
   postgres:
     image: postgis/postgis:15-3.3
 
+    # [SEC-2] DB credentials sourced from .env / .env.prod (both gitignored),
+    # mirroring docker-compose.prod.yml. No inline default — POSTGRES_PASSWORD
+    # MUST come from the env_file. Same dual-file pattern as the app service:
+    # dev uses .env, prod uses .env.prod; the absent one is silently skipped.
+    env_file:
+      - path: .env
+        required: false
+      - path: .env.prod
+        required: false
     environment:
-      - POSTGRES_PASSWORD=@ppl1c@ti0n
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_USER=infrasafe_app
       - POSTGRES_DB=infrasafe
     volumes:

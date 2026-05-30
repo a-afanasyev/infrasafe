@@ -108,6 +108,51 @@ describe('ukWebhookClient', () => {
             const c = new UKWebhookClient();
             expect(c._getEndpoint()).toBe('https://uk.example.com/api/v2/webhooks/infrasafe/alert');
         });
+
+        // ---------------------------------------------------------------------
+        // SEC-5 — SSRF: validate UK_API_URL on the runtime/env path. The admin
+        // config path already runs validateUKApiUrl(); the env path did not.
+        // A private / metadata / localhost host must be rejected (→ null), and
+        // null is treated by send() as 'skip' (not configured).
+        // ---------------------------------------------------------------------
+        it('returns null for a private-IP host (SSRF block)', () => {
+            process.env.UK_API_URL = 'https://10.0.0.5/api/v2';
+            const c = new UKWebhookClient();
+            expect(c._getEndpoint()).toBeNull();
+        });
+
+        it('returns null for the cloud metadata host (SSRF block)', () => {
+            process.env.UK_API_URL = 'https://169.254.169.254/latest/meta-data';
+            const c = new UKWebhookClient();
+            expect(c._getEndpoint()).toBeNull();
+        });
+
+        it('returns null for the GCP metadata hostname (SSRF block)', () => {
+            process.env.UK_API_URL = 'https://metadata.google.internal/computeMetadata';
+            const c = new UKWebhookClient();
+            expect(c._getEndpoint()).toBeNull();
+        });
+
+        it('returns null for localhost (SSRF block)', () => {
+            process.env.NODE_ENV = 'test';
+            process.env.UK_API_URL = 'https://localhost/api/v2';
+            const c = new UKWebhookClient();
+            expect(c._getEndpoint()).toBeNull();
+        });
+
+        it('still resolves a valid public https host after validation', () => {
+            process.env.UK_API_URL = 'https://uk.example.com';
+            const c = new UKWebhookClient();
+            expect(c._getEndpoint()).toBe('https://uk.example.com/api/v2/webhooks/infrasafe/alert');
+        });
+
+        it('send() returns skip when UK_API_URL points at a private host', async () => {
+            process.env.UK_WEBHOOK_SECRET = 'test-secret';
+            process.env.UK_API_URL = 'https://127.0.0.1:8080';
+            const result = await client.send('{"event":"alert.created"}');
+            expect(result.outcome).toBe('skip');
+            expect(axios.post).not.toHaveBeenCalled();
+        });
     });
 
     // -------------------------------------------------------------------------

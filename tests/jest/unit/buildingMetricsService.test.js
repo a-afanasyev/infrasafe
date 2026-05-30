@@ -114,19 +114,21 @@ describe('buildingMetricsService', () => {
             expect(result.data[0].has_controller).toBe(false);
         });
 
-        test('exposes external_id for UK reconciliation (non-PII)', async () => {
+        test('omits external_id from anonymous projection (P-PENTEST-3)', async () => {
             db.query.mockResolvedValue({ rows: [mockDbRow] });
 
             const result = await getBuildingsWithMetrics(false);
-            expect(result.data[0].external_id).toBe('1603f2c9-6dd8-2593-7852-9c16ad4f440b');
+            // UK cross-system reference must not leak to unauthenticated clients.
+            expect(result.data[0]).not.toHaveProperty('external_id');
         });
 
-        test('external_id is null when building is local-only (no UK link)', async () => {
-            const localOnly = { ...mockDbRow, external_id: null };
-            db.query.mockResolvedValue({ rows: [localOnly] });
+        test('still omits external_id even when building has a UK link', async () => {
+            // mockDbRow already carries a UK external_id; the anonymous projection
+            // must strip it regardless of whether the building is UK-linked.
+            db.query.mockResolvedValue({ rows: [mockDbRow] });
 
             const result = await getBuildingsWithMetrics(false);
-            expect(result.data[0].external_id).toBeNull();
+            expect(result.data[0].external_id).toBeUndefined();
         });
     });
 

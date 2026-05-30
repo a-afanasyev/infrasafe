@@ -163,15 +163,23 @@ describe('AuthController', () => {
             expect(res.status).toHaveBeenCalledWith(403);
         });
 
-        test('returns 423 for ACCOUNT_LOCKED error', async () => {
+        // SEC-11: locked accounts must return 401 (not the 423 state oracle)
+        // with the SAME generic credentials message — no enumeration / no
+        // "you are locked" signal that an attacker can use to time spraying.
+        test('returns 401 (not 423) with generic message for ACCOUNT_LOCKED error', async () => {
             req.body = { username: 'locked', password: 'pass' };
-            const error = new Error('Account locked');
+            const error = new Error('Аккаунт временно заблокирован. Попробуйте позже.');
             error.code = 'ACCOUNT_LOCKED';
             authService.authenticateUser.mockRejectedValue(error);
 
             await authController.login(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(423);
+            expect(res.status).toHaveBeenCalledWith(401);
+            expect(res.status).not.toHaveBeenCalledWith(423);
+            // Generic credentials message — must NOT leak the lockout state
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({ error: 'Неверное имя пользователя или пароль' })
+            );
         });
 
         test('calls next with error for unexpected errors', async () => {

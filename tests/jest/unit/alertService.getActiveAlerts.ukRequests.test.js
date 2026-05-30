@@ -49,8 +49,11 @@ describe('alertService.getActiveAlerts — uk_requests aggregation (B-001)', () 
         await alertService.getActiveAlerts();
 
         const dataSql = db.query.mock.calls[1][0];
-        expect(dataSql).toMatch(/LEFT JOIN alert_request_map arm/);
-        expect(dataSql).toMatch(/arm\.infrasafe_alert_id = ia\.alert_id/);
+        // [SEC-7] mappings now come through a bounded LATERAL subquery (LIMIT
+        // before json_agg) instead of a raw LEFT JOIN.
+        expect(dataSql).toMatch(/LEFT JOIN LATERAL/);
+        expect(dataSql).toMatch(/FROM alert_request_map arm_inner/);
+        expect(dataSql).toMatch(/arm_inner\.infrasafe_alert_id = ia\.alert_id/);
         expect(dataSql).toMatch(/json_agg\s*\(/);
         expect(dataSql).toMatch(/FILTER\s*\(\s*WHERE\s+arm\.uk_request_number IS NOT NULL/);
         expect(dataSql).toMatch(/COALESCE\s*\(/);
@@ -77,6 +80,23 @@ describe('alertService.getActiveAlerts — uk_requests aggregation (B-001)', () 
         expect(result.data[0].uk_requests).toEqual([
             { uk_request_number: '260527-001', building_external_id: 'uuid-1', status: 'sent' }
         ]);
+    });
+
+    // [SEC-7] The per-alert uk_requests sub-array must be bounded so an alert
+    // with thousands of alert_request_map rows (mass/transformer outage) cannot
+    // build an unbounded JSON array → memory spike on this admin endpoint.
+    test('bounds the per-alert mappings aggregation with a LIMIT (SEC-7)', async () => {
+        db.query
+            .mockResolvedValueOnce({ rows: [{ total: '0' }] }) // count
+            .mockResolvedValueOnce({ rows: [] });              // data
+
+        await alertService.getActiveAlerts();
+
+        const dataSql = db.query.mock.calls[1][0];
+        // The aggregation must be fed by a LIMIT-ed subquery, not a raw join.
+        expect(dataSql).toMatch(/LIMIT\s+100/);
+        // The cap must apply to the mappings sub-array, not just the outer page.
+        expect(dataSql).toMatch(/LIMIT\s+100[\s\S]*\)\s*arm/i);
     });
 
     test('returns empty uk_requests when DB sends [] (no mappings)', async () => {

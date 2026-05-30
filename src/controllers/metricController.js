@@ -1,6 +1,6 @@
 const metricService = require('../services/metricService');
 const logger = require('../utils/logger');
-const { sendNotFound } = require('../utils/apiResponse');
+const { sendNotFound, sendError } = require('../utils/apiResponse');
 
 // Получить все метрики
 const getAllMetrics = async (req, res, next) => {
@@ -78,6 +78,22 @@ const createMetric = async (req, res, next) => {
 // Получение телеметрии от контроллеров
 const receiveTelemetry = async (req, res, next) => {
     try {
+        // Валидация payload до обращения к БД (публичный эндпоинт без авторизации)
+        const body = req.body;
+        if (!body || typeof body !== 'object' || Array.isArray(body)) {
+            return sendError(res, 400, 'Тело запроса телеметрии обязательно');
+        }
+
+        const { serial_number, metrics } = body;
+        if (typeof serial_number !== 'string' || serial_number.trim() === '') {
+            return sendError(res, 400, 'Серийный номер контроллера обязателен');
+        }
+
+        // metrics опционален, но если передан — должен быть объектом метрик
+        if (metrics !== undefined && (typeof metrics !== 'object' || metrics === null || Array.isArray(metrics))) {
+            return sendError(res, 400, 'Поле metrics должно быть объектом');
+        }
+
         const result = await metricService.processTelemetry(req.body);
         return res.status(201).json(result);
     } catch (error) {

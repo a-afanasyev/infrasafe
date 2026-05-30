@@ -102,26 +102,63 @@ describe('[P1-V3] JWT algorithms whitelist — RS256→HS256 confusion blocked',
             process.env = originalEnv;
         });
 
-        test('rejects RS256-signed token even when payload includes scope:2fa', () => {
+        test('rejects RS256-signed token even when payload includes scope:2fa', async () => {
             const rsTemp = jwt.sign(
                 { user_id: 7, scope: '2fa' },
                 rsaPrivateKey,
                 { algorithm: 'RS256', issuer: ISSUER, audience: AUDIENCE, expiresIn: '5m' }
             );
 
-            expect(() => authService.verifyTempToken(rsTemp)).toThrow();
+            // SEC-4: verifyTempToken is now async (adds a cutoff check after
+            // signature verification). The signature whitelist still rejects
+            // the RS256 token before any user lookup.
+            await expect(authService.verifyTempToken(rsTemp)).rejects.toThrow();
         });
 
-        test('accepts HS256 token with scope:2fa', () => {
+        test('accepts HS256 token with scope:2fa', async () => {
             const okTemp = jwt.sign(
                 { user_id: 7, scope: '2fa' },
                 HS_SECRET,
                 { algorithm: 'HS256', issuer: ISSUER, audience: AUDIENCE, expiresIn: '5m' }
             );
 
-            const decoded = authService.verifyTempToken(okTemp);
+            // SEC-4: verifyTempToken now looks up the user for the cutoff check.
+            const findUserSpy = jest
+                .spyOn(authService, 'findUserById')
+                .mockResolvedValue({ user_id: 7, username: 'u', role: 'admin', password_changed_at: null });
+
+            const decoded = await authService.verifyTempToken(okTemp);
             expect(decoded.scope).toBe('2fa');
             expect(decoded.user_id).toBe(7);
+
+            findUserSpy.mockRestore();
+        });
+
+        // SEC-4: a temp token issued before a mid-session password change must
+        // be rejected, mirroring the access/refresh cutoff enforcement.
+        test('rejects HS256 scope:2fa token issued before password_changed_at', async () => {
+            const okTemp = jwt.sign(
+                { user_id: 7, scope: '2fa' },
+                HS_SECRET,
+                { algorithm: 'HS256', issuer: ISSUER, audience: AUDIENCE, expiresIn: '5m' }
+            );
+
+            // Password changed an hour in the future relative to the token's iat
+            // → _isIssuedBeforeCutoff returns true.
+            const findUserSpy = jest
+                .spyOn(authService, 'findUserById')
+                .mockResolvedValue({
+                    user_id: 7,
+                    username: 'u',
+                    role: 'admin',
+                    password_changed_at: new Date(Date.now() + 3600 * 1000).toISOString()
+                });
+
+            await expect(authService.verifyTempToken(okTemp)).rejects.toThrow(
+                /password change/i
+            );
+
+            findUserSpy.mockRestore();
         });
     });
 });

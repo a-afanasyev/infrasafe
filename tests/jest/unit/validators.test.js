@@ -2,7 +2,8 @@ const {
     validateBuildingCreate,
     validateControllerCreate,
     validateMetricCreate,
-    validateIdParam
+    validateIdParam,
+    isXSSFree
 } = require('../../../src/middleware/validators');
 
 /**
@@ -357,6 +358,52 @@ describe('Validators Middleware', () => {
 
             expect(responded).toBe(true);
             expect(statusCode).toBe(400);
+        });
+    });
+
+    describe('isXSSFree (SEC-10 — ReDoS-safe XSS check)', () => {
+        test('returns true for clean plain strings', () => {
+            expect(isXSSFree('SN-001')).toBe(true);
+            expect(isXSSFree('Siemens')).toBe(true);
+            expect(isXSSFree('Building 12, floor 3')).toBe(true);
+            expect(isXSSFree('')).toBe(true);
+        });
+
+        test('returns false for <script> payloads', () => {
+            expect(isXSSFree('<script>alert("xss")</script>')).toBe(false);
+            expect(isXSSFree('hello <script src="evil.js"></script> world')).toBe(false);
+            expect(isXSSFree('<SCRIPT>alert(1)</SCRIPT>')).toBe(false);
+        });
+
+        test('returns false for event-handler (onerror=) payloads', () => {
+            expect(isXSSFree('<img src=x onerror=alert(1)>')).toBe(false);
+            expect(isXSSFree('onload = doEvil()')).toBe(false);
+        });
+
+        test('returns false for javascript: URIs', () => {
+            expect(isXSSFree('javascript:alert(1)')).toBe(false);
+            expect(isXSSFree('JavaScript:void(0)')).toBe(false);
+        });
+
+        test('returns false for iframe/object/embed tags', () => {
+            expect(isXSSFree('<iframe src="evil.com">')).toBe(false);
+            expect(isXSSFree('<object data="evil.swf">')).toBe(false);
+            expect(isXSSFree('<embed src="evil">')).toBe(false);
+        });
+
+        test('completes quickly on a long adversarial input (no catastrophic backtracking)', () => {
+            // Craft an input that triggers exponential backtracking against the old
+            // nested-quantifier regex /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/.
+            const adversarial = '<script' + '<'.repeat(15000) + 'x';
+
+            const start = Date.now();
+            const result = isXSSFree(adversarial);
+            const elapsedMs = Date.now() - start;
+
+            // The pre-fix regex took ~2.2s on this; a linear-time check is sub-millisecond.
+            expect(elapsedMs).toBeLessThan(100);
+            // It still contains a "<script" opener, so it must be rejected.
+            expect(result).toBe(false);
         });
     });
 

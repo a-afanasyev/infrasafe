@@ -213,6 +213,59 @@ describe('Auth Middleware', () => {
                 })
             );
         });
+
+        // SEC-1: a 2FA temp-token (scope:'2fa') must NEVER be accepted as an access token
+        test('rejects a token carrying scope:"2fa" with 401 before granting req.user', async () => {
+            req.headers.authorization = 'Bearer temp-2fa-token';
+            authService.isTokenBlacklisted.mockResolvedValue(false);
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
+                // Valid signature/issuer/audience but a 2FA-scoped temp token
+                cb(null, { user_id: 2, username: 'admin', role: 'admin', scope: '2fa' });
+            });
+
+            await authenticateJWT(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(401);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    success: false,
+                    message: 'Invalid or expired token'
+                })
+            );
+            expect(next).not.toHaveBeenCalled();
+            // The scope guard must short-circuit before user lookup
+            expect(authService.findUserById).not.toHaveBeenCalled();
+            expect(req.user).toBeUndefined();
+        });
+
+        test('rejects a token with any non-empty scope claim', async () => {
+            req.headers.authorization = 'Bearer scoped-token';
+            authService.isTokenBlacklisted.mockResolvedValue(false);
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
+                cb(null, { user_id: 1, scope: 'something-else' });
+            });
+
+            await authenticateJWT(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(401);
+            expect(authService.findUserById).not.toHaveBeenCalled();
+            expect(next).not.toHaveBeenCalled();
+        });
+
+        test('accepts a normal access token with NO scope claim', async () => {
+            req.headers.authorization = 'Bearer access-token';
+            authService.isTokenBlacklisted.mockResolvedValue(false);
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
+                cb(null, { user_id: 1, username: 'testuser', role: 'user', email: 'test@example.com' });
+            });
+            authService.findUserById.mockResolvedValue(mockUser);
+            authService._isIssuedBeforeCutoff.mockReturnValue(false);
+
+            await authenticateJWT(req, res, next);
+
+            expect(next).toHaveBeenCalled();
+            expect(req.user).toEqual(expect.objectContaining({ user_id: 1, role: 'user' }));
+        });
     });
 
     describe('isAdmin', () => {
@@ -500,6 +553,54 @@ describe('Auth Middleware', () => {
             await optionalAuth(req, res, next);
 
             expect(req.user).toBeNull();
+            expect(next).toHaveBeenCalled();
+        });
+
+        // SEC-1 (consistency): a 2FA temp-token (scope:'2fa') must degrade to
+        // anonymous in optionalAuth — it must NOT grant req.user.
+        test('treats a scope:"2fa" temp-token as anonymous (req.user null, still calls next)', async () => {
+            req.headers.authorization = 'Bearer temp-2fa-token';
+            authService.isTokenBlacklisted.mockResolvedValue(false);
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
+                cb(null, { user_id: 2, username: 'admin', role: 'admin', scope: '2fa' });
+            });
+
+            await optionalAuth(req, res, next);
+
+            expect(req.user).toBeNull();
+            expect(next).toHaveBeenCalled();
+            // Must short-circuit before user lookup — never resolve the scoped token to a user
+            expect(authService.findUserById).not.toHaveBeenCalled();
+        });
+
+        test('treats any non-empty scope claim as anonymous', async () => {
+            req.headers.authorization = 'Bearer scoped-token';
+            authService.isTokenBlacklisted.mockResolvedValue(false);
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
+                cb(null, { user_id: 1, scope: 'something-else' });
+            });
+
+            await optionalAuth(req, res, next);
+
+            expect(req.user).toBeNull();
+            expect(next).toHaveBeenCalled();
+            expect(authService.findUserById).not.toHaveBeenCalled();
+        });
+
+        test('still sets req.user for a normal token with NO scope claim', async () => {
+            req.headers.authorization = 'Bearer access-token';
+            authService.isTokenBlacklisted.mockResolvedValue(false);
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
+                cb(null, { user_id: 1 });
+            });
+            authService.findUserById.mockResolvedValue(mockUser);
+
+            await optionalAuth(req, res, next);
+
+            expect(req.user).toEqual(expect.objectContaining({
+                user_id: 1,
+                role: 'user'
+            }));
             expect(next).toHaveBeenCalled();
         });
     });

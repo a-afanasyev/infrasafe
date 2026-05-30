@@ -47,6 +47,7 @@ const crypto = require('crypto');
 const axios = require('axios');
 
 const logger = require('../utils/logger');
+const { validateUKApiUrl } = require('../utils/urlValidation');
 
 const ENDPOINT_PATH = '/api/v2/webhooks/infrasafe/alert';
 const SIGNATURE_HEADER = 'x-webhook-signature';
@@ -81,6 +82,18 @@ class UKWebhookClient {
     _getEndpoint() {
         const raw = process.env.UK_API_URL;
         if (!raw || typeof raw !== 'string') return null;
+        // [SEC-5] SSRF guard: the admin config path runs validateUKApiUrl()
+        // (blocks private IPs / cloud-metadata / localhost), but the env path
+        // bypassed it. Validate the raw URL here so a compromised/misconfigured
+        // UK_API_URL cannot redirect outbound POSTs at internal targets. On
+        // rejection, log and return null — the caller (send()) already treats a
+        // null endpoint as 'skip' (not-configured). Never throw uncaught.
+        try {
+            validateUKApiUrl(raw);
+        } catch (error) {
+            logger.warn(`ukWebhookClient._getEndpoint rejected UK_API_URL (SSRF guard): ${error.message}`);
+            return null;
+        }
         // Strip trailing slash and any /api/vN path suffix so the bare host
         // composes cleanly with ENDPOINT_PATH.
         const trimmed = raw.replace(/\/+$/, '').replace(/\/api\/v\d+$/, '');
