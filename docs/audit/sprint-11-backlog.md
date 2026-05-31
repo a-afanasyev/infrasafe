@@ -202,6 +202,37 @@ docker network rm site-content_leaflet-network
 
 ## P1 — Correctness
 
+### B-025 — LEAK auto-trigger пропускал тревогу при `leak_sensor` ≠ строгого boolean `true` — CLOSED (2026-05-31)
+
+**Найдено 2026-05-31** по жалобе «метрики с протечкой есть, а тревога не создалась».
+
+**Что**. `metricService.createMetric` эмитил `LEAK_CHECK` только при `metricData.leak_sensor === true`
+(строгое равенство). Колонка `metrics.leak_sensor` — **boolean**, и драйвер `pg` коэрсит `1` / `"1"` /
+`"true"` / `"t"` в boolean `true` при INSERT → **протечка корректно сохранялась в БД** (и SQL-гейт
+`WHERE leak_sensor = true` её бы увидел), **но событие не эмитилось** (`1 === true` → false,
+`"true" === true` → false). Итог: контроллер, шлющий `leak_sensor` числом/строкой (типично для IoT),
+писал метрику без тревоги. `checkLeak` никогда не вызывался.
+
+**Корень**. Рассинхрон между БД-типом (boolean, лояльная коэрция) и JS-guard'ом (строгое `=== true`).
+Коэрции `leak_sensor` нигде по пути не было (`validateMetricData` его не трогает).
+
+**Fix**. Хелпер `coerceBoolish(v)` в `metricService` нормализует `leak_sensor` к реальному boolean
+**один раз, до** insert и emit — БД и решение об эмите теперь согласованы. Принимает
+`true/1/"1"/"true"/"t"/"yes"/"on"` → `true`; `false/0/"0"/"false"/"f"/"no"/"off"/""` → `false`;
+`null/undefined`/нераспознанная строка → `null` (сохраняет «нет показания», не угадывает). Применяется
+только если поле передано (не навязывает false отсутствующему показанию).
+
+**Тесты** (TDD): 15 в `metricServiceTest.test.js` — 7 truthy-вариантов эмитят LEAK_CHECK, 8 falsy не
+эмитят. Полный прогон 2255/2255 зелёный, lint чисто.
+
+**Не затронуто**: VOLTAGE/HEATING auto-trigger используют `!= null` guard на числовых полях — у них
+этой проблемы нет (только boolean `leak_sensor` со строгим `=== true`).
+
+**Деплой**. Код-онли, без миграции. Эффект сразу при следующем деплое — новые leak-метрики с любым
+boolean-ish значением начнут триггерить тревогу. Уже записанные «немые» протечки в БД не
+ретроактивны (тревога создаётся только на новой телеметрии); при необходимости — разовый replay/manual
+alert для уже залогированных, по триажу оператора.
+
 ### B-020 — `resolved_verifying` alerts осиротевают (нет write-back в `infrastructure_alerts.status`)
 
 > **✅ ЗАКРЫТО 2026-05-29** — PR #68 (`a836fdc`) + migration 031 (backfill alerts 25/26 → resolved), deployed. Секция оставлена для истории; см. Closed. Durability-остаток вынесен в B-021.

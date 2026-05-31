@@ -38,6 +38,10 @@ const cacheService = require('../../../src/services/cacheService');
 
 // metricService is a singleton
 let metricService;
+// [B-005-LEAK test] metricService is re-required inside isolateModules each
+// beforeEach, which gives it a FRESH alertEvents instance. To spy on the emit
+// the service actually uses, capture alertEvents from the SAME isolate graph.
+let isolatedAlertEvents;
 
 beforeEach(() => {
     jest.clearAllMocks();
@@ -48,6 +52,7 @@ beforeEach(() => {
 
     jest.isolateModules(() => {
         metricService = require('../../../src/services/metricService');
+        isolatedAlertEvents = require('../../../src/events/alertEvents');
     });
 });
 
@@ -193,6 +198,42 @@ describe('MetricService', () => {
 
             expect(cacheService.invalidatePattern).toHaveBeenCalled();
             expect(cacheService.invalidate).toHaveBeenCalled();
+        });
+
+        // [B-005-LEAK coercion fix] The DB column leak_sensor is boolean and the
+        // pg driver coerces 1 / "1" / "true" / "t" to boolean true on insert, so a
+        // leaking sensor IS stored correctly — but the LEAK_CHECK emit guard used
+        // strict `=== true`, so non-canonical truthy values persisted WITHOUT
+        // firing the alert path ("метрики с протечкой есть, тревога не создалась").
+        describe('LEAK_CHECK emit — leak_sensor truthiness coercion', () => {
+            beforeEach(() => {
+                Controller.findById.mockResolvedValue(mockController);
+                Metric.create.mockResolvedValue({ metric_id: 2, controller_id: 1 });
+                Controller.updateStatus.mockResolvedValue({});
+            });
+
+            it.each([true, 1, '1', 'true', 't', 'TRUE', 'True'])(
+                'emits LEAK_CHECK when leak_sensor=%p (truthy boolean-ish)',
+                async (val) => {
+                    const spy = jest.spyOn(isolatedAlertEvents, 'emit');
+                    await metricService.createMetric({ controller_id: 1, leak_sensor: val });
+                    const leakEmits = spy.mock.calls.filter(c => c[0] === isolatedAlertEvents.EVENTS.LEAK_CHECK);
+                    expect(leakEmits).toHaveLength(1);
+                    expect(leakEmits[0][1]).toMatchObject({ controllerId: 1 });
+                    spy.mockRestore();
+                }
+            );
+
+            it.each([false, 0, '0', 'false', 'f', null, undefined, ''])(
+                'does NOT emit LEAK_CHECK when leak_sensor=%p (falsy)',
+                async (val) => {
+                    const spy = jest.spyOn(isolatedAlertEvents, 'emit');
+                    await metricService.createMetric({ controller_id: 1, leak_sensor: val });
+                    const leakEmits = spy.mock.calls.filter(c => c[0] === isolatedAlertEvents.EVENTS.LEAK_CHECK);
+                    expect(leakEmits).toHaveLength(0);
+                    spy.mockRestore();
+                }
+            );
         });
 
         test('detects anomalies when voltage is out of range', async () => {
