@@ -36,11 +36,15 @@ jest.mock('../../../src/models/AlertRequestMap', () => ({
 jest.mock('../../../src/clients/ukWebhookClient', () => ({
     send: jest.fn()
 }));
+jest.mock('../../../src/models/IntegrationLog', () => ({
+    updateStatusByEventId: jest.fn()
+}));
 
 const db = require('../../../src/config/database');
 const UkOutbox = require('../../../src/models/UkOutbox');
 const AlertRequestMap = require('../../../src/models/AlertRequestMap');
 const ukWebhookClient = require('../../../src/clients/ukWebhookClient');
+const IntegrationLog = require('../../../src/models/IntegrationLog');
 const logger = require('../../../src/utils/logger');
 const service = require('../../../src/services/uk/ukOutboxService');
 const { UkOutboxService } = require('../../../src/services/uk/ukOutboxService');
@@ -262,6 +266,58 @@ describe('ukOutboxService', () => {
             // notification_failure: an UPDATE infrastructure_alerts SET data = ...
             const calls = db.query.mock.calls.map(c => c[0]);
             expect(calls.some(s => /UPDATE infrastructure_alerts/.test(s))).toBe(true);
+        });
+
+        // [B-007] integration_log must reflect retry/dead transitions, not just
+        // the terminal success/dead landing. Each outbound event_id has a log row
+        // written at enqueue time (alertForwarder → webhookVerifier.logEvent);
+        // the drain worker now updates that row's status as the event progresses.
+        it('[B-007] dead → updates integration_log status to "failed" with error', async () => {
+            UkOutbox.pickNext.mockResolvedValue(queuedRow);
+            ukWebhookClient.send.mockResolvedValue({ outcome: 'dead', code: 401, error: 'signature stale' });
+            AlertRequestMap.findByIdempotencyKey.mockResolvedValue({ id: 99, infrasafe_alert_id: 7 });
+
+            await service._tick();
+
+            expect(IntegrationLog.updateStatusByEventId).toHaveBeenCalledWith('evt-abc', 'failed', 'signature stale');
+        });
+
+        it('[B-007] retry → updates integration_log status to "retrying" with error', async () => {
+            UkOutbox.pickNext.mockResolvedValue({ ...queuedRow, attempt_count: 0 });
+            ukWebhookClient.send.mockResolvedValue({ outcome: 'retry', code: 429, error: 'rate limit' });
+
+            await service._tick();
+
+            expect(IntegrationLog.updateStatusByEventId).toHaveBeenCalledWith('evt-abc', 'retrying', 'rate limit');
+        });
+
+        it('[B-007] retry escalating to dead at MAX_ATTEMPTS → integration_log "failed"', async () => {
+            UkOutbox.pickNext.mockResolvedValue({ ...queuedRow, attempt_count: 4 });
+            ukWebhookClient.send.mockResolvedValue({ outcome: 'retry', code: 503, error: 'persistent 503' });
+
+            await service._tick();
+
+            expect(IntegrationLog.updateStatusByEventId).toHaveBeenCalledWith('evt-abc', 'failed', 'persistent 503');
+        });
+
+        it('[B-007] success → updates integration_log status to "success"', async () => {
+            UkOutbox.pickNext.mockResolvedValue(queuedRow);
+            ukWebhookClient.send.mockResolvedValue({ outcome: 'success', code: 202 });
+            AlertRequestMap.findByIdempotencyKey.mockResolvedValue({ id: 99, status: 'pending' });
+
+            await service._tick();
+
+            expect(IntegrationLog.updateStatusByEventId).toHaveBeenCalledWith('evt-abc', 'success', null);
+        });
+
+        it('[B-007] integration_log write failure must NOT break the drain (best-effort)', async () => {
+            UkOutbox.pickNext.mockResolvedValue(queuedRow);
+            ukWebhookClient.send.mockResolvedValue({ outcome: 'success', code: 202 });
+            AlertRequestMap.findByIdempotencyKey.mockResolvedValue(null);
+            IntegrationLog.updateStatusByEventId.mockRejectedValueOnce(new Error('db blip'));
+
+            await expect(service._tick()).resolves.not.toThrow();
+            expect(UkOutbox.markSent).toHaveBeenCalled(); // primary transition still happened
         });
 
         it('skip → resetForSkip with 60s', async () => {

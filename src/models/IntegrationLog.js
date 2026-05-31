@@ -97,6 +97,32 @@ class IntegrationLog {
     }
 
     /**
+     * [B-007] Update a log entry's status keyed by event_id.
+     * Used by the UK outbox drain worker to reflect retry/dead/success
+     * transitions onto the row written at enqueue time. event_id is the
+     * idempotency key, so it uniquely identifies the outbound event.
+     * @param {string} eventId - The event_id (idempotency key)
+     * @param {string} status - New status ('success' | 'retrying' | 'failed' | ...)
+     * @param {string|null} errorMessage - Optional error detail
+     * @returns {Promise<Object|null>} - Updated row, or null if no row matched
+     */
+    static async updateStatusByEventId(eventId, status, errorMessage = null) {
+        try {
+            const { rows } = await db.query(
+                `UPDATE integration_log
+                SET status = $1, error_message = $2
+                WHERE event_id = $3
+                RETURNING *`,
+                [status, errorMessage, eventId]
+            );
+            return rows.length ? rows[0] : null;
+        } catch (error) {
+            logger.error(`Error in IntegrationLog.updateStatusByEventId: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
      * Increment the retry count for a log entry
      * @param {number} id - The log entry ID
      * @returns {Promise<Object>} - Updated log entry

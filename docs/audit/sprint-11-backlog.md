@@ -289,7 +289,22 @@ docker network rm site-content_leaflet-network
 
 ## P3 — UX / observability
 
-### B-024 — Map layer counters show `(0)` until the layer is toggled (lazy load); anon never gets real counts
+### B-024 — Map layer counters show `(0)` until the layer is toggled — PARTIAL (2026-05-31)
+
+> **Status:** фактор 1 (Здания, public) **исправлен** 2026-05-31; фактор 2 (auth-gated слои для anon)
+> остаётся OPEN — см. «Остаток» ниже.
+>
+> **Fix-часть (shipped):** `public/map-layers-control.js` `loadLayerDataSilent` получил недостающий
+> `case "🏢 Здания"` → `loadBuildings`. Здания грузятся из **публичного** `/buildings-metrics`, поэтому
+> счётчик `🏢 Здания (N)` теперь заполняется при инициализации карты для всех (вкл. anon), а не только
+> после ручного toggle. `loadBuildings` делает `clearLayers()` → идемпотентно, double-render нет; маркеры
+> на карте по-прежнему рисует `script.js loadData()` (отдельный путь), эта правка трогает только счётчик
+> overlay-слоя. Frontend-онли, тестируется в браузере (anon).
+>
+> **Остаток (OPEN, фактор 2):** auth-gated слои (`⚡ Трансформаторы`, `📊 Контроллеры`, `⚠️ Алерты`, …)
+> у анонима остаются `(0)` — их load-fns бьют в эндпоинты, дающие 401 без токена. Это by-design
+> (default-deny), но UI показывает фальшивый `0`. Варианты ниже (скрывать `(N)` при 401 / публичные
+> count-агрегаты) — брать на map-UX проходе или с `feature/frontend-redesign` (B-008).
 
 **Найдено 2026-05-31** при браузерном QA прода (post-B-012 deploy; **НЕ регрессия** — деплой
 `3c23225..26f206f` тронул только тестовые файлы, ноль изменений в `public/`/JS). Диагноз уточнён
@@ -339,15 +354,24 @@ admin-QA того же дня (см. ниже).
 
 ## P3 — Sprint 9.X дольки
 
-### B-007 — `integration_log` cosmetic gap в ukOutboxService
+### B-007 — `integration_log` cosmetic gap в ukOutboxService — CLOSED (2026-05-31)
 
-**Что**. `ukOutboxService` (drain worker для outbox) сейчас не обновляет integration_log при retry/dead transitions. Только final success/dead landing в логах.
+**Что было**. `ukOutboxService._drainOne` обновлял только outbox-таблицу + AlertRequestMap; строка
+`integration_log` (пишется при enqueue в `alertForwarder` → `webhookVerifier.logEvent`) не отражала
+retry/dead/success transitions — лог event_id «разрывался».
 
-**Почему**. Уже отмечено в Sprint 10 plan «Out of scope». Cosmetic — debug чуть сложнее когда нужно проследить путь конкретного event_id через retries. Не влияет на correctness.
+**Fix** (`a` коммит сессии):
+- Новый метод `IntegrationLog.updateStatusByEventId(eventId, status, errorMessage)` — UPDATE по `event_id`
+  (idempotency key), возвращает null если строки нет.
+- `_drainOne` вызывает best-effort `_syncIntegrationLog` на каждом исходе: success → `success`,
+  retry → `retrying`, dead / retry-at-MAX → `failed`. **Best-effort**: ошибка записи лога НЕ ломает drain
+  (outbox-row transition остаётся source of truth; это observability).
+- Тесты (TDD): 5 в `ukOutboxService.test.js` (success/retry/dead/escalation/log-write-failure) + 3 в
+  `integrationLog.test.js` (params/null/default). Полный прогон 2240/2240 зелёный, lint чисто.
 
-**Trigger**. Первый случай когда нужно дебажить retry-pattern в проде → станет очевидно что лог разорван.
-
-**Estimate**. ~1-2 часа: добавить `IntegrationLog.upsert` calls в `_drainOne` retry/dead paths.
+**Не сделано** (вне scope): `skip`-исход НЕ синкается в integration_log (это конфиг-проблема, не прогресс
+event'а — строка остаётся `pending`, что корректно). Деплой обычный (код-онли, миграции нет); реально
+проявится только при `UK_USE_WEBHOOK_SENDER=true`.
 
 ---
 
