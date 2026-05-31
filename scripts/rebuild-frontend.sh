@@ -115,7 +115,13 @@ fi
 fail=0
 tmp="/tmp/rebuild-frontend-served-$$"
 for b in $bundles; do
+  # Capture under `set +e`: a missing file makes `docker exec sha256sum` exit
+  # non-zero, which under set -e + trap ERR would abort the loop instead of
+  # producing a controlled `✗` (e.g. a bundle in VERIFY_BUNDLES that wasn't
+  # actually built, or a typo'd override).
+  set +e
   built="$(docker exec "$APP_CONTAINER" sh -lc "sha256sum /app/$b" 2>/dev/null | awk '{print $1}')"
+  set -e
   if [ -z "$built" ]; then
     printf '  ✗ %s: missing in container after build\n' "$b"
     fail=1; continue
