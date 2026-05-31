@@ -41,7 +41,7 @@
 
 > Во время раскатки PR #59 / #60 / #61 / #62 / #63 на прод (`95.46.96.105`) вскрылись пять явных drift'ов между декларированным compose-стеком и реальным состоянием контейнеров. Каждый из них стоил debug-петли (auth-fail → migration replay → network диагностика). Чинить пакетно до следующего серьёзного деплоя.
 
-### B-027 — фронт-бандлы `public/dist/` не доезжают до прода (rebuild в образ, раздача с хост-mount) — CLOSED (tracked guard); operator step pending (P0)
+### B-027 — фронт-бандлы `public/dist/` не доезжают до прода (rebuild в образ, раздача с хост-mount) — CLOSED (2026-06-01, P0)
 
 **Найдено 2026-05-31** при расследовании «нет кнопки Открыть в УК». Прод раздавал `public/dist/admin.js`
 **от 27 мая** (102629 байт, до B-001 #60), хотя source давно с B-001. Кнопки УК не было, потому что её
@@ -75,15 +75,20 @@ docker exec -u 0 infrasafe-app-1 sh -c 'cd /app && node build/esbuild.config.mjs
 - **runbook** (`2026-05-30-prod-ops-runbook.md` §1b): обязательный шаг после app/frontend recreate.
 - **PRODUCTION-DEPLOYMENT.md**: обязательный шаг в unified-блоке после `up -d`.
 
-**Operator step PENDING (под авторизацию, переводит в полный CLOSED):**
-1. Задеплоить `scripts/rebuild-frontend.sh` на прод + первый прогон с байт-verify (зелёный).
-2. **Пропатчить host-local `deploy.sh`/`deploy-nosudo.sh`** — вставить `bash scripts/rebuild-frontend.sh`
-   **после `up -d --force-recreate` и до smoke** (deploy.sh ~:219, deploy-nosudo.sh между :195 и :210).
-   Без этого следующий деплой через них снова оставит stale dist.
-3. Разовый `FIX_DIST_OWNER=1` (chown dist→nodejs), чтобы дальше не нужен root.
+**Operator step — ВЫПОЛНЕНО 2026-06-01 (→ полный CLOSED):**
+1. ✅ `scripts/rebuild-frontend.sh` задеплоен на прод (`git pull`), первый прогон — все 12 бандлов `✓`,
+   exit 0; негатив-тест (несуществующий бандл) → чистый баннер «BUNDLE DID NOT REACH PROD» + exit 1.
+2. ✅ **Wired в tracked `update-production.sh`** (PR #82, Шаг 5b: после `up -d`, до smoke, hard-stop при
+   exit≠0). Выяснилось, что host-local `deploy.sh`/`deploy-nosudo.sh` на проде **нет** (они были
+   local-only на dev-машине) — реальные деплои идут через tracked `update-production.sh` + ручной
+   `git pull && docker compose up -d`. Tracked-фикс лучше: доезжает на любой хост через `git pull`.
+3. ✅ Разовый `FIX_DIST_OWNER=1` выполнен (chown `public/dist` → nodejs).
 
-> **Не писать просто CLOSED, пока (1)+(2) не выполнены** — иначе ложное ощущение, что повтор B-027 уже
-> невозможен. Пока скрипт не задеплоен и host-local скрипты не пропатчены, регрессия возможна.
+**Известный косметический остаток (не баг):** clean-run всё ещё делает root-retry (WARN), т.к. esbuild
+`rmSync(public/dist)` требует write на родителе `/app/public` (owned by `node` uid1000 ≠ контейнерный
+`nodejs` uid1001). Функционально безвредно (root-retry → exit 0, все бандлы verified), trap-строки
+убраны (PR #80/#81). Полностью убрать WARN можно chown'ом родителя или esbuild per-file cleanup —
+вынесено в Future (low).
 
 **Future (low, отдельно):** (a) re-architecture — раздавать dist из образа (убрать host-mount), оценить
 против B-012; (b) tracked deploy-entrypoint в `scripts/` вместо host-local `deploy.sh`; (c) bundle
