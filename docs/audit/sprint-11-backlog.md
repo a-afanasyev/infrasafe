@@ -4,36 +4,46 @@
 > Каждый пункт: **что** + **почему** + **trigger to ship** (когда становится приоритетным).
 > Создан 2026-05-25 после закрытия Sprint 10 + INT-120.
 > Обновлён 2026-05-28 после deploy 4 PR'ов на прод (см. P0 — production infra drift).
-> Обновлён 2026-05-30: закрыты B-014/B-015/B-017/B-020 + security audit (#69) + ротации секретов + P-PENTEST-4; перепроверена актуальность открытых пунктов (блок ниже).
+> Обновлён 2026-05-30: закрыты B-014/B-015/B-017/B-020 + security audit (#69) + ротации + P-PENTEST-4.
+> Обновлён 2026-06-01: закрыты B-012/B-013/B-016/B-023/B-025/B-026/B-027 + B-007; B-024 partial. Шапка переписана.
 
 ---
 
-## Статус на 2026-05-30 — обновление + анализ актуальности
+## Статус на 2026-06-01 — актуализация
 
-### Закрыто с прошлого обновления (перенесено в Closed-секцию)
-| Пункт | PR / способ | Статус |
+### Закрыто (полная история — в Closed-секции внизу)
+| Пункт | Как | Статус |
 |---|---|---|
-| B-014 — healthcheck `localhost`→IPv6 | #65 (`836e1be`) + app-side активирован в deploy 05-30 | ✅ |
-| B-017 — CSP/SRI test baseline | #66 (`21c731e`) | ✅ |
-| B-020 — `resolved_verifying` orphan | #68 (`a836fdc`) + migration 031, deployed 05-29 | ✅ |
-| B-015 — orphan network `site-content` | удалена (подтверждено `docker network ls`) | ✅ |
-| **Security audit** — SEC-1..12, P-PENTEST-1/2/3 | #69 (`3c23225`), deployed 05-30, 2232 теста + CodeQL | ✅ |
-| **SEC-3 ротации** — JWT / DB / UK-secret / TOTP + admin-пароль | 05-30, проверено на проде | ✅ |
-| **P-PENTEST-4** — UK-порты на `0.0.0.0` | закрыто UK (loopback + удаление), проверено снаружи | ✅ |
+| B-012 nginx config single-file mount | #72 directory-mount + `nginx -c`, deployed 05-31 | ✅ |
+| B-013 DB-role doc correctness | #70 (CLAUDE.md/prod.yml/runbook) | ✅ |
+| B-016 compose drift-check | #70 `scripts/compose-drift-check.sh` (host-wide) + #71 baseline | ✅ |
+| B-023 POSTGRES_PASSWORD footgun | #72 (декларация); ⚠️ остаток — dead `POSTGRES_USER` в `.env.prod` | ✅ decl / op-step pending |
+| B-025 LEAK coercion | #75 `coerceBoolish`, deployed 05-31, e2e-verified на проде | ✅ |
+| B-026 acknowledged-alerts невидимо блокируют | #76 `getActiveAlerts` default→`('active','acknowledged')`, deployed | ✅ |
+| B-027 frontend dist не доезжал до прода (P0) | #78–83 `rebuild-frontend.sh` + wire в `update-production.sh`, deployed 06-01 | ✅ |
+| B-007 integration_log retry/dead sync | #74 `updateStatusByEventId` + `_syncIntegrationLog` | ✅ |
+| B-024 map counters `(0)` | #74 — Здания-счётчик при init (partial); auth-gated слои open | 🟡 partial |
+| (ранее 05-30) B-014/B-015/B-017/B-020 + security audit #69 + ротации + P-PENTEST-4 | — | ✅ |
 
-### Анализ актуальности открытых пунктов (сверено с прод/кодом 2026-05-30)
-| Пункт | Проверка | Вердикт |
-|---|---|---|
-| **B-011** alias collision | app теперь только в `infrasafe`+`leaflet` (B-010) | **актуален, но latent** — рванёт лишь при re-attach app в `uk-network`; обычный путь безопасен |
-| **B-012** nginx single-file mount | `inspect`: `nginx.production.conf -> /etc/nginx/nginx.conf` всё ещё одиночный файл | **актуален** (recreate при каждой правке конфига) |
-| **B-013** DB_USER drift | `pg_roles`: `infrasafe_app`=**superuser**+login, `infrasafe_runtime`=login non-super, `postgres`=**НЕТ** | **переосмыслен ↓** — app корректно работает под non-super `infrasafe_runtime`; рекомендация «перейти на `infrasafe_app`» **неверна** (тот superuser — least-privilege нарушение). Остаётся косметика: убрать мёртвый `POSTGRES_USER=postgres` из `.env.prod` + поправить role-заметку в CLAUDE.md |
-| **B-003** Redis | SEC-6 (#69) добавил size-cap на обе in-memory Map | **актуален частично** — memory-growth снят; multi-replica bypass (SEC-8) остаётся; single-replica → триггер не наступил |
-| **B-004** admin.js split | `wc -l`: admin.js **3826** (+~400 от B-001), script.js **2384** | **актуален**, растёт; триггер 4500 LoC ещё не достигнут |
-| **B-016** drift-script | после P-PENTEST-4 | **актуален + расширить**: добавить проверку «нет лишних `0.0.0.0`-публикаций docker» |
-| B-021 / B-006 / B-007 / B-008 / B-009 | — | без изменений |
+### Открытые пункты (сверено с прод/кодом 2026-06-01)
+| Пункт | P | Проверка | Вердикт / триггер |
+|---|---|---|---|
+| **B-021** durability reconciliation | P1 | смягчён B-020 finalize-first; alert 36 на проде прошёл grace+window→resolved чисто | **latent** — нужен перед multi-replica (B-003) ИЛИ если в проде verification закончит `passed` где ждали `reopened` |
+| **B-011** alias collision | P2 | app только в `infrasafe`+`leaflet` (B-010); B-010-фикс закреплён | **latent** — рванёт лишь при re-attach app в `uk-network`; полный fix = координация с UK |
+| **B-003** Redis (multi-replica) | P2 | SEC-6 снял memory-growth; SEC-8 multi-replica bypass остаётся | **не наступил** — single-replica setup |
+| **B-004** admin.js split | P2 | `wc -l`: admin.js **3826**, script.js **2384** | **не достигнут** — триггер 4500 LoC; растёт |
+| **B-024** map counters (auth-gated half) | P3 | Здания-счётчик починен (#74); трансформаторы/контроллеры/алерты у anon = `(0)` за 401 | **косметика** — на map-UX проходе / с B-008 |
+| **B-006** Engineering Kanban | P3 | — | **owner UK side**, не наш PR |
+| **B-008** frontend-redesign merge | P4 | — | после стабилизации + B-004 split |
+| **B-009** seasonal HEATING rules | P4 | — | **Q3 2026** (до отопит. сезона) |
+| **B-023** остаток | — | dead `POSTGRES_USER=postgres` в `.env.prod` (1 строка); `compose config` warning=0 (защищён литералом) | **op-step pending** — убрать при следующем postgres-recreate-окне |
 
-### Рекомендация по следующему спринту
-Быстрый пакет: **B-013** (убрать dead `POSTGRES_USER`, ~30мин) + **B-012** (nginx directory-mount, ~2ч) + **B-016** (drift-script с 0.0.0.0-проверкой, ~3ч). Крупное (B-003 / B-004 / B-008) — отдельным спринтом по триггеру.
+### Рекомендация
+**Ничего не горит.** Все пункты с близким триггером закрыты (B-012/B-013/B-016/B-023-decl/B-025/B-026/
+B-027 + B-007). Оставшееся — latent (B-021/B-011), ждёт триггера (B-003/B-004/B-008), сезона (B-009),
+UK-стороны (B-006) или косметика (B-024). Дешёвые операторские остатки: B-023 dead-`POSTGRES_USER`
+(~5мин в postgres-окне), B-027 косметический root-retry WARN (Future-low). Крупное (B-003/B-004/B-008) —
+отдельным спринтом по триггеру.
 
 ---
 
