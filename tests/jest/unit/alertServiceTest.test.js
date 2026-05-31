@@ -277,6 +277,38 @@ describe('AlertService', () => {
             expect(result.data).toHaveLength(3);
         });
 
+        // [B-026] With no explicit status filter the list must include BOTH
+        // 'active' AND 'acknowledged'. The dedup index (migration 027) blocks a
+        // new alert while one exists in either status, but the list defaulted to
+        // 'active' only — so an acknowledged alert invisibly blocked new alerts
+        // and the operator couldn't see/close it. Default must match the index.
+        test('[B-026] default (no status filter) selects active AND acknowledged', async () => {
+            db.query
+                .mockResolvedValueOnce({ rows: [{ total: '2' }] })
+                .mockResolvedValueOnce({ rows: [{ alert_id: 1 }, { alert_id: 2 }] });
+
+            await alertService.getActiveAlerts();
+
+            const [countQuery, params] = db.query.mock.calls[0];
+            expect(countQuery).toMatch(/ia\.status\s+IN\s*\(/i);
+            expect(params).toEqual(expect.arrayContaining(['active', 'acknowledged']));
+            // must NOT collapse to a single-status equality default
+            expect(countQuery).not.toMatch(/ia\.status\s*=\s*\$1\s*$/m);
+        });
+
+        test('[B-026] explicit status filter is still honored as exact match', async () => {
+            db.query
+                .mockResolvedValueOnce({ rows: [{ total: '1' }] })
+                .mockResolvedValueOnce({ rows: [{ alert_id: 5 }] });
+
+            await alertService.getActiveAlerts({ status: 'resolved' });
+
+            const [countQuery, params] = db.query.mock.calls[0];
+            expect(countQuery).toMatch(/ia\.status\s*=\s*\$1/);
+            expect(params).toContain('resolved');
+            expect(params).not.toContain('acknowledged');
+        });
+
         test('applies severity filter', async () => {
             db.query
                 .mockResolvedValueOnce({ rows: [{ total: '1' }] })
