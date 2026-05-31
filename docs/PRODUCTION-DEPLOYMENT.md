@@ -79,6 +79,18 @@ docker-compose -f docker-compose.prod.yml up -d frontend app
 docker-compose -f docker-compose.unified.yml up -d frontend app nginx
 ```
 
+#### REQUIRED для unified-деплоя (B-027): пересборка + проверка frontend-бандлов
+
+> Только для `docker-compose.unified.yml`. Bind-mount `.:/app` затеняет запечённый в образ
+> `public/dist`, а `public/dist` в `.gitignore` — поэтому бандл нужно пересобрать в контейнере и
+> проверить, что nginx реально отдаёт свежий код, **после каждого `up -d`**. (В prod.yml-деплое app
+> собран через `Dockerfile.prod` без esbuild — там этот шаг неприменим.)
+
+```bash
+bash scripts/rebuild-frontend.sh
+# exit 0 = все бандлы собраны и verified live; 1 = бандл НЕ доехал (СТОП, не идти в smoke); 2 = precondition
+```
+
 ### 7. Проверка статуса
 
 ```bash

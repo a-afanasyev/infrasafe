@@ -42,6 +42,47 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://infrasafe.uz/api/health   # ed
 
 ---
 
+## 1b. Frontend bundle refresh  [B-027] — REQUIRED after every app/frontend recreate
+
+**Why:** the app service bind-mounts `.:/app`, so at runtime the host's `public/dist/` **shadows** the
+dist baked into the image. nginx serves `public/dist/` from that host dir, and `public/dist/` is
+gitignored — so `git pull` never refreshes it and rebuilding the app image never touches it. Without this
+step the served bundle stays stale (B-027: B-001/B-024 frontend changes silently never reached prod for
+~5 weeks).
+
+```bash
+cd ~/infrasafe
+bash scripts/rebuild-frontend.sh
+# exit 0 = every bundle built + verified live; 1 = a bundle did NOT reach prod (STOP, do not smoke);
+# 2 = precondition (container not up / not unified layout)
+```
+
+The script rebuilds `public/dist` inside `infrasafe-app-1` (writing through the bind mount) and
+**byte-verifies** that what nginx serves over HTTPS equals what was just built (sha256 per bundle). A
+non-zero exit means the deploy is NOT done — investigate before smoke.
+
+Manual equivalent (if you need to check by hand):
+```bash
+docker exec infrasafe-app-1 sh -lc 'sha256sum /app/public/dist/script.js'
+curl -sk https://infrasafe.uz/public/dist/script.js | sha256sum    # hashes MUST match
+```
+
+One-time ownership remediation (so future rebuilds don't need root — `public/dist` is currently
+root-owned, the container runs as `nodejs`):
+```bash
+FIX_DIST_OWNER=1 bash scripts/rebuild-frontend.sh
+# or: docker exec -u 0 infrasafe-app-1 chown -R nodejs:nodejs /app/public/dist
+```
+
+> **Host-local deploy scripts:** `deploy.sh` / `deploy-nosudo.sh` (untracked, on the host) must call
+> `bash scripts/rebuild-frontend.sh` **after `docker compose up -d` and before the smoke phase**. If they
+> don't yet, patch them (see B-027 in the backlog). The tracked script is the single source of truth.
+
+**Rollback:** bundles are derived artifacts — `git revert` the frontend change, then re-run
+`bash scripts/rebuild-frontend.sh`.
+
+---
+
 ## 2. Host firewall  (P-PENTEST-1 — defense-in-depth on top of loopback bind)
 
 After step 1 the ports are loopback-only, so this is belt-and-suspenders, but close them at the host edge too:
