@@ -86,6 +86,25 @@ echo -e "${YELLOW}⏳ Шаг 5: Ожидание инициализации ко
 sleep 10
 echo ""
 
+# Шаг 5b: [B-027] Пересборка + byte-verify frontend-бандлов (ОБЯЗАТЕЛЬНО для unified).
+# Bind-mount .:/app затеняет запечённый в образ public/dist, а public/dist в
+# .gitignore — без этого шага nginx отдаёт устаревший бандл (B-001/B-024 не
+# доезжали ~5 недель). Скрипт сам отсекает prod.yml-layout (нет esbuild) и падает
+# с exit!=0, если бандл не доехал — деплой обязан остановиться ДО smoke.
+if [ "$COMPOSE_FILE" = "docker-compose.unified.yml" ]; then
+    echo -e "${YELLOW}🧩 Шаг 5b: Пересборка + проверка frontend-бандлов [B-027]...${NC}"
+    if [ -x scripts/rebuild-frontend.sh ]; then
+        COMPOSE_FILE="$COMPOSE_FILE" bash scripts/rebuild-frontend.sh || {
+            echo -e "${RED}❌ frontend-бандлы НЕ доехали до прода — остановка деплоя${NC}"
+            exit 1
+        }
+        echo -e "${GREEN}✅ frontend-бандлы пересобраны и verified live${NC}"
+    else
+        echo -e "${RED}⚠️  scripts/rebuild-frontend.sh не найден — пропуск (B-027 риск!)${NC}"
+    fi
+    echo ""
+fi
+
 # Шаг 6: Проверка статуса
 echo -e "${YELLOW}✅ Шаг 6: Проверка статуса контейнеров...${NC}"
 docker-compose -f "$COMPOSE_FILE" ps
