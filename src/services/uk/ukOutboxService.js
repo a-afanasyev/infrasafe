@@ -44,6 +44,7 @@ const logger = require('../../utils/logger');
 
 const UkOutbox = require('../../models/UkOutbox');
 const AlertRequestMap = require('../../models/AlertRequestMap');
+const IntegrationLog = require('../../models/IntegrationLog');
 const ukWebhookClient = require('../../clients/ukWebhookClient');
 
 const DEFAULT_INTERVAL_MS = 2000;
@@ -182,12 +183,14 @@ class UkOutboxService {
         if (outcome.outcome === 'success') {
             await UkOutbox.markSent(row.id, outcome.code);
             await this._markAlertRequestMapSent(row.event_id);
+            await this._syncIntegrationLog(row.event_id, 'success', null);
             logger.info(`ukOutboxService: sent event_id=${row.event_id} (${outcome.code})`);
             return;
         }
 
         if (outcome.outcome === 'dead') {
             await UkOutbox.markDead(row.id, outcome.error, outcome.code || null);
+            await this._syncIntegrationLog(row.event_id, 'failed', outcome.error);
             logger.warn(`ukOutboxService: event_id=${row.event_id} marked dead (${outcome.code}): ${outcome.error}`);
             await this._recordNotificationFailure(row, outcome);
             return;
@@ -208,6 +211,7 @@ class UkOutboxService {
         const nextAttempt = row.attempt_count + 1;
         if (nextAttempt >= UkOutbox.MAX_ATTEMPTS) {
             await UkOutbox.markDead(row.id, outcome.error, outcome.code || null);
+            await this._syncIntegrationLog(row.event_id, 'failed', outcome.error);
             logger.warn(`ukOutboxService: event_id=${row.event_id} dead after ${nextAttempt} attempts: ${outcome.error}`);
             await this._recordNotificationFailure(row, outcome);
             return;
@@ -217,7 +221,22 @@ class UkOutboxService {
         // counts the just-incremented attempt, so subtract one to index.
         const backoffSec = BACKOFF_SCHEDULE[Math.min(nextAttempt - 1, BACKOFF_SCHEDULE.length - 1)];
         await UkOutbox.markFailed(row.id, outcome.error, outcome.code || null, backoffSec);
+        await this._syncIntegrationLog(row.event_id, 'retrying', outcome.error);
         logger.info(`ukOutboxService: event_id=${row.event_id} retry in ${backoffSec}s (attempt ${nextAttempt}/${UkOutbox.MAX_ATTEMPTS}): ${outcome.error}`);
+    }
+
+    /**
+     * [B-007] Best-effort sync of the integration_log row (written at enqueue
+     * time, keyed by event_id) to reflect the drain outcome. NEVER let a log
+     * write failure break the drain — the outbox row transition is the source
+     * of truth; this is observability only.
+     */
+    async _syncIntegrationLog(eventId, status, errorMessage) {
+        try {
+            await IntegrationLog.updateStatusByEventId(eventId, status, errorMessage ?? null);
+        } catch (err) {
+            logger.warn(`ukOutboxService: integration_log sync failed for event_id=${eventId} (${status}): ${err.message}`);
+        }
     }
 
     /**

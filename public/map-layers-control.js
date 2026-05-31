@@ -159,6 +159,16 @@ class MapLayersControl {
         
         try {
             switch (layerName) {
+                case "🏢 Здания":
+                    // [B-024] Buildings load from the PUBLIC /buildings-metrics
+                    // endpoint, so the count can populate at init for everyone
+                    // (incl. anon). Without this case the silent pre-load was a
+                    // no-op and the "🏢 Здания" counter stayed (0) until the layer
+                    // was manually toggled. The auth-gated layers stay (0) for
+                    // anon by design (their endpoints 401) — that's tracked
+                    // separately in B-024 as the auth-gate half.
+                    await this.loadBuildings(headers);
+                    break;
                 case "⚡ Трансформаторы":
                     await this.loadTransformers(headers);
                     break;

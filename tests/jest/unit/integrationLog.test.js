@@ -123,6 +123,35 @@ describe('IntegrationLog Model', () => {
         });
     });
 
+    describe('updateStatusByEventId [B-007]', () => {
+        test('updates by event_id, params [status, errorMessage, eventId]', async () => {
+            const updatedRow = { ...mockRow, status: 'retrying', error_message: 'rate limit' };
+            db.query.mockResolvedValue({ rows: [updatedRow] });
+
+            const result = await IntegrationLog.updateStatusByEventId('evt-abc', 'retrying', 'rate limit');
+
+            expect(result).toEqual(updatedRow);
+            expect(db.query.mock.calls[0][0]).toContain('WHERE event_id = $3');
+            expect(db.query.mock.calls[0][1]).toEqual(['retrying', 'rate limit', 'evt-abc']);
+        });
+
+        test('returns null when no row matches the event_id', async () => {
+            db.query.mockResolvedValue({ rows: [] });
+
+            const result = await IntegrationLog.updateStatusByEventId('missing', 'failed', 'x');
+
+            expect(result).toBeNull();
+        });
+
+        test('defaults errorMessage to null', async () => {
+            db.query.mockResolvedValue({ rows: [mockRow] });
+
+            await IntegrationLog.updateStatusByEventId('evt-abc', 'success');
+
+            expect(db.query.mock.calls[0][1]).toEqual(['success', null, 'evt-abc']);
+        });
+    });
+
     describe('incrementRetry', () => {
         test('SQL contains retry_count + 1', async () => {
             const updatedRow = { ...mockRow, retry_count: 1 };
