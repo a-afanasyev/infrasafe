@@ -41,7 +41,7 @@
 
 > Во время раскатки PR #59 / #60 / #61 / #62 / #63 на прод (`95.46.96.105`) вскрылись пять явных drift'ов между декларированным compose-стеком и реальным состоянием контейнеров. Каждый из них стоил debug-петли (auth-fail → migration replay → network диагностика). Чинить пакетно до следующего серьёзного деплоя.
 
-### B-027 — фронт-бандлы `public/dist/` не доезжают до прода (rebuild в образ, раздача с хост-mount) — OPEN (P0)
+### B-027 — фронт-бандлы `public/dist/` не доезжают до прода (rebuild в образ, раздача с хост-mount) — CLOSED (tracked guard); operator step pending (P0)
 
 **Найдено 2026-05-31** при расследовании «нет кнопки Открыть в УК». Прод раздавал `public/dist/admin.js`
 **от 27 мая** (102629 байт, до B-001 #60), хотя source давно с B-001. Кнопки УК не было, потому что её
@@ -65,13 +65,33 @@ docker exec -u 0 infrasafe-app-1 sh -c 'cd /app && node build/esbuild.config.mjs
 ```
 После этого прод-бандл стал 104896 байт, byte-identical локальному эталону с B-001 ✓.
 
-**Системный fix (выбрать):**
-1. Добавить шаг пересборки dist в деплой-runbook/скрипт **после каждого `git pull`, тронувшего
-   `public/*.js`** (команда выше). Дёшево, но легко забыть.
-2. Убрать host bind-mount `public/` для nginx и раздавать `dist` **из образа** (rebuild образа = свежий
-   фронт). Чище, но nginx тогда не видит `git pull` без recreate.
-3. Перенести build на хост (нужен node на хосте) + хук в deploy-скрипте.
-**Доп.:** починить владельца `public/dist` (root → infrasafe), чтобы rebuild не требовал `-u 0`.
+**Системный fix — выбран вариант 1 (script + runbook), реализован:**
+- **NEW `scripts/rebuild-frontend.sh`** (tracked): пересобирает `public/dist` в `infrasafe-app-1` (пишет
+  через bind-mount на хост) + **hard-fail byte-verify** — sha256 каждого реально отдаваемого nginx'ом
+  бандла обязан совпасть со свежесобранным; mismatch/404/сетевой сбой → exit 1 + баннер «BUNDLE DID NOT
+  REACH PROD». По умолчанию verify ВСЕ собранные бандлы (12 entrypoints; HTML грузит все). Unified-only
+  (preflight отсекает prod.yml-layout — `Dockerfile.prod` без esbuild). EACCES под root-fallback +
+  `FIX_DIST_OWNER=1` для разового chown dist→nodejs.
+- **runbook** (`2026-05-30-prod-ops-runbook.md` §1b): обязательный шаг после app/frontend recreate.
+- **PRODUCTION-DEPLOYMENT.md**: обязательный шаг в unified-блоке после `up -d`.
+
+**Operator step PENDING (под авторизацию, переводит в полный CLOSED):**
+1. Задеплоить `scripts/rebuild-frontend.sh` на прод + первый прогон с байт-verify (зелёный).
+2. **Пропатчить host-local `deploy.sh`/`deploy-nosudo.sh`** — вставить `bash scripts/rebuild-frontend.sh`
+   **после `up -d --force-recreate` и до smoke** (deploy.sh ~:219, deploy-nosudo.sh между :195 и :210).
+   Без этого следующий деплой через них снова оставит stale dist.
+3. Разовый `FIX_DIST_OWNER=1` (chown dist→nodejs), чтобы дальше не нужен root.
+
+> **Не писать просто CLOSED, пока (1)+(2) не выполнены** — иначе ложное ощущение, что повтор B-027 уже
+> невозможен. Пока скрипт не задеплоен и host-local скрипты не пропатчены, регрессия возможна.
+
+**Future (low, отдельно):** (a) re-architecture — раздавать dist из образа (убрать host-mount), оценить
+против B-012; (b) tracked deploy-entrypoint в `scripts/` вместо host-local `deploy.sh`; (c) bundle
+byte-compare в tracked smoke-шаг.
+
+**Разовый workaround истории (применён 2026-05-31, прод исправлен):**
+`docker exec -u 0 infrasafe-app-1 sh -c 'cd /app && node build/esbuild.config.mjs'` → прод-бандл стал
+104896 байт, byte-identical эталону с B-001. Теперь это автоматизировано в `scripts/rebuild-frontend.sh`.
 
 **Severity P0**: молча блокировал доставку ВСЕХ фронт-фич на прод ~5 недель. Не данные-loss, но
 «задеплоили, а на проде старое».
