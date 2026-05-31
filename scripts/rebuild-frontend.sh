@@ -67,6 +67,14 @@ docker exec "$APP_CONTAINER" sh -lc 'test -f /app/build/esbuild.config.mjs && te
   || die "unified layout expected: /app/build/esbuild.config.mjs + /app/public not found in container \
 (prod.yml/Dockerfile.prod has no esbuild — this script is unified-only)"
 
+# Past preflight, Phase 2 (build) and Phase 3 (verify) do their OWN explicit
+# error handling (rc capture, EACCES root-retry, controlled ✗). The ERR trap is
+# only useful for unexpected failures in preflight — drop it now so the
+# deliberate "first attempt fails EACCES → retry as root" path and missing-bundle
+# checks don't emit misleading "FAIL at line N" lines (the trap fires even under
+# set +e / || true).
+trap - ERR
+
 # ---------------------------------------------------------------------------
 # Phase 2 — build public/dist in-container (writes through the .:/app bind mount)
 # ---------------------------------------------------------------------------
