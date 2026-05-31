@@ -4,6 +4,26 @@ const logger = require('../utils/logger');
 const cacheService = require('./cacheService');
 const alertEvents = require('../events/alertEvents');
 
+// [B-005-LEAK fix] Coerce a telemetry boolean-ish value to a real boolean.
+// The DB column `leak_sensor` is boolean and the pg driver happily stores
+// 1 / "1" / "true" / "t" as boolean true — but the LEAK_CHECK emit guard used
+// strict `=== true`, so a controller sending leak_sensor as a number or string
+// persisted the leak WITHOUT firing the alert path. Normalize once, up front,
+// so the stored value AND the emit decision agree. Returns true/false/null
+// (null preserves "no reading" vs an explicit false).
+function coerceBoolish(v) {
+    if (v === true || v === false) return v;
+    if (v === null || v === undefined || v === '') return v === '' ? false : null;
+    if (typeof v === 'number') return v !== 0;
+    if (typeof v === 'string') {
+        const s = v.trim().toLowerCase();
+        if (['1', 'true', 't', 'yes', 'y', 'on'].includes(s)) return true;
+        if (['0', 'false', 'f', 'no', 'n', 'off'].includes(s)) return false;
+        return null; // unrecognized string → treat as no reading, don't guess
+    }
+    return Boolean(v);
+}
+
 class MetricService {
     constructor() {
         this.cachePrefix = 'metric';
@@ -131,6 +151,14 @@ class MetricService {
     // Создать новую метрику с валидацией и обновлением статуса контроллера
     async createMetric(metricData) {
         try {
+            // [B-005-LEAK fix] Normalize leak_sensor to a real boolean BEFORE
+            // insert + emit, so a controller sending 1 / "1" / "true" / "t"
+            // both stores cleanly AND triggers the LEAK_CHECK path. Only touch
+            // the field when it was actually provided (preserve "no reading").
+            if (metricData && metricData.leak_sensor !== undefined) {
+                metricData.leak_sensor = coerceBoolish(metricData.leak_sensor);
+            }
+
             // Валидация данных метрики
             this.validateMetricData(metricData);
 
@@ -173,6 +201,7 @@ class MetricService {
             // TRANSFORMER_CHECK emit from analyticsService — fire-and-forget,
             // never blocks telemetry ingest. Errors logged inside the
             // listener; we only surface emitter-side problems here.
+            // leak_sensor is already coerced to a real boolean above.
             if (metricData.leak_sensor === true && controllerId) {
                 try {
                     alertEvents.emit(alertEvents.EVENTS.LEAK_CHECK, {
