@@ -202,6 +202,39 @@ docker network rm site-content_leaflet-network
 
 ## P1 — Correctness
 
+### B-026 — `acknowledged`-тревоги невидимо блокируют новые (dedup-индекс ⊋ список тревог) — CLOSED (2026-05-31)
+
+**Найдено 2026-05-31** при e2e-проверке B-025 на проде: новые leak-метрики на controller 1 доходили до
+INSERT (B-025 уже работал), но падали на UNIQUE `idx_active_alert_dedup` → «Duplicate suppressed», а в
+админке оператор **не мог найти** блокирующую тревогу (alert 27).
+
+**Корень — рассинхрон наборов статусов:**
+| Механизм | Статусы | Где |
+|---|---|---|
+| Dedup-индекс `idx_active_alert_dedup` | `('active','acknowledged')` | migration 027:52 |
+| Список тревог `getActiveAlerts` (дефолт) | **только `'active'`** | `alertService.js:1056` (было) |
+
+Тревога в статусе `acknowledged` («Подтверждена») сидит **в** dedup-индексе (→ блокирует создание новой
+о той же проблеме), но **отсутствует** в дефолтном списке (→ оператор её не видит и не может закрыть).
+«Невидимая блокировка». Прод-доказательство: alert 27 acknowledged 2026-05-31 10:53 → блокировал
+controller 1; controller 2 (без acknowledged) отработал чисто (alert 36 прошёл весь цикл).
+
+**Fix** (`alertService.getActiveAlerts`): когда явного `filters.status` нет → дефолт
+`ia.status IN ('active','acknowledged')` (совпадает с dedup-индексом). Явный фильтр статуса
+по-прежнему делает exact-match (`= $1`). Frontend менять не нужно — `admin.js` уже имеет
+статус-бейдж + label `'acknowledged': 'Подтверждена'` + опцию фильтра «Подтверждённые»
+(`frontend-html/admin.html:1333`); они просто не получали acknowledged-строки с бэка.
+
+**Тесты** (TDD): 2 в `alertServiceTest.test.js` — дефолт выбирает `IN (active, acknowledged)`; явный
+`status='resolved'` остаётся exact-match. Полный прогон 2257/2257 зелёный, lint чисто.
+
+**Не затронуто**: `loadActiveAlerts` (cooldown-restore, отдельный запрос с `status='active'`) — у него
+своя семантика «только активные для cooldown-проекции», расширять не нужно. `resolveAlert`/`acknowledge`
+guard'ы (`IN ('active','acknowledged')`) уже корректны.
+
+**Operational**: на проде alert 27 уже разблокирован вручную (acknowledged → resolved, 2026-05-31 12:17)
+в ходе расследования. Деплой фикса — код-онли, без миграции.
+
 ### B-025 — LEAK auto-trigger пропускал тревогу при `leak_sensor` ≠ строгого boolean `true` — CLOSED (2026-05-31)
 
 **Найдено 2026-05-31** по жалобе «метрики с протечкой есть, а тревога не создалась».

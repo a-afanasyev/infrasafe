@@ -1052,8 +1052,18 @@ class InfrastructureAlertService {
         const values = [];
         let paramIdx = 1;
 
-        conditions.push(`ia.status = $${paramIdx++}`);
-        values.push(filters.status || 'active');
+        // [B-026] Default (no explicit status) must include BOTH 'active' and
+        // 'acknowledged' — that's the set the dedup index (migration 027) treats
+        // as "open". Defaulting to 'active' only meant an acknowledged alert
+        // invisibly blocked new alerts (DB dedup hit) while being absent from
+        // the operator's list. An explicit status filter still does exact match.
+        if (filters.status) {
+            conditions.push(`ia.status = $${paramIdx++}`);
+            values.push(filters.status);
+        } else {
+            conditions.push(`ia.status IN ($${paramIdx++}, $${paramIdx++})`);
+            values.push('active', 'acknowledged');
+        }
 
         if (filters.severity) {
             conditions.push(`ia.severity = $${paramIdx++}`);
