@@ -101,9 +101,17 @@ docker exec -u 0 infrasafe-app-1 sh -c 'cd /app && node build/esbuild.config.mjs
 убраны (PR #80/#81). Полностью убрать WARN можно chown'ом родителя или esbuild per-file cleanup —
 вынесено в Future (low).
 
+**Followup (2026-06-01, shipped):** nginx отдавал `*.js/*.css` с `max-age=300, must-revalidate` —
+`must-revalidate` срабатывает только ПОСЛЕ `max-age`, поэтому свежий деплой был невидим вернувшимся
+клиентам до 5 мин (поймали при браузерной проверке B-024 — старый бандл из 300s-кэша). Переведено на
+`no-cache` (revalidate-always; ETag→304 для неизменных, 200 со свежим кодом на следующей навигации сразу
+после деплоя). `nginx-config/nginx.production.conf` location `~* \.(css|js)$`.
+
 **Future (low, отдельно):** (a) re-architecture — раздавать dist из образа (убрать host-mount), оценить
 против B-012; (b) tracked deploy-entrypoint в `scripts/` вместо host-local `deploy.sh`; (c) bundle
-byte-compare в tracked smoke-шаг.
+byte-compare в tracked smoke-шаг; (d) **content-hashed имена бандлов** (`script.<sha>.js`) + immutable
+long-cache — «правильный» perf-фикс кэша (ноль ревалидаций), убирает 304-round-trip от `no-cache`; требует
+build-time HTML-rewrite + manifest, поэтому отдельным perf-PR.
 
 **Разовый workaround истории (применён 2026-05-31, прод исправлен):**
 `docker exec -u 0 infrasafe-app-1 sh -c 'cd /app && node build/esbuild.config.mjs'` → прод-бандл стал
