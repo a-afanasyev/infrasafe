@@ -138,25 +138,39 @@ class AlertVerificationService {
         this._running = true;
 
         try {
-            // Non-blocking advisory lock for cross-replica coordination.
-            const lockResult = await db.query(
-                'SELECT pg_try_advisory_lock($1) AS locked',
-                [ADVISORY_LOCK_KEY]
-            );
-            const locked = lockResult.rows[0] && lockResult.rows[0].locked === true;
-            if (!locked) {
-                // Another replica is processing; quiet exit.
-                return;
-            }
-
+            // [B-021] Check out ONE client and do lock + drain + unlock all on
+            // it. Session-scoped advisory locks are bound to the physical
+            // connection — acquiring/releasing them through the pool wrapper
+            // (db.query) lands on arbitrary connections, so the unlock often
+            // no-ops on a connection that never held the lock and the lock
+            // leaks on the connection that did. Pinning one client makes the
+            // cross-replica mutex actually hold for the whole tick, lets the
+            // drain run as one transaction on that connection, and auto-releases
+            // the lock if the process dies (the backend session closes).
+            const client = await db.getPool().connect();
             try {
-                await this._drainOne();
-                this._consecutiveFailures = 0;
-                this._lastFailureLogAt = 0;
+                const lockResult = await client.query(
+                    'SELECT pg_try_advisory_lock($1) AS locked',
+                    [ADVISORY_LOCK_KEY]
+                );
+                const locked = lockResult.rows[0] && lockResult.rows[0].locked === true;
+                if (!locked) {
+                    // Another replica is processing; quiet exit (client released
+                    // by the finally below).
+                    return;
+                }
+
+                try {
+                    await this._drainOne(client);
+                    this._consecutiveFailures = 0;
+                    this._lastFailureLogAt = 0;
+                } finally {
+                    await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]).catch((err) => {
+                        logger.warn(`alertVerificationService: advisory_unlock failed: ${err.message}`);
+                    });
+                }
             } finally {
-                await db.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]).catch((err) => {
-                    logger.warn(`alertVerificationService: advisory_unlock failed: ${err.message}`);
-                });
+                client.release();
             }
         } catch (err) {
             this._consecutiveFailures += 1;
@@ -188,10 +202,43 @@ class AlertVerificationService {
      * If no reopen happens within window, this _drainOne path catches the
      * row on a future tick and marks it passed.
      */
-    async _drainOne() {
-        const row = await AlertVerification.pickDue();
+    async _drainOne(executor = db) {
+        // [B-021] Wrap pick + decision + the two write-backs
+        // (_finalizeAlertStatus on infrastructure_alerts + AlertVerification
+        // mark* on alert_verifications) in ONE transaction on the locked
+        // client. Either both land or neither does — no window where the
+        // alert is finalized but the verification row isn't (or vice versa).
+        // pickDue's FOR UPDATE SKIP LOCKED row-lock now actually holds for
+        // the whole unit (it was a no-op under autocommit). Any VERIFY_* /
+        // ALERT_ENGINEER_REQUIRED emit is deferred until AFTER COMMIT so a
+        // checker never reacts to state that gets rolled back.
+        let pendingEmit = null;
+        await executor.query('BEGIN');
+        try {
+            pendingEmit = await this._processDue(executor);
+            await executor.query('COMMIT');
+        } catch (err) {
+            await executor.query('ROLLBACK').catch((e) => {
+                logger.warn(`alertVerificationService: ROLLBACK failed: ${e.message}`);
+            });
+            throw err;
+        }
+
+        if (pendingEmit) {
+            alertEvents.emit(pendingEmit.event, pendingEmit.payload);
+        }
+    }
+
+    /**
+     * Decision tree for one due verification. Runs entirely on `executor`
+     * (the locked transaction client). Performs all DB writes; returns a
+     * `{ event, payload }` descriptor for any event the caller must emit
+     * AFTER commit, or `null` when nothing should be emitted.
+     */
+    async _processDue(executor) {
+        const row = await AlertVerification.pickDue(executor);
         if (!row) {
-            return; // queue empty / nothing due
+            return null; // queue empty / nothing due
         }
 
         // Window expired
@@ -201,19 +248,17 @@ class AlertVerificationService {
             if (row.attempts > 0) {
                 // We dispatched the VERIFY event earlier, no reopen happened
                 // in the window → sensor recovered. Mark passed.
-                // [B-020] finalize the parent alert FIRST so a crash between
-                // the two UPDATEs self-heals: the verification row stays
-                // pending and a future tick re-runs this branch (the finalize
-                // is idempotent via its `status='resolved_verifying'` guard).
-                await this._finalizeAlertStatus(row.original_alert_id, 'resolved');
-                await AlertVerification.markPassed(row.id);
+                // [B-020] finalize the parent alert FIRST (now also atomic via
+                // the surrounding transaction): both UPDATEs commit together.
+                await this._finalizeAlertStatus(row.original_alert_id, 'resolved', executor);
+                await AlertVerification.markPassed(row.id, executor);
                 logger.info(`alertVerificationService: verification ${row.id} passed (no reopen within window)`);
             } else {
                 // We never even got to fire — drain was starved.
-                await this._finalizeAlertStatus(row.original_alert_id, 'resolved');
-                await AlertVerification.markSkipped(row.id, `window expired (${row.window_until})`);
+                await this._finalizeAlertStatus(row.original_alert_id, 'resolved', executor);
+                await AlertVerification.markSkipped(row.id, `window expired (${row.window_until})`, executor);
             }
-            return;
+            return null;
         }
 
         // If we've already dispatched once (attempts > 0) and we're still
@@ -221,13 +266,11 @@ class AlertVerificationService {
         // listener can match. Subsequent ticks would re-emit, creating
         // duplicate UK requests — that's wrong.
         if (row.attempts > 0) {
-            return;
+            return null;
         }
 
-        // [Sprint 10 PR-4 hook] AlertSuppression.isActive check goes here.
-        // For PR-2 scaffolding the suppressions table doesn't exist yet —
-        // skip cleanly. The conditional pre-flight makes PR-4 a single-file
-        // change.
+        // [Sprint 10 PR-4] AlertSuppression.isActive check. Conditional
+        // require kept so a missing model degrades cleanly.
         try {
             const AlertSuppression = require('../models/AlertSuppression');
             if (typeof AlertSuppression.isActive === 'function') {
@@ -238,41 +281,41 @@ class AlertVerificationService {
                 );
                 if (suppressed) {
                     // [B-020] operator chose to ignore — close the alert.
-                    await this._finalizeAlertStatus(row.original_alert_id, 'resolved');
-                    await AlertVerification.markSuppressed(row.id);
+                    await this._finalizeAlertStatus(row.original_alert_id, 'resolved', executor);
+                    await AlertVerification.markSuppressed(row.id, executor);
                     logger.info(`alertVerificationService: verification ${row.id} suppressed (${row.infrastructure_type}:${row.infrastructure_id}/${row.alert_type})`);
-                    return;
+                    return null;
                 }
             }
         } catch (err) {
-            // PR-2: model doesn't exist yet — that's expected. Log only
-            // genuine errors (not module-not-found during scaffolding).
+            // Module absent — degrade cleanly. Note: a query error from a
+            // PRESENT model would propagate (poisoning the txn) and roll the
+            // tick back, which is correct.
             if (err.code !== 'MODULE_NOT_FOUND') {
-                logger.warn(`alertVerificationService: suppression check failed: ${err.message}`);
+                throw err;
             }
         }
 
         // Reopen quota — fetch rule's max_reopens_per_24h
-        const ruleQuota = await this._getReopenQuota(row.alert_type);
+        const ruleQuota = await this._getReopenQuota(row.alert_type, executor);
         if (ruleQuota > 0) {
             const recentReopens = await AlertVerification.countRecentReopensForChain(
-                row.reopen_chain_id, 24
+                row.reopen_chain_id, 24, executor
             );
             if (recentReopens >= ruleQuota) {
                 // [B-020] escalate the alert itself — the operator/UI needs
                 // to see engineer_required, not a stuck resolved_verifying.
-                await this._finalizeAlertStatus(row.original_alert_id, 'engineer_required');
-                await AlertVerification.markEngineerRequired(row.id);
-                alertEvents.emit(
-                    alertEvents.EVENTS.ALERT_ENGINEER_REQUIRED,
-                    {
+                await this._finalizeAlertStatus(row.original_alert_id, 'engineer_required', executor);
+                await AlertVerification.markEngineerRequired(row.id, executor);
+                logger.warn(`alertVerificationService: chain ${row.reopen_chain_id} exceeded ${ruleQuota} reopens/24h — engineer_required`);
+                return {
+                    event: alertEvents.EVENTS.ALERT_ENGINEER_REQUIRED,
+                    payload: {
                         reopenChainId: row.reopen_chain_id,
                         lastAlertId: row.original_alert_id,
                         reopenCount: recentReopens
                     }
-                );
-                logger.warn(`alertVerificationService: chain ${row.reopen_chain_id} exceeded ${ruleQuota} reopens/24h — engineer_required`);
-                return;
+                };
             }
         }
 
@@ -280,47 +323,43 @@ class AlertVerificationService {
         const verifyEvent = TYPE_TO_VERIFY_EVENT[row.alert_type];
         if (!verifyEvent) {
             // [B-020] nothing to verify — don't leave the alert hanging.
-            await this._finalizeAlertStatus(row.original_alert_id, 'resolved');
-            await AlertVerification.markSkipped(row.id, `no VERIFY mapping for alert_type=${row.alert_type}`);
-            return;
+            await this._finalizeAlertStatus(row.original_alert_id, 'resolved', executor);
+            await AlertVerification.markSkipped(row.id, `no VERIFY mapping for alert_type=${row.alert_type}`, executor);
+            return null;
         }
 
         // [Sprint 10 PR-3] Look up the previous UK request number from the
-        // original alert (set there by alertService.resolveAlert system-path).
-        // Passed through to the checker so the reopen alert's UK payload can
-        // include `related_request_number` for operator context on the УК UI
-        // ("Повторное обращение №2, предыдущая заявка 260523-004").
+        // original alert (set by alertService.resolveAlert system-path), passed
+        // to the checker for the reopen payload's `related_request_number`.
+        // Runs on the same client/txn; a failure rolls the tick back (retried).
         let previousUkRequestNumber = null;
-        try {
-            const prevQuery = await db.query(
-                'SELECT previous_uk_request_number FROM infrastructure_alerts WHERE alert_id = $1',
-                [row.original_alert_id]
-            );
-            if (prevQuery.rows[0]) {
-                previousUkRequestNumber = prevQuery.rows[0].previous_uk_request_number || null;
-            }
-        } catch (e) {
-            logger.debug(`alertVerificationService: previous_uk_request_number lookup failed: ${e.message}`);
+        const prevQuery = await executor.query(
+            'SELECT previous_uk_request_number FROM infrastructure_alerts WHERE alert_id = $1',
+            [row.original_alert_id]
+        );
+        if (prevQuery.rows[0]) {
+            previousUkRequestNumber = prevQuery.rows[0].previous_uk_request_number || null;
         }
 
-        alertEvents.emit(verifyEvent, {
-            infraType: row.infrastructure_type,
-            infraId: row.infrastructure_id,
-            alertType: row.alert_type,
-            bypassCooldown: true,
-            reopenChainId: row.reopen_chain_id,
-            reopenSequence: row.reopen_sequence + 1,
-            originalAlertId: row.original_alert_id,
-            previousUkRequestNumber
-        });
-
         // Mark the row as dispatched so subsequent ticks within the window
-        // don't re-emit (would create duplicate UK requests). When the
-        // ALERT_REOPENED listener fires, it markReopened; if window expires
-        // without reopen, the windowExpired branch marks it passed.
-        await AlertVerification.markDispatched(row.id);
+        // don't re-emit. The actual emit happens after COMMIT (caller).
+        await AlertVerification.markDispatched(row.id, executor);
 
         logger.info(`alertVerificationService: emitted ${verifyEvent} for verification ${row.id} (chain ${row.reopen_chain_id}, seq→${row.reopen_sequence + 1})`);
+
+        return {
+            event: verifyEvent,
+            payload: {
+                infraType: row.infrastructure_type,
+                infraId: row.infrastructure_id,
+                alertType: row.alert_type,
+                bypassCooldown: true,
+                reopenChainId: row.reopen_chain_id,
+                reopenSequence: row.reopen_sequence + 1,
+                originalAlertId: row.original_alert_id,
+                previousUkRequestNumber
+            }
+        };
     }
 
     /**
@@ -329,20 +368,19 @@ class AlertVerificationService {
      * rule to define it). When multiple severities exist for the type,
      * the most-restrictive (lowest) value wins.
      */
-    async _getReopenQuota(alertType) {
-        try {
-            const result = await db.query(
-                `SELECT MIN(max_reopens_per_24h) AS quota
-                 FROM alert_rules
-                 WHERE alert_type = $1 AND enabled = true`,
-                [alertType]
-            );
-            const quota = result.rows[0] && result.rows[0].quota;
-            return Number.isFinite(quota) ? quota : 0;
-        } catch (err) {
-            logger.warn(`alertVerificationService: _getReopenQuota failed for ${alertType}: ${err.message}`);
-            return 0;
-        }
+    async _getReopenQuota(alertType, executor = db) {
+        // [B-021] Runs inside the drain transaction (executor = locked client).
+        // A query error must propagate so the surrounding transaction rolls
+        // back — swallowing it would poison the txn (PG aborts it) and the
+        // next statement would fail anyway with a more confusing error.
+        const result = await executor.query(
+            `SELECT MIN(max_reopens_per_24h) AS quota
+             FROM alert_rules
+             WHERE alert_type = $1 AND enabled = true`,
+            [alertType]
+        );
+        const quota = result.rows[0] && result.rows[0].quota;
+        return Number.isFinite(quota) ? quota : 0;
     }
 
     /**
@@ -361,16 +399,24 @@ class AlertVerificationService {
      * logged but never thrown — the verification row transition is the
      * source of truth and must not be blocked by a write-back hiccup.
      */
-    async _finalizeAlertStatus(originalAlertId, newStatus) {
+    async _finalizeAlertStatus(originalAlertId, newStatus, executor = db) {
         if (!originalAlertId) return;
+        // [B-021] When run inside the drain transaction (executor is a checked-
+        // out client, not the pool wrapper), a write-back failure MUST roll the
+        // whole unit back — so let it propagate. Standalone (executor === db,
+        // e.g. a legacy caller) keep the B-020 swallow: the verification-row
+        // transition is the source of truth and must not be blocked by a
+        // write-back hiccup.
+        const inTransaction = executor !== db;
         try {
-            await db.query(
+            await executor.query(
                 `UPDATE infrastructure_alerts
                  SET status = $2
                  WHERE alert_id = $1 AND status = 'resolved_verifying'`,
                 [originalAlertId, newStatus]
             );
         } catch (err) {
+            if (inTransaction) throw err;
             logger.warn(`alertVerificationService: finalize alert ${originalAlertId} → ${newStatus} failed: ${err.message}`);
         }
     }
@@ -436,3 +482,6 @@ alertEvents.on(alertEvents.EVENTS.ALERT_REOPENED, async (payload) => {
 
 module.exports = singleton;
 module.exports.AlertVerificationService = AlertVerificationService;
+// [B-021] Exported so the system-path resolveAlert (alertService) can take the
+// SAME advisory lock and serialise against the drain worker (PR3).
+module.exports.ADVISORY_LOCK_KEY = ADVISORY_LOCK_KEY;

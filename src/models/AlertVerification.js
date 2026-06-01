@@ -27,6 +27,13 @@
  * Replica-wide drain coordination lives in alertVerificationService via
  * pg_try_advisory_lock — mirrors ukOutboxService pattern (Sprint 9).
  *
+ * [B-021] Every method takes an optional trailing `executor = db` so a
+ * caller can run it on a checked-out client inside a transaction (the
+ * verification drain wraps pickDue + finalize + mark* in one transaction on
+ * one client that also holds the advisory lock). `db` (pool wrapper) and a
+ * `PoolClient` both expose `.query(text, params)`, so the param is
+ * duck-typed — existing callers pass nothing and get the pool wrapper.
+ *
  * Schema: see database/migrations/025_alert_verifications.sql
  */
 
@@ -49,8 +56,9 @@ class AlertVerification {
      * @param {number} [data.reopen_sequence=1]   — 1 for first verification, N for the N-th reopen
      * @param {Date|string} data.run_at           — when to first attempt verification (resolved_at + grace)
      * @param {Date|string} data.window_until     — verification expires at this time (run_at + window)
+     * @param {{query: Function}} [executor=db]   — pool wrapper or checked-out client
      */
-    static async enqueue(data) {
+    static async enqueue(data, executor = db) {
         const {
             original_alert_id,
             infrastructure_type,
@@ -73,7 +81,7 @@ class AlertVerification {
         }
 
         try {
-            const result = await db.query(
+            const result = await executor.query(
                 `INSERT INTO alert_verifications
                     (original_alert_id, reopen_chain_id, reopen_sequence,
                      infrastructure_type, infrastructure_id, alert_type,
@@ -99,13 +107,14 @@ class AlertVerification {
      * Uses FOR UPDATE SKIP LOCKED so multiple replicas can't pick the same
      * row even if both hold the advisory lock racy (defense-in-depth).
      *
-     * Caller MUST commit subsequent markPassed/markReopened/etc. in the
-     * same transaction or use the application-level advisory lock (drained
-     * by alertVerificationService).
+     * [B-021] The FOR UPDATE row-lock is only actually held when this runs
+     * inside a transaction on a checked-out client — pass that client as
+     * `executor` (the verification drain does). Run standalone (pool
+     * wrapper) the lock is released the instant the statement returns.
      */
-    static async pickDue() {
+    static async pickDue(executor = db) {
         try {
-            const result = await db.query(
+            const result = await executor.query(
                 `SELECT * FROM alert_verifications
                  WHERE status = 'pending' AND run_at <= NOW()
                  ORDER BY run_at ASC, id ASC
@@ -125,9 +134,9 @@ class AlertVerification {
      * waits for ALERT_REOPENED match (until window_until). Idempotent
      * via the `attempts = 0` guard — re-dispatch is prevented.
      */
-    static async markDispatched(id) {
+    static async markDispatched(id, executor = db) {
         try {
-            const result = await db.query(
+            const result = await executor.query(
                 `UPDATE alert_verifications
                  SET attempts = attempts + 1
                  WHERE id = $1 AND status = 'pending' AND attempts = 0
@@ -147,9 +156,9 @@ class AlertVerification {
      * is created. Returns the most-recent pending row (one per chain by
      * the partial UNIQUE index).
      */
-    static async findPendingByChainId(reopenChainId) {
+    static async findPendingByChainId(reopenChainId, executor = db) {
         try {
-            const result = await db.query(
+            const result = await executor.query(
                 `SELECT * FROM alert_verifications
                  WHERE reopen_chain_id = $1 AND status = 'pending'
                  ORDER BY id DESC
@@ -173,9 +182,9 @@ class AlertVerification {
      * row stays 'pending' and the next drain re-runs without re-stamping
      * processed_at / double-bumping attempts. Mirrors markDispatched's guard.
      */
-    static async markPassed(id) {
+    static async markPassed(id, executor = db) {
         try {
-            const result = await db.query(
+            const result = await executor.query(
                 `UPDATE alert_verifications
                  SET status = 'passed',
                      attempts = attempts + 1,
@@ -196,12 +205,12 @@ class AlertVerification {
      * was created. Links the new alert via new_alert_id for audit / UI
      * "chain history" view.
      */
-    static async markReopened(id, newAlertId) {
+    static async markReopened(id, newAlertId, executor = db) {
         if (!newAlertId) {
             throw new Error('AlertVerification.markReopened: newAlertId is required');
         }
         try {
-            const result = await db.query(
+            const result = await executor.query(
                 `UPDATE alert_verifications
                  SET status = 'reopened',
                      attempts = attempts + 1,
@@ -223,9 +232,9 @@ class AlertVerification {
      * this {infra_type, infra_id, alert_type}. Operator chose to ignore;
      * no reopen, but row stays for audit.
      */
-    static async markSuppressed(id) {
+    static async markSuppressed(id, executor = db) {
         try {
-            const result = await db.query(
+            const result = await executor.query(
                 `UPDATE alert_verifications
                  SET status = 'suppressed',
                      attempts = attempts + 1,
@@ -245,9 +254,9 @@ class AlertVerification {
      * Mark verification engineer_required — reopen quota exceeded for the
      * chain in last 24h. Auto-reopen halts; alert goes to engineer review.
      */
-    static async markEngineerRequired(id) {
+    static async markEngineerRequired(id, executor = db) {
         try {
-            const result = await db.query(
+            const result = await executor.query(
                 `UPDATE alert_verifications
                  SET status = 'engineer_required',
                      attempts = attempts + 1,
@@ -268,9 +277,9 @@ class AlertVerification {
      * mid-tick, or window_until elapsed before pickup). Operator can
      * inspect; no automatic re-enqueue.
      */
-    static async markSkipped(id, reason) {
+    static async markSkipped(id, reason, executor = db) {
         try {
-            const result = await db.query(
+            const result = await executor.query(
                 `UPDATE alert_verifications
                  SET status = 'skipped',
                      attempts = attempts + 1,
@@ -293,9 +302,9 @@ class AlertVerification {
      * Count successful reopens in the last `withinHours` for this chain.
      * Used by alertVerificationService to enforce max_reopens_per_24h.
      */
-    static async countRecentReopensForChain(reopenChainId, withinHours = 24) {
+    static async countRecentReopensForChain(reopenChainId, withinHours = 24, executor = db) {
         try {
-            const result = await db.query(
+            const result = await executor.query(
                 `SELECT COUNT(*)::int AS count
                  FROM alert_verifications
                  WHERE reopen_chain_id = $1
@@ -314,9 +323,9 @@ class AlertVerification {
      * Lookup the full chain history (all verifications for one reopen_chain_id).
      * Used by admin UI "Reopen history" view.
      */
-    static async findByChainId(reopenChainId) {
+    static async findByChainId(reopenChainId, executor = db) {
         try {
-            const result = await db.query(
+            const result = await executor.query(
                 `SELECT * FROM alert_verifications
                  WHERE reopen_chain_id = $1
                  ORDER BY reopen_sequence ASC, created_at ASC`,
