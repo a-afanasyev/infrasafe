@@ -26,13 +26,13 @@
 | B-007 integration_log retry/dead sync | #74 `updateStatusByEventId` + `_syncIntegrationLog` | ✅ |
 | B-024 map counters `(0)` | #74 Здания-счётчик при init + публичный `/map-layer-counts` для auth-gated слоёв (anon видит реальные числа) | ✅ |
 | B-027 косметика (esbuild root-retry WARN) | #87 — `rmSync(dist)` → clear-contents (не трогает родитель `public/`) | ✅ |
+| B-021 durability hardening verification | #92 (client-scoped tick+txn, headline lock-leak) + #93 (reopen-реконсиляция из БД + client-scoped listener) + #94 (advisory-lock+txn в system-resolveAlert) | ✅ |
 | (ранее 05-30) B-014/B-015/B-017/B-020 + security audit #69 + ротации + P-PENTEST-4 | — | ✅ |
 
 ### Открытые пункты (сверено с прод/кодом 2026-06-01)
 | Пункт | P | Проверка | Вердикт / триггер |
 |---|---|---|---|
-| **B-021** durability reconciliation | P1 | 🔧 **in progress** — PR1 (client-scoped tick+txn, #92 merged) + PR2 (reopen-реконсиляция из БД + client-scoped listener) реализованы; PR3 (advisory-lock в resolveAlert) ждёт | **headline lock-leak** закрыт PR1; PR2 убрал ephemeral-event durability-дыру через `_findSupersedingAlert` (re-derive reopen из БД) |
-| **B-022** ukOutboxService тот же advisory-lock-via-pool баг | P2 | `ukOutboxService.js:142-160` — `db.query`-lock/unlock на разных коннектах (как B-021 W3) | **latent** — single-replica мешает только под contention; fix = копия client-scoped паттерна B-021 PR1 |
+| **B-022** ukOutboxService тот же advisory-lock-via-pool баг | P2 | `ukOutboxService.js:142-160` — `db.query`-lock/unlock на разных коннектах (как закрытый B-021 W3) | **latent** — single-replica мешает только под contention; fix = копия client-scoped паттерна B-021 (#92) |
 | **B-011** alias collision | P2 | app только в `infrasafe`+`leaflet` (B-010); B-010-фикс закреплён | **latent** — рванёт лишь при re-attach app в `uk-network`; полный fix = координация с UK |
 | **B-003** Redis (multi-replica) | P2 | SEC-6 снял memory-growth; SEC-8 multi-replica bypass остаётся | **не наступил** — single-replica setup |
 | **B-004** admin.js split | P2 | `wc -l`: admin.js **3826**, script.js **2384** | **не достигнут** — триггер 4500 LoC; растёт |
@@ -41,11 +41,12 @@
 | **B-009** seasonal HEATING rules | P4 | — | **Q3 2026** (до отопит. сезона) |
 
 ### Рекомендация
-**Ничего не горит.** Трек A («закрыть хвосты») полностью завершён 06-01. **B-021 (P1) в работе** — при
-чтении кода вскрылся реальный advisory-lock-leak (сильнее, чем описано), чинится 3 последовательными PR
-(PR1 client-scoped tick+txn — готов; PR2 reopen-реконсиляция; PR3 lock в resolveAlert). Тот же баг в
-ukOutboxService вынесен в **B-022** (defer, копия паттерна PR1). Остальное — latent (B-011), ждёт триггера
-(B-003/B-004/B-008), сезона (B-009) или UK-стороны (B-006). Perf content-hash бандлов — отдельным PR.
+**Ничего не горит.** Трек A («закрыть хвосты») + **B-021 (P1) durability hardening** завершены 06-01.
+B-021 закрыт 3 PR (#92/#93/#94): client-scoped tick+txn (реальный advisory-lock-leak), reopen-реконсиляция
+из БД, advisory-lock+txn в system-resolveAlert (атомарность UPDATE+enqueue → нет orphan при enqueue-fail).
+Тот же lock-баг в ukOutboxService вынесен в **B-022** (defer, копия паттерна #92). Остальное открытое —
+latent (B-022/B-011), ждёт триггера (B-003/B-004/B-008), сезона (B-009) или UK-стороны (B-006). Perf
+content-hash бандлов — отдельным PR.
 
 ---
 

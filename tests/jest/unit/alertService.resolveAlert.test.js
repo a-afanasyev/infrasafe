@@ -1,5 +1,17 @@
 // [Sprint 10 PR-3] alertService.resolveAlert system-path vs manual-path tests
-jest.mock('../../../src/config/database', () => ({ query: jest.fn() }));
+// [B-021 PR3] verifying path runs under a checked-out client (advisory lock +
+// transaction), so those tests assert on the CLIENT mock. Non-verifying /
+// manual / not-found paths stay on db.query.
+jest.mock('../../../src/config/database', () => {
+    const mockClient = { query: jest.fn(), release: jest.fn() };
+    const mockPool = { connect: jest.fn(() => Promise.resolve(mockClient)) };
+    return {
+        query: jest.fn(),
+        getPool: jest.fn(() => mockPool),
+        __mockClient: mockClient,
+        __mockPool: mockPool
+    };
+});
 
 jest.mock('../../../src/utils/logger', () => ({
     info: jest.fn(),
@@ -49,10 +61,32 @@ describe('alertService.resolveAlert — Sprint 10 PR-3 system vs manual path', (
 
     beforeEach(() => {
         jest.clearAllMocks();
+        db.query.mockReset();
+        db.__mockClient.query.mockReset();
+        db.__mockClient.release.mockClear();
+        db.__mockPool.connect.mockClear();
         alertService.initialized = true;
         alertService.activeAlerts.clear();
         alertService.lastChecks.clear();
     });
+
+    // Route the verifying-path CLIENT query (lock/txn/UPDATE/backfills).
+    // `updateRows` is what the UPDATE→resolved_verifying returns.
+    const routeClient = (updateRows) => {
+        db.__mockClient.query.mockImplementation((sql) => {
+            if (/pg_advisory_unlock/.test(sql)) return Promise.resolve({ rows: [{}] });
+            if (/pg_advisory_lock/.test(sql)) return Promise.resolve({ rows: [{}] });
+            if (/^\s*(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return Promise.resolve({ rows: [] });
+            if (/UPDATE\s+infrastructure_alerts\s+SET\s+status/i.test(sql)) {
+                return Promise.resolve({ rows: updateRows });
+            }
+            if (/UPDATE\s+infrastructure_alerts/i.test(sql)) return Promise.resolve({ rows: [] }); // backfills
+            return Promise.resolve({ rows: [] });
+        });
+    };
+    const clientCalls = () => db.__mockClient.query.mock.calls.map((c) => c[0]);
+    const findClientUpdate = () =>
+        db.__mockClient.query.mock.calls.find((c) => /UPDATE\s+infrastructure_alerts\s+SET\s+status/i.test(c[0]));
 
     afterEach(() => {
         if (originalVerifyEnv === undefined) {
@@ -84,21 +118,21 @@ describe('alertService.resolveAlert — Sprint 10 PR-3 system vs manual path', (
     describe('System-initiated resolve (userId === null)', () => {
         test('uses resolved_verifying status + enqueues verification when rule has grace > 0', async () => {
             process.env.ALERT_VERIFICATION_ENABLED = 'true';
-            // 1st query: SELECT existing alert
+            // SELECT existing alert (db.query — read, before lock)
             db.query.mockResolvedValueOnce({ rows: [baseAlert] });
             AlertRule.findByTypeAndSeverity.mockResolvedValueOnce(ruleWithVerification);
-            // 2nd query: UPDATE infrastructure_alerts
-            db.query.mockResolvedValueOnce({
-                rows: [{ ...baseAlert, status: 'resolved_verifying', resolved_at: new Date().toISOString() }]
-            });
+            // verifying path runs on the client (lock + txn)
+            routeClient([{ ...baseAlert, status: 'resolved_verifying', resolved_at: new Date().toISOString() }]);
             AlertVerification.enqueue.mockResolvedValueOnce({ id: 1 });
 
             await alertService.resolveAlert(21, null);
 
-            // UPDATE was called with status='resolved_verifying'
-            const updateCall = db.query.mock.calls.find(c => c[0].includes('UPDATE infrastructure_alerts'));
-            expect(updateCall[1]).toEqual([21, null, 'resolved_verifying']);
-            // Enqueue happened with grace+window from rule
+            // UPDATE→resolved_verifying happened on the client
+            const updateCall = findClientUpdate();
+            expect(updateCall).toBeDefined();
+            expect(updateCall[1]).toEqual([21, null]);
+            expect(updateCall[0]).toMatch(/status\s*=\s*'resolved_verifying'/);
+            // Enqueue happened with grace+window from rule, on the SAME client
             expect(AlertVerification.enqueue).toHaveBeenCalledWith(
                 expect.objectContaining({
                     original_alert_id: 21,
@@ -106,8 +140,43 @@ describe('alertService.resolveAlert — Sprint 10 PR-3 system vs manual path', (
                     infrastructure_id: 1,
                     alert_type: 'LEAK_DETECTED',
                     reopen_sequence: 1
-                })
+                }),
+                db.__mockClient
             );
+        });
+
+        test('[B-021 PR3] verifying resolve takes the advisory lock + wraps in a transaction on one client', async () => {
+            process.env.ALERT_VERIFICATION_ENABLED = 'true';
+            db.query.mockResolvedValueOnce({ rows: [baseAlert] });
+            AlertRule.findByTypeAndSeverity.mockResolvedValueOnce(ruleWithVerification);
+            routeClient([{ ...baseAlert, status: 'resolved_verifying' }]);
+            AlertVerification.enqueue.mockResolvedValueOnce({ id: 1 });
+
+            await alertService.resolveAlert(21, null);
+
+            const calls = clientCalls();
+            expect(db.__mockPool.connect).toHaveBeenCalledTimes(1);
+            expect(calls.some((s) => /pg_advisory_lock/.test(s) && !/unlock/.test(s))).toBe(true);
+            expect(calls.some((s) => /pg_advisory_unlock/.test(s))).toBe(true);
+            expect(calls.some((s) => /^\s*BEGIN/.test(s))).toBe(true);
+            expect(calls.some((s) => /^\s*COMMIT/.test(s))).toBe(true);
+            expect(db.__mockClient.release).toHaveBeenCalledTimes(1);
+        });
+
+        test('[B-021 PR3] enqueue failure → ROLLBACK, no orphan, resolve rejects', async () => {
+            process.env.ALERT_VERIFICATION_ENABLED = 'true';
+            db.query.mockResolvedValueOnce({ rows: [baseAlert] });
+            AlertRule.findByTypeAndSeverity.mockResolvedValueOnce(ruleWithVerification);
+            routeClient([{ ...baseAlert, status: 'resolved_verifying' }]);
+            AlertVerification.enqueue.mockRejectedValueOnce(new Error('enqueue boom'));
+
+            await expect(alertService.resolveAlert(21, null)).rejects.toThrow('enqueue boom');
+
+            const calls = clientCalls();
+            expect(calls.some((s) => /^\s*ROLLBACK/.test(s))).toBe(true);
+            expect(calls.some((s) => /^\s*COMMIT/.test(s))).toBe(false);
+            expect(calls.some((s) => /pg_advisory_unlock/.test(s))).toBe(true);
+            expect(db.__mockClient.release).toHaveBeenCalledTimes(1);
         });
 
         test('reuses existing reopen_chain_id when alert already part of chain', async () => {
@@ -115,7 +184,7 @@ describe('alertService.resolveAlert — Sprint 10 PR-3 system vs manual path', (
             const chainedAlert = { ...baseAlert, reopen_chain_id: 'existing-uuid', reopen_sequence: 2 };
             db.query.mockResolvedValueOnce({ rows: [chainedAlert] });
             AlertRule.findByTypeAndSeverity.mockResolvedValueOnce(ruleWithVerification);
-            db.query.mockResolvedValueOnce({ rows: [chainedAlert] });
+            routeClient([chainedAlert]);
             AlertVerification.enqueue.mockResolvedValueOnce({ id: 2 });
 
             await alertService.resolveAlert(21, null);
@@ -124,7 +193,8 @@ describe('alertService.resolveAlert — Sprint 10 PR-3 system vs manual path', (
                 expect.objectContaining({
                     reopen_chain_id: 'existing-uuid',
                     reopen_sequence: 2
-                })
+                }),
+                db.__mockClient
             );
         });
 
@@ -138,8 +208,11 @@ describe('alertService.resolveAlert — Sprint 10 PR-3 system vs manual path', (
             await alertService.resolveAlert(21, null);
 
             const updateCall = db.query.mock.calls.find(c => c[0].includes('UPDATE infrastructure_alerts'));
-            expect(updateCall[1]).toEqual([21, null, 'resolved']);
+            expect(updateCall[1]).toEqual([21, null]);
+            expect(updateCall[0]).toMatch(/status\s*=\s*'resolved'/);
             expect(AlertVerification.enqueue).not.toHaveBeenCalled();
+            // Non-verifying path must NOT check out a client.
+            expect(db.__mockPool.connect).not.toHaveBeenCalled();
         });
 
         test('[hotfix 2026-05-24] resolves directly when ALERT_VERIFICATION_ENABLED is false, even when rule wants verification', async () => {
@@ -156,7 +229,8 @@ describe('alertService.resolveAlert — Sprint 10 PR-3 system vs manual path', (
             await alertService.resolveAlert(21, null);
 
             const updateCall = db.query.mock.calls.find(c => c[0].includes('UPDATE infrastructure_alerts'));
-            expect(updateCall[1][2]).toBe('resolved');
+            expect(updateCall[1]).toEqual([21, null]);
+            expect(updateCall[0]).toMatch(/status\s*=\s*'resolved'/);
             expect(AlertRule.findByTypeAndSeverity).not.toHaveBeenCalled();
             expect(AlertVerification.enqueue).not.toHaveBeenCalled();
         });
@@ -175,7 +249,8 @@ describe('alertService.resolveAlert — Sprint 10 PR-3 system vs manual path', (
             await alertService.resolveAlert(21, null);
 
             const updateCall = db.query.mock.calls.find(c => c[0].includes('UPDATE infrastructure_alerts'));
-            expect(updateCall[1][2]).toBe('resolved');
+            expect(updateCall[1]).toEqual([21, null]);
+            expect(updateCall[0]).toMatch(/status\s*=\s*'resolved'/);
             expect(AlertVerification.enqueue).not.toHaveBeenCalled();
         });
 
@@ -194,12 +269,10 @@ describe('alertService.resolveAlert — Sprint 10 PR-3 system vs manual path', (
 
             db.query.mockResolvedValueOnce({ rows: [baseAlert] });
             AlertRule.findByTypeAndSeverity.mockResolvedValueOnce(ruleWithVerification);
-            db.query.mockResolvedValueOnce({ rows: [{ ...baseAlert, status: 'resolved_verifying' }] });
+            // [B-021 PR3] verifying path on the client; lastChecks.delete fires
+            // post-commit.
+            routeClient([{ ...baseAlert, status: 'resolved_verifying' }]);
             AlertVerification.enqueue.mockResolvedValueOnce({ id: 1 });
-            // Sprint 10 PR-3 reopen-chain-id backfill + previous_uk_request_number
-            // lookup both fire extra DB UPDATEs after enqueue — catch-all so the
-            // await chain completes and reaches the lastChecks.delete line.
-            db.query.mockResolvedValue({ rows: [] });
 
             await alertService.resolveAlert(21, null);
 
@@ -217,10 +290,12 @@ describe('alertService.resolveAlert — Sprint 10 PR-3 system vs manual path', (
             await alertService.resolveAlert(21, 42); // operator user_id=42
 
             const updateCall = db.query.mock.calls.find(c => c[0].includes('UPDATE infrastructure_alerts'));
-            expect(updateCall[1]).toEqual([21, 42, 'resolved']);
-            // AlertRule NOT consulted for manual path
+            expect(updateCall[1]).toEqual([21, 42]);
+            expect(updateCall[0]).toMatch(/status\s*=\s*'resolved'/);
+            // AlertRule NOT consulted for manual path; no client checkout.
             expect(AlertRule.findByTypeAndSeverity).not.toHaveBeenCalled();
             expect(AlertVerification.enqueue).not.toHaveBeenCalled();
+            expect(db.__mockPool.connect).not.toHaveBeenCalled();
         });
     });
 

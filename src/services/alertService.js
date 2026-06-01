@@ -929,57 +929,93 @@ class InfrastructureAlertService {
                 }
             }
 
-            // UPDATE with the chosen terminal status
-            const newStatus = useVerifyingState ? 'resolved_verifying' : 'resolved';
-            const updateResult = await db.query(
-                `UPDATE infrastructure_alerts
-                 SET status = $3, resolved_at = NOW(), resolved_by = $2
-                 WHERE alert_id = $1 AND status IN ('active', 'acknowledged')
-                 RETURNING *`,
-                [alertId, userId, newStatus]
-            );
-            if (updateResult.rows.length === 0) {
-                // Race: someone else closed it between SELECT and UPDATE.
-                throw new Error(`Алерт ${alertId} не найден или уже закрыт`);
-            }
-            const alert = updateResult.rows[0];
-
-            // Drop from in-memory active map regardless of branch.
-            const alertKey = `${alert.infrastructure_type}:${alert.infrastructure_id}:${alert.type}`;
-            this.activeAlerts.delete(alertKey);
-
-            if (useVerifyingState) {
-                // Enqueue verification + clear cooldown so a future check
-                // isn't suppressed by the stale lastChecks timestamp from
-                // the original alert generation.
-                const { randomUUID } = require('crypto');
-                const AlertVerification = require('../models/AlertVerification');
-                const AlertRequestMap = require('../models/AlertRequestMap');
-
-                const chainId = current.reopen_chain_id || randomUUID();
-                const nextSequence = (current.reopen_sequence || 1);
-                const nowMs = Date.now();
-                const runAt = new Date(nowMs + rule.verification_grace_seconds * 1000);
-                const windowUntil = new Date(runAt.getTime() + rule.verification_window_seconds * 1000);
-
-                // Look up the previous UK request number (best-effort —
-                // verifier passes this to alertForwarder for related_request_number
-                // in the reopen payload).
-                let previousUkRequestNumber = null;
-                try {
-                    const mappings = await AlertRequestMap.findByAlertId(alertId);
-                    if (Array.isArray(mappings) && mappings.length > 0) {
-                        // Pick the first mapping with a non-null uk_request_number
-                        // (multi-building alerts have one row per building; any of
-                        // them is a valid "related" reference for the reopen).
-                        const withNumber = mappings.find((m) => m.uk_request_number);
-                        if (withNumber) previousUkRequestNumber = withNumber.uk_request_number;
-                    }
-                } catch (e) {
-                    logger.debug(`resolveAlert: previous_uk_request_number lookup failed: ${e.message}`);
+            // [B-021 PR3] Non-verifying resolve (operator/manual, or system
+            // with no matching rule / grace 0 / flag off): single autocommit
+            // UPDATE → resolved. Unchanged hot path — no lock/transaction.
+            if (!useVerifyingState) {
+                const updateResult = await db.query(
+                    `UPDATE infrastructure_alerts
+                     SET status = 'resolved', resolved_at = NOW(), resolved_by = $2
+                     WHERE alert_id = $1 AND status IN ('active', 'acknowledged')
+                     RETURNING *`,
+                    [alertId, userId]
+                );
+                if (updateResult.rows.length === 0) {
+                    // Race: someone else closed it between SELECT and UPDATE.
+                    throw new Error(`Алерт ${alertId} не найден или уже закрыт`);
                 }
+                const alert = updateResult.rows[0];
+                this.activeAlerts.delete(`${alert.infrastructure_type}:${alert.infrastructure_id}:${alert.type}`);
+                logger.info(`Алерт ${alertId} закрыт ${isSystemInitiated ? 'системой (no rule)' : `пользователем ${userId}`}`);
+                return alert;
+            }
 
+            // [B-021 PR3] System verifying path: serialise against the
+            // verification drain (same advisory key) and make the
+            // UPDATE→resolved_verifying + enqueue ATOMIC. Previously the enqueue
+            // failure was swallowed ("don't fail the resolve") — which left the
+            // alert in resolved_verifying with NO verification row to ever clear
+            // it (a B-020-class orphan). Now a failed enqueue rolls back the
+            // status flip, so the alert stays active and can be re-resolved.
+            return await this._resolveVerifying(alertId, userId, current, rule);
+        });
+    }
+
+    /**
+     * [B-021 PR3] System-initiated verifying resolve under one checked-out
+     * client: take the verification drain's advisory lock (blocking — we must
+     * complete, unlike the worker which try-locks and skips), then
+     * UPDATE→resolved_verifying + enqueue + chain/uk backfills in ONE
+     * transaction. The lock serialises this against `_drainOne`/`_handleReopen`
+     * on the same chain; the transaction guarantees no orphaned
+     * resolved_verifying alert if the enqueue fails.
+     */
+    async _resolveVerifying(alertId, userId, current, rule) {
+        const { randomUUID } = require('crypto');
+        const AlertVerification = require('../models/AlertVerification');
+        const AlertRequestMap = require('../models/AlertRequestMap');
+        const { ADVISORY_LOCK_KEY } = require('./alertVerificationService');
+
+        const chainId = current.reopen_chain_id || randomUUID();
+        const nextSequence = (current.reopen_sequence || 1);
+        const nowMs = Date.now();
+        const runAt = new Date(nowMs + rule.verification_grace_seconds * 1000);
+        const windowUntil = new Date(runAt.getTime() + rule.verification_window_seconds * 1000);
+
+        // Previous UK request number — best-effort read BEFORE the transaction
+        // (it's read-only context; a failure here must not abort the resolve).
+        let previousUkRequestNumber = null;
+        try {
+            const mappings = await AlertRequestMap.findByAlertId(alertId);
+            if (Array.isArray(mappings) && mappings.length > 0) {
+                const withNumber = mappings.find((m) => m.uk_request_number);
+                if (withNumber) previousUkRequestNumber = withNumber.uk_request_number;
+            }
+        } catch (e) {
+            logger.debug(`resolveAlert: previous_uk_request_number lookup failed: ${e.message}`);
+        }
+
+        const client = await db.getPool().connect();
+        let alert;
+        try {
+            // Blocking lock — the drain holds it only briefly (one row/tick).
+            await client.query('SELECT pg_advisory_lock($1)', [ADVISORY_LOCK_KEY]);
+            try {
+                await client.query('BEGIN');
                 try {
+                    const updateResult = await client.query(
+                        `UPDATE infrastructure_alerts
+                         SET status = 'resolved_verifying', resolved_at = NOW(), resolved_by = $2
+                         WHERE alert_id = $1 AND status IN ('active', 'acknowledged')
+                         RETURNING *`,
+                        [alertId, userId]
+                    );
+                    if (updateResult.rows.length === 0) {
+                        // Race: someone else closed it between SELECT and UPDATE.
+                        throw new Error(`Алерт ${alertId} не найден или уже закрыт`);
+                    }
+                    alert = updateResult.rows[0];
+
                     await AlertVerification.enqueue({
                         original_alert_id: alertId,
                         infrastructure_type: current.infrastructure_type,
@@ -989,42 +1025,46 @@ class InfrastructureAlertService {
                         reopen_sequence: nextSequence,
                         run_at: runAt,
                         window_until: windowUntil
-                    });
-                    // Backfill chain_id on the alert if it didn't have one
+                    }, client);
+
                     if (!current.reopen_chain_id) {
-                        await db.query(
+                        await client.query(
                             'UPDATE infrastructure_alerts SET reopen_chain_id = $2 WHERE alert_id = $1',
                             [alertId, chainId]
                         );
                     }
-                } catch (e) {
-                    logger.warn(`resolveAlert: AlertVerification.enqueue failed for alert ${alertId}: ${e.message}`);
-                    // Don't fail the resolve — alert is still in resolved_verifying;
-                    // operator can manually re-resolve if needed.
+                    if (previousUkRequestNumber) {
+                        await client.query(
+                            'UPDATE infrastructure_alerts SET previous_uk_request_number = $2 WHERE alert_id = $1',
+                            [alertId, previousUkRequestNumber]
+                        );
+                    }
+                    await client.query('COMMIT');
+                } catch (err) {
+                    await client.query('ROLLBACK').catch((e) => {
+                        logger.warn(`resolveAlert: ROLLBACK failed for alert ${alertId}: ${e.message}`);
+                    });
+                    throw err;
                 }
-
-                // Clear cooldown so checker can re-evaluate after grace.
-                this.lastChecks.delete(`${current.infrastructure_type}:${current.infrastructure_id}:load_check`);
-
-                // Store previousUkRequestNumber on the alert row for the
-                // future reopen alert to inherit (queried by the checker).
-                if (previousUkRequestNumber) {
-                    await db.query(
-                        'UPDATE infrastructure_alerts SET previous_uk_request_number = $2 WHERE alert_id = $1',
-                        [alertId, previousUkRequestNumber]
-                    );
-                }
-
-                logger.info(
-                    `Алерт ${alertId} → resolved_verifying (chain ${chainId}, seq ${nextSequence}, ` +
-                    `grace ${rule.verification_grace_seconds}s, window ${rule.verification_window_seconds}s)`
-                );
-            } else {
-                logger.info(`Алерт ${alertId} закрыт ${isSystemInitiated ? 'системой (no rule)' : `пользователем ${userId}`}`);
+            } finally {
+                await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]).catch((e) => {
+                    logger.warn(`resolveAlert: advisory_unlock failed for alert ${alertId}: ${e.message}`);
+                });
             }
+        } finally {
+            client.release();
+        }
 
-            return alert;
-        });
+        // Post-commit in-memory bookkeeping.
+        this.activeAlerts.delete(`${alert.infrastructure_type}:${alert.infrastructure_id}:${alert.type}`);
+        // Clear cooldown so the checker can re-evaluate after grace.
+        this.lastChecks.delete(`${current.infrastructure_type}:${current.infrastructure_id}:load_check`);
+
+        logger.info(
+            `Алерт ${alertId} → resolved_verifying (chain ${chainId}, seq ${nextSequence}, ` +
+            `grace ${rule.verification_grace_seconds}s, window ${rule.verification_window_seconds}s)`
+        );
+        return alert;
     }
 
     // [Sprint 10 PR-4] Получение одного алерта по alert_id (для suppress endpoint —
