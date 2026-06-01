@@ -14,7 +14,19 @@
  *   - notification_failure recorded on dead-letter
  */
 
-jest.mock('../../../src/config/database', () => ({ query: jest.fn() }));
+// [B-022] _tick is now client-scoped: advisory lock acquired/released on a
+// checked-out client (db.getPool().connect()). The drain's own row ops
+// (_recordNotificationFailure) stay on db.query.
+jest.mock('../../../src/config/database', () => {
+    const mockClient = { query: jest.fn(), release: jest.fn() };
+    const mockPool = { connect: jest.fn(() => Promise.resolve(mockClient)) };
+    return {
+        query: jest.fn(),
+        getPool: jest.fn(() => mockPool),
+        __mockClient: mockClient,
+        __mockPool: mockPool
+    };
+});
 jest.mock('../../../src/utils/logger', () => ({
     info: jest.fn(),
     error: jest.fn(),
@@ -49,27 +61,33 @@ const logger = require('../../../src/utils/logger');
 const service = require('../../../src/services/uk/ukOutboxService');
 const { UkOutboxService } = require('../../../src/services/uk/ukOutboxService');
 
-// Helper: make advisory-lock returns predictable.
+// Helper: lock acquired on the client; db.query (pool) handles the drain's
+// notification_failure UPDATE.
 const mockAdvisoryLockAcquired = () => {
-    db.query.mockImplementation((sql, _params) => {
+    db.__mockClient.query.mockImplementation((sql) => {
         if (/pg_try_advisory_lock/.test(sql)) return Promise.resolve({ rows: [{ locked: true }] });
         if (/pg_advisory_unlock/.test(sql)) return Promise.resolve({ rows: [{}] });
-        // For notification_failure UPDATE
         return Promise.resolve({ rows: [] });
     });
+    db.query.mockResolvedValue({ rows: [] });
 };
 const mockAdvisoryLockDenied = () => {
-    db.query.mockImplementation((sql) => {
+    db.__mockClient.query.mockImplementation((sql) => {
         if (/pg_try_advisory_lock/.test(sql)) return Promise.resolve({ rows: [{ locked: false }] });
         return Promise.resolve({ rows: [] });
     });
 };
+const clientSqls = () => db.__mockClient.query.mock.calls.map((c) => c[0]);
 
 describe('ukOutboxService', () => {
     const ORIGINAL_ENV = { ...process.env };
 
     beforeEach(() => {
         jest.clearAllMocks();
+        db.query.mockReset();
+        db.__mockClient.query.mockReset();
+        db.__mockClient.release.mockClear();
+        db.__mockPool.connect.mockClear();
         process.env = { ...ORIGINAL_ENV };
         delete process.env.UK_USE_WEBHOOK_SENDER;
         delete process.env.UK_OUTBOX_DRAIN_INTERVAL_MS;
@@ -162,50 +180,61 @@ describe('ukOutboxService', () => {
         });
     });
 
-    describe('_tick — advisory lock', () => {
-        it('skips drain when lock is denied (another replica holds it)', async () => {
+    describe('_tick — advisory lock (B-022 client-scoped)', () => {
+        it('skips drain + releases client when lock is denied (another replica holds it)', async () => {
             mockAdvisoryLockDenied();
             await service._tick();
             expect(UkOutbox.pickNext).not.toHaveBeenCalled();
+            expect(db.__mockClient.release).toHaveBeenCalledTimes(1);
         });
 
-        it('drains when lock is acquired, then releases', async () => {
+        it('drains when lock acquired; lock + unlock on the SAME client; releases', async () => {
             mockAdvisoryLockAcquired();
             UkOutbox.pickNext.mockResolvedValue(null); // queue empty
 
             await service._tick();
 
-            // Both lock + unlock called
-            const sqls = db.query.mock.calls.map(c => c[0]);
+            const sqls = clientSqls();
             expect(sqls.some(s => /pg_try_advisory_lock/.test(s))).toBe(true);
             expect(sqls.some(s => /pg_advisory_unlock/.test(s))).toBe(true);
+            expect(db.__mockPool.connect).toHaveBeenCalledTimes(1);
+            expect(db.__mockClient.release).toHaveBeenCalledTimes(1);
+            // Lock no longer taken via the pool wrapper.
+            expect(db.query.mock.calls.some(c => /pg_(try_)?advisory_(un)?lock/.test(c[0]))).toBe(false);
         });
 
-        it('releases lock even when drain throws', async () => {
-            db.query.mockImplementation((sql) => {
-                if (/pg_try_advisory_lock/.test(sql)) return Promise.resolve({ rows: [{ locked: true }] });
-                if (/pg_advisory_unlock/.test(sql)) return Promise.resolve({ rows: [{}] });
-                return Promise.resolve({ rows: [] });
-            });
+        it('releases client + unlock even when drain throws', async () => {
+            mockAdvisoryLockAcquired();
             UkOutbox.pickNext.mockRejectedValue(new Error('DB outage'));
 
             await service._tick();
 
-            const sqls = db.query.mock.calls.map(c => c[0]);
-            expect(sqls.some(s => /pg_advisory_unlock/.test(s))).toBe(true);
+            expect(clientSqls().some(s => /pg_advisory_unlock/.test(s))).toBe(true);
+            expect(db.__mockClient.release).toHaveBeenCalledTimes(1);
+            expect(service._consecutiveFailures).toBe(1);
+        });
+
+        it('records failure + no client release when connect() throws', async () => {
+            db.__mockPool.connect.mockRejectedValueOnce(new Error('pool exhausted'));
+            await service._tick();
+            expect(service._consecutiveFailures).toBe(1);
+            expect(db.__mockClient.release).not.toHaveBeenCalled();
+            expect(service._running).toBe(false);
         });
     });
 
     describe('_tick — mutex', () => {
-        it('skips when previous tick is still inflight', async () => {
+        it('skips when previous tick is still inflight (no checkout)', async () => {
             service._running = true;
             await service._tick();
+            expect(db.__mockPool.connect).not.toHaveBeenCalled();
             expect(db.query).not.toHaveBeenCalled();
         });
 
-        it('skips when service has been stopped', async () => {
+        it('skips when service has been stopped (no checkout)', async () => {
             service._stopped = true;
             await service._tick();
+            expect(db.__mockPool.connect).not.toHaveBeenCalled();
             expect(db.query).not.toHaveBeenCalled();
         });
     });

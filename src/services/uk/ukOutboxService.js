@@ -137,26 +137,41 @@ class UkOutboxService {
         this._running = true;
 
         try {
-            // Try to acquire the cross-replica drain lock. Non-blocking:
-            // if another replica holds it, we skip this tick.
-            const lockResult = await db.query(
-                'SELECT pg_try_advisory_lock($1) AS locked',
-                [ADVISORY_LOCK_KEY]
-            );
-            const locked = lockResult.rows[0] && lockResult.rows[0].locked === true;
-            if (!locked) {
-                // Another replica is draining; quiet exit.
-                return;
-            }
-
+            // [B-022] Acquire + release the cross-replica advisory lock on ONE
+            // checked-out client. Session-scoped advisory locks are bound to the
+            // physical connection; taking/releasing them through the pool wrapper
+            // (db.query) lands on arbitrary connections, so the unlock often
+            // no-ops on a connection that never held the lock and the lock leaks
+            // on the one that did (same class as the B-021 verification-drain
+            // fix). Pinning one client for the tick makes the mutex actually
+            // hold for the whole drain — and auto-release if the process dies
+            // (the backend session closes). The drain's own row ops stay on the
+            // pool: they only need the lock to be HELD (it is, by this client's
+            // session), not to share its connection.
+            const client = await db.getPool().connect();
             try {
-                await this._drainOne();
-                this._consecutiveFailures = 0;
-                this._lastFailureLogAt = 0;
+                const lockResult = await client.query(
+                    'SELECT pg_try_advisory_lock($1) AS locked',
+                    [ADVISORY_LOCK_KEY]
+                );
+                const locked = lockResult.rows[0] && lockResult.rows[0].locked === true;
+                if (!locked) {
+                    // Another replica is draining; quiet exit (client released
+                    // by the finally below).
+                    return;
+                }
+
+                try {
+                    await this._drainOne();
+                    this._consecutiveFailures = 0;
+                    this._lastFailureLogAt = 0;
+                } finally {
+                    await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]).catch((err) => {
+                        logger.warn(`ukOutboxService: advisory_unlock failed: ${err.message}`);
+                    });
+                }
             } finally {
-                await db.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]).catch((err) => {
-                    logger.warn(`ukOutboxService: advisory_unlock failed: ${err.message}`);
-                });
+                client.release();
             }
         } catch (err) {
             this._consecutiveFailures += 1;

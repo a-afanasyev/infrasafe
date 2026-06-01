@@ -14,7 +14,18 @@
  */
 
 jest.mock('axios', () => ({ post: jest.fn() }));
-jest.mock('../../../src/config/database', () => ({ query: jest.fn() }));
+// [B-022] _tick takes the advisory lock on a checked-out client; the drain's
+// row ops (pickNext/markSent/ARM/notification) stay on db.query.
+jest.mock('../../../src/config/database', () => {
+    const mockClient = { query: jest.fn(), release: jest.fn() };
+    const mockPool = { connect: jest.fn(() => Promise.resolve(mockClient)) };
+    return {
+        query: jest.fn(),
+        getPool: jest.fn(() => mockPool),
+        __mockClient: mockClient,
+        __mockPool: mockPool
+    };
+});
 jest.mock('../../../src/utils/logger', () => ({
     info: jest.fn(),
     error: jest.fn(),
@@ -36,6 +47,16 @@ describe('Sprint 9 / FIX-007 — end-to-end outbound flow', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        db.query.mockReset();
+        db.__mockClient.query.mockReset();
+        db.__mockClient.release.mockClear();
+        db.__mockPool.connect.mockClear();
+        // [B-022] advisory lock lives on the checked-out client now.
+        db.__mockClient.query.mockImplementation((sql) => {
+            if (/pg_try_advisory_lock/.test(sql)) return Promise.resolve({ rows: [{ locked: true }] });
+            if (/pg_advisory_unlock/.test(sql)) return Promise.resolve({ rows: [{}] });
+            return Promise.resolve({ rows: [] });
+        });
         process.env = { ...ORIGINAL_ENV };
         process.env.UK_USE_WEBHOOK_SENDER = 'true';
         process.env.UK_WEBHOOK_SECRET = 'test-secret-do-not-use-in-prod';
@@ -116,7 +137,10 @@ describe('Sprint 9 / FIX-007 — end-to-end outbound flow', () => {
         const sqls = db.query.mock.calls.map(c => c[0]);
         expect(sqls.some(s => /UPDATE uk_outbox/.test(s) && /SET status = 'sent'/.test(s))).toBe(true);
         expect(sqls.some(s => /UPDATE alert_request_map.*uk_request_number/.test(s))).toBe(true);
-        expect(sqls.some(s => /pg_advisory_unlock/.test(s))).toBe(true);
+        // [B-022] advisory unlock now happens on the checked-out client.
+        const clientSqls = db.__mockClient.query.mock.calls.map(c => c[0]);
+        expect(clientSqls.some(s => /pg_advisory_unlock/.test(s))).toBe(true);
+        expect(db.__mockClient.release).toHaveBeenCalledTimes(1);
     });
 
     test('409 from UK is idempotent success (re-delivery)', async () => {
