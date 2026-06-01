@@ -6,6 +6,7 @@
 > Обновлён 2026-05-28 после deploy 4 PR'ов на прод (см. P0 — production infra drift).
 > Обновлён 2026-05-30: закрыты B-014/B-015/B-017/B-020 + security audit (#69) + ротации + P-PENTEST-4.
 > Обновлён 2026-06-01: закрыты B-012/B-013/B-016/B-023/B-025/B-026/B-027 + B-007; B-024 partial. Шапка переписана.
+> Обновлён 2026-06-01 (Трек A): закрыт B-024 auth-gated half (#PR public /map-layer-counts) + B-027 косметика (#87 esbuild clear-contents).
 
 ---
 
@@ -22,7 +23,8 @@
 | B-026 acknowledged-alerts невидимо блокируют | #76 `getActiveAlerts` default→`('active','acknowledged')`, deployed | ✅ |
 | B-027 frontend dist не доезжал до прода (P0) | #78–83 `rebuild-frontend.sh` + wire в `update-production.sh`, deployed 06-01 | ✅ |
 | B-007 integration_log retry/dead sync | #74 `updateStatusByEventId` + `_syncIntegrationLog` | ✅ |
-| B-024 map counters `(0)` | #74 — Здания-счётчик при init (partial); auth-gated слои open | 🟡 partial |
+| B-024 map counters `(0)` | #74 Здания-счётчик при init + публичный `/map-layer-counts` для auth-gated слоёв (anon видит реальные числа) | ✅ |
+| B-027 косметика (esbuild root-retry WARN) | #87 — `rmSync(dist)` → clear-contents (не трогает родитель `public/`) | ✅ |
 | (ранее 05-30) B-014/B-015/B-017/B-020 + security audit #69 + ротации + P-PENTEST-4 | — | ✅ |
 
 ### Открытые пункты (сверено с прод/кодом 2026-06-01)
@@ -32,18 +34,17 @@
 | **B-011** alias collision | P2 | app только в `infrasafe`+`leaflet` (B-010); B-010-фикс закреплён | **latent** — рванёт лишь при re-attach app в `uk-network`; полный fix = координация с UK |
 | **B-003** Redis (multi-replica) | P2 | SEC-6 снял memory-growth; SEC-8 multi-replica bypass остаётся | **не наступил** — single-replica setup |
 | **B-004** admin.js split | P2 | `wc -l`: admin.js **3826**, script.js **2384** | **не достигнут** — триггер 4500 LoC; растёт |
-| **B-024** map counters (auth-gated half) | P3 | Здания-счётчик починен (#74); трансформаторы/контроллеры/алерты у anon = `(0)` за 401 | **косметика** — на map-UX проходе / с B-008 |
 | **B-006** Engineering Kanban | P3 | — | **owner UK side**, не наш PR |
 | **B-008** frontend-redesign merge | P4 | — | после стабилизации + B-004 split |
 | **B-009** seasonal HEATING rules | P4 | — | **Q3 2026** (до отопит. сезона) |
 | **B-023** остаток | — | dead `POSTGRES_USER=postgres` в `.env.prod` (1 строка); `compose config` warning=0 (защищён литералом) | **op-step pending** — убрать при следующем postgres-recreate-окне |
 
 ### Рекомендация
-**Ничего не горит.** Все пункты с близким триггером закрыты (B-012/B-013/B-016/B-023-decl/B-025/B-026/
-B-027 + B-007). Оставшееся — latent (B-021/B-011), ждёт триггера (B-003/B-004/B-008), сезона (B-009),
-UK-стороны (B-006) или косметика (B-024). Дешёвые операторские остатки: B-023 dead-`POSTGRES_USER`
-(~5мин в postgres-окне), B-027 косметический root-retry WARN (Future-low). Крупное (B-003/B-004/B-008) —
-отдельным спринтом по триггеру.
+**Ничего не горит.** Трек A («закрыть хвосты») завершён: B-024 auth-gated half + B-027 косметика
+закрыты. Оставшееся — latent (B-021/B-011), ждёт триггера (B-003/B-004/B-008), сезона (B-009) или
+UK-стороны (B-006). Единственный дешёвый операторский остаток: B-023 dead-`POSTGRES_USER` в `.env.prod`
+(~5мин при следующем postgres-recreate-окне, под авторизацию). Крупное (B-003/B-004/B-008) — отдельным
+спринтом по триггеру.
 
 ---
 
