@@ -18,7 +18,7 @@
 | B-012 nginx config single-file mount | #72 directory-mount + `nginx -c`, deployed 05-31 | ✅ |
 | B-013 DB-role doc correctness | #70 (CLAUDE.md/prod.yml/runbook) | ✅ |
 | B-016 compose drift-check | #70 `scripts/compose-drift-check.sh` (host-wide) + #71 baseline | ✅ |
-| B-023 POSTGRES_PASSWORD footgun | #72 (декларация); ⚠️ остаток — dead `POSTGRES_USER` в `.env.prod` | ✅ decl / op-step pending |
+| B-023 POSTGRES_PASSWORD footgun | #72 (декларация) + op-step выполнен 06-01 (dead `POSTGRES_USER` удалён из `.env.prod`, бэкап `.env.prod.bak-b023`, `compose config`→`infrasafe_app`) | ✅ |
 | B-025 LEAK coercion | #75 `coerceBoolish`, deployed 05-31, e2e-verified на проде | ✅ |
 | B-026 acknowledged-alerts невидимо блокируют | #76 `getActiveAlerts` default→`('active','acknowledged')`, deployed | ✅ |
 | B-027 frontend dist не доезжал до прода (P0) | #78–83 `rebuild-frontend.sh` + wire в `update-production.sh`, deployed 06-01 | ✅ |
@@ -37,13 +37,12 @@
 | **B-006** Engineering Kanban | P3 | — | **owner UK side**, не наш PR |
 | **B-008** frontend-redesign merge | P4 | — | после стабилизации + B-004 split |
 | **B-009** seasonal HEATING rules | P4 | — | **Q3 2026** (до отопит. сезона) |
-| **B-023** остаток | — | dead `POSTGRES_USER=postgres` в `.env.prod` (1 строка); `compose config` warning=0 (защищён литералом) | **op-step pending** — убрать при следующем postgres-recreate-окне |
 
 ### Рекомендация
-**Ничего не горит.** Трек A («закрыть хвосты») завершён: B-024 auth-gated half + B-027 косметика
-закрыты. Оставшееся — latent (B-021/B-011), ждёт триггера (B-003/B-004/B-008), сезона (B-009) или
-UK-стороны (B-006). Единственный дешёвый операторский остаток: B-023 dead-`POSTGRES_USER` в `.env.prod`
-(~5мин при следующем postgres-recreate-окне, под авторизацию). Крупное (B-003/B-004/B-008) — отдельным
+**Ничего не горит.** Трек A («закрыть хвосты») полностью завершён: B-024 auth-gated half + B-027
+косметика + B-023 op-step + B-027-followup (no-cache бандлов) закрыты и задеплоены 06-01. Открытых
+дешёвых остатков **нет**. Оставшееся — latent (B-021/B-011), ждёт триггера (B-003/B-004/B-008), сезона
+(B-009) или UK-стороны (B-006). Крупное (B-003/B-004/B-008) + perf content-hash бандлов — отдельным
 спринтом по триггеру.
 
 ---
