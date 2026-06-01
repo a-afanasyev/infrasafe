@@ -180,6 +180,14 @@ jest.mock('../../../src/services/analyticsService', () => ({
     getInfrastructureByBuildingId: jest.fn().mockResolvedValue({}),
 }));
 
+// Map layer counts model (mapLayerCountsController → MapLayerCounts) [B-024]
+jest.mock('../../../src/models/MapLayerCounts', () => ({
+    getCounts: jest.fn().mockResolvedValue({
+        buildings: 17, controllers: 12, transformers: 8, power_lines: 5,
+        water_sources: 3, water_lines: 6, heat_sources: 2, alerts_active: 4
+    })
+}));
+
 // Cache service (used by buildingService and others at module level)
 jest.mock('../../../src/services/cacheService', () => ({
     get: jest.fn().mockResolvedValue(null),
@@ -221,6 +229,7 @@ const DENY_PUBLIC_ROUTES = [
     { method: 'POST', path: '/auth/refresh' },
     { method: 'POST', path: '/metrics/telemetry' },
     { method: 'GET',  path: '/buildings-metrics' },
+    { method: 'GET',  path: '/map-layer-counts' },
     { method: 'GET',  path: '/' },
 ];
 
@@ -312,6 +321,16 @@ describe('Default-deny JWT middleware (src/routes/index.js)', () => {
             expect(res.status).toBe(200);
             expect(res.body).toHaveProperty('data');
             expect(Array.isArray(res.body.data)).toBe(true);
+        });
+
+        test('GET /api/map-layer-counts returns 200 without token (public allowlist) with integer counts [B-024]', async () => {
+            const res = await request(denyApp).get('/api/map-layer-counts');
+            expect(res.status).toBe(200);
+            expect(res.body).toHaveProperty('data');
+            // Aggregate integers only — no row detail leaked to anonymous callers.
+            expect(res.body.data).toHaveProperty('transformers', 8);
+            expect(res.body.data).toHaveProperty('alerts_active', 4);
+            Object.values(res.body.data).forEach(v => expect(Number.isInteger(v)).toBe(true));
         });
 
         test('POST /api/auth/login is not blocked by global middleware (wrong credentials → 401 from login handler, not guard)', async () => {

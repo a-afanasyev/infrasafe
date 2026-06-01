@@ -128,6 +128,12 @@ class MapLayersControl {
                     this.loadLayerDataSilent("📊 Контроллеры"),
                     this.loadLayerDataSilent("⚠️ Алерты")
                 );
+            } else {
+                // [B-024] Anonymous visitors can't load auth-gated layer details
+                // (those endpoints 401), but the PUBLIC /map-layer-counts endpoint
+                // returns aggregate integer counts so the panel shows honest
+                // numbers instead of a wall of (0) until login.
+                layerPromises.push(this.loadPublicLayerCounts());
             }
 
             await Promise.all(layerPromises);
@@ -198,6 +204,39 @@ class MapLayersControl {
             } else {
                 console.error(`Ошибка при загрузке данных для ${layerName}:`, error);
             }
+        }
+    }
+
+    // [B-024] Seed auth-gated layer counters for anonymous visitors from the
+    // PUBLIC aggregate endpoint. Best-effort: any failure leaves the existing
+    // (0) in place (the panel still works, just without seeded numbers).
+    async loadPublicLayerCounts() {
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/map-layer-counts`);
+            if (!response.ok) return;
+
+            const body = await response.json();
+            const counts = (body && body.data) || {};
+
+            const layerToKey = {
+                "⚡ Трансформаторы": "transformers",
+                "🔌 Линии электропередач": "power_lines",
+                "💧 Источники воды": "water_sources",
+                "🚰 Линии водоснабжения": "water_lines",
+                "🔥 Источники тепла": "heat_sources",
+                "📊 Контроллеры": "controllers",
+                "⚠️ Алерты": "alerts_active"
+            };
+
+            for (const [layerName, key] of Object.entries(layerToKey)) {
+                const count = counts[key];
+                if (Number.isFinite(count)) {
+                    this.updateLayerCount(layerName, count);
+                }
+            }
+        } catch (error) {
+            // Public counts are best-effort; anon keeps (0) if this fails.
+            console.warn('Не удалось загрузить публичные счётчики слоёв:', error);
         }
     }
 
