@@ -31,7 +31,8 @@
 ### Открытые пункты (сверено с прод/кодом 2026-06-01)
 | Пункт | P | Проверка | Вердикт / триггер |
 |---|---|---|---|
-| **B-021** durability reconciliation | P1 | смягчён B-020 finalize-first; alert 36 на проде прошёл grace+window→resolved чисто | **latent** — нужен перед multi-replica (B-003) ИЛИ если в проде verification закончит `passed` где ждали `reopened` |
+| **B-021** durability reconciliation | P1 | 🔧 **in progress** — PR1 (client-scoped tick+txn) реализован; PR2 (reopen-реконсиляция+listener) + PR3 (advisory-lock в resolveAlert) ждут | **headline lock-leak** оказался реальным багом (advisory-lock через pool-wrapper → unlock no-op + lock-leak); чинится PR1 |
+| **B-022** ukOutboxService тот же advisory-lock-via-pool баг | P2 | `ukOutboxService.js:142-160` — `db.query`-lock/unlock на разных коннектах (как B-021 W3) | **latent** — single-replica мешает только под contention; fix = копия client-scoped паттерна B-021 PR1 |
 | **B-011** alias collision | P2 | app только в `infrasafe`+`leaflet` (B-010); B-010-фикс закреплён | **latent** — рванёт лишь при re-attach app в `uk-network`; полный fix = координация с UK |
 | **B-003** Redis (multi-replica) | P2 | SEC-6 снял memory-growth; SEC-8 multi-replica bypass остаётся | **не наступил** — single-replica setup |
 | **B-004** admin.js split | P2 | `wc -l`: admin.js **3826**, script.js **2384** | **не достигнут** — триггер 4500 LoC; растёт |
@@ -40,11 +41,11 @@
 | **B-009** seasonal HEATING rules | P4 | — | **Q3 2026** (до отопит. сезона) |
 
 ### Рекомендация
-**Ничего не горит.** Трек A («закрыть хвосты») полностью завершён: B-024 auth-gated half + B-027
-косметика + B-023 op-step + B-027-followup (no-cache бандлов) закрыты и задеплоены 06-01. Открытых
-дешёвых остатков **нет**. Оставшееся — latent (B-021/B-011), ждёт триггера (B-003/B-004/B-008), сезона
-(B-009) или UK-стороны (B-006). Крупное (B-003/B-004/B-008) + perf content-hash бандлов — отдельным
-спринтом по триггеру.
+**Ничего не горит.** Трек A («закрыть хвосты») полностью завершён 06-01. **B-021 (P1) в работе** — при
+чтении кода вскрылся реальный advisory-lock-leak (сильнее, чем описано), чинится 3 последовательными PR
+(PR1 client-scoped tick+txn — готов; PR2 reopen-реконсиляция; PR3 lock в resolveAlert). Тот же баг в
+ukOutboxService вынесен в **B-022** (defer, копия паттерна PR1). Остальное — latent (B-011), ждёт триггера
+(B-003/B-004/B-008), сезона (B-009) или UK-стороны (B-006). Perf content-hash бандлов — отдельным PR.
 
 ---
 
