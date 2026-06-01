@@ -62,6 +62,11 @@ describe('alertVerificationService', () => {
         // leak in (order-dependent failures).
         AlertVerification.pickDue.mockReset();
         AlertVerification.countRecentReopensForChain.mockReset();
+        // Drain mockResolvedValueOnce queues too — a test whose lock-denied /
+        // early-return path never consumes a queued Once would otherwise leak
+        // it into the next test (order-dependent failures).
+        AlertVerification.findPendingByChainId.mockReset();
+        AlertVerification.markReopened.mockReset();
         db.query.mockReset();
         db.__mockClient.query.mockReset();
         db.__mockClient.release.mockClear();
@@ -89,6 +94,10 @@ describe('alertVerificationService', () => {
             }
             if (/previous_uk_request_number/.test(sql)) {
                 return Promise.resolve({ rows: [{ previous_uk_request_number: null }] });
+            }
+            // [B-021 W1] superseding-alert lookup in the reopen chain.
+            if (/SELECT\s+alert_id\s+FROM\s+infrastructure_alerts/i.test(sql)) {
+                return Promise.resolve({ rows: overrides.superseding ? [{ alert_id: overrides.superseding }] : [] });
             }
             if (/UPDATE\s+infrastructure_alerts/i.test(sql)) return Promise.resolve({ rows: [] });
             return Promise.resolve({ rows: [] });
@@ -464,6 +473,61 @@ describe('alertVerificationService', () => {
         });
     });
 
+    // [B-021 W1] Reopen reconciliation from durable DB state. When the window
+    // expired but a later alert exists in the same reopen_chain_id, the
+    // ephemeral ALERT_REOPENED event was lost — record the reopen from the DB
+    // instead of blindly marking passed.
+    describe('[B-021 W1] reopen reconciliation from DB', () => {
+        const expiredDispatched = {
+            ...dueRow,
+            window_until: new Date(Date.now() - 60000).toISOString(),
+            attempts: 1
+        };
+
+        test('superseding alert in chain → markReopened (NOT markPassed) + finalize resolved', async () => {
+            routeClient({ superseding: 99 });
+            AlertVerification.pickDue.mockResolvedValueOnce(expiredDispatched);
+
+            await service._tick();
+
+            expect(AlertVerification.markReopened).toHaveBeenCalledWith(1, 99, db.__mockClient);
+            expect(AlertVerification.markPassed).not.toHaveBeenCalled();
+            const call = findClientFinalize();
+            expect(call).toBeDefined();
+            expect(call[1]).toEqual([21, 'resolved']);
+        });
+
+        test('no superseding alert → markPassed (unchanged behaviour)', async () => {
+            routeClient(); // superseding undefined → lookup returns []
+            AlertVerification.pickDue.mockResolvedValueOnce(expiredDispatched);
+
+            await service._tick();
+
+            expect(AlertVerification.markPassed).toHaveBeenCalledWith(1, db.__mockClient);
+            expect(AlertVerification.markReopened).not.toHaveBeenCalled();
+        });
+
+        test('reconciliation applies to attempts=0 expired branch too (superseding → reopened)', async () => {
+            routeClient({ superseding: 77 });
+            AlertVerification.pickDue.mockResolvedValueOnce({
+                ...dueRow,
+                window_until: new Date(Date.now() - 60000).toISOString(),
+                attempts: 0
+            });
+
+            await service._tick();
+
+            expect(AlertVerification.markReopened).toHaveBeenCalledWith(1, 77, db.__mockClient);
+            expect(AlertVerification.markSkipped).not.toHaveBeenCalled();
+        });
+
+        test('_findSupersedingAlert returns null for falsy chain id (no query)', async () => {
+            const r = await service._findSupersedingAlert(null, 1, db.__mockClient);
+            expect(r).toBeNull();
+            expect(db.__mockClient.query).not.toHaveBeenCalled();
+        });
+    });
+
     // [B-020] Parent-alert status write-back. The verifier's terminal
     // outcomes must transition infrastructure_alerts.status OUT of the
     // transient 'resolved_verifying' state — now atomically with the
@@ -587,82 +651,94 @@ describe('alertVerificationService', () => {
         });
     });
 
-    // [Sprint 10 PR-3] ALERT_REOPENED listener — UNCHANGED in B-021 PR1
-    // (still pool-based via the executor=db default). PR2 will client-scope it.
-    describe('ALERT_REOPENED listener', () => {
-        test('markReopened on listener fire with matching chain_id', async () => {
-            AlertVerification.findPendingByChainId.mockResolvedValueOnce({ id: 7 });
-
-            alertEvents.emit(alertEvents.EVENTS.ALERT_REOPENED, {
-                alertId: 200,
-                reopenChainId: 'chain-uuid-listen',
-                reopenSequence: 2,
-                previousAlertId: 100
-            });
-
-            await new Promise((r) => setImmediate(r));
-
-            expect(AlertVerification.findPendingByChainId).toHaveBeenCalledWith('chain-uuid-listen');
-            expect(AlertVerification.markReopened).toHaveBeenCalledWith(7, 200);
-        });
-
-        test('[B-020] markReopened also finalizes the OLD alert → resolved', async () => {
-            db.query.mockResolvedValue({ rows: [] });
+    // [B-021] ALERT_REOPENED handler — now client-scoped + advisory-locked +
+    // transactional. Behaviour tested via service._handleReopen directly
+    // (deterministic); one emit-wiring test confirms the listener calls it.
+    describe('[B-021] ALERT_REOPENED handler (_handleReopen)', () => {
+        test('emit wiring: listener invokes the handler (findPendingByChainId called)', async () => {
+            routeClient();
             AlertVerification.findPendingByChainId.mockResolvedValueOnce({ id: 7, original_alert_id: 100 });
 
             alertEvents.emit(alertEvents.EVENTS.ALERT_REOPENED, {
                 alertId: 200,
-                reopenChainId: 'chain-uuid-wb',
+                reopenChainId: 'chain-wiring',
                 reopenSequence: 2,
                 previousAlertId: 100
             });
-
             await new Promise((r) => setImmediate(r));
 
-            const call = db.query.mock.calls.find((c) => /UPDATE\s+infrastructure_alerts/i.test(c[0]));
+            expect(AlertVerification.findPendingByChainId).toHaveBeenCalledWith('chain-wiring', db.__mockClient);
+        });
+
+        test('markReopened on matching chain_id, on the locked client', async () => {
+            routeClient();
+            AlertVerification.findPendingByChainId.mockResolvedValueOnce({ id: 7, original_alert_id: 100 });
+
+            await service._handleReopen({ alertId: 200, reopenChainId: 'chain-uuid-listen' });
+
+            expect(AlertVerification.markReopened).toHaveBeenCalledWith(7, 200, db.__mockClient);
+            // lock + unlock on the client; wrapped in a transaction.
+            const calls = clientCalls();
+            expect(calls.some((s) => /pg_try_advisory_lock/.test(s))).toBe(true);
+            expect(calls.some((s) => /pg_advisory_unlock/.test(s))).toBe(true);
+            expect(calls.some((s) => /^\s*COMMIT/.test(s))).toBe(true);
+            expect(db.__mockClient.release).toHaveBeenCalledTimes(1);
+        });
+
+        test('[B-020] finalizes the OLD alert → resolved BEFORE markReopened', async () => {
+            routeClient();
+            AlertVerification.findPendingByChainId.mockResolvedValueOnce({ id: 7, original_alert_id: 100 });
+
+            await service._handleReopen({ alertId: 200, reopenChainId: 'chain-order' });
+
+            const call = findClientFinalize();
             expect(call).toBeDefined();
             expect(call[0]).toMatch(/status\s*=\s*'resolved_verifying'/);
             expect(call[1]).toEqual([100, 'resolved']);
-        });
 
-        test('[B-020] listener finalizes OLD alert BEFORE markReopened (crash-safe order)', async () => {
-            db.query.mockResolvedValue({ rows: [] });
-            AlertVerification.findPendingByChainId.mockResolvedValueOnce({ id: 7, original_alert_id: 100 });
-
-            alertEvents.emit(alertEvents.EVENTS.ALERT_REOPENED, {
-                alertId: 200,
-                reopenChainId: 'chain-order',
-                reopenSequence: 2,
-                previousAlertId: 100
-            });
-
-            await new Promise((r) => setImmediate(r));
-
-            const updateIdx = db.query.mock.calls.findIndex((c) => /UPDATE\s+infrastructure_alerts/i.test(c[0]));
-            expect(updateIdx).toBeGreaterThanOrEqual(0);
-            const finalizeOrder = db.query.mock.invocationCallOrder[updateIdx];
+            const updateIdx = db.__mockClient.query.mock.calls.findIndex((c) => /UPDATE\s+infrastructure_alerts/i.test(c[0]));
+            const finalizeOrder = db.__mockClient.query.mock.invocationCallOrder[updateIdx];
             const markReopenedOrder = AlertVerification.markReopened.mock.invocationCallOrder[0];
             expect(finalizeOrder).toBeLessThan(markReopenedOrder);
         });
 
-        test('listener no-ops when no pending verification matches', async () => {
-            AlertVerification.findPendingByChainId.mockResolvedValueOnce(null);
+        test('lock busy → skips (no writes); reconciliation is the backstop', async () => {
+            routeClient({ locked: false });
 
-            alertEvents.emit(alertEvents.EVENTS.ALERT_REOPENED, {
-                alertId: 201,
-                reopenChainId: 'orphan-chain',
-                reopenSequence: 2
-            });
+            await service._handleReopen({ alertId: 200, reopenChainId: 'chain-busy' });
 
-            await new Promise((r) => setImmediate(r));
-
+            expect(AlertVerification.findPendingByChainId).not.toHaveBeenCalled();
             expect(AlertVerification.markReopened).not.toHaveBeenCalled();
+            expect(db.__mockClient.release).toHaveBeenCalledTimes(1);
         });
 
-        test('listener tolerates missing payload fields', async () => {
-            alertEvents.emit(alertEvents.EVENTS.ALERT_REOPENED, { reopenChainId: 'only-chain' });
-            await new Promise((r) => setImmediate(r));
+        test('no pending verification → COMMIT, no markReopened, client released', async () => {
+            routeClient();
+            AlertVerification.findPendingByChainId.mockResolvedValueOnce(null);
+
+            await service._handleReopen({ alertId: 201, reopenChainId: 'orphan-chain' });
+
+            expect(AlertVerification.markReopened).not.toHaveBeenCalled();
+            expect(db.__mockClient.release).toHaveBeenCalledTimes(1);
+        });
+
+        test('tolerates missing payload fields (no checkout)', async () => {
+            await service._handleReopen({ reopenChainId: 'only-chain' });
+            expect(db.__mockPool.connect).not.toHaveBeenCalled();
             expect(AlertVerification.findPendingByChainId).not.toHaveBeenCalled();
+        });
+
+        test('markReopened failure → ROLLBACK, unlock, release, no throw', async () => {
+            routeClient();
+            AlertVerification.findPendingByChainId.mockResolvedValueOnce({ id: 7, original_alert_id: 100 });
+            AlertVerification.markReopened.mockRejectedValueOnce(new Error('write fail'));
+
+            await expect(service._handleReopen({ alertId: 200, reopenChainId: 'chain-fail' })).resolves.toBeUndefined();
+
+            const calls = clientCalls();
+            expect(calls.some((s) => /^\s*ROLLBACK/.test(s))).toBe(true);
+            expect(calls.some((s) => /pg_advisory_unlock/.test(s))).toBe(true);
+            expect(db.__mockClient.release).toHaveBeenCalledTimes(1);
         });
     });
 

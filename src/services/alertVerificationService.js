@@ -245,6 +245,24 @@ class AlertVerificationService {
         const now = Date.now();
         const windowUntilMs = new Date(row.window_until).getTime();
         if (now > windowUntilMs) {
+            // [B-021 W1] Reconcile reopen from DURABLE DB state before deciding
+            // passed/skipped. The reopen alert (if any) is already persisted by
+            // alertService.createAlert with this reopen_chain_id and a higher
+            // reopen_sequence. The ALERT_REOPENED event that normally records
+            // the reopen is ephemeral — a crash between emit and the listener
+            // loses it, and this branch would then blindly markPassed (audit
+            // says 'passed' where a reopen actually happened, and the
+            // new_alert_id linkage is lost). Re-deriving from the DB closes that
+            // gap without a durable event outbox.
+            const supersedingAlertId = await this._findSupersedingAlert(
+                row.reopen_chain_id, row.reopen_sequence, executor
+            );
+            if (supersedingAlertId) {
+                await this._finalizeAlertStatus(row.original_alert_id, 'resolved', executor);
+                await AlertVerification.markReopened(row.id, supersedingAlertId, executor);
+                logger.info(`alertVerificationService: verification ${row.id} reconciled → reopened (superseding alert ${supersedingAlertId} found in chain ${row.reopen_chain_id}; ALERT_REOPENED event was lost)`);
+                return null;
+            }
             if (row.attempts > 0) {
                 // We dispatched the VERIFY event earlier, no reopen happened
                 // in the window → sensor recovered. Mark passed.
@@ -368,6 +386,28 @@ class AlertVerificationService {
      * rule to define it). When multiple severities exist for the type,
      * the most-restrictive (lowest) value wins.
      */
+    /**
+     * [B-021 W1] Find a later alert in the same reopen chain — evidence that a
+     * reopen happened (so the verification should be 'reopened', not 'passed').
+     * Any non-pending-discarded status counts: the reopen alert may itself have
+     * since been resolved/re-verified. Higher reopen_sequence = a newer link.
+     * Indexed by `idx_reopen_chain ON infrastructure_alerts(reopen_chain_id)`
+     * (migration 027). Returns the alert_id or null.
+     */
+    async _findSupersedingAlert(reopenChainId, reopenSequence, executor = db) {
+        if (!reopenChainId) return null;
+        const result = await executor.query(
+            `SELECT alert_id FROM infrastructure_alerts
+             WHERE reopen_chain_id = $1
+               AND reopen_sequence > $2
+               AND status IN ('active', 'acknowledged', 'resolved', 'resolved_verifying', 'engineer_required')
+             ORDER BY reopen_sequence DESC, alert_id DESC
+             LIMIT 1`,
+            [reopenChainId, reopenSequence]
+        );
+        return result.rows[0] ? result.rows[0].alert_id : null;
+    }
+
     async _getReopenQuota(alertType, executor = db) {
         // [B-021] Runs inside the drain transaction (executor = locked client).
         // A query error must propagate so the surrounding transaction rolls
@@ -421,6 +461,71 @@ class AlertVerificationService {
         }
     }
 
+    /**
+     * [B-021] ALERT_REOPENED handler — client-scoped + advisory-locked + one
+     * transaction. Takes the SAME advisory key as the drain so it can't race
+     * _drainOne on the same chain. If the lock is busy (drain in progress), we
+     * skip: the window-expired _findSupersedingAlert reconciliation is the
+     * durable backstop and will record this reopen from DB state on a later
+     * tick — so a missed handler run is no longer a durability hole.
+     */
+    async _handleReopen(payload) {
+        const { alertId, reopenChainId } = payload || {};
+        if (!alertId || !reopenChainId) {
+            logger.warn(`alertVerificationService: ALERT_REOPENED missing alertId or reopenChainId`);
+            return;
+        }
+
+        let client;
+        try {
+            client = await db.getPool().connect();
+        } catch (err) {
+            logger.error(`alertVerificationService: ALERT_REOPENED connect failed: ${err.message}`);
+            return;
+        }
+
+        try {
+            const lockResult = await client.query('SELECT pg_try_advisory_lock($1) AS locked', [ADVISORY_LOCK_KEY]);
+            const locked = lockResult.rows[0] && lockResult.rows[0].locked === true;
+            if (!locked) {
+                logger.debug(`alertVerificationService: ALERT_REOPENED skipped (lock busy) chain=${reopenChainId} — _drainOne reconciliation will self-heal`);
+                return;
+            }
+            try {
+                await client.query('BEGIN');
+                try {
+                    const pending = await AlertVerification.findPendingByChainId(reopenChainId, client);
+                    if (!pending) {
+                        logger.debug(`alertVerificationService: ALERT_REOPENED chain ${reopenChainId} has no pending verification`);
+                        await client.query('COMMIT');
+                        return;
+                    }
+                    // [B-020] finalize-FIRST then markReopened — now atomic via
+                    // the transaction (either both land or neither).
+                    if (pending.original_alert_id) {
+                        await this._finalizeAlertStatus(pending.original_alert_id, 'resolved', client);
+                    }
+                    await AlertVerification.markReopened(pending.id, alertId, client);
+                    await client.query('COMMIT');
+                    logger.info(`alertVerificationService: verification ${pending.id} → reopened (new alert_id=${alertId}, chain=${reopenChainId})`);
+                } catch (err) {
+                    await client.query('ROLLBACK').catch((e) => {
+                        logger.warn(`alertVerificationService: ALERT_REOPENED ROLLBACK failed: ${e.message}`);
+                    });
+                    throw err;
+                }
+            } finally {
+                await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]).catch((err) => {
+                    logger.warn(`alertVerificationService: advisory_unlock failed: ${err.message}`);
+                });
+            }
+        } catch (err) {
+            logger.error(`alertVerificationService: ALERT_REOPENED handler failed: ${err.message}`);
+        } finally {
+            client.release();
+        }
+    }
+
     _logFailure(err) {
         const now = Date.now();
         const isFirst = this._consecutiveFailures === 1;
@@ -444,40 +549,15 @@ const singleton = new AlertVerificationService();
 // [Sprint 10 PR-3] ALERT_REOPENED listener — when alertService.createAlert
 // emits this after inserting a reopen alert, look up the matching pending
 // verification by reopen_chain_id and markReopened with the new alert_id.
-// This is the "did a new alert appear?" reconciliation that closes the
-// verification loop.
+// This is the FAST PATH of the "did a new alert appear?" reconciliation; the
+// durable backstop is the window-expired _findSupersedingAlert check in
+// _drainOne (B-021 W1), which re-derives the same outcome from DB state if
+// this ephemeral event is ever lost (process crash between createAlert's emit
+// and this handler).
 //
-// Fire-and-forget: errors are logged but don't propagate (the new alert
-// row is already persisted). Operator can manually fix orphaned
-// verification rows from admin UI if needed.
-alertEvents.on(alertEvents.EVENTS.ALERT_REOPENED, async (payload) => {
-    const { alertId, reopenChainId } = payload || {};
-    if (!alertId || !reopenChainId) {
-        logger.warn(`alertVerificationService: ALERT_REOPENED missing alertId or reopenChainId`);
-        return;
-    }
-    try {
-        const pending = await AlertVerification.findPendingByChainId(reopenChainId);
-        if (!pending) {
-            logger.debug(`alertVerificationService: ALERT_REOPENED chain ${reopenChainId} has no pending verification`);
-            return;
-        }
-        // [B-020] finalize-FIRST (same crash-safe ordering as _drainOne): the
-        // OLD alert is superseded by the freshly-created reopen alert (active),
-        // so move it out of resolved_verifying → resolved BEFORE marking the
-        // verification reopened. If the process crashes between the two, the
-        // verification row stays 'pending' so _drainOne re-runs and the alert
-        // never orphans. Doing markReopened first would leave the row
-        // non-pending (pickDue skips it) with the alert stuck — re-introducing
-        // the very B-020 bug this fix closes.
-        if (pending.original_alert_id) {
-            await singleton._finalizeAlertStatus(pending.original_alert_id, 'resolved');
-        }
-        await AlertVerification.markReopened(pending.id, alertId);
-        logger.info(`alertVerificationService: verification ${pending.id} → reopened (new alert_id=${alertId}, chain=${reopenChainId})`);
-    } catch (err) {
-        logger.error(`alertVerificationService: ALERT_REOPENED handler failed: ${err.message}`);
-    }
+// Fire-and-forget: errors are logged but don't propagate.
+alertEvents.on(alertEvents.EVENTS.ALERT_REOPENED, (payload) => {
+    void singleton._handleReopen(payload);
 });
 
 module.exports = singleton;
