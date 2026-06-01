@@ -12,7 +12,7 @@
  */
 
 import { build, context } from 'esbuild';
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, rmSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -52,8 +52,17 @@ const sharedOptions = {
 };
 
 async function run() {
-    rmSync(outdir, { recursive: true, force: true });
+    // [B-027] Clear the CONTENTS of outdir, not the directory itself.
+    // rmSync(outdir) removes public/dist as a whole, which needs write
+    // permission on the PARENT (public/). On prod, public/ is owned by a
+    // different uid (node:1000) than the container user (nodejs:1001), so the
+    // whole-dir remove hit EACCES and forced a root-retry every clean build.
+    // Clearing entries inside outdir only needs write on outdir itself (already
+    // owned by the app user), so no root is required.
     mkdirSync(outdir, { recursive: true });
+    for (const entry of readdirSync(outdir)) {
+        rmSync(path.join(outdir, entry), { recursive: true, force: true });
+    }
 
     if (process.argv.includes('--watch')) {
         const ctx = await context(sharedOptions);
