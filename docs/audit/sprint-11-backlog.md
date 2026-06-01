@@ -6,7 +6,8 @@
 > Обновлён 2026-05-28 после deploy 4 PR'ов на прод (см. P0 — production infra drift).
 > Обновлён 2026-05-30: закрыты B-014/B-015/B-017/B-020 + security audit (#69) + ротации + P-PENTEST-4.
 > Обновлён 2026-06-01: закрыты B-012/B-013/B-016/B-023/B-025/B-026/B-027 + B-007; B-024 partial. Шапка переписана.
-> Обновлён 2026-06-01 (Трек A): закрыт B-024 auth-gated half (#PR public /map-layer-counts) + B-027 косметика (#87 esbuild clear-contents).
+> Обновлён 2026-06-01 (Трек A): закрыт B-024 auth-gated half (#88 public /map-layer-counts) + B-027 косметика (#87 esbuild clear-contents) + B-023 op-step (.env.prod) + B-027-followup (#89 no-cache бандлов) + backlog (#90). Трек A завершён.
+> Обновлён 2026-06-01 (вычитка #91): синхронизированы детальные секции B-024/B-027/B-023 с фактом закрытия (были stale после Трек-A мержей).
 
 ---
 
@@ -94,11 +95,11 @@ docker exec -u 0 infrasafe-app-1 sh -c 'cd /app && node build/esbuild.config.mjs
    `git pull && docker compose up -d`. Tracked-фикс лучше: доезжает на любой хост через `git pull`.
 3. ✅ Разовый `FIX_DIST_OWNER=1` выполнен (chown `public/dist` → nodejs).
 
-**Известный косметический остаток (не баг):** clean-run всё ещё делает root-retry (WARN), т.к. esbuild
-`rmSync(public/dist)` требует write на родителе `/app/public` (owned by `node` uid1000 ≠ контейнерный
-`nodejs` uid1001). Функционально безвредно (root-retry → exit 0, все бандлы verified), trap-строки
-убраны (PR #80/#81). Полностью убрать WARN можно chown'ом родителя или esbuild per-file cleanup —
-вынесено в Future (low).
+**Косметический остаток — ЗАКРЫТ 2026-06-01 (#87):** clean-run раньше делал root-retry (WARN), т.к.
+esbuild `rmSync(public/dist)` удалял саму папку → нужен write на родителе `/app/public` (owned `node`
+uid1000 ≠ контейнерный `nodejs` uid1001). Фикс #87: esbuild чистит **содержимое** `dist`, не папку →
+write нужен только внутри `dist`. На проде разово выполнен `FIX_DIST_OWNER=1` (chown `dist`→`nodejs`);
+clean-прогон `rebuild-frontend.sh` теперь без единого root-retry/WARN (verified 06-01).
 
 **Followup (2026-06-01, shipped):** nginx отдавал `*.js/*.css` с `max-age=300, must-revalidate` —
 `must-revalidate` срабатывает только ПОСЛЕ `max-age`, поэтому свежий деплой был невидим вернувшимся
@@ -431,22 +432,20 @@ alert для уже залогированных, по триажу операт
 
 ## P3 — UX / observability
 
-### B-024 — Map layer counters show `(0)` until the layer is toggled — PARTIAL (2026-05-31)
+### B-024 — Map layer counters show `(0)` until the layer is toggled — CLOSED (2026-06-01)
 
-> **Status:** фактор 1 (Здания, public) **исправлен** 2026-05-31; фактор 2 (auth-gated слои для anon)
-> остаётся OPEN — см. «Остаток» ниже.
+> **Status:** ОБА фактора закрыты.
+> - Фактор 1 (Здания, public): #74 — `loadLayerDataSilent` получил `case "🏢 Здания"` → `loadBuildings`
+>   из публичного `/buildings-metrics`, счётчик заполняется при init для всех.
+> - Фактор 2 (auth-gated слои для anon): **#88 (2026-06-01)** — выбран вариант 3 (публичные count-only
+>   агрегаты). Новый PUBLIC `GET /api/map-layer-counts` (`src/models/MapLayerCounts.js` +
+>   `mapLayerCountsController` + route в default-deny allowlist) отдаёт **только целые числа** (без
+>   координат/имён/статусов). `public/map-layers-control.js` `loadPublicLayerCounts()` сидит счётчики
+>   auth-gated слоёв для anon при init (best-effort). **Verified end-to-end на проде 06-01**: аноним
+>   видит Здания(2)/Трансформаторы(1)/Контроллеры(2)/Алерты(1) вместо стены `(0)`; пустые слои —
+>   честный `(0)`. Тесты: model 4 + controller 2 + default-deny integration +1.
 >
-> **Fix-часть (shipped):** `public/map-layers-control.js` `loadLayerDataSilent` получил недостающий
-> `case "🏢 Здания"` → `loadBuildings`. Здания грузятся из **публичного** `/buildings-metrics`, поэтому
-> счётчик `🏢 Здания (N)` теперь заполняется при инициализации карты для всех (вкл. anon), а не только
-> после ручного toggle. `loadBuildings` делает `clearLayers()` → идемпотентно, double-render нет; маркеры
-> на карте по-прежнему рисует `script.js loadData()` (отдельный путь), эта правка трогает только счётчик
-> overlay-слоя. Frontend-онли, тестируется в браузере (anon).
->
-> **Остаток (OPEN, фактор 2):** auth-gated слои (`⚡ Трансформаторы`, `📊 Контроллеры`, `⚠️ Алерты`, …)
-> у анонима остаются `(0)` — их load-fns бьют в эндпоинты, дающие 401 без токена. Это by-design
-> (default-deny), но UI показывает фальшивый `0`. Варианты ниже (скрывать `(N)` при 401 / публичные
-> count-агрегаты) — брать на map-UX проходе или с `feature/frontend-redesign` (B-008).
+> Историческая диагностика ниже оставлена для контекста.
 
 **Найдено 2026-05-31** при браузерном QA прода (post-B-012 deploy; **НЕ регрессия** — деплой
 `3c23225..26f206f` тронул только тестовые файлы, ноль изменений в `public/`/JS). Диагноз уточнён
@@ -771,6 +770,7 @@ env_file value → postgres bootstraps blank.
 `POSTGRES_USER=infrasafe_app` / `POSTGRES_DB` kept as **literals** (shield against a stale
 `POSTGRES_USER=postgres` in `.env.prod`; literals raise no warning). `docker compose config` now renders
 with **zero** warnings.
-**Residual operator step (NOT done here — needs prod `.env.prod` edit + postgres-recreate window):** remove
-the dead `POSTGRES_USER=postgres` line from `.env.prod`; the declaration change itself only applies on a
-postgres recreate. Documented in the runbook (B-023 note) — do not recreate postgres just for this.
+**Residual operator step — DONE 2026-06-01:** removed the dead `POSTGRES_USER=postgres` line from prod
+`.env.prod` (backup `.env.prod.bak-b023-20260601`; `grep -c` 1→0). No postgres recreate needed — the line
+was already shadowed by the literal `POSTGRES_USER=infrasafe_app` in compose, and `docker compose config`
+still resolves to `infrasafe_app`. B-023 fully closed.
