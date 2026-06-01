@@ -31,7 +31,7 @@
 ### Открытые пункты (сверено с прод/кодом 2026-06-01)
 | Пункт | P | Проверка | Вердикт / триггер |
 |---|---|---|---|
-| **B-021** durability reconciliation | P1 | 🔧 **in progress** — PR1 (client-scoped tick+txn) реализован; PR2 (reopen-реконсиляция+listener) + PR3 (advisory-lock в resolveAlert) ждут | **headline lock-leak** оказался реальным багом (advisory-lock через pool-wrapper → unlock no-op + lock-leak); чинится PR1 |
+| **B-021** durability reconciliation | P1 | 🔧 **in progress** — PR1 (client-scoped tick+txn, #92 merged) + PR2 (reopen-реконсиляция из БД + client-scoped listener) реализованы; PR3 (advisory-lock в resolveAlert) ждёт | **headline lock-leak** закрыт PR1; PR2 убрал ephemeral-event durability-дыру через `_findSupersedingAlert` (re-derive reopen из БД) |
 | **B-022** ukOutboxService тот же advisory-lock-via-pool баг | P2 | `ukOutboxService.js:142-160` — `db.query`-lock/unlock на разных коннектах (как B-021 W3) | **latent** — single-replica мешает только под contention; fix = копия client-scoped паттерна B-021 PR1 |
 | **B-011** alias collision | P2 | app только в `infrasafe`+`leaflet` (B-010); B-010-фикс закреплён | **latent** — рванёт лишь при re-attach app в `uk-network`; полный fix = координация с UK |
 | **B-003** Redis (multi-replica) | P2 | SEC-6 снял memory-growth; SEC-8 multi-replica bypass остаётся | **не наступил** — single-replica setup |
