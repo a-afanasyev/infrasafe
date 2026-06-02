@@ -9,7 +9,8 @@ const getAllBuildings = async (req, res, next) => {
         const { page, limit, sort = 'building_id', order = 'asc' } = req.query;
         // [SEC-33] clamp page/limit (NaN/negative → safe) before they reach SQL
         const { pageNum, limitNum } = validatePagination(page, limit, 10);
-        const result = await buildingService.getAllBuildings(pageNum, limitNum, sort, order);
+        // Number() = CodeQL-recognized numeric barrier (values already clamped ints)
+        const result = await buildingService.getAllBuildings(Number(pageNum), Number(limitNum), sort, order);
         return res.status(200).json(result);
     } catch (error) {
         logger.error(`Error in getAllBuildings: ${error.message}`);

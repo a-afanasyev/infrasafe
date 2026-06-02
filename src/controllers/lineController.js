@@ -6,7 +6,10 @@ const { validatePagination } = require('../utils/queryValidation');
 const getAllLines = async (req, res, next) => {
     try {
         // [SEC-33] clamp page/limit (NaN/negative → safe) before they reach SQL
-        const { pageNum: page, limitNum: limit } = validatePagination(req.query.page, req.query.limit, 10);
+        const _pg = validatePagination(req.query.page, req.query.limit, 10);
+        // Number() = CodeQL-recognized numeric barrier (values already clamped ints)
+        const page = Number(_pg.pageNum);
+        const limit = Number(_pg.limitNum);
 
         // Фильтры
         const filters = {};

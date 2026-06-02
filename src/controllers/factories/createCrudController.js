@@ -35,7 +35,8 @@ function createCrudController({ Model, notFoundMessage, logLabel, deletedMessage
             const { page, limit, sort = 'id', order = 'asc' } = req.query;
             // [SEC-33] clamp page/limit (NaN/negative → safe) before they reach SQL
             const { pageNum, limitNum } = validatePagination(page, limit, 10);
-            const result = await Model.findAll(pageNum, limitNum, sort, order);
+            // Number() = CodeQL-recognized numeric barrier (values already clamped ints)
+            const result = await Model.findAll(Number(pageNum), Number(limitNum), sort, order);
             return res.status(200).json(result);
         } catch (error) {
             logger.error(`Error in getAll ${logLabel}: ${error.message}`);

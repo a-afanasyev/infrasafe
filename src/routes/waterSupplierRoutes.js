@@ -19,7 +19,8 @@ router.get('/', async (req, res, next) => {
             filters.type = type;
         }
 
-        const waterSuppliers = await WaterSupplier.findAll(pageNum, limitNum, filters);
+        // Number() = CodeQL-recognized numeric barrier (values already clamped ints)
+        const waterSuppliers = await WaterSupplier.findAll(Number(pageNum), Number(limitNum), filters);
         res.json(waterSuppliers);
     } catch (error) {
         logger.error(`Error fetching water suppliers: ${error.message}`, {

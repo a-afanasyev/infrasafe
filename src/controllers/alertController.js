@@ -35,8 +35,9 @@ class AlertController {
             const sortDir = order === 'asc' ? 'ASC' : 'DESC';
 
             const result = await alertService.getActiveAlerts(filters, {
-                page: pageNum,
-                limit: pageSize,
+                // Number() = CodeQL-recognized numeric barrier (values already clamped ints)
+                page: Number(pageNum),
+                limit: Number(pageSize),
                 sort: sortCol,
                 order: sortDir
             });
