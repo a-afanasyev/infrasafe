@@ -125,10 +125,10 @@ class UkOutbox {
                  SET attempt_count = attempt_count + 1,
                      last_error = $2,
                      last_response_code = $3,
-                     next_attempt_at = NOW() + ($4 || ' seconds')::interval
+                     next_attempt_at = NOW() + ($4 * INTERVAL '1 second')
                  WHERE id = $1
                  RETURNING *`,
-                [id, errorMessage, responseCode, String(Math.max(1, Math.floor(backoffSeconds)))]
+                [id, errorMessage, responseCode, Math.max(1, Math.floor(backoffSeconds))]
             );
             return result.rows[0] || null;
         } catch (error) {
@@ -170,11 +170,11 @@ class UkOutbox {
         try {
             const result = await db.query(
                 `UPDATE uk_outbox
-                 SET next_attempt_at = NOW() + ($2 || ' seconds')::interval,
+                 SET next_attempt_at = NOW() + ($2 * INTERVAL '1 second'),
                      last_error = $3
                  WHERE id = $1
                  RETURNING *`,
-                [id, String(Math.max(1, Math.floor(backoffSeconds))), 'skipped: send-time precondition not met']
+                [id, Math.max(1, Math.floor(backoffSeconds)), 'skipped: send-time precondition not met']
             );
             return result.rows[0] || null;
         } catch (error) {
