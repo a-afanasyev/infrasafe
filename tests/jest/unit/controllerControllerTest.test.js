@@ -73,7 +73,8 @@ describe('ControllerController', () => {
 
             await getAllControllers(req, res, next);
 
-            expect(controllerService.getAllControllers).toHaveBeenCalledWith(2, 20, 'serial_number', 'desc');
+            // [SEC-33] order normalized to uppercase by boundary validateSortOrder
+            expect(controllerService.getAllControllers).toHaveBeenCalledWith(2, 20, 'serial_number', 'DESC');
         });
 
         test('uses defaults for missing query params', async () => {
@@ -81,7 +82,7 @@ describe('ControllerController', () => {
 
             await getAllControllers(req, res, next);
 
-            expect(controllerService.getAllControllers).toHaveBeenCalledWith(1, 10, 'controller_id', 'asc');
+            expect(controllerService.getAllControllers).toHaveBeenCalledWith(1, 10, 'controller_id', 'ASC');
         });
 
         test('calls next on error', async () => {

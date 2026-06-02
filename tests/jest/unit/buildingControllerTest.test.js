@@ -50,7 +50,8 @@ describe('buildingController', () => {
 
             await buildingController.getAllBuildings(req, res, next);
 
-            expect(buildingService.getAllBuildings).toHaveBeenCalledWith(1, 10, 'building_id', 'asc');
+            // [SEC-33] order normalized to uppercase by boundary validateSortOrder
+            expect(buildingService.getAllBuildings).toHaveBeenCalledWith(1, 10, 'building_id', 'ASC');
             expect(res.status).toHaveBeenCalledWith(200);
             expect(res.json).toHaveBeenCalledWith(mockResult);
         });
@@ -61,7 +62,7 @@ describe('buildingController', () => {
 
             await buildingController.getAllBuildings(req, res, next);
 
-            expect(buildingService.getAllBuildings).toHaveBeenCalledWith(3, 25, 'name', 'desc');
+            expect(buildingService.getAllBuildings).toHaveBeenCalledWith(3, 25, 'name', 'DESC');
         });
 
         it('calls next on error', async () => {

@@ -1,16 +1,17 @@
 const controllerService = require('../services/controllerService');
 const logger = require('../utils/logger');
 const { sendError, sendNotFound } = require('../utils/apiResponse');
-const { validatePagination } = require('../utils/queryValidation');
+const { validatePagination, validateSortOrder } = require('../utils/queryValidation');
 
 // Получить все контроллеры
 const getAllControllers = async (req, res, next) => {
     try {
-        const { page, limit, sort = 'controller_id', order = 'asc' } = req.query;
-        // [SEC-33] clamp page/limit (NaN/negative → safe) before they reach SQL
+        const { page, limit, sort, order } = req.query;
+        // [SEC-33] clamp + whitelist at the boundary so no tainted page/limit/sort/order
+        // reaches the cache-key log or the ORDER BY interpolation downstream.
         const { pageNum, limitNum } = validatePagination(page, limit, 10);
-        // Number() = CodeQL-recognized numeric barrier (values already clamped ints)
-        const result = await controllerService.getAllControllers(Number(pageNum), Number(limitNum), sort, order);
+        const { validSort, validOrder } = validateSortOrder('controllers', sort, order);
+        const result = await controllerService.getAllControllers(Number(pageNum), Number(limitNum), validSort, validOrder);
         return res.status(200).json(result);
     } catch (error) {
         logger.error(`Error in getAllControllers: ${error.message}`);

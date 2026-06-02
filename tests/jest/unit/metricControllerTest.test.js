@@ -72,7 +72,8 @@ describe('MetricController', () => {
 
             await getAllMetrics(req, res, next);
 
-            expect(metricService.getAllMetrics).toHaveBeenCalledWith(3, 25, 'value', 'asc');
+            // [SEC-33] order normalized to uppercase by boundary validateSortOrder
+            expect(metricService.getAllMetrics).toHaveBeenCalledWith(3, 25, 'value', 'ASC');
         });
 
         test('uses defaults for missing query params', async () => {
@@ -80,7 +81,7 @@ describe('MetricController', () => {
 
             await getAllMetrics(req, res, next);
 
-            expect(metricService.getAllMetrics).toHaveBeenCalledWith(1, 10, 'timestamp', 'desc');
+            expect(metricService.getAllMetrics).toHaveBeenCalledWith(1, 10, 'timestamp', 'DESC');
         });
 
         test('calls next on error', async () => {

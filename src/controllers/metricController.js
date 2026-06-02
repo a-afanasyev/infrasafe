@@ -1,16 +1,17 @@
 const metricService = require('../services/metricService');
 const logger = require('../utils/logger');
 const { sendNotFound, sendError } = require('../utils/apiResponse');
-const { validatePagination } = require('../utils/queryValidation');
+const { validatePagination, validateSortOrder } = require('../utils/queryValidation');
 
 // Получить все метрики
 const getAllMetrics = async (req, res, next) => {
     try {
-        const { page, limit, sort = 'timestamp', order = 'desc' } = req.query;
-        // [SEC-33] clamp page/limit (NaN/negative → safe) before they reach SQL
+        const { page, limit, sort, order } = req.query;
+        // [SEC-33] clamp + whitelist at the boundary so no tainted page/limit/sort/order
+        // reaches the cache-key log or the ORDER BY interpolation downstream.
         const { pageNum, limitNum } = validatePagination(page, limit, 10);
-        // Number() = CodeQL-recognized numeric barrier (values already clamped ints)
-        const result = await metricService.getAllMetrics(Number(pageNum), Number(limitNum), sort, order);
+        const { validSort, validOrder } = validateSortOrder('metrics', sort, order);
+        const result = await metricService.getAllMetrics(Number(pageNum), Number(limitNum), validSort, validOrder);
         return res.status(200).json(result);
     } catch (error) {
         logger.error(`Error in getAllMetrics: ${error.message}`);
