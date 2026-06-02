@@ -8,6 +8,7 @@
 > Обновлён 2026-06-01: закрыты B-012/B-013/B-016/B-023/B-025/B-026/B-027 + B-007; B-024 partial. Шапка переписана.
 > Обновлён 2026-06-01 (Трек A): закрыт B-024 auth-gated half (#88 public /map-layer-counts) + B-027 косметика (#87 esbuild clear-contents) + B-023 op-step (.env.prod) + B-027-followup (#89 no-cache бандлов) + backlog (#90). Трек A завершён.
 > Обновлён 2026-06-01 (вычитка #91): синхронизированы детальные секции B-024/B-027/B-023 с фактом закрытия (были stale после Трек-A мержей).
+> Обновлён 2026-06-02: добавлен батч **SEC-13..SEC-34** (security pentest round 2, 2026-06-01/02) — см. секцию «Security pentest 2026-06-01/02» + отчёт `docs/audit/2026-06-01-security-pentest.md`. Активно-эксплуатируемых CRITICAL — 0 (JWT-секреты ротированы, подтв. live-forge→401).
 
 ---
 
@@ -39,6 +40,9 @@
 | **B-006** Engineering Kanban | P3 | — | **owner UK side**, не наш PR |
 | **B-008** frontend-redesign merge | P4 | — | после стабилизации + B-004 split |
 | **B-009** seasonal HEATING rules | P4 | — | **Q3 2026** (до отопит. сезона) |
+| **SEC-13..16** (HIGH) | P1-P2 | pentest round 2, present-в-коде | admin123 seed / Dockerfile.unified dev / `.:/app` mount / backup-creds — деплой/compose, см. секцию «Security pentest 2026-06-01/02» |
+| **SEC-17..33** (MEDIUM) | P2-P3 | pentest round 2 | scrub / CSP / uk-metrics leak / nginx-rl / Redis-pass / CSRF / correlation-id / telemetry / TOTP / pagination-500 / … — детали в секции |
+| **SEC-34** (LOW/INFO) | P3-P4 | pentest round 2 | hardening-пачка (noopener, SSH key-only, `npm audit fix`, …) |
 
 ### Рекомендация
 **Ничего не горит.** Трек A («закрыть хвосты») + **B-021 (P1) durability hardening** завершены 06-01.
@@ -539,6 +543,139 @@ event'а — строка остаётся `pending`, что корректно)
 **Trigger**. Q3 2026 (август-сентябрь), чтобы успеть до start отопительного сезона.
 
 **Estimate**. ~4-6 часов: миграция (`active_from`, `active_to` columns) + AlertRule filter + admin UI.
+
+---
+
+## Security pentest 2026-06-01/02 — SEC-13..SEC-34 (round 2)
+
+> Источник: `docs/audit/2026-06-01-security-pentest.md` (статика 5 доменов + unauth/authenticated
+> динамика на проде, admin-MFA + созданный low-priv аккаунт). **Активно-эксплуатируемых CRITICAL — 0**:
+> JWT-секреты утекали в git, но **ротированы** (live-forge access+refresh → 401; alg:none → 401).
+> Authorization-модель чистая (BFLA/privesc/mass-assignment роли — всё заблокировано).
+> Все пункты ниже **подтверждены present-в-коде** (file:line). Продолжение SEC-нумерации прошлого
+> аудита (SEC-1..12 + P-PENTEST-1..4, закрыт 2026-05-30 #69).
+>
+> **Реконсиляция с закрытым батчем:** SEC-17 ⊃ остаток SEC-3 (rotation done, нужен только scrub);
+> SEC-18 — остаток P-PENTEST-1 (app-CSP всё ещё несёт CDN); SEC-19 ≠ P-PENTEST-3 (другой эндпоинт);
+> SEC-25 ≠ P-PENTEST-2 (тот закрыл 400-on-missing-serial, mass-assignment spread остался);
+> SEC-20 ⟂ SEC-6 (nginx-слой vs app-слой).
+
+### HIGH
+
+- **SEC-13 · HIGH · `admin123` в git-tracked seed** — `database/init/02_seed_data.sql:168`.
+  *Что/Почему:* seed создаёт admin (user_id 55) с bcrypt-хешем пароля `admin123`; `database/init`
+  монтируется в `/docker-entrypoint-initdb.d` → каждый fresh-deploy/DR-rebuild поднимается с известным
+  паролём. *Fix:* убрать admin-строку из seed (или заведомо невалидный placeholder-hash); admin
+  заводить out-of-band с операторским паролём; runbook-шаг обязательной смены. *Trigger:* до следующего
+  fresh-deploy/DR. *Est:* ~1ч.
+- **SEC-14 · HIGH · `Dockerfile.unified` гонит dev-watcher в проде** — `Dockerfile.unified:39`
+  `CMD ["npm","run","dev"]` (nodemon) + `:17` `npm install --ignore-scripts` (без `--omit=dev`).
+  *Почему:* в проде крутится dev-watcher с devDependencies; file-watcher перезапускает сервер на любую
+  запись в `/app` (см. SEC-15). `Dockerfile.prod` корректен — unified не унаследовал. *Fix:*
+  `CMD ["npm","start"]` + `npm ci --omit=dev --ignore-scripts`. **Сначала verify на проде, какой
+  образ/CMD реально бежит** (решает HIGH↔INFO). *Trigger:* до следующего image-rebuild. *Est:* ~1ч.
+- **SEC-15 · HIGH · весь проект bind-mount в прод-app** — `docker-compose.unified.yml:59-63` `- .:/app`.
+  *Почему:* контейнер app читает `.env.prod` (JWT/TOTP/DB/UK-секреты), `.git/` (вся история), deploy-скрипты
+  → любой RCE в Node = мгновенный доступ ко всем секретам без эскалации. (B-027 уже зафиксировал этот mount
+  как факт прод-реальности.) *Fix:* в проде убрать `- .:/app`, копировать только нужное (как
+  `Dockerfile.prod`); hot-reload-mount оставить только в `docker-compose.dev.yml`/override. *Trigger:* при
+  следующем compose-touch проде. *Est:* ~2-3ч + smoke.
+- **SEC-16 · HIGH · `backup-database.sh` хардкод `postgres/postgres`** — `backup-database.sh:16-18`
+  (git-tracked). *Fix:* читать из env (`${DB_PASSWORD:?}`); ротировать если совпадает с прод; либо
+  gitignore. *Trigger:* следующий backup-touch. *Est:* ~30мин.
+
+### MEDIUM
+
+- **SEC-17 · MEDIUM · git-history scrub секретов/кредов** (поглощает прежние M-0 + H-2) —
+  `623a059:.env.prod` (`DB_PASSWORD,JWT_SECRET,JWT_REFRESH_SECRET,SESSION_SECRET`),
+  `da44ed4:generator/.env` (`admin/Admin123`), `.env`. *Статус:* JWT/refresh **ротированы** (SEC-3,
+  подтв. live-forge→401), `SESSION_SECRET` не используется, БД снаружи закрыта (port-scan: 80/443/SSH) →
+  активного вектора нет; остаток — физический scrub. *Fix:*
+  `git filter-repo --path .env --path .env.prod --path generator/.env --invert-paths` + force-push +
+  уведомить клонировавших; CI `trufflehog`/`git-secrets` (есть `docs/audit/secret-hygiene-checklist.md`);
+  подтвердить ротацию generator-admin-пароля. *Trigger:* при готовности переписать историю. *Est:* ~2ч.
+- **SEC-18 · MEDIUM · split-brain CSP — helmet всё ещё несёт CDN** — `src/server.js:54-56`
+  `scriptSrc [... 'https://cdn.jsdelivr.net', 'https://unpkg.com']` (подтв. live на `/api/*`). Остаток
+  P-PENTEST-1. *Fix:* убрать оба CDN-хоста из helmet `scriptSrc` (мертвы после self-host DOMPurify;
+  edge-CSP их уже не несёт — B-017). *Trigger:* любой CSP-touch. *Est:* ~30мин.
+- **SEC-19 · MEDIUM · публичный `/api/uk-requests-metrics` отдаёт `infrasafe_alert_id`** —
+  `src/routes/index.js:104` (PUBLIC_ROUTES) + `src/models/AlertRequestMap.js:144-148`. Подтв. live (боевые
+  данные без auth). *Fix:* strip `infrasafe_alert_id` из SELECT (UK нужен только `uk_request_number`+
+  `status`) ИЛИ сервис-аккаунт/HMAC/IP-allowlist. *Trigger:* спринт. *Est:* ~1-2ч.
+- **SEC-20 · MEDIUM · нет rate-limit на nginx-слое** — `nginx-config/nginx.production.conf` (нет
+  `limit_req`). Ортогонально app-слою (SEC-6). *Fix:* `limit_req_zone $binary_remote_addr` для `/api/` +
+  жёстче для `/api/auth/`. *Trigger:* edge-hardening спринт. *Est:* ~1-2ч.
+- **SEC-21 · MEDIUM · Redis без `--requirepass`** — `docker-compose.unified.yml:134`; сеть общая с
+  UK-стеком. *Fix:* `--requirepass <secret>` + `REDIS_URL` с паролём. *Trigger:* при включении Redis в
+  проде / multi-replica (B-003). *Est:* ~1ч.
+- **SEC-22 · MEDIUM · `/uk/api/*` — открытый proxy на весь UK-API** —
+  `nginx-config/nginx.production.conf:193-207` (rewrite `^/uk/api/(.*)`, без auth_request/allow/deny).
+  *Fix:* сузить до нужных путей; `auth_request`/HMAC/IP-allowlist. *Trigger:* координация с UK. *Est:* ~2-3ч.
+- **SEC-23 · MEDIUM · CSRF — бэкенд не валидирует `X-CSRF-Token`** (только клиентский
+  `public/utils/csrf.js`; реальная защита = `SameSite=Strict`). *Fix:* серверная проверка
+  `Origin`/double-submit для мутаций, либо убрать вводящий в заблуждение код и задокументировать SameSite
+  как единственную защиту. *Trigger:* спринт. *Est:* ~2-3ч.
+- **SEC-24 · MEDIUM · log-injection через сырой `x-correlation-id`** — `src/middleware/correlationId.js:5-9`
+  (header используется как есть). *Fix:* валидировать как UUID, иначе `crypto.randomUUID()`. *Trigger:*
+  спринт / при SIEM-ingest. *Est:* ~30мин.
+- **SEC-25 · MEDIUM · mass-assignment `...metrics` spread в публичном telemetry** —
+  `src/services/metricService.js:283-287`. Отлично от P-PENTEST-2 (тот закрыл 400-on-missing-serial;
+  spread остался). *Fix:* allowlist полей метрик (proto-pollution/log-injection; SQL-пути нет). *Trigger:*
+  спринт. *Est:* ~1ч.
+- **SEC-26 · MEDIUM · TOTP anti-replay TTL 60с < окна валидности ~90с** — `src/services/totpService.js:39`
+  (+ in-memory, теряется на рестарте/мульти-реплике). *Fix:* TTL≥120с + Redis-backing. *Trigger:* спринт /
+  multi-replica. *Est:* ~30мин.
+- **SEC-27 · MEDIUM · stale user-cache 5мин на смену роли/деактивацию** — `src/services/authService.js`
+  (`findUserById` cache, key `auth:user:<id>`). *Fix:* инвалидация кэша в любом пути мутации
+  `users.role/is_active`. *Trigger:* при появлении user-mgmt mutation API. *Est:* ~1ч.
+- **SEC-28 · MEDIUM · recovery-коды перегенерируются на каждый `setup-2fa` с тем же tempToken** —
+  `src/services/totpService.js` (~119). *Fix:* идемпотентная генерация recovery в рамках одного tempToken.
+  *Trigger:* спринт. *Est:* ~1ч.
+- **SEC-29 · MEDIUM · `UkOutbox` INTERVAL через string-concat** — `src/models/UkOutbox.js:128,173`
+  (`($N || ' seconds')::interval`). Сейчас не эксплойтится (caller coercion), паттерн неверный. *Fix:*
+  `NOW() + ($N * INTERVAL '1 second')`. *Trigger:* при следующем touch UkOutbox. *Est:* ~30мин.
+- **SEC-30 · MEDIUM · `building_id` без эскейпа в HTML-атрибуты/fetch-URL Leaflet-попапа** —
+  `public/script.js:~1921-1931` (нужна компрометация БД/API для эксплойта). *Fix:* `parseInt`+валидация
+  перед использованием. *Trigger:* map-UX проход / B-008. *Est:* ~30мин.
+- **SEC-31 · MEDIUM · blacklist fail-open при недоступности БД (by-design)** — `src/services/authService.js:633`.
+  *Fix:* принято by-design; при multi-replica перенести L1 в Redis. *Trigger:* multi-replica (B-003,
+  входит туда). *Est:* — (в B-003).
+- **SEC-32 · MEDIUM · `admin.js` шлёт `Bearer null` ×32 + мёртвые localStorage-ключи** — `public/admin.js`.
+  Спасает cookie-fallback; гигиена/защита от регрессий XSS-token-theft. *Fix:* убрать ручные
+  `Authorization`-заголовки (идти через interceptor), вычистить мёртвые localStorage-пути. *Trigger:*
+  admin.js split (B-004) или раньше. *Est:* ~2ч.
+- **SEC-33 · MEDIUM · системный 500 на невалидной пагинации** (подтв. live Round 3) —
+  `src/controllers/buildingController.js:9`, `metricController.js:9` (+ др. list-контроллеры): `parseInt`
+  без clamp → `limit=-1`/`abc`, `page=-5`/`abc` дают 500 на `/buildings`,`/controllers`,`/metrics`,
+  `/alerts`,`/transformers`. `validatePagination` есть в `src/utils/queryValidation.js:177-200`, но не
+  используется. Ошибка чистая (без leak), достижимо любым авторизованным. *Fix:* применить
+  `validatePagination` во всех list-контроллерах (NaN/neg → **clamp к безопасным значениям, 200**, не 500/400). Поглощает L-11. *Trigger:* спринт
+  (быстрый). *Est:* ~1-2ч.
+
+### LOW / INFO
+
+- **SEC-34 · LOW/INFO · hardening-пачка** (бывшие L-1..L-13 + INFO):
+  | # | Находка | Где |
+  |---|---|---|
+  | a | `target="_blank"` без `rel="noopener"` (reverse-tabnabbing) | `frontend-html/index.html`, `contacts.html` |
+  | b | мёртвые `validateToken`/`getValidToken` (ссылаются на `localStorage.admin_token`) | `public/utils/domSecurity.js` |
+  | c | `createSecureTableRow` innerHTML-bypass через `field.secure===false` | `public/utils/domSecurity.js` |
+  | d | `flip-trace` debug-лог в `localStorage` в проде | `public/admin-auth.js`, `admin-head-probe.js`, `login.js` |
+  | e | сузить CSP `img-src` + DOMPurify `style`/`img` | nginx CSP + `public/utils/domSecurity.js` |
+  | f | dev-порты `3000`/`5435` на `0.0.0.0` + `postgres/postgres` | `docker-compose.dev.yml` |
+  | g | `/api-docs/` nginx без prod-guard | `nginx-config/nginx.production.conf` (`return 404;`) |
+  | h | отдельный `JWT_2FA_SECRET` для temp-токенов (сейчас общий, спасает scope-guard) | `src/services/authService.js` |
+  | i | прод IP/SSH/username в git-tracked `connect.sh` | `connect.sh` |
+  | j | **SSH 32323 открыт снаружи** (подтв. port-scan) → key-only (`PasswordAuthentication no`) + fail2ban + allowlist | host sshd |
+  | k | `npm audit`: 3× moderate (qs/body-parser/express DoS, GHSA-q8mj-m7cp-5q26) → `npm audit fix` | `package.json` |
+
+  *Trigger:* cleanup-проходы. *Est:* суммарно ~1 день.
+
+### Рекомендованный порядок устранения (round 2)
+1. **Быстрые безопасные код-правки** (без прод-доступа, чистый код+тесты): SEC-18, SEC-24, SEC-25, SEC-33, SEC-29 + `npm audit fix`.
+2. **HIGH деплой/compose:** SEC-14, SEC-15 (сначала verify прод-реальность), SEC-13, SEC-16.
+3. **Edge/infra:** SEC-20, SEC-21, SEC-22, SEC-19.
+4. **Остальные MEDIUM** (SEC-23/26/27/28/30/31/32) + SEC-17 scrub + SEC-34 пачка.
 
 ---
 
