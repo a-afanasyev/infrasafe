@@ -2,6 +2,7 @@ const express = require('express');
 const WaterSupplier = require('../models/WaterSupplier');
 const { createError } = require('../utils/helpers');
 const { applyCrudRateLimit } = require('../middleware/rateLimiter');
+const { validatePagination } = require('../utils/queryValidation');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -9,14 +10,17 @@ const router = express.Router();
 // GET /api/water-suppliers - Получить всех поставщиков воды
 router.get('/', async (req, res, next) => {
     try {
-        const { page = 1, limit = 100, type } = req.query;
+        const { page, limit, type } = req.query;
+        // [SEC-33] clamp page/limit (raw strings → NaN/negative reached SQL)
+        const { pageNum, limitNum } = validatePagination(page, limit, 100);
         const filters = {};
 
         if (type) {
             filters.type = type;
         }
 
-        const waterSuppliers = await WaterSupplier.findAll(page, limit, filters);
+        // Number() = CodeQL-recognized numeric barrier (values already clamped ints)
+        const waterSuppliers = await WaterSupplier.findAll(Number(pageNum), Number(limitNum), filters);
         res.json(waterSuppliers);
     } catch (error) {
         logger.error(`Error fetching water suppliers: ${error.message}`, {

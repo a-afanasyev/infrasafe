@@ -1,4 +1,5 @@
 const alertService = require('../services/alertService');
+const { validatePagination } = require('../utils/queryValidation');
 
 class AlertController {
 
@@ -26,15 +27,17 @@ class AlertController {
             if (severity) filters.severity = severity.toUpperCase();
             if (infrastructure_type) filters.infrastructure_type = infrastructure_type.toLowerCase();
 
-            const pageNum = Math.max(parseInt(page) || 1, 1);
-            const pageSize = limit ? Math.min(parseInt(limit) || 10, 200) : 10;
+            // [SEC-33] clamp via shared validator — the old Math.min lacked a
+            // lower bound, so limit=-1 slipped through to SQL.
+            const { pageNum, limitNum: pageSize } = validatePagination(page, limit, 10);
             const validSortColumns = ['created_at', 'severity', 'status', 'infrastructure_type'];
             const sortCol = validSortColumns.includes(sort) ? sort : 'created_at';
             const sortDir = order === 'asc' ? 'ASC' : 'DESC';
 
             const result = await alertService.getActiveAlerts(filters, {
-                page: pageNum,
-                limit: pageSize,
+                // Number() = CodeQL-recognized numeric barrier (values already clamped ints)
+                page: Number(pageNum),
+                limit: Number(pageSize),
                 sort: sortCol,
                 order: sortDir
             });

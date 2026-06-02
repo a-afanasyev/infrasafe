@@ -1,12 +1,17 @@
 const buildingService = require('../services/buildingService');
 const logger = require('../utils/logger');
 const { sendError, sendNotFound } = require('../utils/apiResponse');
+const { validatePagination, validateSortOrder } = require('../utils/queryValidation');
 
 // Получить все здания
 const getAllBuildings = async (req, res, next) => {
     try {
-        const { page = 1, limit = 10, sort = 'building_id', order = 'asc' } = req.query;
-        const result = await buildingService.getAllBuildings(parseInt(page), parseInt(limit), sort, order);
+        const { page, limit, sort, order } = req.query;
+        // [SEC-33] clamp + whitelist at the boundary so no tainted page/limit/sort/order
+        // reaches the cache-key log or the ORDER BY interpolation downstream.
+        const { pageNum, limitNum } = validatePagination(page, limit, 10);
+        const { validSort, validOrder } = validateSortOrder('buildings', sort, order);
+        const result = await buildingService.getAllBuildings(Number(pageNum), Number(limitNum), validSort, validOrder);
         return res.status(200).json(result);
     } catch (error) {
         logger.error(`Error in getAllBuildings: ${error.message}`);

@@ -24,6 +24,19 @@ function coerceBoolish(v) {
     return Boolean(v);
 }
 
+// [SEC-25] Allowlist of metric fields accepted from public telemetry.
+// `POST /api/metrics/telemetry` is unauthenticated, so spreading the raw
+// `metrics` object risks prototype pollution / log-injection / unexpected
+// columns. Mirror the column list of Metric.create (src/models/Metric.js).
+const ALLOWED_METRIC_FIELDS = [
+    'electricity_ph1', 'electricity_ph2', 'electricity_ph3',
+    'amperage_ph1', 'amperage_ph2', 'amperage_ph3',
+    'cold_water_pressure', 'cold_water_temp',
+    'hot_water_in_pressure', 'hot_water_out_pressure',
+    'hot_water_in_temp', 'hot_water_out_temp',
+    'air_temp', 'humidity', 'leak_sensor'
+];
+
 class MetricService {
     constructor() {
         this.cachePrefix = 'metric';
@@ -279,11 +292,23 @@ class MetricService {
                 throw error;
             }
 
+            // [SEC-25] Filter incoming metrics to a known allowlist before
+            // spreading — `metrics` is optional, so guard against
+            // undefined/null/array before reading own properties.
+            const rawMetrics = (metrics && typeof metrics === 'object' && !Array.isArray(metrics))
+                ? metrics
+                : {};
+            const filteredMetrics = Object.fromEntries(
+                ALLOWED_METRIC_FIELDS
+                    .filter((k) => Object.prototype.hasOwnProperty.call(rawMetrics, k))
+                    .map((k) => [k, rawMetrics[k]])
+            );
+
             // Подготавливаем данные метрики
             const metricData = {
                 controller_id: controller.controller_id,
                 timestamp: timestamp || new Date().toISOString(),
-                ...metrics
+                ...filteredMetrics
             };
 
             // Создаем метрику

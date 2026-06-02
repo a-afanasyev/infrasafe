@@ -1,11 +1,15 @@
 const Transformer = require('../models/Transformer');
 const logger = require('../utils/logger');
+const { validatePagination } = require('../utils/queryValidation');
 
 // Получить все трансформаторы
 const getAllTransformers = async (req, res, next) => {
     try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
+        // [SEC-33] clamp page/limit (NaN/negative → safe) before they reach SQL
+        const _pg = validatePagination(req.query.page, req.query.limit, 10);
+        // Number() = CodeQL-recognized numeric barrier (values already clamped ints)
+        const page = Number(_pg.pageNum);
+        const limit = Number(_pg.limitNum);
 
         // Фильтры
         const filters = {};

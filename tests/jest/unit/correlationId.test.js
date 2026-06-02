@@ -23,14 +23,39 @@ describe('correlationId middleware', () => {
         expect(next).toHaveBeenCalled();
     });
 
-    test('uses existing x-correlation-id header', () => {
-        req.headers['x-correlation-id'] = 'existing-id-123';
+    test('uses existing x-correlation-id header when it is a valid UUID', () => {
+        const validUuid = '11111111-2222-3333-4444-555555555555';
+        req.headers['x-correlation-id'] = validUuid;
 
         correlationId(req, res, next);
 
-        expect(req.correlationId).toBe('existing-id-123');
-        expect(res.setHeader).toHaveBeenCalledWith('x-correlation-id', 'existing-id-123');
+        expect(req.correlationId).toBe(validUuid);
+        expect(res.setHeader).toHaveBeenCalledWith('x-correlation-id', validUuid);
         expect(next).toHaveBeenCalled();
+    });
+
+    test('replaces a non-UUID / injection header with a generated UUID [SEC-24]', () => {
+        // Log-injection attempt: newline + fake log line in the header value.
+        req.headers['x-correlation-id'] = 'evil\nINFO: admin logged in role=admin';
+
+        correlationId(req, res, next);
+
+        // Malicious value must NOT be propagated into req/logs/response.
+        expect(req.correlationId).not.toBe('evil\nINFO: admin logged in role=admin');
+        expect(req.correlationId).toMatch(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+        );
+        expect(res.setHeader).toHaveBeenCalledWith('x-correlation-id', req.correlationId);
+    });
+
+    test('replaces a non-string header value with a generated UUID [SEC-24]', () => {
+        req.headers['x-correlation-id'] = ['array', 'value'];
+
+        correlationId(req, res, next);
+
+        expect(req.correlationId).toMatch(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+        );
     });
 
     test('sets unique IDs for different requests', () => {

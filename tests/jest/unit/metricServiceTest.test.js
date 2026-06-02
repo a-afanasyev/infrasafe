@@ -282,6 +282,49 @@ describe('MetricService', () => {
                 metricService.processTelemetry({ metrics: {} })
             ).rejects.toThrow();
         });
+
+        test('filters telemetry metrics to an allowlist — drops unknown/polluting keys [SEC-25]', async () => {
+            Controller.findBySerialNumber.mockResolvedValue(mockController);
+            Controller.findById.mockResolvedValue(mockController);
+            Controller.updateStatus.mockResolvedValue({});
+            Metric.create.mockResolvedValue({ metric_id: 9, controller_id: 1 });
+
+            await metricService.processTelemetry({
+                serial_number: 'SN-001',
+                metrics: { electricity_ph1: 220, evil_field: 'x', constructor: 'y' }
+            });
+
+            const arg = Metric.create.mock.calls[0][0];
+            expect(arg).toHaveProperty('electricity_ph1', 220);
+            expect(arg).not.toHaveProperty('evil_field');
+            expect(Object.prototype.hasOwnProperty.call(arg, 'constructor')).toBe(false);
+        });
+
+        test('keeps allowlisted leak_sensor through telemetry [SEC-25]', async () => {
+            Controller.findBySerialNumber.mockResolvedValue(mockController);
+            Controller.findById.mockResolvedValue(mockController);
+            Controller.updateStatus.mockResolvedValue({});
+            Metric.create.mockResolvedValue({ metric_id: 9, controller_id: 1 });
+
+            await metricService.processTelemetry({
+                serial_number: 'SN-001',
+                metrics: { leak_sensor: true }
+            });
+
+            const arg = Metric.create.mock.calls[0][0];
+            expect(arg).toHaveProperty('leak_sensor', true);
+        });
+
+        test('does not throw when metrics is omitted [SEC-25]', async () => {
+            Controller.findBySerialNumber.mockResolvedValue(mockController);
+            Controller.findById.mockResolvedValue(mockController);
+            Controller.updateStatus.mockResolvedValue({});
+            Metric.create.mockResolvedValue({ metric_id: 9, controller_id: 1 });
+
+            await expect(
+                metricService.processTelemetry({ serial_number: 'SN-001' })
+            ).resolves.toHaveProperty('controller_id', 1);
+        });
     });
 
     describe('getMetricsByControllerId', () => {

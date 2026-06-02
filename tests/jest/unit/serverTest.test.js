@@ -103,6 +103,18 @@ describe('server.js', () => {
             expect(res.headers['x-content-type-options']).toBe('nosniff');
         });
 
+        it('CSP scriptSrc does not allow external CDN hosts [SEC-18]', async () => {
+            db.query.mockResolvedValue({ rows: [] });
+
+            const res = await request(app).get('/health');
+
+            const csp = res.headers['content-security-policy'] || '';
+            // Self-hosted DOMPurify removed the CDN dependency; the edge CSP
+            // already dropped these — helmet's app-level CSP must match.
+            expect(csp).not.toContain('cdn.jsdelivr.net');
+            expect(csp).not.toContain('unpkg.com');
+        });
+
         it('parses JSON request body', async () => {
             const res = await request(app)
                 .get('/api/test')

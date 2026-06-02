@@ -119,22 +119,23 @@ describe('UkOutbox model', () => {
             expect(result).toEqual(updated);
             const [sql, params] = db.query.mock.calls[0];
             expect(sql).toMatch(/attempt_count = attempt_count \+ 1/);
-            expect(sql).toMatch(/next_attempt_at = NOW\(\) \+ /);
-            expect(params).toEqual([1, 'UK 429', 429, '8']);
+            // [SEC-29] interval via integer multiplication, not string concat
+            expect(sql).toMatch(/next_attempt_at = NOW\(\) \+ \(\$4 \* INTERVAL '1 second'\)/);
+            expect(params).toEqual([1, 'UK 429', 429, 8]);
         });
 
         it('clamps negative backoff to 1 second', async () => {
             db.query.mockResolvedValue({ rows: [{}] });
             await UkOutbox.markFailed(1, 'x', null, -100);
             const [, params] = db.query.mock.calls[0];
-            expect(params[3]).toBe('1');
+            expect(params[3]).toBe(1);
         });
 
         it('floors fractional backoff', async () => {
             db.query.mockResolvedValue({ rows: [{}] });
             await UkOutbox.markFailed(1, 'x', null, 8.7);
             const [, params] = db.query.mock.calls[0];
-            expect(params[3]).toBe('8');
+            expect(params[3]).toBe(8);
         });
     });
 
@@ -160,9 +161,10 @@ describe('UkOutbox model', () => {
             await UkOutbox.resetForSkip(1, 60);
 
             const [sql, params] = db.query.mock.calls[0];
-            expect(sql).toMatch(/next_attempt_at = NOW\(\) \+ /);
+            // [SEC-29] interval via integer multiplication, not string concat
+            expect(sql).toMatch(/next_attempt_at = NOW\(\) \+ \(\$2 \* INTERVAL '1 second'\)/);
             expect(sql).not.toMatch(/attempt_count = attempt_count \+ 1/);
-            expect(params[1]).toBe('60');
+            expect(params[1]).toBe(60);
             expect(params[2]).toContain('skipped');
         });
 
@@ -170,7 +172,7 @@ describe('UkOutbox model', () => {
             db.query.mockResolvedValue({ rows: [{}] });
             await UkOutbox.resetForSkip(1);
             const [, params] = db.query.mock.calls[0];
-            expect(params[1]).toBe('60');
+            expect(params[1]).toBe(60);
         });
     });
 

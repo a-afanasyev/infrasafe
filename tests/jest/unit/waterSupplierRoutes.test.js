@@ -67,7 +67,19 @@ describe('waterSupplierRoutes', () => {
             const res = await request(app).get('/api/water-suppliers?type=municipal&page=2&limit=5');
 
             expect(res.status).toBe(200);
-            expect(WaterSupplier.findAll).toHaveBeenCalledWith('2', '5', expect.objectContaining({ type: 'municipal' }));
+            // [SEC-33] page/limit are now clamped to integers before the model
+            expect(WaterSupplier.findAll).toHaveBeenCalledWith(2, 5, expect.objectContaining({ type: 'municipal' }));
+        });
+
+        it('clamps negative/NaN page & limit before the model [SEC-33]', async () => {
+            WaterSupplier.findAll.mockResolvedValue([]);
+
+            const res = await request(app).get('/api/water-suppliers?page=-9&limit=-1');
+
+            expect(res.status).toBe(200);
+            const [pageArg, limitArg] = WaterSupplier.findAll.mock.calls[0];
+            expect(pageArg).toBe(1);          // negative page → 1
+            expect(limitArg).toBe(1);         // negative limit → clamped to 1 (not -1 to SQL)
         });
 
         it('returns 500 on database error', async () => {

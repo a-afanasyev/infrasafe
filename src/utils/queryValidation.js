@@ -172,28 +172,29 @@ function validateSortOrder(entityType, sort, order) {
  * 
  * @param {number|string} page - номер страницы
  * @param {number|string} limit - количество элементов на странице
+ * @param {number} [defaultLimit=50] - дефолт лимита, если limit отсутствует/невалиден
  * @returns {Object} объект с валидными pageNum и limitNum
  */
-function validatePagination(page, limit) {
+function validatePagination(page, limit, defaultLimit = 50) {
     try {
         // Валидация номера страницы
         const pageNum = Math.max(1, parseInt(page) || 1);
-        
+
         // Валидация лимита с ограничением максимального значения
-        let limitNum = parseInt(limit) || 50;
+        let limitNum = parseInt(limit) || defaultLimit;
         limitNum = Math.min(Math.max(1, limitNum), 200); // от 1 до 200
-        
+
         return {
             pageNum,
             limitNum,
             offset: (pageNum - 1) * limitNum
         };
-        
+
     } catch (error) {
         logger.error(`Ошибка валидации пагинации: ${error.message}`);
         return {
             pageNum: 1,
-            limitNum: 50,
+            limitNum: defaultLimit,
             offset: 0
         };
     }
