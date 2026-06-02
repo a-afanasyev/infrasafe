@@ -14,6 +14,7 @@
 
 const logger = require('../../utils/logger');
 const { sendNotFound } = require('../../utils/apiResponse');
+const { validatePagination } = require('../../utils/queryValidation');
 
 /**
  * @param {object} config
@@ -31,8 +32,10 @@ function createCrudController({ Model, notFoundMessage, logLabel, deletedMessage
 
     async function getAll(req, res, next) {
         try {
-            const { page = 1, limit = 10, sort = 'id', order = 'asc' } = req.query;
-            const result = await Model.findAll(parseInt(page, 10), parseInt(limit, 10), sort, order);
+            const { page, limit, sort = 'id', order = 'asc' } = req.query;
+            // [SEC-33] clamp page/limit (NaN/negative → safe) before they reach SQL
+            const { pageNum, limitNum } = validatePagination(page, limit, 10);
+            const result = await Model.findAll(pageNum, limitNum, sort, order);
             return res.status(200).json(result);
         } catch (error) {
             logger.error(`Error in getAll ${logLabel}: ${error.message}`);

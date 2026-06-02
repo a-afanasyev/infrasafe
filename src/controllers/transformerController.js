@@ -1,11 +1,12 @@
 const Transformer = require('../models/Transformer');
 const logger = require('../utils/logger');
+const { validatePagination } = require('../utils/queryValidation');
 
 // Получить все трансформаторы
 const getAllTransformers = async (req, res, next) => {
     try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
+        // [SEC-33] clamp page/limit (NaN/negative → safe) before they reach SQL
+        const { pageNum: page, limitNum: limit } = validatePagination(req.query.page, req.query.limit, 10);
 
         // Фильтры
         const filters = {};

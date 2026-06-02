@@ -1,12 +1,15 @@
 const controllerService = require('../services/controllerService');
 const logger = require('../utils/logger');
 const { sendError, sendNotFound } = require('../utils/apiResponse');
+const { validatePagination } = require('../utils/queryValidation');
 
 // Получить все контроллеры
 const getAllControllers = async (req, res, next) => {
     try {
-        const { page = 1, limit = 10, sort = 'controller_id', order = 'asc' } = req.query;
-        const result = await controllerService.getAllControllers(parseInt(page), parseInt(limit), sort, order);
+        const { page, limit, sort = 'controller_id', order = 'asc' } = req.query;
+        // [SEC-33] clamp page/limit (NaN/negative → safe) before they reach SQL
+        const { pageNum, limitNum } = validatePagination(page, limit, 10);
+        const result = await controllerService.getAllControllers(pageNum, limitNum, sort, order);
         return res.status(200).json(result);
     } catch (error) {
         logger.error(`Error in getAllControllers: ${error.message}`);

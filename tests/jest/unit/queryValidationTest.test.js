@@ -149,6 +149,18 @@ describe('queryValidation', () => {
             expect(result.limitNum).toBe(50);
             expect(result.offset).toBe(0);
         });
+
+        test('honors a custom defaultLimit when limit is absent/invalid [SEC-33]', () => {
+            expect(validatePagination(1, undefined, 10).limitNum).toBe(10);
+            expect(validatePagination(1, 'abc', 10).limitNum).toBe(10);
+            expect(validatePagination(1, null, 100).limitNum).toBe(100);
+        });
+
+        test('still clamps negatives/NaN regardless of defaultLimit [SEC-33]', () => {
+            expect(validatePagination('abc', -1, 10).pageNum).toBe(1);
+            expect(validatePagination('abc', -1, 10).limitNum).toBe(1);
+            expect(validatePagination(-5, 99999, 10).limitNum).toBe(200);
+        });
     });
 
     describe('validateSearchString', () => {
