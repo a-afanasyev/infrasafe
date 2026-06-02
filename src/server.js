@@ -51,9 +51,12 @@ app.use(helmet({
         directives: {
             defaultSrc: ["'self'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https:"],
+            // [SEC-18] CDN hosts removed: DOMPurify is self-hosted, so
+            // cdn.jsdelivr.net / unpkg.com are dead config. The edge nginx CSP
+            // already dropped them — keep helmet's app-level CSP in sync.
             scriptSrc: isProduction
-                ? ["'self'", "https://cdn.jsdelivr.net", "https://unpkg.com"]
-                : ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://unpkg.com"],
+                ? ["'self'"]
+                : ["'self'", "'unsafe-inline'"],
             imgSrc: ["'self'", "data:", "https:", "https://*.tile.openstreetmap.org"],
             fontSrc: ["'self'", "https:", "data:"],
             connectSrc: ["'self'", "https://*.tile.openstreetmap.org"],
