@@ -430,6 +430,93 @@ describe('UKIntegrationService — Phase 3-5', () => {
                 expect.stringContaining('isEnabled error')
             );
         });
+
+        // ---------------------------------------------------------------------
+        // [UK contract] uk_urgency_override on the wire must be a canonical
+        // key: low | medium | high | critical. The DB column alert_rules
+        // .uk_urgency may still hold legacy Russian (Обычная/Средняя/Срочная/
+        // Критическая) — the forwarder normalizes to keys at send time so the
+        // outbound payload always speaks keys, regardless of stored value.
+        // ---------------------------------------------------------------------
+        describe('uk_urgency_override → canonical key', () => {
+            const reopenAlert = {
+                ...alertData,
+                reopen_chain_id: 'chain-1',
+                reopen_sequence: 2,
+                previous_uk_request_number: '260524-003'
+            };
+
+            const setup = (rule) => {
+                IntegrationConfig.isEnabled.mockResolvedValue(true);
+                AlertRule.findByTypeAndSeverity.mockResolvedValue(rule);
+                db.query.mockResolvedValue({ rows: [{ building_id: 1, external_id: 'ext-1' }] });
+                AlertRequestMap.findByAlertAndBuilding.mockResolvedValue(null);
+                AlertRequestMap.create.mockResolvedValue({ id: 60, idempotency_key: 'new-key' });
+                UkOutbox.enqueue.mockResolvedValue({ id: 2, event_id: 'new-key' });
+                IntegrationLog.create.mockResolvedValue({ id: 2 });
+            };
+
+            const overrideFromLastEnqueue = () => {
+                const enqueueCall = UkOutbox.enqueue.mock.calls[0][0];
+                return JSON.parse(enqueueCall.payload_body).alert.uk_urgency_override;
+            };
+
+            it('engineer_required → "critical" (not "Критическая")', async () => {
+                setup({ uk_category: 'electricity', uk_urgency: 'Срочная' });
+
+                await service.sendAlertToUK(alertData, { engineerRequired: true });
+
+                expect(overrideFromLastEnqueue()).toBe('critical');
+            });
+
+            it('reopen, legacy Russian rule.uk_urgency, no bump → mapped key', async () => {
+                setup({ uk_category: 'plumbing', uk_urgency: 'Срочная', reopen_urgency_bump: false });
+
+                await service.sendAlertToUK(reopenAlert);
+
+                expect(overrideFromLastEnqueue()).toBe('high');
+            });
+
+            it('reopen, Russian "Срочная" + bump → "critical" (one tier up, capped)', async () => {
+                setup({ uk_category: 'plumbing', uk_urgency: 'Срочная', reopen_urgency_bump: true });
+
+                await service.sendAlertToUK(reopenAlert);
+
+                expect(overrideFromLastEnqueue()).toBe('critical');
+            });
+
+            it('reopen, already-key rule.uk_urgency "high" + bump → "critical"', async () => {
+                setup({ uk_category: 'plumbing', uk_urgency: 'high', reopen_urgency_bump: true });
+
+                await service.sendAlertToUK(reopenAlert);
+
+                expect(overrideFromLastEnqueue()).toBe('critical');
+            });
+
+            it('reopen, "Критическая" + bump stays capped at "critical"', async () => {
+                setup({ uk_category: 'electricity', uk_urgency: 'Критическая', reopen_urgency_bump: true });
+
+                await service.sendAlertToUK(reopenAlert);
+
+                expect(overrideFromLastEnqueue()).toBe('critical');
+            });
+
+            it('non-reopen, non-engineer → null (no override)', async () => {
+                setup({ uk_category: 'electricity', uk_urgency: 'Средняя' });
+
+                await service.sendAlertToUK(alertData);
+
+                expect(overrideFromLastEnqueue()).toBeNull();
+            });
+
+            it('unknown urgency value → null override (never ship garbage)', async () => {
+                setup({ uk_category: 'electricity', uk_urgency: 'totally-bogus', reopen_urgency_bump: false });
+
+                await service.sendAlertToUK(reopenAlert);
+
+                expect(overrideFromLastEnqueue()).toBeNull();
+            });
+        });
     });
 
     // -------------------------------------------------------------------------
