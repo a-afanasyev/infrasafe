@@ -35,15 +35,18 @@ CREATE TABLE IF NOT EXISTS alert_rules (
     UNIQUE(alert_type, severity)
 );
 
--- Seed default rules
+-- Seed default rules.
+-- uk_urgency uses canonical keys (low|medium|high|critical) per the UK contract
+-- (2026-06). uk_category stays Russian — UK derives category from type+severity
+-- (FIX-007 O3); the override path is a separate concern (uk_category_override).
 INSERT INTO alert_rules (alert_type, severity, uk_category, uk_urgency, description) VALUES
-    ('TRANSFORMER_OVERLOAD', 'WARNING', 'Электрика', 'Средняя', 'Перегрузка трансформатора (предупреждение)'),
-    ('TRANSFORMER_OVERLOAD', 'CRITICAL', 'Электрика', 'Критическая', 'Перегрузка трансформатора (критическая)'),
-    ('TRANSFORMER_CRITICAL_OVERLOAD', 'CRITICAL', 'Электрика', 'Критическая', 'Критическая перегрузка трансформатора'),
-    ('LEAK_DETECTED', 'WARNING', 'Сантехника', 'Срочная', 'Обнаружена утечка (предупреждение)'),
-    ('LEAK_DETECTED', 'CRITICAL', 'Сантехника', 'Критическая', 'Обнаружена утечка (критическая)'),
-    ('VOLTAGE_ANOMALY', 'WARNING', 'Электрика', 'Обычная', 'Аномалия напряжения'),
-    ('HEATING_FAILURE', 'CRITICAL', 'Отопление', 'Критическая', 'Отказ отопления')
+    ('TRANSFORMER_OVERLOAD', 'WARNING', 'Электрика', 'medium', 'Перегрузка трансформатора (предупреждение)'),
+    ('TRANSFORMER_OVERLOAD', 'CRITICAL', 'Электрика', 'critical', 'Перегрузка трансформатора (критическая)'),
+    ('TRANSFORMER_CRITICAL_OVERLOAD', 'CRITICAL', 'Электрика', 'critical', 'Критическая перегрузка трансформатора'),
+    ('LEAK_DETECTED', 'WARNING', 'Сантехника', 'high', 'Обнаружена утечка (предупреждение)'),
+    ('LEAK_DETECTED', 'CRITICAL', 'Сантехника', 'critical', 'Обнаружена утечка (критическая)'),
+    ('VOLTAGE_ANOMALY', 'WARNING', 'Электрика', 'low', 'Аномалия напряжения'),
+    ('HEATING_FAILURE', 'CRITICAL', 'Отопление', 'critical', 'Отказ отопления')
 ON CONFLICT (alert_type, severity) DO NOTHING;
 
 -- 4. Alert-request mapping tracker

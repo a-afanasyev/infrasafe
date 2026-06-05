@@ -42,14 +42,40 @@ const _isWebhookSenderEnabled = () => {
     return flag === 'true' || flag === '1';
 };
 
-// [Sprint 10 PR-3] Urgency ladder for reopen-bump. One step up per reopen,
-// capped at Критическая. Russian values to match alert_rules.uk_urgency
-// canonical strings.
-const URGENCY_LADDER = Object.freeze(['Обычная', 'Средняя', 'Срочная', 'Критическая']);
+// [UK contract 2026-06] Canonical urgency on the wire is a key, not Russian:
+//   low | medium | high | critical
+// The DB column alert_rules.uk_urgency may still hold legacy Russian strings
+// (Обычная/Средняя/Срочная/Критическая) until migration 032 backfills them, and
+// admins type the value free-form (no enum constraint). So we normalize to a key
+// at send time: this keeps the outbound payload key-only regardless of what is
+// stored, and tolerates both formats during the transition window.
+const URGENCY_KEYS = Object.freeze(['low', 'medium', 'high', 'critical']);
+const RU_URGENCY_TO_KEY = Object.freeze({
+    'Обычная': 'low',
+    'Средняя': 'medium',
+    'Срочная': 'high',
+    'Критическая': 'critical'
+});
+
+// Normalize any stored urgency value to a canonical key, or null if unknown.
+// Accepts already-canonical keys (case-insensitive) and legacy Russian strings.
+// Unknown → null so we never ship garbage UK can't map.
+function toUrgencyKey(value) {
+    if (value == null) return null;
+    const raw = String(value).trim();
+    const lower = raw.toLowerCase();
+    if (URGENCY_KEYS.includes(lower)) return lower;
+    if (Object.prototype.hasOwnProperty.call(RU_URGENCY_TO_KEY, raw)) return RU_URGENCY_TO_KEY[raw];
+    return null;
+}
+
+// [Sprint 10 PR-3] Reopen-bump: one tier up per reopen, capped at 'critical'.
+// Operates on canonical keys; normalizes first so legacy Russian rows bump too.
 function bumpUrgency(current) {
-    const idx = URGENCY_LADDER.indexOf(current);
-    if (idx < 0) return current; // unknown urgency — don't change
-    return URGENCY_LADDER[Math.min(idx + 1, URGENCY_LADDER.length - 1)];
+    const key = toUrgencyKey(current);
+    if (!key) return null; // unknown urgency — no override rather than guess
+    const idx = URGENCY_KEYS.indexOf(key);
+    return URGENCY_KEYS[Math.min(idx + 1, URGENCY_KEYS.length - 1)];
 }
 
 class UKAlertForwarder {
@@ -199,10 +225,11 @@ class UKAlertForwarder {
                     // says so — the УК side just sees a higher-urgency
                     // ticket without needing to know about reopens.
                     const isReopen = !!alertData.reopen_chain_id && (alertData.reopen_sequence || 1) > 1;
-                    let effectiveUrgency = rule.uk_urgency;
-                    if (isReopen && rule.reopen_urgency_bump) {
-                        effectiveUrgency = bumpUrgency(rule.uk_urgency);
-                    }
+                    // Normalize to a canonical key (low|medium|high|critical);
+                    // bump one tier on reopen if the rule says so.
+                    let effectiveUrgency = (isReopen && rule.reopen_urgency_bump)
+                        ? bumpUrgency(rule.uk_urgency)
+                        : toUrgencyKey(rule.uk_urgency);
 
                     // Build canonical payload bytes ONCE. These exact bytes
                     // are signed by ukWebhookClient at send time and POSTed
@@ -234,11 +261,12 @@ class UKAlertForwarder {
                             reopen_sequence: alertData.reopen_sequence || 1,
                             related_request_number: alertData.previous_uk_request_number || null,
                             // For engineer_required: hardcoded override per spec
-                            // §2.4 ("Инженерный разбор" / "Критическая");
-                            // for reopen-bump path on alert.created: per-rule
-                            // urgency bump up the ladder.
+                            // §2.4 ("Инженерный разбор" / 'critical'); for the
+                            // reopen-bump path on alert.created: per-rule urgency
+                            // bump up the ladder. Always a canonical key (UK
+                            // contract 2026-06), never Russian.
                             uk_urgency_override: engineerRequired
-                                ? 'Критическая'
+                                ? 'critical'
                                 : (isReopen ? effectiveUrgency : null),
                             // Engineer-required-specific fields. Null on
                             // alert.created so UK schema validation sees a

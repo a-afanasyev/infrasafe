@@ -27,14 +27,15 @@
             hint: 'Не чаще чем раз в N минут на одну цепочку' },
         reopen_urgency_bump:         { type: 'boolean',
             label: 'Bump urgency',
-            hint: 'При reopen поднять urgency на одну ступень (cap Критическая)' },
+            hint: 'При reopen поднять urgency на одну ступень (cap critical)' },
         enabled:                     { type: 'boolean',
             label: 'Включено',
             hint: 'Если выключено — заявка в УК НЕ создаётся' },
         uk_category:                 { type: 'string', maxLen: 50,
             label: 'Категория УК' },
         uk_urgency:                  { type: 'string', maxLen: 50,
-            label: 'Срочность УК' },
+            label: 'Срочность УК',
+            hint: 'Канонический ключ: low | medium | high | critical' },
         description:                 { type: 'string', maxLen: 500,
             label: 'Описание' }
     });
