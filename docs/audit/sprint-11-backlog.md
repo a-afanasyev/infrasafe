@@ -11,6 +11,7 @@
 > Обновлён 2026-06-02: добавлен батч **SEC-13..SEC-34** (security pentest round 2, 2026-06-01/02) — см. секцию «Security pentest 2026-06-01/02» + отчёт `docs/audit/2026-06-01-security-pentest.md`. Активно-эксплуатируемых CRITICAL — 0 (JWT-секреты ротированы, подтв. live-forge→401).
 > **Phase 1 закрыт (2026-06-02):** SEC-18/24/25/29/33 + `npm audit fix` смержены (PR #96 / `59ae6a6`) и задеплоены на прод (SEC-18/24 live-verified). Dep-патч qs/express активируется только с пересборкой образа → едет на SEC-14 (`--renew-anon-volumes`). Открыто: SEC-13..17, 19..23, 26..32, 34.
 > Обновлён 2026-06-06: закрыт **UK-URGENCY** — каноничные ключи `urgency` (PR #97 / `94c7ddd`, migration 032), задеплоен + прод-верифицирован, контракт подтверждён УК с обеих сторон. См. Closed-секцию + `docs/audit/2026-06-05-uk-urgency-canonical-keys.md`.
+> Обновлён 2026-06-07: **Phase 2 quick-wins смержены** — SEC-16/26/28/30 (PR #98 / `9b9537b`), чистый код+TDD, прод не затронут (2309 тестов зелёные). Открыто из round 2: SEC-13/14/15 (HIGH deploy/compose), SEC-17/19..23/27/31/32 (MED), SEC-34 (LOW).
 
 ---
 
@@ -43,8 +44,10 @@
 | **B-008** frontend-redesign merge | P4 | — | после стабилизации + B-004 split |
 | **B-009** seasonal HEATING rules | P4 | — | **Q3 2026** (до отопит. сезона) |
 | ~~SEC-18/24/25/29/33~~ (MEDIUM) | — | **✅ CLOSED** PR #96 / `59ae6a6` (2026-06-02) | CSP-CDN / correlation-id / telemetry-allowlist / UkOutbox-interval / pagination-clamp — задеплоены + live-verified |
-| **SEC-13..16** (HIGH) | P1-P2 | pentest round 2, present-в-коде | admin123 seed / Dockerfile.unified dev / `.:/app` mount / backup-creds — деплой/compose, см. секцию «Security pentest 2026-06-01/02» |
-| **SEC-17/19..23/26..32** (MEDIUM) | P2-P3 | pentest round 2 | scrub / uk-metrics leak / nginx-rl / Redis-pass / CSRF / TOTP / recovery-codes / map-escape / admin.js-cleanup / … — детали в секции |
+| ~~SEC-16~~ backup-creds (HIGH) | — | **✅ CLOSED** PR #98 / `9b9537b` (2026-06-07) | env + PGPASSWORD, убран хардкод `postgres/postgres` |
+| **SEC-13/14/15** (HIGH) | P1-P2 | pentest round 2, present-в-коде | admin123 seed / Dockerfile.unified dev / `.:/app` mount — деплой/compose, см. секцию «Security pentest 2026-06-01/02» |
+| ~~SEC-26/28/30~~ (MEDIUM) | — | **✅ CLOSED** PR #98 / `9b9537b` (2026-06-07) | TOTP TTL 120с / idempotent recovery (cache) / building_id sanitize |
+| **SEC-17/19..23/27/31/32** (MEDIUM) | P2-P3 | pentest round 2 | scrub / uk-metrics leak / nginx-rl / Redis-pass / CSRF / stale-cache / blacklist / admin.js-cleanup / … — детали в секции |
 | **SEC-34** (LOW/INFO) | P3-P4 | pentest round 2 | hardening-пачка (noopener, SSH key-only, `npm audit fix`, …) |
 
 ### Рекомендация
@@ -583,9 +586,10 @@ event'а — строка остаётся `pending`, что корректно)
   как факт прод-реальности.) *Fix:* в проде убрать `- .:/app`, копировать только нужное (как
   `Dockerfile.prod`); hot-reload-mount оставить только в `docker-compose.dev.yml`/override. *Trigger:* при
   следующем compose-touch проде. *Est:* ~2-3ч + smoke.
-- **SEC-16 · HIGH · `backup-database.sh` хардкод `postgres/postgres`** — `backup-database.sh:16-18`
+- **SEC-16 · ✅ CLOSED (PR #98 / `9b9537b`, 2026-06-07) · HIGH · `backup-database.sh` хардкод `postgres/postgres`** — `backup-database.sh:16-18`
   (git-tracked). *Fix:* читать из env (`${DB_PASSWORD:?}`); ротировать если совпадает с прод; либо
   gitignore. *Trigger:* следующий backup-touch. *Est:* ~30мин.
+  **Closed:** `DB_USER`/`DB_PASSWORD` из env (defaults `infrasafe_app`/empty, опц. source `.env.prod`/`.env`); пароль в pg_dump через `PGPASSWORD` env, не argv; хардкод `postgres/postgres` убран. Regression `tests/jest/security/backupScript.test.js`.
 
 ### MEDIUM
 
@@ -628,22 +632,25 @@ event'а — строка остаётся `pending`, что корректно)
   spread остался). *Fix:* allowlist полей метрик (proto-pollution/log-injection; SQL-пути нет). *Trigger:*
   спринт. *Est:* ~1ч.
   **Closed:** `ALLOWED_METRIC_FIELDS` allowlist (15 сенсорных полей); `__proto__`/unknown отброшены; `leak_sensor`/LEAK_CHECK сохранён; no-`metrics` regression-guard.
-- **SEC-26 · MEDIUM · TOTP anti-replay TTL 60с < окна валидности ~90с** — `src/services/totpService.js:39`
+- **SEC-26 · ✅ CLOSED (PR #98 / `9b9537b`, 2026-06-07) · MEDIUM · TOTP anti-replay TTL 60с < окна валидности ~90с** — `src/services/totpService.js:39`
   (+ in-memory, теряется на рестарте/мульти-реплике). *Fix:* TTL≥120с + Redis-backing. *Trigger:* спринт /
   multi-replica. *Est:* ~30мин.
+  **Closed:** TTL 60→120с (`REPLAY_WINDOW_MS`); sweep вынесен в экспортируемый `sweepExpiredCodes()` для детерминированного теста границы. **Остаток (Redis-backing для multi-replica) → B-003** (single-replica не эксплуатируется). Regression `totpService.test.js`.
 - **SEC-27 · MEDIUM · stale user-cache 5мин на смену роли/деактивацию** — `src/services/authService.js`
   (`findUserById` cache, key `auth:user:<id>`). *Fix:* инвалидация кэша в любом пути мутации
   `users.role/is_active`. *Trigger:* при появлении user-mgmt mutation API. *Est:* ~1ч.
-- **SEC-28 · MEDIUM · recovery-коды перегенерируются на каждый `setup-2fa` с тем же tempToken** —
+- **SEC-28 · ✅ CLOSED (PR #98 / `9b9537b`, 2026-06-07) · MEDIUM · recovery-коды перегенерируются на каждый `setup-2fa` с тем же tempToken** —
   `src/services/totpService.js` (~119). *Fix:* идемпотентная генерация recovery в рамках одного tempToken.
   *Trigger:* спринт. *Est:* ~1ч.
+  **Closed:** подход «stable via cache» — на resume pending-setup recovery-коды переиспользуются из `cacheService` (`totp:setup:recovery:<uid>`, TTL 15 мин), форма API не меняется; fallback на регенерацию при cache-miss; очистка при confirm. Tradeoff: plaintext-коды кратковременно в in-memory кэше (они и так в ответе клиенту). Существующий «коды разные»-тест переписан под новое поведение + fallback-тест. Regression `totpService.test.js`.
 - **SEC-29 · ✅ CLOSED (PR #96 / `59ae6a6`, deployed 2026-06-02) · MEDIUM · `UkOutbox` INTERVAL через string-concat** — `src/models/UkOutbox.js:128,173`
   (`($N || ' seconds')::interval`). Сейчас не эксплойтится (caller coercion), паттерн неверный. *Fix:*
   `NOW() + ($N * INTERVAL '1 second')`. *Trigger:* при следующем touch UkOutbox. *Est:* ~30мин.
   **Closed:** оба метода (`markFailed`+`resetForSkip`) → `$N * INTERVAL '1 second'`, integer-параметр `Math.max(1, Math.floor())`, regression `ukOutboxModel.test.js`.
-- **SEC-30 · MEDIUM · `building_id` без эскейпа в HTML-атрибуты/fetch-URL Leaflet-попапа** —
+- **SEC-30 · ✅ CLOSED (PR #98 / `9b9537b`, 2026-06-07) · MEDIUM · `building_id` без эскейпа в HTML-атрибуты/fetch-URL Leaflet-попапа** —
   `public/script.js:~1921-1931` (нужна компрометация БД/API для эксплойта). *Fix:* `parseInt`+валидация
   перед использованием. *Trigger:* map-UX проход / B-008. *Est:* ~30мин.
+  **Closed:** `safeBuildingId = /^\d+$/.test(...) ? ... : ''` перед HTML `id=""` и URL fetch'а; power-fetch пропускается без валидного id. Бандл пересобирается на деплое (`public/dist` gitignored). Regression `tests/jest/security/sec30-building-id.test.js`.
 - **SEC-31 · MEDIUM · blacklist fail-open при недоступности БД (by-design)** — `src/services/authService.js:633`.
   *Fix:* принято by-design; при multi-replica перенести L1 в Redis. *Trigger:* multi-replica (B-003,
   входит туда). *Est:* — (в B-003).
@@ -681,9 +688,10 @@ event'а — строка остаётся `pending`, что корректно)
 
 ### Рекомендованный порядок устранения (round 2)
 1. ~~**Быстрые безопасные код-правки** (без прод-доступа, чистый код+тесты): SEC-18, SEC-24, SEC-25, SEC-33, SEC-29 + `npm audit fix`.~~ **✅ DONE (PR #96 / `59ae6a6`, deployed 2026-06-02).** Код-фиксы 18/24/25/29/33 живут на проде; `npm audit fix` (qs/express dep-патч) лежит в package-lock, но **активируется только с пересборкой образа** (анон node_modules-volume) → отложен на SEC-14 (`--renew-anon-volumes`).
-2. **HIGH деплой/compose:** SEC-14 (+dep-патч), SEC-15 (сначала verify прод-реальность), SEC-13, SEC-16.
+1b. ~~**Quick-wins batch 2** (чистый код+тесты): SEC-16, SEC-26, SEC-28, SEC-30.~~ **✅ DONE (PR #98 / `9b9537b`, 2026-06-07).** TOTP TTL/recovery + backup-creds + building_id sanitize; 2309 тестов зелёные; прод не затронут.
+2. **HIGH деплой/compose:** SEC-14 (+dep-патч), SEC-15 (сначала verify прод-реальность), SEC-13. *(SEC-16 закрыт в 1b.)* SEC-14b+SEC-15 — re-arch (multi-stage Dockerfile + снять `.:/app` mount, координация с B-027 раздачей dist).
 3. **Edge/infra:** SEC-20, SEC-21, SEC-22, SEC-19.
-4. **Остальные MEDIUM** (SEC-23/26/27/28/30/31/32) + SEC-17 scrub + SEC-34 пачка.
+4. **Остальные MEDIUM** (SEC-23/27/31/32) + SEC-17 scrub + SEC-34 пачка.
 
 ---
 
