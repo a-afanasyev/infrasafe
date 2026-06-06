@@ -13,9 +13,21 @@ echo -e "${YELLOW}🗄️  Создание бэкапа базы данных I
 echo "================================================="
 
 # Параметры базы данных
-DB_NAME="infrasafe"
-DB_USER="postgres"
-DB_PASSWORD="postgres"
+# SEC-16: креды не хардкодим — читаем из окружения (или из env-файла ниже).
+# Опционально подхватываем .env.prod / .env, если они есть рядом со скриптом.
+for ENV_FILE in ".env.prod" ".env"; do
+    if [ -f "$ENV_FILE" ]; then
+        # shellcheck disable=SC1090
+        set -a; . "./$ENV_FILE"; set +a
+        break
+    fi
+done
+
+DB_NAME="${DB_NAME:-infrasafe}"
+DB_USER="${DB_USER:-infrasafe_app}"
+# Пароль нужен только если pg_dump внутри контейнера не использует socket-trust.
+# Передаётся в pg_dump через PGPASSWORD (env), НИКОГДА не через argv.
+DB_PASSWORD="${DB_PASSWORD:-}"
 
 # Определяем имя контейнера PostgreSQL
 # Пробуем найти контейнер из unified compose
@@ -56,7 +68,7 @@ BACKUP_FILE_COMPRESSED="${BACKUP_FILE}.gz"
 echo -e "${YELLOW}📦 Создание бэкапа...${NC}"
 
 # Создаем бэкап через pg_dump
-if docker exec "$CONTAINER_NAME" pg_dump -U "$DB_USER" -d "$DB_NAME" > "$BACKUP_FILE" 2>/dev/null; then
+if docker exec -e PGPASSWORD="$DB_PASSWORD" "$CONTAINER_NAME" pg_dump -U "$DB_USER" -d "$DB_NAME" > "$BACKUP_FILE" 2>/dev/null; then
     # Проверяем размер файла
     FILE_SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
     echo -e "${GREEN}✓ Бэкап создан успешно!${NC}"

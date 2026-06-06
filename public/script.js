@@ -1894,6 +1894,11 @@ document.addEventListener('DOMContentLoaded', async function () {
 
                     // Create popup content for building with electricity and cold water data
                     // ИСПРАВЛЕНИЕ XSS: Все пользовательские данные экранируются
+                    // SEC-30: building_id попадает в HTML id="" и в URL fetch'а.
+                    // item.building_id может оказаться свободным building_name (см. fallback
+                    // при создании маркера), поэтому приводим к чистому целому — иначе
+                    // значение может вырваться из атрибута или путь URL'а.
+                    const safeBuildingId = /^\d+$/.test(String(item.building_id)) ? String(item.building_id) : '';
                     const buildingName = escapeHTML(item.building_name || '');
                     const ph1Class = !item.electricity_ph1 ? "class='blinking-text-red'" : (!isPhase1Ok ? "class='blinking-cell-orange'" : '');
                     const ph2Class = !item.electricity_ph2 ? "class='blinking-text-red'" : (!isPhase2Ok ? "class='blinking-cell-orange'" : '');
@@ -1918,17 +1923,17 @@ document.addEventListener('DOMContentLoaded', async function () {
                     </tr>
                     
                     <!-- Power Data - будет загружено динамически -->
-                    <tr id="power-row-${item.building_id}" style="display: none;">
+                    <tr id="power-row-${safeBuildingId}" style="display: none;">
                         <td style="font-size: 10px; color: #666;">💡</td>
-                        <td id="power-ph1-${item.building_id}" style="font-size: 11px; font-weight: 600; color: #2d3748;"></td>
-                        <td id="power-ph2-${item.building_id}" style="font-size: 11px; font-weight: 600; color: #2d3748;"></td>
-                        <td id="power-ph3-${item.building_id}" style="font-size: 11px; font-weight: 600; color: #2d3748;"></td>
+                        <td id="power-ph1-${safeBuildingId}" style="font-size: 11px; font-weight: 600; color: #2d3748;"></td>
+                        <td id="power-ph2-${safeBuildingId}" style="font-size: 11px; font-weight: 600; color: #2d3748;"></td>
+                        <td id="power-ph3-${safeBuildingId}" style="font-size: 11px; font-weight: 600; color: #2d3748;"></td>
                     </tr>
-                    
+
                     <!-- Total Power - будет загружено динамически -->
-                    <tr id="total-power-row-${item.building_id}" style="display: none;">
+                    <tr id="total-power-row-${safeBuildingId}" style="display: none;">
                         <td style="font-size: 10px; color: #666;">Σ</td>
-                        <td colspan="3" id="total-power-${item.building_id}" style="font-size: 11px; font-weight: 700; color: #1a5490;"></td>
+                        <td colspan="3" id="total-power-${safeBuildingId}" style="font-size: 11px; font-weight: 700; color: #1a5490;"></td>
                     </tr>
 
                     <!-- Cold Water Data -->
@@ -1987,30 +1992,33 @@ document.addEventListener('DOMContentLoaded', async function () {
                 
                 // При открытии popup загружаем данные мощности
                 marker.on('popupopen', async () => {
+                    // SEC-30: без валидного числового id динамическая мощность не грузится
+                    // (id'ы в HTML пустые) — пропускаем fetch, чтобы не бить по /buildings/.
+                    if (!safeBuildingId) return;
                     try {
-                        const powerResponse = await fetch(`/api/power-analytics/buildings/${item.building_id}`);
+                        const powerResponse = await fetch(`/api/power-analytics/buildings/${safeBuildingId}`);
                         if (powerResponse.ok) {
                             const powerData = await powerResponse.json();
-                            
+
                             if (powerData.success && powerData.data) {
                                 const data = powerData.data;
-                                
+
                                 // Обновляем ячейки с мощностью по фазам
-                                const powerPh1 = document.getElementById(`power-ph1-${item.building_id}`);
-                                const powerPh2 = document.getElementById(`power-ph2-${item.building_id}`);
-                                const powerPh3 = document.getElementById(`power-ph3-${item.building_id}`);
-                                const powerRow = document.getElementById(`power-row-${item.building_id}`);
-                                
+                                const powerPh1 = document.getElementById(`power-ph1-${safeBuildingId}`);
+                                const powerPh2 = document.getElementById(`power-ph2-${safeBuildingId}`);
+                                const powerPh3 = document.getElementById(`power-ph3-${safeBuildingId}`);
+                                const powerRow = document.getElementById(`power-row-${safeBuildingId}`);
+
                                 if (powerPh1 && powerPh2 && powerPh3 && powerRow) {
                                     powerPh1.textContent = `${data.power_ph1_kw} кВт`;
                                     powerPh2.textContent = `${data.power_ph2_kw} кВт`;
                                     powerPh3.textContent = `${data.power_ph3_kw} кВт`;
                                     powerRow.style.display = '';
                                 }
-                                
+
                                 // Обновляем общую мощность
-                                const totalPower = document.getElementById(`total-power-${item.building_id}`);
-                                const totalPowerRow = document.getElementById(`total-power-row-${item.building_id}`);
+                                const totalPower = document.getElementById(`total-power-${safeBuildingId}`);
+                                const totalPowerRow = document.getElementById(`total-power-row-${safeBuildingId}`);
                                 
                                 if (totalPower && totalPowerRow) {
                                     totalPower.textContent = '';
