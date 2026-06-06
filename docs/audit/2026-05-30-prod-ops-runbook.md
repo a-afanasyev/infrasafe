@@ -1,5 +1,14 @@
 # Prod-ops runbook — security-audit deploy (2026-05-30)
 
+> ⚠️ **SUPERSEDED for the deploy mechanics by SEC-14/15 (PR #99, 2026-06-07).**
+> The app is now an **immutable image** (no `.:/app` bind mount, `npm start`, `--omit=dev`).
+> **Backend changes require an image rebuild** — `git pull` alone no longer makes backend code live.
+> Canonical deploy is now **`./update-production.sh`** (explicit unified compose, `.env` hard-fail,
+> phased switch → app-health-wait → dist publish → verify, flag-driven rollback). Frontend dist is
+> **extracted from the image** via `scripts/rebuild-frontend.sh prepare|publish|verify|restore`
+> (staging in `.deploy/`), NOT rebuilt through the (now-removed) bind mount. The §1b block below is
+> kept for history. The pre-flight/verification probes (§0, §2+) remain valid.
+>
 > Companion to `docs/audit/2026-05-29-security-audit.md` and PR #69.
 > Execute ONLY during the authorized deploy window, **one step at a time with operator confirmation**.
 > Host: `infrasafe@95.46.96.105:32323`, `~/infrasafe`, compose `docker-compose.unified.yml`.

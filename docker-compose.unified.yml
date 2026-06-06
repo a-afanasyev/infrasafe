@@ -48,7 +48,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.unified
-      target: backend
+      target: app
+    # [SEC-14/15] Фиксируем тег — иначе `docker compose images -q app` (пока жив
+    # старый контейнер) может вернуть СТАРЫЙ образ при extract dist. После build
+    # точный ID: docker image inspect -f '{{.Id}}' infrasafe-app:latest
+    image: infrasafe-app:latest
     ports:
       # [P-PENTEST-1] Bind to loopback only. The TLS-terminating prod nginx is
       # the sole internet-facing edge and reaches this service via docker-DNS
@@ -57,9 +61,12 @@ services:
       # public interface without breaking the edge.
       - "127.0.0.1:3000:3000"
     volumes:
-      - .:/app
-      - /app/node_modules
-      # Named volume для логов, чтобы избежать проблем с правами доступа
+      # [SEC-14/15] Убран `- .:/app` (клал .env.prod/.git/scripts/ в контейнер под
+      # любой Node-RCE) и анонимный `- /app/node_modules` (затенял бы image-deps
+      # пустым). Код/зависимости/public теперь ТОЛЬКО из immutable-образа.
+      # Frontend dist доставляется на edge извлечением из образа (C-extract):
+      # scripts/rebuild-frontend.sh prepare|publish. Деплой backend = rebuild образа.
+      # Named volume для логов — каталог chown'нут на nodejs в образе.
       - app_logs:/app/logs
     # [1A-FU3-S-M2] DB credentials moved to .env / .env.prod (both gitignored).
     # `environment:` would override env_file in docker-compose precedence, so

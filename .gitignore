@@ -28,6 +28,10 @@ logs/
 # ==========================================
 public/dist/
 
+# [SEC-14/15] Deploy staging for extracted frontend dist (C-extract).
+# Kept OUTSIDE public/ so the edge never serves it and the build never bakes it.
+.deploy/
+
 # ==========================================
 # Runtime data
 # ==========================================
