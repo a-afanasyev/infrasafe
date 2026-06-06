@@ -24,20 +24,39 @@ const ISSUER = 'InfraSafe';
 const RECOVERY_CODE_COUNT = 8;
 const BCRYPT_ROUNDS = 12;
 
+// SEC-26: the anti-replay TTL must outlast a TOTP code's validity window
+// (otplib step 30s + ±1 step ≈ 90s). A 60s TTL evicted the code while it was
+// still otplib-valid, leaving a ~30s replay gap. 120s closes it with margin.
+const REPLAY_WINDOW_MS = 120000;
+
+// SEC-28: recovery codes shown during setup are reused (not rotated) while a
+// setup is in-flight, so a QR-page refresh / re-login does not silently
+// invalidate codes the user already saved. The plaintext set lives only in
+// this short-lived cache entry (bounds exposure), keyed per pending setup.
+const RECOVERY_SETUP_CACHE_PREFIX = 'totp:setup:recovery:';
+const RECOVERY_SETUP_CACHE_TTL_SECONDS = 900; // 15 min
+
 // SEC-106: anti-replay — track used TOTP codes to prevent reuse within validity window
 const usedCodes = new Map();
-setInterval(() => {
-    const now = Date.now();
+
+// Evict expired anti-replay entries. Exported so the TTL boundary can be
+// tested deterministically; the production interval below calls it on a timer.
+function sweepExpiredCodes(now = Date.now()) {
     for (const [hash, expiresAt] of usedCodes.entries()) {
         if (now > expiresAt) usedCodes.delete(hash);
     }
-}, 60000).unref();
+}
+setInterval(() => sweepExpiredCodes(), REPLAY_WINDOW_MS).unref();
 
 function markCodeUsed(userId, code) {
     const hash = crypto.createHash('sha256').update(`${userId}:${code}`).digest('hex');
     if (usedCodes.has(hash)) return false;
-    usedCodes.set(hash, Date.now() + 60000);
+    usedCodes.set(hash, Date.now() + REPLAY_WINDOW_MS);
     return true;
+}
+
+function recoverySetupCacheKey(userId) {
+    return `${RECOVERY_SETUP_CACHE_PREFIX}${userId}`;
 }
 
 // AES-256-GCM encryption for TOTP secrets
@@ -105,8 +124,10 @@ async function generateSetup(userId, username) {
         throw new Error('User not found');
     }
 
+    const isResume = existing.rows[0].totp_secret && !existing.rows[0].totp_enabled;
+
     let secret;
-    if (existing.rows[0].totp_secret && !existing.rows[0].totp_enabled) {
+    if (isResume) {
         secret = decrypt(existing.rows[0].totp_secret);
         logger.info(`TOTP setup resumed for user ${userId} — reusing pending secret`);
     } else {
@@ -116,8 +137,24 @@ async function generateSetup(userId, username) {
     const otpauthUrl = otplib.generateURI({ issuer: ISSUER, label: username, secret });
     const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
 
-    // Recovery codes are one-shot — always regenerate; user must save the latest set.
-    const plainRecoveryCodes = generateRecoveryCodes();
+    // SEC-28: keep recovery codes stable for the duration of one setup. On a
+    // resume, reuse the pending plaintext set from cache; only mint a fresh set
+    // for a brand-new setup or when the cache has expired (graceful fallback).
+    const cacheKey = recoverySetupCacheKey(userId);
+    let plainRecoveryCodes = null;
+    if (isResume) {
+        try {
+            const cached = await cacheService.get(cacheKey);
+            if (Array.isArray(cached) && cached.length) {
+                plainRecoveryCodes = cached;
+            }
+        } catch (err) {
+            logger.error(`Failed to read pending recovery codes for user ${userId}: ${err.message}`);
+        }
+    }
+    if (!plainRecoveryCodes) {
+        plainRecoveryCodes = generateRecoveryCodes();
+    }
     const hashedRecoveryCodes = await hashRecoveryCodes(plainRecoveryCodes);
 
     const encryptedSecret = encrypt(secret);
@@ -127,6 +164,13 @@ async function generateSetup(userId, username) {
         [encryptedSecret, JSON.stringify(hashedRecoveryCodes), userId]
     );
     await invalidateUserCache(userId);
+
+    // Best-effort: persist the plaintext set so a resume returns the same codes.
+    try {
+        await cacheService.set(cacheKey, plainRecoveryCodes, { ttl: RECOVERY_SETUP_CACHE_TTL_SECONDS });
+    } catch (err) {
+        logger.error(`Failed to cache pending recovery codes for user ${userId}: ${err.message}`);
+    }
 
     logger.info(`TOTP setup initiated for user ${userId}`);
 
@@ -172,6 +216,14 @@ async function confirmSetup(userId, code) {
         [userId]
     );
     await invalidateUserCache(userId);
+
+    // SEC-28: the pending plaintext recovery codes are no longer needed once
+    // 2FA is enabled — drop them from cache to minimise exposure.
+    try {
+        await cacheService.invalidate(recoverySetupCacheKey(userId));
+    } catch (err) {
+        logger.error(`Failed to clear pending recovery codes for user ${userId}: ${err.message}`);
+    }
 
     logger.info(`TOTP 2FA enabled for user ${userId}`);
     return true;
@@ -259,5 +311,6 @@ module.exports = {
     encrypt,
     decrypt,
     generateRecoveryCodes,
-    hashRecoveryCodes
+    hashRecoveryCodes,
+    sweepExpiredCodes
 };

@@ -22,6 +22,8 @@ jest.mock('../../../src/utils/logger', () => ({
 }));
 jest.mock('../../../src/services/cacheService', () => ({
     invalidate: jest.fn().mockResolvedValue(undefined),
+    get: jest.fn().mockResolvedValue(null),
+    set: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('qrcode', () => ({
     toDataURL: jest.fn().mockResolvedValue('data:image/png;base64,MOCK'),
@@ -177,17 +179,51 @@ describe('totpService — generateSetup idempotency', () => {
         expect(second.secret).toBe(first.secret);
     });
 
-    test('recovery codes DIFFER across calls (user must save latest set)', async () => {
+    test('recovery codes are STABLE on resume when cache hits (SEC-28)', async () => {
+        // SEC-28: re-issuing setup within one session (e.g. QR-page refresh)
+        // must NOT rotate recovery codes — a user who saved the first set would
+        // silently lose them. The pending plaintext set is reused from cache.
         db.query
             .mockResolvedValueOnce({ rows: [{ totp_secret: null, totp_enabled: false }] })
             .mockResolvedValueOnce({ rows: [] });
         const first = await totpService.generateSetup(78, 'dave');
 
         const encryptedPending = totpService.encrypt(first.secret);
+        cacheService.get.mockResolvedValueOnce(first.recoveryCodes); // cache hit on resume
         db.query
             .mockResolvedValueOnce({ rows: [{ totp_secret: encryptedPending, totp_enabled: false }] })
             .mockResolvedValueOnce({ rows: [] });
         const second = await totpService.generateSetup(78, 'dave');
+
+        expect(second.recoveryCodes).toEqual(first.recoveryCodes);
+        expect(second.recoveryCodes).toHaveLength(8);
+    });
+
+    test('caches plaintext recovery codes for the setup window (SEC-28)', async () => {
+        db.query
+            .mockResolvedValueOnce({ rows: [{ totp_secret: null, totp_enabled: false }] })
+            .mockResolvedValueOnce({ rows: [] });
+        const result = await totpService.generateSetup(81, 'frank');
+
+        expect(cacheService.set).toHaveBeenCalledWith(
+            'totp:setup:recovery:81',
+            result.recoveryCodes,
+            expect.objectContaining({ ttl: expect.any(Number) })
+        );
+    });
+
+    test('resume with cache MISS mints a fresh set (graceful fallback, SEC-28)', async () => {
+        db.query
+            .mockResolvedValueOnce({ rows: [{ totp_secret: null, totp_enabled: false }] })
+            .mockResolvedValueOnce({ rows: [] });
+        const first = await totpService.generateSetup(83, 'grace');
+
+        const encryptedPending = totpService.encrypt(first.secret);
+        cacheService.get.mockResolvedValueOnce(null); // cache expired / restart
+        db.query
+            .mockResolvedValueOnce({ rows: [{ totp_secret: encryptedPending, totp_enabled: false }] })
+            .mockResolvedValueOnce({ rows: [] });
+        const second = await totpService.generateSetup(83, 'grace');
 
         expect(second.recoveryCodes).not.toEqual(first.recoveryCodes);
         expect(second.recoveryCodes).toHaveLength(8);
@@ -228,6 +264,18 @@ describe('totpService — confirmSetup', () => {
         const enableCall = db.query.mock.calls[1];
         expect(enableCall[0]).toMatch(/UPDATE users SET totp_enabled = true/);
         expect(cacheService.invalidate).toHaveBeenCalledWith('auth:user:1');
+    });
+
+    test('clears the pending recovery-code cache once 2FA is enabled (SEC-28)', async () => {
+        const encryptedSecret = totpService.encrypt('JBSWY3DPEHPK3PXP');
+        db.query
+            .mockResolvedValueOnce({ rows: [{ totp_secret: encryptedSecret, totp_enabled: false }] })
+            .mockResolvedValueOnce({ rows: [] });
+        otplib.verifySync = jest.fn().mockReturnValue({ valid: true });
+
+        await totpService.confirmSetup(82, 'confirm-' + Date.now());
+
+        expect(cacheService.invalidate).toHaveBeenCalledWith('totp:setup:recovery:82');
     });
 
     test('throws "Invalid TOTP code" on bad code', async () => {
@@ -355,6 +403,53 @@ describe('totpService — verifyCode', () => {
     test('throws "2FA is not enabled" when user has no secret', async () => {
         db.query.mockResolvedValue({ rows: [{ totp_enabled: false, totp_secret: null }] });
         await expect(totpService.verifyCode(14, '111111')).rejects.toThrow('2FA is not enabled');
+    });
+});
+
+describe('totpService — anti-replay TTL (SEC-26)', () => {
+    let realVerify;
+    beforeEach(() => {
+        jest.clearAllMocks();
+        realVerify = otplib.verifySync;
+    });
+    afterEach(() => { otplib.verifySync = realVerify; });
+
+    test('replay still blocked after a 61s sweep (TTL ≥ 120s)', async () => {
+        const encryptedSecret = totpService.encrypt('JBSWY3DPEHPK3PXP');
+        db.query.mockResolvedValue({
+            rows: [{ totp_secret: encryptedSecret, totp_enabled: true, recovery_codes: [] }],
+        });
+        otplib.verifySync = jest.fn().mockReturnValue({ valid: true });
+
+        const code = 'ttl-window-' + Date.now();
+        const t0 = Date.now();
+        const first = await totpService.verifyCode(8200, code);
+        expect(first).toEqual({ valid: true, method: 'totp' });
+
+        // The cleanup sweep fires ~61s later — still inside the 120s window,
+        // so the code must remain blocked. With the old 60s TTL it would be
+        // evicted here and the replay would wrongly succeed.
+        totpService.sweepExpiredCodes(t0 + 61000);
+
+        const second = await totpService.verifyCode(8200, code);
+        expect(second).toEqual({ valid: false, reason: 'code_already_used' });
+    });
+
+    test('entry is evicted after the full window (~121s)', async () => {
+        const encryptedSecret = totpService.encrypt('JBSWY3DPEHPK3PXP');
+        db.query.mockResolvedValue({
+            rows: [{ totp_secret: encryptedSecret, totp_enabled: true, recovery_codes: [] }],
+        });
+        otplib.verifySync = jest.fn().mockReturnValue({ valid: true });
+
+        const code = 'ttl-evict-' + Date.now();
+        const t0 = Date.now();
+        await totpService.verifyCode(8201, code);
+
+        totpService.sweepExpiredCodes(t0 + 121000); // past the 120s window
+
+        const afterEviction = await totpService.verifyCode(8201, code);
+        expect(afterEviction).toEqual({ valid: true, method: 'totp' });
     });
 });
 
