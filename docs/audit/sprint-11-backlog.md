@@ -12,7 +12,8 @@
 > **Phase 1 закрыт (2026-06-02):** SEC-18/24/25/29/33 + `npm audit fix` смержены (PR #96 / `59ae6a6`) и задеплоены на прод (SEC-18/24 live-verified). Dep-патч qs/express активируется только с пересборкой образа → едет на SEC-14 (`--renew-anon-volumes`). Открыто: SEC-13..17, 19..23, 26..32, 34.
 > Обновлён 2026-06-06: закрыт **UK-URGENCY** — каноничные ключи `urgency` (PR #97 / `94c7ddd`, migration 032), задеплоен + прод-верифицирован, контракт подтверждён УК с обеих сторон. См. Closed-секцию + `docs/audit/2026-06-05-uk-urgency-canonical-keys.md`.
 > Обновлён 2026-06-07: **Phase 2 quick-wins смержены** — SEC-16/26/28/30 (PR #98 / `9b9537b`), чистый код+TDD, прод не затронут (2309 тестов зелёные). Открыто из round 2: SEC-13/14/15 (HIGH deploy/compose), SEC-17/19..23/27/31/32 (MED), SEC-34 (LOW).
-> Обновлён 2026-06-07: **SEC-14/15 смержены** (PR #99 / `25c3679`) — immutable app-образ + extracted static (C-extract): убраны dev-watcher/nodemon+devDeps и `.:/app` bind-mount. CI docker-image job + image-composition green, 2313 тестов. **Прод НЕ задеплоен** (immutable rebuild — отдельный шаг через `update-production.sh`). Побочно: SEC-34k dep-патч qs/express активируется при rebuild (anon node_modules volume убран). Открыто: SEC-13 (HIGH), SEC-17/19..23/27/31/32 (MED), SEC-34 a–j (LOW).
+> Обновлён 2026-06-07: **SEC-14/15 смержены** (PR #99 / `25c3679`) — immutable app-образ + extracted static (C-extract): убраны dev-watcher/nodemon+devDeps и `.:/app` bind-mount. CI docker-image job + image-composition green, 2313 тестов.
+> Обновлён 2026-06-07: **SEC-14/15 ЗАДЕПЛОЕНЫ на прод** через `update-production.sh` (HEAD `899d533` + guard-фикс симлинка `.env`). Прод-верификация: контейнер без `.env*`/`.git`/`scripts/`/`build/`, mount только `app_logs` (нет `.:/app`); процесс `npm start` (не nodemon), нет nodemon/esbuild; NODE_ENV=production; **qs@6.15.2** (SEC-34k dep-патч доехал с rebuild → закрыт); edge `/`,`/health` 200, `/api/buildings` 401, `/api/buildings-metrics` 200×6. **One-time миграция:** legacy `public/dist` был owned uid1001 → chown 1000:1000 (rename dir требует write на dir для `..`); первый publish сначала упал на этом → rollback сработал штатно (app вернулся, dist verify зелёный) → chown → redeploy ✓. Открыто: SEC-13 (HIGH), SEC-17/19..23/27/31/32 (MED), SEC-34 a–j (LOW).
 
 ---
 
@@ -46,7 +47,7 @@
 | **B-009** seasonal HEATING rules | P4 | — | **Q3 2026** (до отопит. сезона) |
 | ~~SEC-18/24/25/29/33~~ (MEDIUM) | — | **✅ CLOSED** PR #96 / `59ae6a6` (2026-06-02) | CSP-CDN / correlation-id / telemetry-allowlist / UkOutbox-interval / pagination-clamp — задеплоены + live-verified |
 | ~~SEC-16~~ backup-creds (HIGH) | — | **✅ CLOSED** PR #98 / `9b9537b` (2026-06-07) | env + PGPASSWORD, убран хардкод `postgres/postgres` |
-| ~~SEC-14/15~~ (HIGH) | — | **✅ CLOSED (код)** PR #99 / `25c3679` (2026-06-07) | immutable app (npm start, --omit=dev) + extracted static; `.:/app` убран. **Прод деплой — отдельный шаг** (`update-production.sh`) |
+| ~~SEC-14/15~~ (HIGH) | — | **✅ CLOSED + DEPLOYED** PR #99 / `25c3679`, прод 2026-06-07 | immutable app (npm start, --omit=dev) + extracted static; `.:/app` убран. Прод-verified (нет секретов/.git/scripts; npm start; qs-патч SEC-34k доехал) |
 | **SEC-13** (HIGH) | P1 | pentest round 2, present-в-коде | `admin123` seed (`database/init/02_seed_data.sql:168`) — нужен bootstrap-провижен, см. фаза F |
 | ~~SEC-26/28/30~~ (MEDIUM) | — | **✅ CLOSED** PR #98 / `9b9537b` (2026-06-07) | TOTP TTL 120с / idempotent recovery (cache) / building_id sanitize |
 | **SEC-17/19..23/27/31/32** (MEDIUM) | P2-P3 | pentest round 2 | scrub / uk-metrics leak / nginx-rl / Redis-pass / CSRF / stale-cache / blacklist / admin.js-cleanup / … — детали в секции |
