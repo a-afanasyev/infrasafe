@@ -12,6 +12,7 @@
 > **Phase 1 закрыт (2026-06-02):** SEC-18/24/25/29/33 + `npm audit fix` смержены (PR #96 / `59ae6a6`) и задеплоены на прод (SEC-18/24 live-verified). Dep-патч qs/express активируется только с пересборкой образа → едет на SEC-14 (`--renew-anon-volumes`). Открыто: SEC-13..17, 19..23, 26..32, 34.
 > Обновлён 2026-06-06: закрыт **UK-URGENCY** — каноничные ключи `urgency` (PR #97 / `94c7ddd`, migration 032), задеплоен + прод-верифицирован, контракт подтверждён УК с обеих сторон. См. Closed-секцию + `docs/audit/2026-06-05-uk-urgency-canonical-keys.md`.
 > Обновлён 2026-06-07: **Phase 2 quick-wins смержены** — SEC-16/26/28/30 (PR #98 / `9b9537b`), чистый код+TDD, прод не затронут (2309 тестов зелёные). Открыто из round 2: SEC-13/14/15 (HIGH deploy/compose), SEC-17/19..23/27/31/32 (MED), SEC-34 (LOW).
+> Обновлён 2026-06-07: **SEC-14/15 смержены** (PR #99 / `25c3679`) — immutable app-образ + extracted static (C-extract): убраны dev-watcher/nodemon+devDeps и `.:/app` bind-mount. CI docker-image job + image-composition green, 2313 тестов. **Прод НЕ задеплоен** (immutable rebuild — отдельный шаг через `update-production.sh`). Побочно: SEC-34k dep-патч qs/express активируется при rebuild (anon node_modules volume убран). Открыто: SEC-13 (HIGH), SEC-17/19..23/27/31/32 (MED), SEC-34 a–j (LOW).
 
 ---
 
@@ -45,7 +46,8 @@
 | **B-009** seasonal HEATING rules | P4 | — | **Q3 2026** (до отопит. сезона) |
 | ~~SEC-18/24/25/29/33~~ (MEDIUM) | — | **✅ CLOSED** PR #96 / `59ae6a6` (2026-06-02) | CSP-CDN / correlation-id / telemetry-allowlist / UkOutbox-interval / pagination-clamp — задеплоены + live-verified |
 | ~~SEC-16~~ backup-creds (HIGH) | — | **✅ CLOSED** PR #98 / `9b9537b` (2026-06-07) | env + PGPASSWORD, убран хардкод `postgres/postgres` |
-| **SEC-13/14/15** (HIGH) | P1-P2 | pentest round 2, present-в-коде | admin123 seed / Dockerfile.unified dev / `.:/app` mount — деплой/compose, см. секцию «Security pentest 2026-06-01/02» |
+| ~~SEC-14/15~~ (HIGH) | — | **✅ CLOSED (код)** PR #99 / `25c3679` (2026-06-07) | immutable app (npm start, --omit=dev) + extracted static; `.:/app` убран. **Прод деплой — отдельный шаг** (`update-production.sh`) |
+| **SEC-13** (HIGH) | P1 | pentest round 2, present-в-коде | `admin123` seed (`database/init/02_seed_data.sql:168`) — нужен bootstrap-провижен, см. фаза F |
 | ~~SEC-26/28/30~~ (MEDIUM) | — | **✅ CLOSED** PR #98 / `9b9537b` (2026-06-07) | TOTP TTL 120с / idempotent recovery (cache) / building_id sanitize |
 | **SEC-17/19..23/27/31/32** (MEDIUM) | P2-P3 | pentest round 2 | scrub / uk-metrics leak / nginx-rl / Redis-pass / CSRF / stale-cache / blacklist / admin.js-cleanup / … — детали в секции |
 | **SEC-34** (LOW/INFO) | P3-P4 | pentest round 2 | hardening-пачка (noopener, SSH key-only, `npm audit fix`, …) |
@@ -574,13 +576,15 @@ event'а — строка остаётся `pending`, что корректно)
   паролём. *Fix:* убрать admin-строку из seed (или заведомо невалидный placeholder-hash); admin
   заводить out-of-band с операторским паролём; runbook-шаг обязательной смены. *Trigger:* до следующего
   fresh-deploy/DR. *Est:* ~1ч.
-- **SEC-14 · HIGH · `Dockerfile.unified` гонит dev-watcher в проде** — `Dockerfile.unified:39`
+- **SEC-14 · ✅ CLOSED код (PR #99 / `25c3679`, 2026-06-07; прод-деплой отдельно) · HIGH · `Dockerfile.unified` гонит dev-watcher в проде** — `Dockerfile.unified:39`
   `CMD ["npm","run","dev"]` (nodemon) + `:17` `npm install --ignore-scripts` (без `--omit=dev`).
+  **Closed:** backend-стейдж разбит на `app-builder` (devDeps→bake dist) + `app` runtime (`npm ci --omit=dev`, `npm start`, NODE_ENV=production, apk add curl); esbuild/nodemon отсутствуют в runtime (CI image-composition). Прод деплой = rebuild через `update-production.sh`.
   *Почему:* в проде крутится dev-watcher с devDependencies; file-watcher перезапускает сервер на любую
   запись в `/app` (см. SEC-15). `Dockerfile.prod` корректен — unified не унаследовал. *Fix:*
   `CMD ["npm","start"]` + `npm ci --omit=dev --ignore-scripts`. **Сначала verify на проде, какой
   образ/CMD реально бежит** (решает HIGH↔INFO). *Trigger:* до следующего image-rebuild. *Est:* ~1ч.
-- **SEC-15 · HIGH · весь проект bind-mount в прод-app** — `docker-compose.unified.yml:59-63` `- .:/app`.
+- **SEC-15 · ✅ CLOSED код (PR #99 / `25c3679`, 2026-06-07; прод-деплой отдельно) · HIGH · весь проект bind-mount в прод-app** — `docker-compose.unified.yml:59-63` `- .:/app`.
+  **Closed:** убраны `- .:/app` и anon `- /app/node_modules`; код/deps/public только из immutable-образа (CI проверяет отсутствие `.env*`/`.git`/`scripts/`/`build/`). Frontend dist доставляется C-extract (`scripts/rebuild-frontend.sh prepare|publish`, staging `.deploy/`). Прод деплой = rebuild через `update-production.sh` (phased switch + health-wait + rollback).
   *Почему:* контейнер app читает `.env.prod` (JWT/TOTP/DB/UK-секреты), `.git/` (вся история), deploy-скрипты
   → любой RCE в Node = мгновенный доступ ко всем секретам без эскалации. (B-027 уже зафиксировал этот mount
   как факт прод-реальности.) *Fix:* в проде убрать `- .:/app`, копировать только нужное (как
@@ -689,7 +693,7 @@ event'а — строка остаётся `pending`, что корректно)
 ### Рекомендованный порядок устранения (round 2)
 1. ~~**Быстрые безопасные код-правки** (без прод-доступа, чистый код+тесты): SEC-18, SEC-24, SEC-25, SEC-33, SEC-29 + `npm audit fix`.~~ **✅ DONE (PR #96 / `59ae6a6`, deployed 2026-06-02).** Код-фиксы 18/24/25/29/33 живут на проде; `npm audit fix` (qs/express dep-патч) лежит в package-lock, но **активируется только с пересборкой образа** (анон node_modules-volume) → отложен на SEC-14 (`--renew-anon-volumes`).
 1b. ~~**Quick-wins batch 2** (чистый код+тесты): SEC-16, SEC-26, SEC-28, SEC-30.~~ **✅ DONE (PR #98 / `9b9537b`, 2026-06-07).** TOTP TTL/recovery + backup-creds + building_id sanitize; 2309 тестов зелёные; прод не затронут.
-2. **HIGH деплой/compose:** SEC-14 (+dep-патч), SEC-15 (сначала verify прод-реальность), SEC-13. *(SEC-16 закрыт в 1b.)* SEC-14b+SEC-15 — re-arch (multi-stage Dockerfile + снять `.:/app` mount, координация с B-027 раздачей dist).
+2. ~~**HIGH деплой/compose:** SEC-14/15 re-arch (multi-stage immutable + extracted static).~~ **✅ DONE код (PR #99 / `25c3679`, 2026-06-07)** — прод-деплой отдельным шагом (`update-production.sh`). Остаётся **SEC-13** (admin123 seed — в фазе F, нужен bootstrap-провижен). *(SEC-16 закрыт в 1b.)*
 3. **Edge/infra:** SEC-20, SEC-21, SEC-22, SEC-19.
 4. **Остальные MEDIUM** (SEC-23/27/31/32) + SEC-17 scrub + SEC-34 пачка.
 
