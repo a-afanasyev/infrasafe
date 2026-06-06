@@ -1,5 +1,15 @@
 # 🚀 Инструкция по обновлению контейнеров на Production сервере
 
+> ⚠️ **ОБНОВЛЕНО SEC-14/15 (PR #99, 2026-06-07): immutable app + extracted static.**
+> Канонический деплой теперь — **`./update-production.sh`** (только `docker-compose.unified.yml`).
+> App — immutable-образ: нет `.:/app` bind-mount, `npm start` (не nodemon), `--omit=dev`.
+> **Бэкенд-изменения требуют пересборки образа** (`docker compose -f docker-compose.unified.yml build app`),
+> `git pull` сам по себе бэкенд-код больше НЕ обновляет. Frontend `public/dist` **извлекается из образа**
+> через `scripts/rebuild-frontend.sh prepare|publish|verify|restore` (staging в `.deploy/`), а НЕ
+> пересобирается через bind-mount. `docker-compose.prod.yml` deprecated (только local Mac) — НЕ
+> использовать на проде. Команды ниже с `docker-compose.prod.yml` / `up -d` устарели; следуйте
+> `update-production.sh`.
+
 ## ⚠️ ВАЖНО: Безопасное обновление
 
 **НЕ УДАЛЯЙТЕ контейнер базы данных** - в нем содержатся рабочие данные!

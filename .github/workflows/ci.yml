@@ -96,3 +96,37 @@ jobs:
           # GITLEAKS_LICENSE optional; without it the org-quota free
           # tier is used. Add a secret if scan volume requires it.
           # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  docker-image:
+    name: Docker image (SEC-14/15 immutable app)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose
+        run: docker compose -f docker-compose.unified.yml config -q
+      - name: Build app image
+        run: docker compose -f docker-compose.unified.yml build app
+      - name: Image-composition checks (immutable runtime)
+        run: |
+          set -e
+          IMG=$(docker image inspect -f '{{.Id}}' infrasafe-app:latest)
+          echo "Image: $IMG"
+          # MUST NOT contain dev/secret artifacts (SEC-14/15).
+          assert_absent() {
+            if docker run --rm "$IMG" sh -c "ls -d $1 >/dev/null 2>&1"; then
+              echo "❌ forbidden present in image: $1"; exit 1
+            fi
+            echo "✓ absent: $1"
+          }
+          assert_absent '/app/.env*'
+          assert_absent '/app/.git'
+          assert_absent '/app/scripts'
+          assert_absent '/app/build'
+          assert_absent '/app/node_modules/.bin/nodemon'
+          assert_absent '/app/node_modules/.bin/esbuild'
+          # MUST contain baked dist (express.static + extracted to edge).
+          if docker run --rm "$IMG" sh -c 'ls /app/public/dist/*.js >/dev/null 2>&1'; then
+            echo "✓ public/dist/*.js present"
+          else
+            echo "❌ public/dist bundles missing from image"; exit 1
+          fi

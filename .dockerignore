@@ -6,6 +6,9 @@ logs
 .gitignore
 .DS_Store
 
+# [SEC-14/15] Deploy staging for extracted frontend dist — never part of build context
+.deploy/
+
 # Secrets — NEVER include in image
 .env
 .env.*

@@ -1,173 +1,135 @@
 #!/bin/bash
+#
+# update-production.sh — [SEC-14/15] immutable-app deploy with extracted static (C-extract)
+#
+# Model: the app is an immutable image (no .:/app bind mount). Deploying backend =
+# rebuild image. Frontend dist is EXTRACTED from the new image into host public/dist
+# (scripts/rebuild-frontend.sh prepare|publish), then byte-verified. Phased rollback
+# restores app image + tracked static + dist on any failure.
+#
+# NOTE: unified-only. docker-compose.prod.yml is DEPRECATED (kept for a local Mac
+# instance) — this script no longer auto-selects it.
+#
+set -Eeuo pipefail
 
-# Скрипт для обновления InfraSafe на production сервере
-# Использование: ./update-production.sh
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 
-set -e  # Остановка при ошибке
+COMPOSE_FILE="docker-compose.unified.yml"   # explicit (do NOT fall back to prod.yml)
+APP_CONTAINER="infrasafe-app-1"
+ROLLBACK_TAG="infrasafe-app:rollback"
+EDGE_HEALTH_URL="https://infrasafe.uz/health"
 
-# Цвета для вывода
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# rollback state flags (read by the ERR trap)
+APP_SWITCHED=0
+DIST_PUBLISHED=0
+PREV_COMMIT=""
+OLD_IMG=""
 
-# Определяем, какой docker-compose файл использовать
-COMPOSE_FILE="docker-compose.prod.yml"
-if [ ! -f "$COMPOSE_FILE" ]; then
-    COMPOSE_FILE="docker-compose.unified.yml"
-fi
+say()  { echo -e "${BLUE}$*${NC}"; }
+ok()   { echo -e "${GREEN}$*${NC}"; }
+warn() { echo -e "${YELLOW}$*${NC}"; }
+err()  { echo -e "${RED}$*${NC}"; }
 
-echo -e "${BLUE}🔄 Обновление InfraSafe на production...${NC}"
-echo -e "${BLUE}Используется файл: $COMPOSE_FILE${NC}"
-echo ""
+# Wait for the APP container's Docker healthcheck (NOT the edge /health, which only
+# proves nginx is up). Timeout → failure → caller's trap rolls back.
+app_health_wait() {
+    local tries=60 status
+    while [ "$tries" -gt 0 ]; do
+        status="$(docker inspect -f '{{.State.Health.Status}}' "$APP_CONTAINER" 2>/dev/null || echo missing)"
+        [ "$status" = "healthy" ] && return 0
+        [ "$status" = "unhealthy" ] && { err "app reported unhealthy"; return 1; }
+        sleep 2; tries=$((tries - 1))
+    done
+    err "app health-wait timed out"
+    return 1
+}
 
-# Проверяем, что мы в правильной директории
-if [ ! -f "$COMPOSE_FILE" ]; then
-    echo -e "${RED}❌ Ошибка: файл $COMPOSE_FILE не найден!${NC}"
-    echo "Убедитесь, что вы находитесь в корневой директории проекта InfraSafe"
-    exit 1
-fi
+# Phased, idempotent, best-effort. set +e so a failure mid-rollback doesn't abort
+# the remaining recovery; trap - ERR so we don't recurse. Loud final status.
+rollback() {
+    local rc=$?
+    trap - ERR
+    set +e
+    local rollback_failed=0
+    err "‼️  deploy failed (rc=$rc) — rolling back"
 
-# Шаг 1: Обновление кода из Git (если используется)
-if [ -d .git ]; then
-    echo -e "${YELLOW}📥 Шаг 1: Получение обновлений из Git...${NC}"
-    CURRENT_BRANCH=$(git branch --show-current)
-    echo "Текущая ветка: $CURRENT_BRANCH"
-    
-    # Сохраняем текущие изменения
-    if ! git diff-index --quiet HEAD --; then
-        echo -e "${YELLOW}⚠️  Обнаружены незакоммиченные изменения. Сохраняем в stash...${NC}"
-        git stash
+    # tracked static: git pull already updated bind-mounted frontend-html/css/data/public
+    # → restore to PREV_COMMIT (worktree only, not index), else old app + NEW static.
+    if [ -n "$PREV_COMMIT" ]; then
+        git restore --source="$PREV_COMMIT" --worktree -- frontend-html css data public || rollback_failed=1
     fi
-    
-    # Получаем обновления
-    git pull origin "$CURRENT_BRANCH" || {
-        echo -e "${RED}❌ Ошибка при получении обновлений из Git${NC}"
-        exit 1
-    }
-    echo -e "${GREEN}✅ Код обновлен${NC}"
-    echo ""
-else
-    echo -e "${YELLOW}⚠️  Git репозиторий не найден. Пропускаем обновление кода.${NC}"
-    echo "Убедитесь, что файлы обновлены вручную."
-    echo ""
-fi
+    # dist (gitignored — git restore can't touch it): restore via the staged rollback set.
+    [ "$DIST_PUBLISHED" = 1 ] && { bash scripts/rebuild-frontend.sh restore || rollback_failed=1; }
+    if [ "$APP_SWITCHED" = 1 ] && [ -n "$OLD_IMG" ]; then
+        docker tag "$OLD_IMG" infrasafe-app:latest || rollback_failed=1
+        docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate --no-build app || rollback_failed=1
+        app_health_wait || rollback_failed=1
+    fi
+    bash scripts/rebuild-frontend.sh verify || rollback_failed=1
 
-# Шаг 2: Остановка контейнеров (кроме postgres)
-echo -e "${YELLOW}⏸️  Шаг 2: Остановка контейнеров frontend и app...${NC}"
-docker-compose -f "$COMPOSE_FILE" stop frontend app 2>/dev/null || {
-    echo -e "${YELLOW}⚠️  Контейнеры уже остановлены или не существуют${NC}"
-}
-echo -e "${GREEN}✅ Контейнеры остановлены${NC}"
-echo ""
-
-# Шаг 3: Пересборка образов
-echo -e "${YELLOW}🔨 Шаг 3: Пересборка образов...${NC}"
-echo "Это может занять несколько минут..."
-docker-compose -f "$COMPOSE_FILE" build --no-cache frontend app || {
-    echo -e "${RED}❌ Ошибка при пересборке образов${NC}"
-    exit 1
-}
-echo -e "${GREEN}✅ Образы пересобраны${NC}"
-echo ""
-
-# Шаг 4: Запуск обновленных контейнеров
-echo -e "${YELLOW}🚀 Шаг 4: Запуск обновленных контейнеров...${NC}"
-docker-compose -f "$COMPOSE_FILE" up -d frontend app || {
-    echo -e "${RED}❌ Ошибка при запуске контейнеров${NC}"
-    exit 1
-}
-echo -e "${GREEN}✅ Контейнеры запущены${NC}"
-echo ""
-
-# Шаг 5: Ожидание инициализации
-echo -e "${YELLOW}⏳ Шаг 5: Ожидание инициализации контейнеров (10 секунд)...${NC}"
-sleep 10
-echo ""
-
-# Шаг 5b: [B-027] Пересборка + byte-verify frontend-бандлов (ОБЯЗАТЕЛЬНО для unified).
-# Bind-mount .:/app затеняет запечённый в образ public/dist, а public/dist в
-# .gitignore — без этого шага nginx отдаёт устаревший бандл (B-001/B-024 не
-# доезжали ~5 недель). Скрипт сам отсекает prod.yml-layout (нет esbuild) и падает
-# с exit!=0, если бандл не доехал — деплой обязан остановиться ДО smoke.
-if [ "$COMPOSE_FILE" = "docker-compose.unified.yml" ]; then
-    echo -e "${YELLOW}🧩 Шаг 5b: Пересборка + проверка frontend-бандлов [B-027]...${NC}"
-    if [ -x scripts/rebuild-frontend.sh ]; then
-        COMPOSE_FILE="$COMPOSE_FILE" bash scripts/rebuild-frontend.sh || {
-            echo -e "${RED}❌ frontend-бандлы НЕ доехали до прода — остановка деплоя${NC}"
-            exit 1
-        }
-        echo -e "${GREEN}✅ frontend-бандлы пересобраны и verified live${NC}"
+    if [ "$rollback_failed" = 1 ]; then
+        err "‼️  ROLLBACK INCOMPLETE — manual intervention required"
     else
-        echo -e "${RED}⚠️  scripts/rebuild-frontend.sh не найден — пропуск (B-027 риск!)${NC}"
+        ok  "✓ rollback complete"
     fi
-    echo ""
-fi
+    exit "$rc"
+}
+trap rollback ERR
 
-# Шаг 6: Проверка статуса
-echo -e "${YELLOW}✅ Шаг 6: Проверка статуса контейнеров...${NC}"
-docker-compose -f "$COMPOSE_FILE" ps
+# ---------------------------------------------------------------------------
+say "🔄 InfraSafe production deploy (immutable app + extracted static)"
+say "Compose: $COMPOSE_FILE"
+
+[ -f "$COMPOSE_FILE" ] || { err "❌ $COMPOSE_FILE not found — run from repo root"; exit 1; }
+
+# [SEC-15] prod must carry ONLY .env.prod; a dev .env present here would risk
+# booting with dev config (NODE_ENV, weak secrets). Hard-fail, not just runbook.
+test ! -f .env    || { err "❌ dev .env present on prod — remove it before deploying"; exit 1; }
+test -f .env.prod || { err "❌ .env.prod missing"; exit 1; }
+
+# Step 1 — git
+say "📥 Step 1: git pull"
+PREV_COMMIT="$(git rev-parse HEAD)"
+git pull --ff-only origin "$(git branch --show-current)"
+ok "✅ code at $(git rev-parse --short HEAD) (prev $(git rev-parse --short "$PREV_COMMIT"))"
+
+# Step 2 — capture rollback image, then build the new app image
+say "🔨 Step 2: build app image"
+OLD_IMG="$(docker inspect -f '{{.Image}}' "$APP_CONTAINER" 2>/dev/null || echo '')"
+docker compose -f "$COMPOSE_FILE" build app
+[ -n "$OLD_IMG" ] && docker tag "$OLD_IMG" "$ROLLBACK_TAG"
+ok "✅ image built (rollback tagged: ${OLD_IMG:-none})"
+
+# Step 3 — extract baked dist from the NEW image (app still old)
+say "🧩 Step 3: prepare frontend dist (extract from new image)"
+bash scripts/rebuild-frontend.sh prepare
+
+# Step 4 — switch app (flag BEFORE the command: `up` may recreate then error)
+say "🚀 Step 4: switch app to new image"
+APP_SWITCHED=1
+docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate app
+
+# Step 5 — wait for the app's own health
+say "🏥 Step 5: app health-wait"
+app_health_wait
+ok "✅ app healthy"
+
+# Step 6 — publish dist (flag AFTER success; two statements so a publish failure
+# fires the ERR trap with DIST_PUBLISHED still 0 — publish already self-restored).
+say "📦 Step 6: publish frontend dist"
+bash scripts/rebuild-frontend.sh publish
+DIST_PUBLISHED=1
+
+# Step 7 — verify served bundles == published dist
+say "🔎 Step 7: verify served bundles"
+bash scripts/rebuild-frontend.sh verify
+
+# Step 8 — edge smoke
+say "🌐 Step 8: edge smoke"
+curl -fsS "$EDGE_HEALTH_URL" >/dev/null && ok "✅ edge healthy" || { err "edge health failed"; exit 1; }
+
+trap - ERR
 echo ""
-
-# Шаг 7: Проверка healthcheck
-echo -e "${YELLOW}🏥 Шаг 7: Проверка healthcheck...${NC}"
-FRONTEND_STATUS=$(docker-compose -f "$COMPOSE_FILE" ps frontend | grep -c "healthy\|Up" || echo "0")
-APP_STATUS=$(docker-compose -f "$COMPOSE_FILE" ps app | grep -c "healthy\|Up" || echo "0")
-
-if [ "$FRONTEND_STATUS" -gt 0 ] && [ "$APP_STATUS" -gt 0 ]; then
-    echo -e "${GREEN}✅ Все контейнеры работают${NC}"
-else
-    echo -e "${RED}⚠️  Внимание: некоторые контейнеры могут быть не готовы${NC}"
-    echo "Проверьте логи: docker-compose -f $COMPOSE_FILE logs"
-fi
-echo ""
-
-# Шаг 8: Проверка доступности
-echo -e "${YELLOW}🌐 Шаг 8: Проверка доступности сервисов...${NC}"
-
-# Проверка API
-if curl -f -s http://localhost:3000/api/ > /dev/null 2>&1; then
-    echo -e "${GREEN}✅ API доступен на порту 3000${NC}"
-    # Проверяем версию
-    API_VERSION=$(curl -s http://localhost:3000/api/ | grep -o '"version":"[^"]*"' | cut -d'"' -f4 || echo "неизвестно")
-    echo "   Версия API: $API_VERSION"
-else
-    echo -e "${RED}❌ API недоступен на порту 3000${NC}"
-fi
-
-# Проверка Frontend
-if curl -f -s http://localhost:8080/ > /dev/null 2>&1; then
-    echo -e "${GREEN}✅ Frontend доступен на порту 8080${NC}"
-else
-    echo -e "${RED}❌ Frontend недоступен на порту 8080${NC}"
-fi
-echo ""
-
-# Итоговый статус
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}✨ Обновление завершено!${NC}"
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo ""
-echo "Полезные команды:"
-echo "  • Просмотр логов: docker-compose -f $COMPOSE_FILE logs -f"
-echo "  • Статус контейнеров: docker-compose -f $COMPOSE_FILE ps"
-echo "  • Перезапуск: docker-compose -f $COMPOSE_FILE restart frontend app"
-echo ""
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+ok "✨ Deploy complete."
+echo "  logs:   docker compose -f $COMPOSE_FILE logs -f app"
+echo "  status: docker compose -f $COMPOSE_FILE ps"

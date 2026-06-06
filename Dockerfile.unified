@@ -1,42 +1,56 @@
 # Multi-stage Dockerfile для InfraSafe Habitat IQ
 
-# Backend Stage
-# Node 20+ обязателен (см. CLAUDE.md tech stack: Node.js 20+). Старый
-# `node:18-alpine` ломал postinstall (esbuild >=0.20 требует Node 20+).
-FROM node:20-alpine AS backend
+# [SEC-14/15] App build stage — devDependencies (esbuild) собирают public/dist.
+# Этот стейдж отбрасывается: его devDeps НЕ попадают в runtime-образ.
+# Node 20+ обязателен (esbuild >=0.20).
+FROM node:20-alpine AS app-builder
 
 WORKDIR /app
 
-# Копируем package files
 COPY package*.json ./
+# С devDeps (esbuild нужен для build:frontend). --ignore-scripts: postinstall
+# (build:frontend) запускаем явно ниже, когда build/ и public/ уже на месте.
+RUN npm ci --ignore-scripts
 
-# Устанавливаем зависимости.
-# --ignore-scripts: postinstall (Phase 12B.4 `npm run build:frontend`)
-# не может выполниться сейчас — build/ и public/ ещё не скопированы.
-# Bundle создаётся явным шагом после `COPY . .` ниже.
-RUN npm install --ignore-scripts
-
-# Копируем исходный код
-COPY . .
-
-# Теперь когда build/ и public/ доступны — собираем frontend bundle.
+COPY build/ ./build/
+COPY public/ ./public/
 RUN npm run build:frontend
 
-# Создаем директорию для логов
-RUN mkdir -p logs
+# [SEC-14/15] App runtime stage — immutable production-образ.
+# Образец — Dockerfile.prod: только prod-deps (`--omit=dev` → нет esbuild/nodemon),
+# только src/ + public/ (с baked dist из builder), CMD `npm start` (НЕ nodemon).
+# Секреты/.git/scripts НЕ копируются и НЕ монтируются (compose снял `.:/app`).
+FROM node:20-alpine AS app
 
-# Создаем пользователя для безопасности
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001 && \
-    chown -R nodejs:nodejs /app
+WORKDIR /app
+
+# curl нужен HEALTHCHECK — в node:20-alpine его нет (как в Dockerfile.prod).
+RUN apk add --no-cache curl procps
+
+RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
+
+# Слой-порядок ради кэша: deps до исходников.
+COPY package*.json ./
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+
+COPY --chown=nodejs:nodejs src/ ./src/
+# Весь public (с baked dist) — express.static('../public') отдаёт его (src/server.js).
+COPY --from=app-builder --chown=nodejs:nodejs /app/public ./public
+
+# Named volume app_logs монтируется в /app/logs — каталог должен быть писуем nodejs.
+RUN mkdir -p /app/logs && chown -R nodejs:nodejs /app/logs
+
+ENV NODE_ENV=production
 
 USER nodejs
 
-# Открываем порт
 EXPOSE 3000
 
-# Запускаем приложение
-CMD ["npm", "run", "dev"]
+# [B-014] 127.0.0.1, не localhost — alpine резолвит localhost в ::1, а app слушает IPv4.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
+    CMD curl -f http://127.0.0.1:3000/health || exit 1
+
+CMD ["npm", "start"]
 
 # Frontend Stage
 FROM nginx:alpine AS frontend
