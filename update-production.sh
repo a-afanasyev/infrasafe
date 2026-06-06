@@ -82,10 +82,14 @@ say "Compose: $COMPOSE_FILE"
 
 [ -f "$COMPOSE_FILE" ] || { err "❌ $COMPOSE_FILE not found — run from repo root"; exit 1; }
 
-# [SEC-15] prod must carry ONLY .env.prod; a dev .env present here would risk
-# booting with dev config (NODE_ENV, weak secrets). Hard-fail, not just runbook.
-test ! -f .env    || { err "❌ dev .env present on prod — remove it before deploying"; exit 1; }
+# [SEC-15] prod must not carry a SEPARATE dev .env (would risk booting with dev
+# config: NODE_ENV, weak secrets). A `.env` that's just a symlink to .env.prod is
+# fine (identical content). Hard-fail, not just runbook.
 test -f .env.prod || { err "❌ .env.prod missing"; exit 1; }
+if [ -e .env ] && [ "$(readlink -f .env)" != "$(readlink -f .env.prod)" ]; then
+    err "❌ separate dev .env present on prod (not a symlink to .env.prod) — remove it before deploying"
+    exit 1
+fi
 
 # Step 1 — git
 say "📥 Step 1: git pull"
