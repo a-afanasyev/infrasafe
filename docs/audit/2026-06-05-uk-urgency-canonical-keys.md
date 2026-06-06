@@ -57,3 +57,37 @@ admin-UI), нормализатор `toUrgencyKey` уже готов к пере
 key»: engineer_required→`critical`; reopen с легаси-рус. без бампа→ключ; reopen+bump→`critical`
 (cap); already-key+bump; неизвестное→`null`; non-reopen/non-engineer→`null`. Полный unit-прогон
 2215/2215 зелёный.
+
+## Прод-верификация (2026-06-06)
+
+Деплой: prod `59ae6a6` → `94c7ddd` (PR #97), migration 032 применена (UPDATE 7 —
+`alert_rules.uk_urgency` теперь ключи), бандлы rebuilt + byte-verified, app restart, health=healthy.
+
+Прогнали прод-синтетику (reopen-кейс) через реальный mapped outbound-путь:
+
+- **alert_id** 39 (synthetic `LEAK_DETECTED`/CRITICAL, controller 1, building 5,
+  `reopen_chain_id=fdabf026-…`, `reopen_sequence=2`, `status=resolved` — вне partial dedup-индекса).
+- `sendAlertToUK` → `uk_outbox` id=12, **event_id `83a415c3-7984-41a7-bca2-fa7111d9d68c`**,
+  **`uk_urgency_override="critical"`** (ключ, не «Критическая»).
+- Drain worker POST → UK ответил **202**, outbox `status=sent`.
+- UK создал тикет **260605-001**; их inbound `request.created` пришёл к нам с `urgency="critical"`
+  (подтверждает, что входящий ключ обрабатывается безопасно, см. раздел (б)).
+
+### Подтверждение UK (сверка на боевом)
+
+1. Парсинг `critical` корректен, без фоллбэка/ошибки маппинга: `uk_urgency_override="critical"`
+   принят (`webhook_inbox.outcome=accepted`) и применён к заявке при создании. *(Текущее `medium` в
+   `260605-001` — их собственный последующий тест фичи «менеджер меняет критичность» critical→medium
+   через ~30 мин после создания; на момент `request.created` было `critical`.)*
+2. Их outbound `request.created` нёс `urgency="critical"` (ключ); русские значения наружу больше
+   не уходят.
+3. `260605-001` — тестовый синтетик, помечен/закрыт на стороне UK.
+
+**Контракт по `urgency` закрыт с обеих сторон (2026-06-06).** Gate 8 для UK закрыт.
+
+### Очистка синтетик-артефактов (2026-06-06)
+
+После подтверждения UK удалены прод-строки синтетики (FK-безопасный порядок, одна транзакция):
+`uk_outbox` id=12 → `alert_request_map` id=10 → `integration_log` 5875/5876 →
+`infrastructure_alerts` alert_id=39. Пост-проверка: 0 строк в каждой. Тикет `260605-001` на стороне
+UK не трогали (закрывают сами как тест).
