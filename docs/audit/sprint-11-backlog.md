@@ -9,6 +9,8 @@
 > Обновлён 2026-06-01 (Трек A): закрыт B-024 auth-gated half (#88 public /map-layer-counts) + B-027 косметика (#87 esbuild clear-contents) + B-023 op-step (.env.prod) + B-027-followup (#89 no-cache бандлов) + backlog (#90). Трек A завершён.
 > Обновлён 2026-06-01 (вычитка #91): синхронизированы детальные секции B-024/B-027/B-023 с фактом закрытия (были stale после Трек-A мержей).
 > Обновлён 2026-06-02: добавлен батч **SEC-13..SEC-34** (security pentest round 2, 2026-06-01/02) — см. секцию «Security pentest 2026-06-01/02» + отчёт `docs/audit/2026-06-01-security-pentest.md`. Активно-эксплуатируемых CRITICAL — 0 (JWT-секреты ротированы, подтв. live-forge→401).
+> **Phase 1 закрыт (2026-06-02):** SEC-18/24/25/29/33 + `npm audit fix` смержены (PR #96 / `59ae6a6`) и задеплоены на прод (SEC-18/24 live-verified). Dep-патч qs/express активируется только с пересборкой образа → едет на SEC-14 (`--renew-anon-volumes`). Открыто: SEC-13..17, 19..23, 26..32, 34.
+> Обновлён 2026-06-06: закрыт **UK-URGENCY** — каноничные ключи `urgency` (PR #97 / `94c7ddd`, migration 032), задеплоен + прод-верифицирован, контракт подтверждён УК с обеих сторон. См. Closed-секцию + `docs/audit/2026-06-05-uk-urgency-canonical-keys.md`.
 
 ---
 
@@ -40,8 +42,9 @@
 | **B-006** Engineering Kanban | P3 | — | **owner UK side**, не наш PR |
 | **B-008** frontend-redesign merge | P4 | — | после стабилизации + B-004 split |
 | **B-009** seasonal HEATING rules | P4 | — | **Q3 2026** (до отопит. сезона) |
+| ~~SEC-18/24/25/29/33~~ (MEDIUM) | — | **✅ CLOSED** PR #96 / `59ae6a6` (2026-06-02) | CSP-CDN / correlation-id / telemetry-allowlist / UkOutbox-interval / pagination-clamp — задеплоены + live-verified |
 | **SEC-13..16** (HIGH) | P1-P2 | pentest round 2, present-в-коде | admin123 seed / Dockerfile.unified dev / `.:/app` mount / backup-creds — деплой/compose, см. секцию «Security pentest 2026-06-01/02» |
-| **SEC-17..33** (MEDIUM) | P2-P3 | pentest round 2 | scrub / CSP / uk-metrics leak / nginx-rl / Redis-pass / CSRF / correlation-id / telemetry / TOTP / pagination-500 / … — детали в секции |
+| **SEC-17/19..23/26..32** (MEDIUM) | P2-P3 | pentest round 2 | scrub / uk-metrics leak / nginx-rl / Redis-pass / CSRF / TOTP / recovery-codes / map-escape / admin.js-cleanup / … — детали в секции |
 | **SEC-34** (LOW/INFO) | P3-P4 | pentest round 2 | hardening-пачка (noopener, SSH key-only, `npm audit fix`, …) |
 
 ### Рекомендация
@@ -594,10 +597,11 @@ event'а — строка остаётся `pending`, что корректно)
   `git filter-repo --path .env --path .env.prod --path generator/.env --invert-paths` + force-push +
   уведомить клонировавших; CI `trufflehog`/`git-secrets` (есть `docs/audit/secret-hygiene-checklist.md`);
   подтвердить ротацию generator-admin-пароля. *Trigger:* при готовности переписать историю. *Est:* ~2ч.
-- **SEC-18 · MEDIUM · split-brain CSP — helmet всё ещё несёт CDN** — `src/server.js:54-56`
+- **SEC-18 · ✅ CLOSED (PR #96 / `59ae6a6`, deployed+verified live 2026-06-02) · MEDIUM · split-brain CSP — helmet всё ещё несёт CDN** — `src/server.js:54-56`
   `scriptSrc [... 'https://cdn.jsdelivr.net', 'https://unpkg.com']` (подтв. live на `/api/*`). Остаток
   P-PENTEST-1. *Fix:* убрать оба CDN-хоста из helmet `scriptSrc` (мертвы после self-host DOMPurify;
   edge-CSP их уже не несёт — B-017). *Trigger:* любой CSP-touch. *Est:* ~30мин.
+  **Closed:** prod `scriptSrc 'self'` (CDN ушли), live-verified на `/api/*`, regression `serverTest.test.js`.
 - **SEC-19 · MEDIUM · публичный `/api/uk-requests-metrics` отдаёт `infrasafe_alert_id`** —
   `src/routes/index.js:104` (PUBLIC_ROUTES) + `src/models/AlertRequestMap.js:144-148`. Подтв. live (боевые
   данные без auth). *Fix:* strip `infrasafe_alert_id` из SELECT (UK нужен только `uk_request_number`+
@@ -615,13 +619,15 @@ event'а — строка остаётся `pending`, что корректно)
   `public/utils/csrf.js`; реальная защита = `SameSite=Strict`). *Fix:* серверная проверка
   `Origin`/double-submit для мутаций, либо убрать вводящий в заблуждение код и задокументировать SameSite
   как единственную защиту. *Trigger:* спринт. *Est:* ~2-3ч.
-- **SEC-24 · MEDIUM · log-injection через сырой `x-correlation-id`** — `src/middleware/correlationId.js:5-9`
+- **SEC-24 · ✅ CLOSED (PR #96 / `59ae6a6`, deployed+verified live 2026-06-02) · MEDIUM · log-injection через сырой `x-correlation-id`** — `src/middleware/correlationId.js:5-9`
   (header используется как есть). *Fix:* валидировать как UUID, иначе `crypto.randomUUID()`. *Trigger:*
   спринт / при SIEM-ingest. *Est:* ~30мин.
-- **SEC-25 · MEDIUM · mass-assignment `...metrics` spread в публичном telemetry** —
+  **Closed:** UUID-regex gate; evil header → сгенерированный UUID (live-verified `754cff2e…`), regression `correlationId.test.js`.
+- **SEC-25 · ✅ CLOSED (PR #96 / `59ae6a6`, deployed 2026-06-02) · MEDIUM · mass-assignment `...metrics` spread в публичном telemetry** —
   `src/services/metricService.js:283-287`. Отлично от P-PENTEST-2 (тот закрыл 400-on-missing-serial;
   spread остался). *Fix:* allowlist полей метрик (proto-pollution/log-injection; SQL-пути нет). *Trigger:*
   спринт. *Est:* ~1ч.
+  **Closed:** `ALLOWED_METRIC_FIELDS` allowlist (15 сенсорных полей); `__proto__`/unknown отброшены; `leak_sensor`/LEAK_CHECK сохранён; no-`metrics` regression-guard.
 - **SEC-26 · MEDIUM · TOTP anti-replay TTL 60с < окна валидности ~90с** — `src/services/totpService.js:39`
   (+ in-memory, теряется на рестарте/мульти-реплике). *Fix:* TTL≥120с + Redis-backing. *Trigger:* спринт /
   multi-replica. *Est:* ~30мин.
@@ -631,9 +637,10 @@ event'а — строка остаётся `pending`, что корректно)
 - **SEC-28 · MEDIUM · recovery-коды перегенерируются на каждый `setup-2fa` с тем же tempToken** —
   `src/services/totpService.js` (~119). *Fix:* идемпотентная генерация recovery в рамках одного tempToken.
   *Trigger:* спринт. *Est:* ~1ч.
-- **SEC-29 · MEDIUM · `UkOutbox` INTERVAL через string-concat** — `src/models/UkOutbox.js:128,173`
+- **SEC-29 · ✅ CLOSED (PR #96 / `59ae6a6`, deployed 2026-06-02) · MEDIUM · `UkOutbox` INTERVAL через string-concat** — `src/models/UkOutbox.js:128,173`
   (`($N || ' seconds')::interval`). Сейчас не эксплойтится (caller coercion), паттерн неверный. *Fix:*
   `NOW() + ($N * INTERVAL '1 second')`. *Trigger:* при следующем touch UkOutbox. *Est:* ~30мин.
+  **Closed:** оба метода (`markFailed`+`resetForSkip`) → `$N * INTERVAL '1 second'`, integer-параметр `Math.max(1, Math.floor())`, regression `ukOutboxModel.test.js`.
 - **SEC-30 · MEDIUM · `building_id` без эскейпа в HTML-атрибуты/fetch-URL Leaflet-попапа** —
   `public/script.js:~1921-1931` (нужна компрометация БД/API для эксплойта). *Fix:* `parseInt`+валидация
   перед использованием. *Trigger:* map-UX проход / B-008. *Est:* ~30мин.
@@ -644,13 +651,14 @@ event'а — строка остаётся `pending`, что корректно)
   Спасает cookie-fallback; гигиена/защита от регрессий XSS-token-theft. *Fix:* убрать ручные
   `Authorization`-заголовки (идти через interceptor), вычистить мёртвые localStorage-пути. *Trigger:*
   admin.js split (B-004) или раньше. *Est:* ~2ч.
-- **SEC-33 · MEDIUM · системный 500 на невалидной пагинации** (подтв. live Round 3) —
+- **SEC-33 · ✅ CLOSED (PR #96 / `59ae6a6`, deployed 2026-06-02) · MEDIUM · системный 500 на невалидной пагинации** (подтв. live Round 3) —
   `src/controllers/buildingController.js:9`, `metricController.js:9` (+ др. list-контроллеры): `parseInt`
   без clamp → `limit=-1`/`abc`, `page=-5`/`abc` дают 500 на `/buildings`,`/controllers`,`/metrics`,
   `/alerts`,`/transformers`. `validatePagination` есть в `src/utils/queryValidation.js:177-200`, но не
   используется. Ошибка чистая (без leak), достижимо любым авторизованным. *Fix:* применить
   `validatePagination` во всех list-контроллерах (NaN/neg → **clamp к безопасным значениям, 200**, не 500/400). Поглощает L-11. *Trigger:* спринт
   (быстрый). *Est:* ~1-2ч.
+  **Closed:** `validatePagination(page,limit,defaultLimit)` применён во всех list-контроллерах + `waterSupplierRoutes` + `createCrudController`; `validateSortOrder`-whitelist; NaN/neg → clamp [1,200], 200 не 500. CodeQL diff-gate: 8 FP dismissed (LIMIT/OFFSET параметризованы, sort/order whitelisted).
 
 ### LOW / INFO
 
@@ -672,14 +680,39 @@ event'а — строка остаётся `pending`, что корректно)
   *Trigger:* cleanup-проходы. *Est:* суммарно ~1 день.
 
 ### Рекомендованный порядок устранения (round 2)
-1. **Быстрые безопасные код-правки** (без прод-доступа, чистый код+тесты): SEC-18, SEC-24, SEC-25, SEC-33, SEC-29 + `npm audit fix`.
-2. **HIGH деплой/compose:** SEC-14, SEC-15 (сначала verify прод-реальность), SEC-13, SEC-16.
+1. ~~**Быстрые безопасные код-правки** (без прод-доступа, чистый код+тесты): SEC-18, SEC-24, SEC-25, SEC-33, SEC-29 + `npm audit fix`.~~ **✅ DONE (PR #96 / `59ae6a6`, deployed 2026-06-02).** Код-фиксы 18/24/25/29/33 живут на проде; `npm audit fix` (qs/express dep-патч) лежит в package-lock, но **активируется только с пересборкой образа** (анон node_modules-volume) → отложен на SEC-14 (`--renew-anon-volumes`).
+2. **HIGH деплой/compose:** SEC-14 (+dep-патч), SEC-15 (сначала verify прод-реальность), SEC-13, SEC-16.
 3. **Edge/infra:** SEC-20, SEC-21, SEC-22, SEC-19.
 4. **Остальные MEDIUM** (SEC-23/26/27/28/30/31/32) + SEC-17 scrub + SEC-34 пачка.
 
 ---
 
 ## Closed / removed
+
+### ✅ UK-URGENCY — каноничные ключи `urgency` (closed 2026-06-06)
+
+**Контракт (от УК):** `urgency` → каноничные ключи `low | medium | high | critical` (ранее рус.
+`Обычная/Средняя/Срочная/Критическая`). (а) наш outbound `uk_urgency_override` шлём ключом;
+(б) их outbound `request.created/status_changed` приходит ключом. Severity→urgency маппинг — внутренний
+для УК, контракта не касается.
+
+**Shipped:** PR [#97](https://github.com/a-afanasyev/infrasafe/pull/97) (`94c7ddd`) + migration 032
+(`alert_rules.uk_urgency` backfill рус.→ключ, idempotent) + seed `03_uk_integration.sql` на ключах.
+- (а) `src/services/uk/alertForwarder.js` — `toUrgencyKey()`/`bumpUrgency()` нормализуют на границе
+  (принимают и легаси-рус., и ключи; неизвестное→null); `uk_urgency_override` теперь всегда ключ.
+- (б) **намеренно no-op** — InfraSafe не потребляет входящий `urgency` (`requestProcessor` читает только
+  `status`); добавлять парсинг неиспользуемого поля = YAGNI. Нормализатор готов к переиспользованию.
+- Тесты: блок «uk_urgency_override → canonical key» в `ukIntegrationServiceTest.test.js`, 2215/2215 зелёный.
+
+**Прод-верификация (2026-06-06):** деплой `94c7ddd` + migration 032 (UPDATE 7) + rebuild бандлов
+(byte-verified) + restart, health=healthy. Reopen-синтетика через реальный mapped outbound-путь →
+`uk_urgency_override="critical"` (ключ), event_id `83a415c3-7984-41a7-bca2-fa7111d9d68c`, drain→УК **202**,
+ticket **260605-001**. **УК подтвердил с обеих сторон** (parse OK `webhook_inbox.outcome=accepted`, без
+фоллбэка; их outbound тоже ключи). Синтетик-строки на проде вычищены (outbox 12 / map 10 / ilog 5875,5876
+/ alert 39). Контракт по `urgency` закрыт. Детали — `docs/audit/2026-06-05-uk-urgency-canonical-keys.md`.
+
+**Остаток (отдельный пункт, не блокер):** admin-UI «открыть в УК» reopen-meta passthrough — поля есть с
+PR-3, нужен UI-проброс + использование UK `onOpenRelated` prop. Берётся на map/admin-UX проходе.
 
 ### ✅ Security audit 2026-05-29/30 — SEC-1..12 + P-PENTEST-1/2/3/4 + ротации (closed 2026-05-30)
 
