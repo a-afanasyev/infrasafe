@@ -14,6 +14,7 @@ const swaggerUi = require('swagger-ui-express');
 const apiRoutes = require('./routes');
 const errorHandler = require('./middleware/errorHandler');
 const correlationId = require('./middleware/correlationId');
+const getAllowedOrigins = require('./utils/allowedOrigins');
 const { destroyAllLimiters } = require('./middleware/rateLimiter');
 const logger = require('./utils/logger');
 const db = require('./config/database');
@@ -76,9 +77,9 @@ app.use(helmet({
 app.use(cors({
     // [Sprint 5 / P2-V3] Trim each origin so `a.com, b.com` works the same
     // as `a.com,b.com`; filter empty strings from trailing commas.
-    origin: process.env.CORS_ORIGINS
-        ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
-        : 'http://localhost:8080',
+    // [SEC-23] getAllowedOrigins() is the single source of truth (always an
+    // array) shared with the CSRF Origin guard — keeps the two from drifting.
+    origin: getAllowedOrigins(),
     credentials: true
 })); // CORS
 app.use(express.json({

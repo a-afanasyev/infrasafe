@@ -22,6 +22,7 @@ const integrationRoutes = require('./integrationRoutes');
 const cspReportRoutes = require('./cspReportRoutes');
 const metricController = require('../controllers/metricController');
 const { authenticateJWT } = require('../middleware/auth');
+const csrfOriginGuard = require('../middleware/csrfOriginGuard');
 const { applyTelemetryRateLimit } = require('../middleware/rateLimiter');
 const { createError } = require('../utils/helpers');
 
@@ -129,6 +130,11 @@ router.use((req, res, next) => {
     }
     authenticateJWT(req, res, next);
 });
+
+// [SEC-23] CSRF Origin/Referer guard for cookie-authenticated mutations.
+// Runs after the default-deny gate; self-skips non-mutation, non-cookie
+// (Bearer/webhook/telemetry) requests — see middleware for the policy.
+router.use(csrfOriginGuard);
 
 /**
  * @swagger
