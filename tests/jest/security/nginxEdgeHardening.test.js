@@ -50,6 +50,53 @@ describe('SEC-20 — both limits applied (stacked) inside the existing /api/ loc
     });
 });
 
+describe('SEC-22 — /uk/api/ prefix-allowlist + edge rate-limit', () => {
+    test('allowlist map exists and defaults to deny', () => {
+        expect(conf).toMatch(/map\s+\$uri\s+\$uk_api_allowed\s*\{/);
+        expect(conf).toMatch(/\$uk_api_allowed\s*\{[\s\S]*?default\s+0;/);
+    });
+
+    test('UK-confirmed allowed prefixes are present', () => {
+        for (const p of [
+            '/uk/api/v2/public', '/uk/api/v2/board-config', '/uk/api/v2/announcements',
+            '/uk/api/v2/auth/', '/uk/api/v2/registration/', '/uk/api/v2/requests/',
+            '/uk/api/v2/callcenter/', '/uk/api/v2/profile/', '/uk/api/v2/shifts/',
+            '/uk/api/v2/executor/shifts/', '/uk/api/v2/addresses/', '/uk/api/v2/feedback/',
+            '/uk/api/v2/media/',
+        ]) {
+            expect(conf).toContain(p);
+        }
+    });
+
+    test('inbound webhook is the exact path only (anchored)', () => {
+        expect(conf).toMatch(/\/uk\/api\/v2\/webhooks\/infrasafe\/alert\$"\s+1;/);
+    });
+
+    test('internal/ops paths are NOT allowlisted', () => {
+        // These must fall through to the default 404 — never appear as allowed keys.
+        for (const blocked of ['notifications', 'health/ratelimit', 'health/outbox']) {
+            expect(conf).not.toMatch(new RegExp(`/uk/api/[^"\\n]*${blocked.replace('/', '\\/')}[^\\n]*\\s+1;`));
+        }
+    });
+
+    test('location enforces the allowlist with a 404 gate', () => {
+        expect(conf).toMatch(/if\s*\(\$uk_api_allowed\s*=\s*0\)\s*\{\s*return\s+404;\s*\}/);
+    });
+
+    test('UK edge rate-limit zones declared + applied', () => {
+        expect(conf).toMatch(/limit_req_zone\s+\$binary_remote_addr\s+zone=uk_api:/);
+        expect(conf).toMatch(/map\s+\$uri\s+\$uk_cred_limit_key\s*\{/);
+        expect(conf).toMatch(/limit_req_zone\s+\$uk_cred_limit_key\s+zone=uk_api_cred:/);
+        expect(conf).toMatch(/limit_req\s+zone=uk_api\s+burst=\d+\s+nodelay/);
+        expect(conf).toMatch(/limit_req\s+zone=uk_api_cred\s+burst=\d+\s+nodelay/);
+    });
+
+    test('WebSocket narrowed to the canonical /uk/ws/v2/ prefix', () => {
+        expect(conf).toMatch(/location\s+\^~\s+\/uk\/ws\/v2\//);
+        expect(conf).not.toMatch(/location\s+\^~\s+\/uk\/ws\/\s*\{/);
+    });
+});
+
 describe('SEC-34g — /api-docs closed in prod (both forms)', () => {
     test('exact /api-docs returns 404', () => {
         expect(conf).toMatch(/location\s*=\s*\/api-docs\s*\{\s*return\s+404;\s*\}/);
