@@ -6,6 +6,10 @@
 !.env.example
 generator/.env
 
+# [SEC-21] Redis config carries requirepass — operator-managed, never commit.
+# Keep the template + README tracked.
+redis-config/redis.conf
+
 # ==========================================
 # Node.js — зависимости и кэш
 # ==========================================

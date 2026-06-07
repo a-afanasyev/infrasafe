@@ -1,0 +1,25 @@
+# [SEC-21] Redis production config TEMPLATE.
+#
+# Copy to redis-config/redis.conf on the host (gitignored — like .env.prod),
+# then set a real password. See redis-config/README.md.
+#
+#   cp redis-config/redis.conf.example redis-config/redis.conf
+#   # then replace the requirepass line below with:
+#   #   requirepass <openssl rand -hex 32>
+#
+# DO NOT commit redis-config/redis.conf (it carries the secret).
+
+# Persistence
+appendonly yes
+
+# Memory cap + eviction (mirrors the previous inline command flags)
+maxmemory 256mb
+maxmemory-policy allkeys-lru
+
+# Authentication — REQUIRED in production.
+# Use a 64-char hex secret (openssl rand -hex 32): hex avoids URL-encoding
+# special chars when the same value is embedded in REDIS_URL
+# (redis://:<hexpw>@redis:6379/<db>).
+# The deploy preflight in update-production.sh / the runbook rejects this
+# placeholder — it requires exactly one `requirepass <64 hex chars>` line.
+# requirepass <set-on-host: openssl rand -hex 32>

@@ -52,7 +52,8 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     ports:
-      - "3000:3000"
+      # [SEC-34f] loopback-only — keep the dev API off the public interface
+      - "127.0.0.1:3000:3000"
     volumes:
       # Монтируем весь исходный код для hot reload
       - ./src:/app/src:ro
@@ -111,7 +112,8 @@ services:
   postgres:
     image: postgis/postgis:15-3.3
     ports:
-      - "5435:5432"
+      # [SEC-34f] loopback-only — keep dev Postgres off the public interface
+      - "127.0.0.1:5435:5432"
     environment:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_USER=postgres

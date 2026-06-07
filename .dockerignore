@@ -14,6 +14,9 @@ logs
 .env.*
 !.env.example
 
+# [SEC-21] Redis secret config — operator-mounted at runtime, never baked in
+redis-config/redis.conf
+
 # Development/test files — not needed in production image
 tests/
 docs/
