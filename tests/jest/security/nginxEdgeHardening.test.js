@@ -85,10 +85,17 @@ describe('SEC-22 — /uk/api/ prefix-allowlist + edge rate-limit', () => {
 
     test('UK edge rate-limit zones declared + applied', () => {
         expect(conf).toMatch(/limit_req_zone\s+\$binary_remote_addr\s+zone=uk_api:/);
-        expect(conf).toMatch(/map\s+\$uri\s+\$uk_cred_limit_key\s*\{/);
         expect(conf).toMatch(/limit_req_zone\s+\$uk_cred_limit_key\s+zone=uk_api_cred:/);
         expect(conf).toMatch(/limit_req\s+zone=uk_api\s+burst=\d+\s+nodelay/);
         expect(conf).toMatch(/limit_req\s+zone=uk_api_cred\s+burst=\d+\s+nodelay/);
+    });
+
+    test('credential limit keys on $request_uri, not $uri (rewrite runs before limit_req)', () => {
+        // The /uk/api/ location rewrites /uk/api/(.*) -> /api/$1. limit_req (preaccess)
+        // evaluates the map AFTER the rewrite phase, so $uri is already /api/... — keying
+        // the cred map on $uri silently disables the limit. Must use $request_uri.
+        expect(conf).toMatch(/map\s+\$request_uri\s+\$uk_cred_limit_key\s*\{/);
+        expect(conf).not.toMatch(/map\s+\$uri\s+\$uk_cred_limit_key\s*\{/);
     });
 
     test('WebSocket narrowed to the canonical /uk/ws/v2/ prefix', () => {
