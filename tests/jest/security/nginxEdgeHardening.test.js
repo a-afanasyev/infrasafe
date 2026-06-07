@@ -60,7 +60,11 @@ describe('SEC-22 — /uk/api/ prefix-allowlist + edge rate-limit', () => {
         for (const p of [
             '/uk/api/v2/public', '/uk/api/v2/board-config', '/uk/api/v2/announcements',
             '/uk/api/v2/auth/', '/uk/api/v2/registration/', '/uk/api/v2/requests/',
-            '/uk/api/v2/callcenter/', '/uk/api/v2/profile/', '/uk/api/v2/shifts/',
+            // profile is fetched as a BARE resource path by the UK SPA/TWA
+            // (authStore.login() → GET /api/v2/profile, no trailing slash), so it
+            // must match exact-path-or-subtree via (/|$) — a trailing-slash-only
+            // regex 404s the bare path (prod incident 2026-06-08).
+            '/uk/api/v2/callcenter/', '/uk/api/v2/profile(/|$)', '/uk/api/v2/shifts/',
             '/uk/api/v2/executor/shifts/', '/uk/api/v2/addresses/', '/uk/api/v2/feedback/',
             '/uk/api/v2/media/',
         ]) {
