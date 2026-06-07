@@ -144,7 +144,6 @@ class AlertRequestMap {
                 `SELECT uk_request_number,
                         status,
                         building_external_id,
-                        infrasafe_alert_id,
                         updated_at
                  FROM alert_request_map
                  WHERE uk_request_number IS NOT NULL

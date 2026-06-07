@@ -31,14 +31,12 @@ Mirror the buildings-metrics envelope but slimmer (no metric data to fold in):
       "uk_request_number": "260523-004",
       "status": "resolved",
       "building_external_id": "b7f6…-uuid",
-      "infrasafe_alert_id": 21,
       "updated_at": "2026-05-23T14:32:08.123Z"
     },
     {
       "uk_request_number": "260524-001",
       "status": "active",
       "building_external_id": "c2a1…-uuid",
-      "infrasafe_alert_id": 87,
       "updated_at": "2026-05-24T07:42:11.502Z"
     }
   ],
@@ -47,7 +45,9 @@ Mirror the buildings-metrics envelope but slimmer (no metric data to fold in):
 }
 ```
 
-`uk_request_number` is the only field you strictly need to set-diff. The other four are added for debugging on your side (e.g. quick "is this terminal or active?" check before deciding what kind of replay event to enqueue). If you want them stripped, ignore them — there's no contract penalty for over-returning.
+`uk_request_number` is the only field you strictly need to set-diff. The other three are added for debugging on your side (e.g. quick "is this terminal or active?" check before deciding what kind of replay event to enqueue). If you want them stripped, ignore them — there's no contract penalty for over-returning.
+
+> **Updated 2026-06-07 (SEC-19):** the internal `infrasafe_alert_id` field was **removed** from this endpoint's response and source query. The endpoint is public (no auth, mirror of `/buildings-metrics`), and `infrasafe_alert_id` is an internal primary key UK never needs — set-diff is on `uk_request_number` only (we already flagged the extra fields as debug-only and ignorable above). No action required on the UK side.
 
 ### Q3 — Auth
 
@@ -75,13 +75,14 @@ SELECT
   uk_request_number,
   status,
   building_external_id,
-  infrasafe_alert_id,
   updated_at
 FROM alert_request_map
 WHERE uk_request_number IS NOT NULL
 ORDER BY updated_at DESC
 LIMIT $1
 ```
+
+> **SEC-19 (2026-06-07):** `infrasafe_alert_id` removed from the SELECT (internal PK, not needed for reconciliation; endpoint is public).
 
 No status filter. Full inventory. `uk_request_number IS NOT NULL` skips ARM rows that never received the `request.created` ack from your side (race window / failed sends).
 

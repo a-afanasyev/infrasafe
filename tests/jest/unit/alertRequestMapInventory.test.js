@@ -24,7 +24,6 @@ describe('AlertRequestMap.listInventory (ARCH-114)', () => {
         uk_request_number: '260523-004',
         status: 'resolved',
         building_external_id: 'b7f6-uuid',
-        infrasafe_alert_id: 21,
         updated_at: '2026-05-23T14:32:08Z',
         ...overrides
     });
@@ -97,7 +96,7 @@ describe('AlertRequestMap.listInventory (ARCH-114)', () => {
         expect(sql).toMatch(/ORDER\s+BY\s+updated_at\s+DESC/i);
     });
 
-    test('selects exactly the five reconciliation-relevant columns', async () => {
+    test('selects exactly the four reconciliation-relevant columns', async () => {
         db.query.mockResolvedValue({ rows: [] });
 
         await AlertRequestMap.listInventory();
@@ -107,11 +106,24 @@ describe('AlertRequestMap.listInventory (ARCH-114)', () => {
             'uk_request_number',
             'status',
             'building_external_id',
-            'infrasafe_alert_id',
             'updated_at'
         ]) {
             expect(sql).toContain(col);
         }
+    });
+
+    // [SEC-19] internal PK must NOT leak via the public (no-auth) inventory
+    // endpoint. UK set-diffs on uk_request_number only; the spec (Q2) already
+    // told them the extra fields are debug-only and may be ignored. Assert the
+    // generated SQL — dropping it only from the mock row would not catch a
+    // regression that re-adds the column to the SELECT.
+    test('does NOT select internal infrasafe_alert_id (SEC-19)', async () => {
+        db.query.mockResolvedValue({ rows: [] });
+
+        await AlertRequestMap.listInventory();
+
+        const sql = db.query.mock.calls[0][0];
+        expect(sql).not.toMatch(/infrasafe_alert_id/);
     });
 
     test('propagates db errors to caller (so the route can 500)', async () => {

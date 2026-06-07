@@ -611,10 +611,11 @@ event'а — строка остаётся `pending`, что корректно)
   P-PENTEST-1. *Fix:* убрать оба CDN-хоста из helmet `scriptSrc` (мертвы после self-host DOMPurify;
   edge-CSP их уже не несёт — B-017). *Trigger:* любой CSP-touch. *Est:* ~30мин.
   **Closed:** prod `scriptSrc 'self'` (CDN ушли), live-verified на `/api/*`, regression `serverTest.test.js`.
-- **SEC-19 · MEDIUM · публичный `/api/uk-requests-metrics` отдаёт `infrasafe_alert_id`** —
+- **SEC-19 · ✅ CLOSED код (Phase E / PR-E1, 2026-06-07) · MEDIUM · публичный `/api/uk-requests-metrics` отдаёт `infrasafe_alert_id`** —
   `src/routes/index.js:104` (PUBLIC_ROUTES) + `src/models/AlertRequestMap.js:144-148`. Подтв. live (боевые
   данные без auth). *Fix:* strip `infrasafe_alert_id` из SELECT (UK нужен только `uk_request_number`+
   `status`) ИЛИ сервис-аккаунт/HMAC/IP-allowlist. *Trigger:* спринт. *Est:* ~1-2ч.
+  **Closed:** выбран strip — поле убрано из `listInventory()` SELECT + OpenAPI JSDoc (`ukRequestsMetricsRoutes.js`) + ARCH-114 spec. Regression: `alertRequestMapInventory.test.js` ассертит `sql.not.toMatch(/infrasafe_alert_id/)` (не только mock-row), controller-тест — `not.toHaveProperty`. Контрактно безопасно: spec Q2 уже объявил доп-поля debug-only/ignorable → UK heads-up = курьез, не блокер. **Деплой = rebuild образа (immutable-модель) после UK heads-up.**
 - **SEC-20 · MEDIUM · нет rate-limit на nginx-слое** — `nginx-config/nginx.production.conf` (нет
   `limit_req`). Ортогонально app-слою (SEC-6). *Fix:* `limit_req_zone $binary_remote_addr` для `/api/` +
   жёстче для `/api/auth/`. *Trigger:* edge-hardening спринт. *Est:* ~1-2ч.
