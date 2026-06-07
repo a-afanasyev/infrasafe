@@ -662,10 +662,11 @@ event'а — строка остаётся `pending`, что корректно)
 - **SEC-31 · MEDIUM · blacklist fail-open при недоступности БД (by-design)** — `src/services/authService.js:633`.
   *Fix:* принято by-design; при multi-replica перенести L1 в Redis. *Trigger:* multi-replica (B-003,
   входит туда). *Est:* — (в B-003).
-- **SEC-32 · MEDIUM · `admin.js` шлёт `Bearer null` ×32 + мёртвые localStorage-ключи** — `public/admin.js`.
+- **SEC-32 · ✅ CLOSED код (Phase F / PR-F2, 2026-06-08) · MEDIUM · `admin.js` шлёт `Bearer null` ×32 + мёртвые localStorage-ключи** — `public/admin.js`.
   Спасает cookie-fallback; гигиена/защита от регрессий XSS-token-theft. *Fix:* убрать ручные
   `Authorization`-заголовки (идти через interceptor), вычистить мёртвые localStorage-пути. *Trigger:*
   admin.js split (B-004) или раньше. *Est:* ~2ч.
+  **Closed:** убраны ВСЕ **34** ручных `Authorization: Bearer ${getItem('admin_token'|'token')}` по всем admin-page entrypoints — `admin.js` (32), `admin-coordinate-editor.js` (1), `infrastructure-line-editor.js` (1). Реальная авторизация и так через cookie + fetch-interceptor (`admin-auth.js`); `Content-Type`/body/method сохранены, пустые header-объекты → `{}`/`headers:{}`. `admin-auth.js` теперь one-shot чистит и `localStorage.removeItem('token')` (был XSS-readable, читался интеграционной секцией). Regression `tests/jest/security/adminNoManualAuthHeaders.test.js` (10 ассертов: 0× Authorization/Bearer/getItem по 3 файлам + removeItem('token') присутствует); `node --check` + esbuild build чисты; бандлы `public/dist/*` без `Authorization`. **Деплой = rebuild образа (baked dist + C-extract).**
 - **SEC-33 · ✅ CLOSED (PR #96 / `59ae6a6`, deployed 2026-06-02) · MEDIUM · системный 500 на невалидной пагинации** (подтв. live Round 3) —
   `src/controllers/buildingController.js:9`, `metricController.js:9` (+ др. list-контроллеры): `parseInt`
   без clamp → `limit=-1`/`abc`, `page=-5`/`abc` дают 500 на `/buildings`,`/controllers`,`/metrics`,
@@ -681,7 +682,7 @@ event'а — строка остаётся `pending`, что корректно)
   | # | Находка | Где |
   |---|---|---|
   | a | `target="_blank"` без `rel="noopener"` (reverse-tabnabbing) | `frontend-html/index.html`, `contacts.html` |
-  | b | мёртвые `validateToken`/`getValidToken` (ссылаются на `localStorage.admin_token`) | `public/utils/domSecurity.js` |
+  | b | ⚠️ **RE-SCOPED (не dead-code) — отдельный тикет, НЕ в Phase F.** `getValidToken`/`validateToken` вызываются из `public/map-layers-control.js` (5 мест: `:53,150,511,1094,1180`) как auth-гейт + получение токена. Backing-store `admin_token` мёртв → всегда null, но удаление трогает **auth-флоу карты** (не админки) → нужен рефактор map-layers-control на cookie/interceptor + верификация авторизованных слоёв | `public/utils/domSecurity.js` + `public/map-layers-control.js` |
   | c | `createSecureTableRow` innerHTML-bypass через `field.secure===false` | `public/utils/domSecurity.js` |
   | d | `flip-trace` debug-лог в `localStorage` в проде | `public/admin-auth.js`, `admin-head-probe.js`, `login.js` |
   | e | сузить CSP `img-src` + DOMPurify `style`/`img` | nginx CSP + `public/utils/domSecurity.js` |

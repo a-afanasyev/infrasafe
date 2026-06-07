@@ -25,9 +25,12 @@ class AdminAuth {
         this.isAuthenticated = false;
         this.fetchIntercepted = false;
         // One-shot migration hygiene: scrub leftover legacy entries.
+        // [SEC-32] also drop 'token' — the integration section of admin.js used
+        // to read it; a stale value would otherwise linger and be XSS-readable.
         try {
             localStorage.removeItem('admin_token');
             localStorage.removeItem('refresh_token');
+            localStorage.removeItem('token');
         } catch (_) { /* private mode etc — non-fatal */ }
         this.init();
     }

@@ -81,7 +81,7 @@ document.addEventListener("DOMContentLoaded", function () {
     };
 
     async function loadEntityCache() {
-        const h = { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` };
+        const h = {};
         const fetches = [
             fetch('/api/buildings?limit=200', { headers: h }).then(r => r.json()).then(d => d.data || []).catch(() => []),
             fetch('/api/controllers?limit=200', { headers: h }).then(r => r.json()).then(d => d.data || []).catch(() => []),
@@ -1432,7 +1432,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 const response = await fetch(`${endpoint}/${id}`, {
                     method: 'DELETE',
                     headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                     }
                 });
                 
@@ -1512,7 +1511,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 const response = await fetch(`${endpoint}/${id}/status`, {
                     method: 'PATCH',
                     headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({ status: newStatus })
@@ -1635,7 +1633,6 @@ document.addEventListener("DOMContentLoaded", function () {
         try {
             const response = await fetch(`/api/buildings/${id}`, {
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 }
             });
             if (!response.ok) throw new Error('Ошибка загрузки здания');
@@ -1689,7 +1686,6 @@ document.addEventListener("DOMContentLoaded", function () {
             const response = await fetch(`/api/buildings/${id}`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 }
             });
 
@@ -1734,7 +1730,6 @@ document.addEventListener("DOMContentLoaded", function () {
             const response = await fetch(`/api/buildings/${buildingId}?cascade=true`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 }
             });
 
@@ -1785,7 +1780,6 @@ document.addEventListener("DOMContentLoaded", function () {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                         },
                         body: JSON.stringify(data)
                     });
@@ -1811,7 +1805,6 @@ document.addEventListener("DOMContentLoaded", function () {
             const response = await fetch(`/api/admin/controllers/${id}`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 }
             });
 
@@ -1837,7 +1830,6 @@ document.addEventListener("DOMContentLoaded", function () {
             const response = await fetch(`/api/admin/metrics/${id}`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 }
             });
 
@@ -1900,7 +1892,6 @@ document.addEventListener("DOMContentLoaded", function () {
             const response = await fetch(`/api/admin/water-lines/${id}`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 }
             });
 
@@ -1953,7 +1944,6 @@ document.addEventListener("DOMContentLoaded", function () {
             const response = await fetch(`/api/transformers/${id}`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 }
             });
 
@@ -2011,7 +2001,6 @@ document.addEventListener("DOMContentLoaded", function () {
             const response = await fetch(`/api/lines/${id}`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 }
             });
 
@@ -2065,7 +2054,6 @@ document.addEventListener("DOMContentLoaded", function () {
             const response = await fetch(`/api/cold-water-sources/${id}`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 }
             });
 
@@ -2119,7 +2107,6 @@ document.addEventListener("DOMContentLoaded", function () {
             const response = await fetch(`/api/heat-sources/${id}`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 }
             });
 
@@ -2156,7 +2143,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 },
                 body: JSON.stringify(data)
             });
@@ -2191,7 +2177,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 },
                 body: JSON.stringify(data)
             });
@@ -2231,7 +2216,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 },
                 body: JSON.stringify(data)
             });
@@ -2271,7 +2255,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 },
                 body: JSON.stringify(data)
             });
@@ -2313,7 +2296,7 @@ document.addEventListener("DOMContentLoaded", function () {
     async function loadFormData() {
         try {
             // Загружаем все необходимые данные параллельно
-            const authHeaders = { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` };
+            const authHeaders = {};
             const [transformersResponse, linesResponse, waterLinesResponse, waterSuppliersResponse] = await Promise.all([
                 fetch('/api/transformers', { headers: authHeaders }).then(r => r.json()),
                 fetch('/api/lines', { headers: authHeaders }).then(r => r.json()),
@@ -2716,7 +2699,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 },
                 body: JSON.stringify(data)
             });
@@ -2770,7 +2752,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 },
                 body: JSON.stringify(data)
             });
@@ -2818,7 +2799,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 },
                 body: JSON.stringify(data)
             });
@@ -2863,7 +2843,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 },
                 body: JSON.stringify(data)
             });
@@ -3144,7 +3123,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
                 },
                 body: JSON.stringify(data)
             });
@@ -3274,7 +3252,7 @@ document.addEventListener("DOMContentLoaded", function () {
     async function loadIntegrationConfig() {
         try {
             const response = await fetch(`${backendURL}/integration/config`, {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                headers: {}
             });
             const data = await response.json();
             if (data.success) {
@@ -3313,7 +3291,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
                 },
                 body: JSON.stringify(body)
             });
@@ -3339,7 +3316,7 @@ document.addEventListener("DOMContentLoaded", function () {
             const daysSelect = document.getElementById('rules-stats-days');
             const days = daysSelect ? parseInt(daysSelect.value, 10) || 7 : 7;
             const response = await fetch(`${backendURL}/integration/rules/stats?days=${days}`, {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                headers: {}
             });
             const data = await response.json();
             if (data.success) {
@@ -3378,7 +3355,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
                 },
                 body: JSON.stringify({ fields: { [fieldName]: check.coerced } })
             });
@@ -3423,7 +3399,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
                 },
                 body: JSON.stringify({ enabled: newEnabled })
             });
@@ -3457,7 +3432,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         try {
             const response = await fetch(`${backendURL}/integration/rules/${ruleId}/history?limit=100`, {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                headers: {}
             });
             const data = await response.json();
             tbody.textContent = '';
@@ -3677,7 +3652,7 @@ document.addEventListener("DOMContentLoaded", function () {
             if (f.status) params.set('status', f.status);
 
             const response = await fetch(`${backendURL}/integration/logs?${params}`, {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                headers: {}
             });
             const data = await response.json();
             if (data.success) {
@@ -3788,7 +3763,7 @@ document.addEventListener("DOMContentLoaded", function () {
         try {
             const response = await fetch(`${backendURL}/integration/logs/retry/${logId}`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                headers: {}
             });
             const data = await response.json();
             if (data.success) {
