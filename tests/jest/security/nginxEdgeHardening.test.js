@@ -57,16 +57,20 @@ describe('SEC-22 — /uk/api/ prefix-allowlist + edge rate-limit', () => {
     });
 
     test('UK-confirmed allowed prefixes are present', () => {
+        // Bare-callable resources (UK SPA/TWA hits the exact path with no trailing
+        // slash — e.g. GET /api/v2/requests?…, POST /api/v2/shifts) MUST use the
+        // (/|$) idiom so the regex matches exact-path-or-subtree. A trailing-slash-
+        // only regex 404s the bare path at the edge (prod incidents 2026-06-08:
+        // profile broke first on login; requests/shifts/feedback confirmed by UK).
         for (const p of [
             '/uk/api/v2/public', '/uk/api/v2/board-config', '/uk/api/v2/announcements',
-            '/uk/api/v2/auth/', '/uk/api/v2/registration/', '/uk/api/v2/requests/',
-            // profile is fetched as a BARE resource path by the UK SPA/TWA
-            // (authStore.login() → GET /api/v2/profile, no trailing slash), so it
-            // must match exact-path-or-subtree via (/|$) — a trailing-slash-only
-            // regex 404s the bare path (prod incident 2026-06-08).
-            '/uk/api/v2/callcenter/', '/uk/api/v2/profile(/|$)', '/uk/api/v2/shifts/',
-            '/uk/api/v2/executor/shifts/', '/uk/api/v2/addresses/', '/uk/api/v2/feedback/',
-            '/uk/api/v2/media/',
+            '/uk/api/v2/requests(/|$)', '/uk/api/v2/profile(/|$)', '/uk/api/v2/shifts(/|$)',
+            '/uk/api/v2/feedback(/|$)',
+            // Always called with a subpath per UK (auth/login, callcenter/requests,
+            // executor/shifts/current, addresses/yards, media/upload, registration/…)
+            // — trailing-slash form is correct and intentionally kept.
+            '/uk/api/v2/auth/', '/uk/api/v2/registration/', '/uk/api/v2/callcenter/',
+            '/uk/api/v2/executor/shifts/', '/uk/api/v2/addresses/', '/uk/api/v2/media/',
         ]) {
             expect(conf).toContain(p);
         }
