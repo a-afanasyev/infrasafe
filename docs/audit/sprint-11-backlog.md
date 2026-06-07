@@ -620,9 +620,10 @@ event'а — строка остаётся `pending`, что корректно)
   `limit_req`). Ортогонально app-слою (SEC-6). *Fix:* `limit_req_zone $binary_remote_addr` для `/api/` +
   жёстче для `/api/auth/`. *Trigger:* edge-hardening спринт. *Est:* ~1-2ч.
   **Closed:** две зоны в http-ctx — `api` (20r/s burst40) на весь `/api/` + `api_cred` (5r/m burst5) только на credential-эндпоинты через `map $uri $cred_limit_key` (`~*…(login|register|refresh|verify-2fa|setup-2fa|confirm-2fa)/?$`, пустой ключ ⇒ no-op); НЕ широкий `/api/auth/` (profile/logout/2FA-mgmt не задеты). `limit_req_status 429`. Стэкнуты в существующем `location /api/` (без дублирования proxy/CORS). Regression `nginxEdgeHardening.test.js` (8 ассертов) + `nginx -t` чист (throwaway-контейнер с dummy-cert). **Задеплоено** (`git pull` + `nginx -t -c` ok + `nginx -s reload`). Live-verify: buildings-metrics 200, `/api-docs`+`/api-docs/` 404; 10 быстрых `POST /api/auth/login` → 6×401 затем 429 с 7-го, в nginx-логах `limiting requests … by zone "api_cred"` (edge-attributed, не app); 10 быстрых `GET /api/auth/profile` → все 401, **0× 429** (keyed-map не трогает non-credential auth).
-- **SEC-21 · MEDIUM · Redis без `--requirepass`** — `docker-compose.unified.yml:134`; сеть общая с
+- **SEC-21 · ✅ CLOSED код (Phase E / PR-E3, 2026-06-07) · MEDIUM · Redis без `--requirepass`** — `docker-compose.unified.yml:134`; сеть общая с
   UK-стеком. *Fix:* `--requirepass <secret>` + `REDIS_URL` с паролём. *Trigger:* при включении Redis в
   проде / multi-replica (B-003). *Est:* ~1ч.
+  **Closed (secure-only):** requirepass через **смонтированный `redis-config/redis.conf`** (НЕ argv/`${REDIS_PASSWORD}` — compose-интерполяция игнорит env_file, B-023; секрет в command светился бы в `docker inspect`). Tracked `redis.conf.example` + `README.md`; реальный `redis.conf` gitignored+dockerignored (операторский, как `.env.prod`). Healthcheck **без секрета**, принимает только `NOAUTH` (доказывает «жив» И «auth включён»; bare PONG ⇒ unhealthy). Regression `redisAuth.test.js` (10 ассертов) + `config -q` ok. ⚠️ **На проде `REDIS_URL` УЖЕ задан и app активно юзает Redis** (`connection ready`, degraded 0) → деплой = mandatory ordered: hex-пароль в `redis.conf` + тот же в `REDIS_URL` (.env.prod) → `force-recreate redis` → `force-recreate --no-build app`. Preflight: ровно один `requirepass [0-9a-f]{64}`.
 - **SEC-22 · MEDIUM · `/uk/api/*` — открытый proxy на весь UK-API** —
   `nginx-config/nginx.production.conf:193-207` (rewrite `^/uk/api/(.*)`, без auth_request/allow/deny).
   *Fix:* сузить до нужных путей; `auth_request`/HMAC/IP-allowlist. *Trigger:* координация с UK. *Est:* ~2-3ч.
@@ -684,7 +685,7 @@ event'а — строка остаётся `pending`, что корректно)
   | c | `createSecureTableRow` innerHTML-bypass через `field.secure===false` | `public/utils/domSecurity.js` |
   | d | `flip-trace` debug-лог в `localStorage` в проде | `public/admin-auth.js`, `admin-head-probe.js`, `login.js` |
   | e | сузить CSP `img-src` + DOMPurify `style`/`img` | nginx CSP + `public/utils/domSecurity.js` |
-  | f | dev-порты `3000`/`5435` на `0.0.0.0` + `postgres/postgres` | `docker-compose.dev.yml` |
+  | f | ✅ CLOSED код (PR-E3, 2026-06-07) — dev-порты `3000`/`5435` → `127.0.0.1` (loopback); `postgres/postgres` оставлен (dev-only) | `docker-compose.dev.yml` |
   | g | ✅ CLOSED + DEPLOYED (PR-E2 #101, прод 2026-06-07) — `location = /api-docs` + `^~ /api-docs/` → `return 404` (обе формы); live `/api-docs`+`/api-docs/` → 404 | `nginx-config/nginx.production.conf` |
   | h | отдельный `JWT_2FA_SECRET` для temp-токенов (сейчас общий, спасает scope-guard) | `src/services/authService.js` |
   | i | прод IP/SSH/username в git-tracked `connect.sh` | `connect.sh` |

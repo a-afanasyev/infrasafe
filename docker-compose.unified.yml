@@ -138,11 +138,23 @@ services:
   # horizontal scale-out (--scale app=N).
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    # [SEC-21] Config (incl. requirepass) comes from a mounted file, NOT argv
+    # or ${REDIS_PASSWORD} interpolation: compose interpolation does NOT read
+    # env_file (see B-023 note on the postgres service) and a secret in `command`
+    # would be visible via `docker inspect`/`ps`. The operator creates
+    # redis-config/redis.conf from redis-config/redis.conf.example (gitignored,
+    # same pattern as .env.prod) — see redis-config/README.md. Tuning flags
+    # (appendonly/maxmemory/policy) moved into that file too.
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     volumes:
       - redis_data:/data
+      - ./redis-config:/usr/local/etc/redis:ro
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # [SEC-21] No secret in argv/env: an auth-required redis answers a
+      # password-less PING with `NOAUTH`, which proves BOTH "server is up" AND
+      # "requirepass is enforced". A bare PONG would mean auth is accidentally
+      # off — for secure-only that must read as unhealthy, so we match NOAUTH.
+      test: ["CMD-SHELL", "redis-cli ping 2>&1 | grep -q 'NOAUTH'"]
       interval: 5s
       timeout: 3s
       retries: 5
