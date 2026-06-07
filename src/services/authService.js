@@ -456,6 +456,13 @@ class AuthService {
         try {
             const cacheKey = `${this.cachePrefix}:user:${userId}`;
 
+            // [SEC-27 / LATENT] 5-min cache means a role change / deactivation can
+            // take up to 5 min to take effect on auth. Accepted as latent: there
+            // is currently NO API that mutates users.role / users.is_active at
+            // runtime (only seed/manual DB). When such a user-management mutation
+            // endpoint is added, it MUST invalidate this key
+            // (`${this.cachePrefix}:user:<id>`) — see the existing invalidation
+            // pattern at password-change (`cacheService.invalidate` above).
             const cached = await cacheService.get(cacheKey, { ttl: 300 }); // 5 минут
             if (cached) {
                 return cached;
@@ -634,6 +641,9 @@ class AuthService {
     // is an intentional availability-over-strict-security trade-off: a DB
     // outage must not lock every user out. Pinned by
     // tests/jest/unit/authServiceTest.test.js ("fail-OPEN on DB outage").
+    // [SEC-31] Confirmed BY-DESIGN (not a defect). The in-memory L1 cache is
+    // single-replica only; multi-replica correctness (shared L1 in Redis) is
+    // tracked under B-003. No change in single-replica prod.
     async isTokenBlacklisted(token) {
         try {
             const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
