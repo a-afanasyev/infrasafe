@@ -62,11 +62,11 @@ function csrfOriginGuard(req, res, next) {
     const allowed = getAllowedOrigins();
 
     const reject = (reason) => {
-        logger.warn(
-            `[SEC-23] CSRF origin check failed (${reason}) ` +
-            `method=${req.method} path=${req.path} ` +
-            `correlationId=${req.correlationId || '-'}`
-        );
+        // Log only the static reason (one of our own literals). Do NOT interpolate
+        // req.path/req.method/headers — that's a log-injection sink (CodeQL
+        // js/log-injection). The request is still correlatable via the
+        // x-correlation-id response header + the morgan access log.
+        logger.warn(`[SEC-23] CSRF origin check blocked: ${reason}`);
         return sendError(res, 403, 'Cross-origin request blocked');
     };
 

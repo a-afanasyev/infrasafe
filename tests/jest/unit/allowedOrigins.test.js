@@ -34,10 +34,12 @@ describe('getAllowedOrigins (SEC-23)', () => {
         const out = getAllowedOrigins();
         expect(out).toEqual(['https://infrasafe.uz']);
         // The whole point: an attacker origin that merely contains a substring
-        // must not match.
-        expect(out.includes('infrasafe.uz')).toBe(false);
-        expect(out.includes('https://infrasafe.uz.evil.com')).toBe(false);
-        expect(out.includes('https://infrasafe.uz')).toBe(true);
+        // must not match. (Use jest's array matcher, not String/Array.includes —
+        // a literal `.includes('<url>')` trips CodeQL js/incomplete-url-substring-
+        // sanitization, even here where we're asserting the SAFE exact-match.)
+        expect(out).not.toContain('infrasafe.uz');
+        expect(out).not.toContain('https://infrasafe.uz.evil.com');
+        expect(out).toContain('https://infrasafe.uz');
     });
 
     test('reads env at call-time (not frozen at import)', () => {
