@@ -1,0 +1,69 @@
+/**
+ * SEC-20 / SEC-34g — edge nginx hardening (production config).
+ *
+ * SEC-20: defense-in-depth rate-limit at the nginx edge (orthogonal to the
+ *   app-layer limiter, SEC-6). A general /api/ zone plus a strict
+ *   credential-only zone keyed via `map $uri` (so profile/logout/2FA-management
+ *   are NOT throttled to 5r/m on shared NAT).
+ * SEC-34g: Swagger /api-docs closed in prod (both exact + prefix forms).
+ *
+ * Content assertions — the prod conf needs SSL cert files + the docker DNS
+ * resolver to actually parse, so a JS test can't run `nginx -t`; that runs on
+ * prod (`nginx -t -c /etc/nginx/custom/nginx.production.conf`). Here we guard
+ * the directives against regression, mirroring dockerfileImmutable.test.js.
+ * Comment lines are stripped so explanatory prose can't satisfy a match.
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+const root = path.join(__dirname, '../../..');
+const confRaw = fs.readFileSync(path.join(root, 'nginx-config/nginx.production.conf'), 'utf8');
+// Strip `#` comment lines — assert on real directives only.
+const conf = confRaw.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+
+describe('SEC-20 — edge rate-limit zones declared in http context', () => {
+    test('general api zone', () => {
+        expect(conf).toMatch(/limit_req_zone\s+\$binary_remote_addr\s+zone=api:/);
+    });
+
+    test('credential-only zone keyed by a $uri map (not all of /api/auth/)', () => {
+        expect(conf).toMatch(/map\s+\$uri\s+\$cred_limit_key\s*\{/);
+        expect(conf).toMatch(/limit_req_zone\s+\$cred_limit_key\s+zone=api_cred:/);
+    });
+
+    test('credential map is case-insensitive and tolerates a trailing slash', () => {
+        // Express routing is case-insensitive + non-strict, so the regex must be
+        // ~* and accept an optional trailing slash, else it is trivially bypassed.
+        expect(conf).toMatch(/"~\*\^\/api\/auth\/\(login\|register\|refresh\|verify-2fa\|setup-2fa\|confirm-2fa\)\/\?\$"/);
+    });
+
+    test('429 (not 503) on limiting', () => {
+        expect(conf).toMatch(/limit_req_status\s+429/);
+    });
+});
+
+describe('SEC-20 — both limits applied (stacked) inside the existing /api/ location', () => {
+    test('general + credential limit_req both present', () => {
+        expect(conf).toMatch(/limit_req\s+zone=api\s+burst=\d+\s+nodelay/);
+        expect(conf).toMatch(/limit_req\s+zone=api_cred\s+burst=\d+\s+nodelay/);
+    });
+});
+
+describe('SEC-34g — /api-docs closed in prod (both forms)', () => {
+    test('exact /api-docs returns 404', () => {
+        expect(conf).toMatch(/location\s*=\s*\/api-docs\s*\{\s*return\s+404;\s*\}/);
+    });
+
+    test('prefix /api-docs/ returns 404', () => {
+        expect(conf).toMatch(/location\s*\^~\s*\/api-docs\/\s*\{\s*return\s+404;\s*\}/);
+    });
+
+    test('no proxy_pass to app for /api-docs anymore', () => {
+        // The old block proxied /api-docs/ to app:3000 — ensure it's gone.
+        const apiDocsBlock = conf.match(/location[^\n]*\/api-docs[\s\S]{0,200}/g) || [];
+        for (const block of apiDocsBlock) {
+            expect(block).not.toMatch(/proxy_pass/);
+        }
+    });
+});
