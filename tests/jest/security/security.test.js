@@ -26,6 +26,12 @@ const { setupQueryMock } = require('../helpers/dbMock');
 // Set required env vars
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-for-security-tests';
 process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'test-refresh-secret-for-security-tests';
+// [SEC-23] Deterministic CORS allowlist for the CORS tests below. Set
+// unconditionally (not `||`) so a CORS_ORIGINS leaked from another test file in
+// the same worker can't change the allowed set. cors() reflects ACAO only for an
+// Origin that's in the allowlist (array semantics — the same behavior prod uses,
+// since prod always sets CORS_ORIGINS).
+process.env.CORS_ORIGINS = 'http://localhost:8080,http://localhost:3000';
 
 let app;
 
@@ -171,9 +177,14 @@ describe('Security Tests', () => {
 
     describe('CORS Security', () => {
         test('CORS заголовки присутствуют', async () => {
-            const response = await request(app).get('/api/');
+            // [SEC-23] cors() reflects ACAO only for an allowlisted Origin (array
+            // semantics). Send an allowed Origin and assert it's reflected back.
+            const response = await request(app)
+                .get('/api/')
+                .set('Origin', 'http://localhost:8080');
 
             expect(response.headers).toHaveProperty('access-control-allow-origin');
+            expect(response.headers['access-control-allow-origin']).toBe('http://localhost:8080');
         });
 
         test('Preflight запросы обрабатываются', async () => {
