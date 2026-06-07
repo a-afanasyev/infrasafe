@@ -48,7 +48,7 @@
 | ~~SEC-18/24/25/29/33~~ (MEDIUM) | — | **✅ CLOSED** PR #96 / `59ae6a6` (2026-06-02) | CSP-CDN / correlation-id / telemetry-allowlist / UkOutbox-interval / pagination-clamp — задеплоены + live-verified |
 | ~~SEC-16~~ backup-creds (HIGH) | — | **✅ CLOSED** PR #98 / `9b9537b` (2026-06-07) | env + PGPASSWORD, убран хардкод `postgres/postgres` |
 | ~~SEC-14/15~~ (HIGH) | — | **✅ CLOSED + DEPLOYED** PR #99 / `25c3679`, прод 2026-06-07 | immutable app (npm start, --omit=dev) + extracted static; `.:/app` убран. Прод-verified (нет секретов/.git/scripts; npm start; qs-патч SEC-34k доехал) |
-| **SEC-13** (HIGH) | P1 | pentest round 2, present-в-коде | `admin123` seed (`database/init/02_seed_data.sql:168`) — нужен bootstrap-провижен, см. фаза F |
+| ~~SEC-13~~ (HIGH→LOW) | — | **✅ ACCEPTED-RISK 2026-06-07** | `admin123` seed только в dev (`database/init/`); прод init = `database.sql` без юзеров. Пароль меняется оператором после запуска (runbook). Остаточный риск принят |
 | ~~SEC-26/28/30~~ (MEDIUM) | — | **✅ CLOSED** PR #98 / `9b9537b` (2026-06-07) | TOTP TTL 120с / idempotent recovery (cache) / building_id sanitize |
 | **SEC-17/19..23/27/31/32** (MEDIUM) | P2-P3 | pentest round 2 | scrub / uk-metrics leak / nginx-rl / Redis-pass / CSRF / stale-cache / blacklist / admin.js-cleanup / … — детали в секции |
 | **SEC-34** (LOW/INFO) | P3-P4 | pentest round 2 | hardening-пачка (noopener, SSH key-only, `npm audit fix`, …) |
@@ -571,12 +571,11 @@ event'а — строка остаётся `pending`, что корректно)
 
 ### HIGH
 
-- **SEC-13 · HIGH · `admin123` в git-tracked seed** — `database/init/02_seed_data.sql:168`.
-  *Что/Почему:* seed создаёт admin (user_id 55) с bcrypt-хешем пароля `admin123`; `database/init`
-  монтируется в `/docker-entrypoint-initdb.d` → каждый fresh-deploy/DR-rebuild поднимается с известным
-  паролём. *Fix:* убрать admin-строку из seed (или заведомо невалидный placeholder-hash); admin
-  заводить out-of-band с операторским паролём; runbook-шаг обязательной смены. *Trigger:* до следующего
-  fresh-deploy/DR. *Est:* ~1ч.
+- **SEC-13 · ✅ ACCEPTED-RISK (mitigated, 2026-06-07) · ~~HIGH~~→LOW · `admin123` в git-tracked seed** — `database/init/02_seed_data.sql:168`.
+  *Что/Почему:* seed создаёт admin (user_id 55) с bcrypt-хешем пароля `admin123`. *Fix:* убрать admin-строку из seed; admin
+  заводить out-of-band; runbook-шаг смены. *Est:* ~1ч.
+  **Поправка к severity (проверено по коду 2026-06-07):** пентест предполагал «каждый fresh-deploy = admin123», но **прод НЕ использует этот seed** — unified-compose инициализирует БД из `./database.sql` (`docker-compose.unified.yml:191`), где `INSERT INTO users` отсутствует вовсе (0 юзеров, хеша нет). Seed `database/init/` монтируется только в **dev** (`docker-compose.dev.yml:127`). → на проде свежий деплой поднимается без админа, не с admin123.
+  **Решение пользователя (2026-06-07): ACCEPTED-RISK.** Операционная защита: на проде пароль admin123 **меняется оператором после запуска** (runbook), поэтому действующий прод не висит на известном креде. Остаточный риск принят: (1) окно между запуском и сменой пароля; (2) ручной шаг; (3) git-гигиена (`admin123` в seed + `CLAUDE.md` — known default cred, всплывёт в след. секьюрити-скане). Латентно: `register` хардкодит `role='user'` (`authController.js:94`/`authService.js:85`) → через API первого админа не создать, прод-`database.sql` админа не создаёт → **DR/fresh-prod bootstrap-gap** (нет безопасного пути завести первого админа; держится на dev-seed admin123 + ручной смене). Если решим закрывать позже — `scripts/create-admin.js` (пароль из env) + чистка seed/CLAUDE.md + перевод dev/CI на self-provision (`health-checker.sh` уже умеет). См. [[sec13-admin-seed-accepted-risk]].
 - **SEC-14 · ✅ CLOSED код (PR #99 / `25c3679`, 2026-06-07; прод-деплой отдельно) · HIGH · `Dockerfile.unified` гонит dev-watcher в проде** — `Dockerfile.unified:39`
   `CMD ["npm","run","dev"]` (nodemon) + `:17` `npm install --ignore-scripts` (без `--omit=dev`).
   **Closed:** backend-стейдж разбит на `app-builder` (devDeps→bake dist) + `app` runtime (`npm ci --omit=dev`, `npm start`, NODE_ENV=production, apk add curl); esbuild/nodemon отсутствуют в runtime (CI image-composition). Прод деплой = rebuild через `update-production.sh`.
@@ -700,7 +699,7 @@ event'а — строка остаётся `pending`, что корректно)
 1b. ~~**Quick-wins batch 2** (чистый код+тесты): SEC-16, SEC-26, SEC-28, SEC-30.~~ **✅ DONE (PR #98 / `9b9537b`, 2026-06-07).** TOTP TTL/recovery + backup-creds + building_id sanitize; 2309 тестов зелёные; прод не затронут.
 2. ~~**HIGH деплой/compose:** SEC-14/15 re-arch (multi-stage immutable + extracted static).~~ **✅ DONE код (PR #99 / `25c3679`, 2026-06-07)** — прод-деплой отдельным шагом (`update-production.sh`). Остаётся **SEC-13** (admin123 seed — в фазе F, нужен bootstrap-провижен). *(SEC-16 закрыт в 1b.)*
 3. **Edge/infra (Phase E):** ~~SEC-19 (#100), SEC-20 (#101), SEC-21 (#102) + SEC-34 f/g~~ **✅ DONE + DEPLOYED 2026-06-07** (3 последовательных PR, каждый merge→deploy→verify; UK подтвердил SEC-19). ~~Остаётся SEC-22~~ **✅ SEC-22 DONE код (PR-E4)** — УК прислали prefix-контракт, allowlist + edge rate-limit + WS-narrow реализованы (деплой отдельным шагом).
-4. **Остальные MEDIUM** (SEC-23/27/31/32) + SEC-13 (admin123, нужен bootstrap-провижен) + SEC-17 scrub + SEC-34 остаток (a–e,h–j; k закрыт с SEC-14).
+4. **Остальные MEDIUM** (SEC-23/27/31/32) + SEC-17 scrub + SEC-34 остаток (a–e,h–j; k закрыт с SEC-14). *(SEC-13 — accepted-risk, не код-фикс: admin123 только в dev-seed, прод его не использует, оператор меняет пароль после запуска.)*
 
 ---
 
