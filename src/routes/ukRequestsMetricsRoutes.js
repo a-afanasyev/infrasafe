@@ -43,7 +43,6 @@ const router = express.Router();
  *                       uk_request_number:    { type: string }
  *                       status:               { type: string, enum: [pending, active, sent, resolved, cancelled] }
  *                       building_external_id: { type: string, format: uuid }
- *                       infrasafe_alert_id:   { type: integer }
  *                       updated_at:           { type: string, format: date-time }
  *                 total: { type: integer }
  *                 limit: { type: integer }

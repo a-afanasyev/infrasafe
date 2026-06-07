@@ -28,8 +28,8 @@ describe('ukRequestsMetricsController.getRequestsInventory (ARCH-114)', () => {
 
     test('returns the documented envelope on success', async () => {
         const rows = [
-            { uk_request_number: '260523-004', status: 'resolved', building_external_id: 'b7f6', infrasafe_alert_id: 21, updated_at: '2026-05-23T14:32:08Z' },
-            { uk_request_number: '260524-001', status: 'active',   building_external_id: 'c2a1', infrasafe_alert_id: 87, updated_at: '2026-05-24T07:42:11Z' }
+            { uk_request_number: '260523-004', status: 'resolved', building_external_id: 'b7f6', updated_at: '2026-05-23T14:32:08Z' },
+            { uk_request_number: '260524-001', status: 'active',   building_external_id: 'c2a1', updated_at: '2026-05-24T07:42:11Z' }
         ];
         AlertRequestMap.listInventory.mockResolvedValue({ rows, limit: 5000 });
 
@@ -44,6 +44,8 @@ describe('ukRequestsMetricsController.getRequestsInventory (ARCH-114)', () => {
             total: 2,
             limit: 5000
         });
+        // [SEC-19] internal PK must not appear in the public envelope.
+        expect(res.json.mock.calls[0][0].data[0]).not.toHaveProperty('infrasafe_alert_id');
         expect(res.status).not.toHaveBeenCalled();
     });
 
