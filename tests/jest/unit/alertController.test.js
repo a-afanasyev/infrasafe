@@ -50,6 +50,20 @@ describe('AlertController.getActiveAlerts', () => {
         expect(res.status).toHaveBeenCalledWith(400);
     });
 
+    // [AUD-025] Sprint 10 expanded the status enum with resolved_verifying and
+    // engineer_required. The whitelist must accept them so escalations are
+    // queryable through the API, and pass them through as an exact-match filter.
+    test.each(['resolved_verifying', 'engineer_required'])(
+        'accepts %s status and forwards it as a filter',
+        async (status) => {
+            req.query = { status };
+            await alertController.getActiveAlerts(req, res, next);
+            expect(res.status).not.toHaveBeenCalledWith(400);
+            const callArgs = alertService.getActiveAlerts.mock.calls[0];
+            expect(callArgs[0]).toEqual(expect.objectContaining({ status }));
+        }
+    );
+
     test('accepts valid params and returns paginated response', async () => {
         req.query = { status: 'active', severity: 'WARNING', page: '1', limit: '10' };
         await alertController.getActiveAlerts(req, res, next);

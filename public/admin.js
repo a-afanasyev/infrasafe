@@ -1116,7 +1116,10 @@ document.addEventListener("DOMContentLoaded", function () {
         const labels = {
             'active': 'Активная',
             'acknowledged': 'Подтверждена',
-            'resolved': 'Закрыта'
+            'resolved': 'Закрыта',
+            // [AUD-025] Sprint 10 lifecycle statuses
+            'resolved_verifying': 'Проверка закрытия',
+            'engineer_required': 'Требуется инженер'
         };
         return labels[status] || status;
     }
@@ -1166,7 +1169,12 @@ document.addEventListener("DOMContentLoaded", function () {
                 {
                     label: 'Закрыть',
                     className: 'btn-sm btn-danger',
-                    condition: (item) => item.status !== 'resolved',
+                    // [AUD-025] resolveAlert's backend guard only accepts
+                    // active/acknowledged. The old `!== 'resolved'` also showed
+                    // the button for resolved_verifying/engineer_required, where
+                    // it would 500 ("не найден"). The verifying state is closed
+                    // by the worker; engineer_required is terminal for operators.
+                    condition: (item) => ['active', 'acknowledged'].includes(item.status),
                     handler: (item) => resolveAlert(item.alert_id)
                 },
                 // [B-001 / Sprint 11] Deep-link into the UK dashboard for

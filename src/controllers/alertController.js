@@ -9,7 +9,9 @@ class AlertController {
             const { severity, infrastructure_type, limit, status, page, sort, order } = req.query;
 
             // Whitelist validation for enum params
-            const validStatuses = ['active', 'acknowledged', 'resolved'];
+            // [AUD-025] Sprint 10 status enum: resolved_verifying + engineer_required
+            // are valid query filters so escalations surface through the API.
+            const validStatuses = ['active', 'acknowledged', 'resolved', 'resolved_verifying', 'engineer_required'];
             if (status && !validStatuses.includes(status)) {
                 return res.status(400).json({ success: false, message: 'Недопустимый статус' });
             }

@@ -254,29 +254,60 @@ describe('alertService.resolveAlert — Sprint 10 PR-3 system vs manual path', (
             expect(AlertVerification.enqueue).not.toHaveBeenCalled();
         });
 
-        test('clears lastChecks cooldown so checker can re-evaluate', async () => {
-            process.env.ALERT_VERIFICATION_ENABLED = 'true';
-            alertService.lastChecks.set('controller:1:load_check', Date.now());
+        // [AUD-003] cooldown cleanup must use the per-type suffix the checker
+        // actually keys on — not the hardcoded ':load_check'. For controller
+        // types (leak/voltage/heating) the old code cleared the wrong key, so
+        // re-detection stayed masked by the 15-min cooldown.
+        const cooldownCases = [
+            { type: 'TRANSFORMER_OVERLOAD',          infra_type: 'transformer', suffix: 'load_check' },
+            { type: 'TRANSFORMER_CRITICAL_OVERLOAD', infra_type: 'transformer', suffix: 'load_check' },
+            { type: 'LEAK_DETECTED',                 infra_type: 'controller',  suffix: 'leak_check' },
+            { type: 'VOLTAGE_ANOMALY',               infra_type: 'controller',  suffix: 'voltage_check' },
+            { type: 'HEATING_FAILURE',               infra_type: 'controller',  suffix: 'heating_check' }
+        ];
 
-            // Re-arm query mocks AFTER seeding the lastChecks — full mock state
-            // is reset by beforeEach but mockResolvedValueOnce queue from earlier
-            // sibling tests can leak if other tests in this describe set
-            // mockResolvedValue (catch-all). Use a clean .mockReset() + per-call
-            // mockResolvedValueOnce to be deterministic.
-            db.query.mockReset();
-            AlertRule.findByTypeAndSeverity.mockReset();
-            AlertVerification.enqueue.mockReset();
+        test.each(cooldownCases)(
+            'clears $infra_type cooldown with :$suffix suffix for $type',
+            async ({ type, infra_type, suffix }) => {
+                process.env.ALERT_VERIFICATION_ENABLED = 'true';
+                const alert = { ...baseAlert, type, infrastructure_type: infra_type, infrastructure_id: 7 };
+                const cooldownKey = `${infra_type}:7:${suffix}`;
+                alertService.lastChecks.set(cooldownKey, Date.now());
 
-            db.query.mockResolvedValueOnce({ rows: [baseAlert] });
-            AlertRule.findByTypeAndSeverity.mockResolvedValueOnce(ruleWithVerification);
-            // [B-021 PR3] verifying path on the client; lastChecks.delete fires
-            // post-commit.
-            routeClient([{ ...baseAlert, status: 'resolved_verifying' }]);
-            AlertVerification.enqueue.mockResolvedValueOnce({ id: 1 });
+                db.query.mockReset();
+                AlertRule.findByTypeAndSeverity.mockReset();
+                AlertVerification.enqueue.mockReset();
 
-            await alertService.resolveAlert(21, null);
+                db.query.mockResolvedValueOnce({ rows: [alert] });
+                AlertRule.findByTypeAndSeverity.mockResolvedValueOnce({ ...ruleWithVerification, alert_type: type });
+                routeClient([{ ...alert, status: 'resolved_verifying' }]);
+                AlertVerification.enqueue.mockResolvedValueOnce({ id: 1 });
 
-            expect(alertService.lastChecks.has('controller:1:load_check')).toBe(false);
+                await alertService.resolveAlert(alert.alert_id, null);
+
+                expect(alertService.lastChecks.has(cooldownKey)).toBe(false);
+            }
+        );
+
+        // [AUD-003] drift guard: the suffix every checker keys its cooldown on
+        // must be a value in COOLDOWN_SUFFIX_BY_TYPE, else _resolveVerifying
+        // would silently clear the wrong key after a checker suffix changes.
+        test('guard: every checker checkKey suffix is in COOLDOWN_SUFFIX_BY_TYPE', () => {
+            const fs = require('fs');
+            const path = require('path');
+            const src = fs.readFileSync(
+                path.join(__dirname, '../../../src/services/alertService.js'), 'utf8'
+            );
+            const re = /checkKey\s*=\s*`[^`]*:\$\{[^}]+\}:([a-z_]+)`/g;
+            const checkerSuffixes = new Set();
+            let m;
+            while ((m = re.exec(src)) !== null) checkerSuffixes.add(m[1]);
+            expect(checkerSuffixes.size).toBeGreaterThan(0);
+
+            const mapValues = new Set(Object.values(alertService.COOLDOWN_SUFFIX_BY_TYPE));
+            for (const suffix of checkerSuffixes) {
+                expect(mapValues.has(suffix)).toBe(true);
+            }
         });
     });
 
