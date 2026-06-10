@@ -156,6 +156,29 @@ describe('AlertVerification model', () => {
             expect(db.query.mock.calls[0][0]).toContain("status = 'skipped'");
             expect(db.query.mock.calls[0][0]).toContain("status = 'pending'");
         });
+
+        // [AUD-001 PR-B] markChecked stamps last_checked_at when a checker
+        // actually evaluated the condition. It must NOT terminate the row
+        // (status stays 'pending') and NOT bump attempts — it only records
+        // that a real check happened, so the window-expired branch can tell
+        // 'passed' (checked, no fault) from 'skipped' (never completed).
+        test('markChecked stamps last_checked_at, keeps status pending, does not bump attempts', async () => {
+            db.query.mockResolvedValueOnce({ rows: [{ id: 1, last_checked_at: '2026-06-10T00:00:00Z' }] });
+
+            await AlertVerification.markChecked(1);
+
+            const sql = db.query.mock.calls[0][0];
+            expect(sql).toContain('last_checked_at = NOW()');
+            expect(sql).toContain("status = 'pending'");      // guard only
+            expect(sql).not.toContain("status = 'checked'");  // does not terminate
+            expect(sql).not.toContain('attempts = attempts + 1');
+            expect(db.query.mock.calls[0][1]).toEqual([1]);
+        });
+
+        test('markChecked returns null when row not pending (idempotent guard)', async () => {
+            db.query.mockResolvedValueOnce({ rows: [] });
+            expect(await AlertVerification.markChecked(1)).toBeNull();
+        });
     });
 
     describe('countRecentReopensForChain', () => {

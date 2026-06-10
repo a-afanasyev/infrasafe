@@ -292,7 +292,21 @@ class UkOutboxService {
     async _recordNotificationFailure(row, outcome) {
         try {
             const mapping = await AlertRequestMap.findByIdempotencyKey(row.event_id);
-            if (!mapping || !mapping.infrasafe_alert_id) {
+            let alertId = mapping && mapping.infrasafe_alert_id;
+            if (!alertId) {
+                // [AUD-001 PR-B Step 5b] Engineer escalations are enqueued WITHOUT
+                // an AlertRequestMap row (deterministic event_id, no mapping). A
+                // dead escalation would otherwise silently drop off the alert's
+                // notification_failures journal. Fall back to the alert_id baked
+                // into the canonical payload body.
+                try {
+                    const parsed = JSON.parse(row.payload_body);
+                    alertId = parsed && parsed.alert && parsed.alert.alert_id;
+                } catch (parseErr) {
+                    logger.debug(`ukOutboxService: payload_body unparseable for event_id=${row.event_id}: ${parseErr.message}`);
+                }
+            }
+            if (!alertId) {
                 logger.debug(`ukOutboxService: no alert to attach notification_failure for event_id=${row.event_id}`);
                 return;
             }
@@ -313,7 +327,7 @@ class UkOutboxService {
                  )
                  WHERE alert_id = $1`,
                 [
-                    mapping.infrasafe_alert_id,
+                    alertId,
                     row.event_id,
                     row.attempt_count + 1,
                     outcome.code || null,

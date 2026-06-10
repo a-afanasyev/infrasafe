@@ -127,6 +127,75 @@ describe('AlertService — Sprint 10 persistence + buildings gates', () => {
     });
 
     // ────────────────────────────────────────────────────────────────────
+    // [AUD-001 PR-B] Verify-mode persistence gate — continuous fault, clamped
+    // to post-resolve telemetry (sinceTimestamp). Counts from the first
+    // anomalous sample AFTER the last healthy one, not from observationSince.
+    // ────────────────────────────────────────────────────────────────────
+
+    describe('verify-mode persistence gate — LEAK_DETECTED', () => {
+        const OBS = '2026-06-10T00:00:00Z';
+        const leakAlert = {
+            type: 'LEAK_DETECTED',
+            severity: 'CRITICAL',
+            infrastructure_type: 'controller',
+            infrastructure_id: 9,
+            message: 'leak',
+            data: {}
+        };
+        const rule = { id: 4, alert_type: 'LEAK_DETECTED', min_persistence_seconds: 15, min_affected_buildings: 1 };
+
+        const callVerify = (gateRow) => {
+            // ruleSnapshot provided → createAlert does NOT re-read the rule.
+            db.query.mockReset();
+            db.query.mockResolvedValueOnce({ rows: [gateRow] });           // verify gate
+            db.query.mockResolvedValueOnce({ rows: [{ alert_id: 70, created_at: new Date().toISOString() }] }); // INSERT
+            return alertService.createAlert(leakAlert, { sinceTimestamp: OBS, ruleSnapshot: rule });
+        };
+
+        test('gate query is continuous-fault shaped and clamped to sinceTimestamp', async () => {
+            await callVerify({ fault_start: new Date(Date.now() - 20000).toISOString(),
+                               last_fault: new Date().toISOString(), n: '3' });
+            const [sql, params] = db.query.mock.calls[0];
+            expect(sql).toMatch(/last_healthy/i);
+            expect(sql).toMatch(/leak_sensor = false/i);
+            expect(sql).toMatch(/COALESCE\(h\.last_healthy/i);
+            expect(sql).toMatch(/timestamp > \$2/);
+            expect(params).toEqual([9, OBS]);
+        });
+
+        test('denies reopen when fewer than 2 anomalous samples since last healthy', async () => {
+            const r = await callVerify({ fault_start: new Date().toISOString(),
+                                         last_fault: new Date().toISOString(), n: '1' });
+            expect(r).toBeNull();
+            expect(db.query).toHaveBeenCalledTimes(1); // gate only, no INSERT
+        });
+
+        test('denies reopen when continuous fault span < min_persistence_seconds', async () => {
+            const start = new Date(Date.now() - 5000).toISOString();   // 5s span < 15s
+            const r = await callVerify({ fault_start: start, last_fault: new Date().toISOString(), n: '4' });
+            expect(r).toBeNull();
+            expect(db.query).toHaveBeenCalledTimes(1);
+        });
+
+        test('allows reopen when ≥2 samples span ≥ min_persistence_seconds → INSERT', async () => {
+            const start = new Date(Date.now() - 30000).toISOString();   // 30s span ≥ 15s
+            const r = await callVerify({ fault_start: start, last_fault: new Date().toISOString(), n: '4' });
+            expect(r).not.toBeNull();
+            expect(r.alert_id).toBe(70);
+            expect(db.query).toHaveBeenCalledTimes(2);
+            expect(db.query.mock.calls[1][0]).toContain('INSERT INTO infrastructure_alerts');
+        });
+
+        test('[C-1] gate CTE returns zero rows → denied (no crash, no INSERT)', async () => {
+            db.query.mockReset();
+            db.query.mockResolvedValueOnce({ rows: [] }); // empty CTE result (s had no rows)
+            const r = await alertService.createAlert(leakAlert, { sinceTimestamp: OBS, ruleSnapshot: rule });
+            expect(r).toBeNull();
+            expect(db.query).toHaveBeenCalledTimes(1); // gate only
+        });
+    });
+
+    // ────────────────────────────────────────────────────────────────────
     // [B-005 / Sprint 11] Persistence gate — VOLTAGE_ANOMALY
     // ────────────────────────────────────────────────────────────────────
 

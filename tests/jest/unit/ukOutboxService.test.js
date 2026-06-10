@@ -301,6 +301,26 @@ describe('ukOutboxService', () => {
         // the terminal success/dead landing. Each outbound event_id has a log row
         // written at enqueue time (alertForwarder → webhookVerifier.logEvent);
         // the drain worker now updates that row's status as the event progresses.
+        it('[AUD-001 PR-B] dead engineer escalation with NO mapping → records failure via payload_body.alert.alert_id', async () => {
+            // Engineer escalations are enqueued without an AlertRequestMap row,
+            // so findByIdempotencyKey returns null. The dead-letter must fall
+            // back to the alert_id baked into the canonical payload body.
+            UkOutbox.pickNext.mockResolvedValue({
+                id: 1,
+                event_id: 'eng-evt',
+                payload_body: JSON.stringify({ event: 'alert.engineer_required', alert: { alert_id: 7 } }),
+                attempt_count: 0
+            });
+            ukWebhookClient.send.mockResolvedValue({ outcome: 'dead', code: 401, error: 'stale' });
+            AlertRequestMap.findByIdempotencyKey.mockResolvedValue(null); // no mapping
+
+            await service._tick();
+
+            const updateCall = db.query.mock.calls.find(c => /UPDATE infrastructure_alerts/.test(c[0]));
+            expect(updateCall).toBeDefined();
+            expect(updateCall[1][0]).toBe(7); // alert_id from payload_body
+        });
+
         it('[B-007] dead → updates integration_log status to "failed" with error', async () => {
             UkOutbox.pickNext.mockResolvedValue(queuedRow);
             ukWebhookClient.send.mockResolvedValue({ outcome: 'dead', code: 401, error: 'signature stale' });

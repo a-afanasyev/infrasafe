@@ -95,6 +95,10 @@ describe('alertVerificationService', () => {
             if (/previous_uk_request_number/.test(sql)) {
                 return Promise.resolve({ rows: [{ previous_uk_request_number: null }] });
             }
+            // [AUD-001 PR-B Step 5b] engineer branch SELECTs the full alert row.
+            if (/SELECT\s+\*\s+FROM\s+infrastructure_alerts\s+WHERE\s+alert_id/i.test(sql)) {
+                return Promise.resolve({ rows: [overrides.alertRow || { alert_id: 21, type: 'LEAK_DETECTED', severity: 'CRITICAL', infrastructure_type: 'controller', infrastructure_id: 1 }] });
+            }
             // [B-021 W1] superseding-alert lookup in the reopen chain.
             if (/SELECT\s+alert_id\s+FROM\s+infrastructure_alerts/i.test(sql)) {
                 return Promise.resolve({ rows: overrides.superseding ? [{ alert_id: overrides.superseding }] : [] });
@@ -341,18 +345,34 @@ describe('alertVerificationService', () => {
             expect(AlertVerification.markPassed).not.toHaveBeenCalled();
         });
 
-        test('[Sprint 10 PR-3] markPassed when window expired AND already dispatched (attempts>0)', async () => {
+        test('[Sprint 10 PR-3 + AUD-001] markPassed when window expired, dispatched AND checked (last_checked_at set)', async () => {
             routeClient();
             AlertVerification.pickDue.mockResolvedValueOnce({
                 ...dueRow,
                 window_until: new Date(Date.now() - 60000).toISOString(),
-                attempts: 1
+                attempts: 1,
+                last_checked_at: new Date().toISOString()  // checker really ran
             });
 
             await service._tick();
 
             expect(AlertVerification.markPassed).toHaveBeenCalledWith(1, db.__mockClient);
             expect(AlertVerification.markSkipped).not.toHaveBeenCalled();
+        });
+
+        test('[AUD-001] window expired, dispatched but NEVER checked (last_checked_at NULL) → skipped, not passed', async () => {
+            routeClient();
+            AlertVerification.pickDue.mockResolvedValueOnce({
+                ...dueRow,
+                window_until: new Date(Date.now() - 60000).toISOString(),
+                attempts: 1,
+                last_checked_at: null  // dispatched but the checker never completed
+            });
+
+            await service._tick();
+
+            expect(AlertVerification.markSkipped).toHaveBeenCalledWith(1, 'dispatched but checker never completed', db.__mockClient);
+            expect(AlertVerification.markPassed).not.toHaveBeenCalled();
         });
 
         test('[Sprint 10 PR-3] returns quietly when attempts>0 and still in window', async () => {
@@ -425,11 +445,16 @@ describe('alertVerificationService', () => {
             await service._tick();
 
             expect(AlertVerification.markEngineerRequired).toHaveBeenCalledWith(1, db.__mockClient);
-            expect(listener).toHaveBeenCalledWith({
+            // [AUD-001 PR-B Step 5b] payload now carries alertData + alertId +
+            // verificationId so the forwarder can match a rule, resolve
+            // buildings, and build the deterministic event_id.
+            expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+                alertData: expect.objectContaining({ alert_id: 21 }),
+                alertId: 21,
+                verificationId: 1,
                 reopenChainId: 'chain-uuid',
-                lastAlertId: 21,
                 reopenCount: 3
-            });
+            }));
         });
 
         test('markSkipped when alert_type has no VERIFY mapping', async () => {
@@ -481,7 +506,8 @@ describe('alertVerificationService', () => {
         const expiredDispatched = {
             ...dueRow,
             window_until: new Date(Date.now() - 60000).toISOString(),
-            attempts: 1
+            attempts: 1,
+            last_checked_at: new Date().toISOString()  // [AUD-001] checked → eligible for 'passed'
         };
 
         test('superseding alert in chain → markReopened (NOT markPassed) + finalize resolved', async () => {
@@ -521,10 +547,107 @@ describe('alertVerificationService', () => {
             expect(AlertVerification.markSkipped).not.toHaveBeenCalled();
         });
 
-        test('_findSupersedingAlert returns null for falsy chain id (no query)', async () => {
-            const r = await service._findSupersedingAlert(null, 1, db.__mockClient);
-            expect(r).toBeNull();
+        test('_findSupersedingAlert returns {outcome:none} for falsy chain id (no query)', async () => {
+            const r = await service._findSupersedingAlert({ reopen_chain_id: null }, db.__mockClient);
+            expect(r).toEqual({ outcome: 'none' });
             expect(db.__mockClient.query).not.toHaveBeenCalled();
+        });
+    });
+
+    // [AUD-001 PR-B Step 5] Fallback + adoption: telemetry during grace creates
+    // a chain-less alert of the same (infra, type) that the VERIFY-path reopen
+    // couldn't insert (dedup). Adopt it into the chain so the quota stays right.
+    describe('[AUD-001 PR-B Step 5] superseding fallback + adoption', () => {
+        const expired = {
+            ...dueRow,
+            created_at: new Date(Date.now() - 120000).toISOString(),
+            window_until: new Date(Date.now() - 60000).toISOString(),
+            attempts: 1,
+            last_checked_at: new Date().toISOString()
+        };
+
+        // Routes: chain SELECT (no chain match) → fallback SELECT (a chain-less
+        // alert) → adoption UPDATE (RETURNING). `adoptReturns` controls whether
+        // we win the adoption; `rereadChain` is the chain on lost-race re-read.
+        const routeFallback = ({ fallbackId, adoptWon = true, rereadChain }) => {
+            let sawChainSelect = false;
+            db.__mockClient.query.mockImplementation((sql) => {
+                if (/pg_try_advisory_lock/.test(sql)) return Promise.resolve({ rows: [{ locked: true }] });
+                if (/pg_advisory_unlock/.test(sql)) return Promise.resolve({ rows: [{}] });
+                if (/^\s*(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return Promise.resolve({ rows: [] });
+                // First "SELECT alert_id" = chain match (empty); second = fallback.
+                if (/SELECT\s+alert_id\s+FROM\s+infrastructure_alerts/i.test(sql)) {
+                    if (!sawChainSelect) { sawChainSelect = true; return Promise.resolve({ rows: [] }); }
+                    return Promise.resolve({ rows: fallbackId ? [{ alert_id: fallbackId }] : [] });
+                }
+                if (/UPDATE\s+infrastructure_alerts\s+SET\s+reopen_chain_id/i.test(sql)) {
+                    return Promise.resolve({ rows: adoptWon ? [{ alert_id: fallbackId }] : [] });
+                }
+                if (/SELECT\s+reopen_chain_id\s+FROM\s+infrastructure_alerts/i.test(sql)) {
+                    return Promise.resolve({ rows: [{ reopen_chain_id: rereadChain }] });
+                }
+                if (/UPDATE\s+infrastructure_alerts/i.test(sql)) return Promise.resolve({ rows: [] }); // finalize
+                return Promise.resolve({ rows: [] });
+            });
+        };
+
+        test('chain-less alert in window → adopted (UPDATE) + markReopened', async () => {
+            routeFallback({ fallbackId: 88, adoptWon: true });
+            AlertVerification.pickDue.mockResolvedValueOnce(expired);
+
+            await service._tick();
+
+            const adoptCall = db.__mockClient.query.mock.calls.find((c) => /UPDATE\s+infrastructure_alerts\s+SET\s+reopen_chain_id/i.test(c[0]));
+            expect(adoptCall).toBeDefined();
+            expect(AlertVerification.markReopened).toHaveBeenCalledWith(1, 88, db.__mockClient);
+            expect(AlertVerification.markPassed).not.toHaveBeenCalled();
+        });
+
+        test('chain-less alert OUTSIDE window → not adopted → passed (checked)', async () => {
+            // Fallback SELECT returns [] because created_at>window_until is in the
+            // SQL predicate; emulate by returning no fallback row.
+            routeFallback({ fallbackId: null });
+            AlertVerification.pickDue.mockResolvedValueOnce(expired);
+
+            await service._tick();
+
+            expect(AlertVerification.markReopened).not.toHaveBeenCalled();
+            expect(AlertVerification.markPassed).toHaveBeenCalledWith(1, db.__mockClient);
+        });
+
+        test('lost adoption race into a DIFFERENT chain → conflict → markSkipped (not passed)', async () => {
+            routeFallback({ fallbackId: 88, adoptWon: false, rereadChain: 'some-other-chain' });
+            AlertVerification.pickDue.mockResolvedValueOnce(expired);
+
+            await service._tick();
+
+            expect(AlertVerification.markReopened).not.toHaveBeenCalled();
+            expect(AlertVerification.markPassed).not.toHaveBeenCalled();
+            expect(AlertVerification.markSkipped).toHaveBeenCalledWith(1, expect.stringContaining('adoption conflict'), db.__mockClient);
+        });
+
+        test('lost adoption race but into OUR chain → still markReopened', async () => {
+            routeFallback({ fallbackId: 88, adoptWon: false, rereadChain: 'chain-uuid' });
+            AlertVerification.pickDue.mockResolvedValueOnce(expired);
+
+            await service._tick();
+
+            expect(AlertVerification.markReopened).toHaveBeenCalledWith(1, 88, db.__mockClient);
+        });
+
+        test('transformer family match: fallback SELECT uses both TRANSFORMER_* types', async () => {
+            routeFallback({ fallbackId: 88, adoptWon: true });
+            AlertVerification.pickDue.mockResolvedValueOnce({
+                ...expired, alert_type: 'TRANSFORMER_CRITICAL_OVERLOAD'
+            });
+
+            await service._tick();
+
+            const fallbackCall = db.__mockClient.query.mock.calls.find(
+                (c) => /SELECT\s+alert_id\s+FROM\s+infrastructure_alerts/i.test(c[0]) && /type = ANY/i.test(c[0])
+            );
+            expect(fallbackCall).toBeDefined();
+            expect(fallbackCall[1]).toContainEqual(['TRANSFORMER_OVERLOAD', 'TRANSFORMER_CRITICAL_OVERLOAD']);
         });
     });
 

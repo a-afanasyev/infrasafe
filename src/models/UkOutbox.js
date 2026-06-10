@@ -60,6 +60,25 @@ class UkOutbox {
     }
 
     /**
+     * [AUD-001 PR-B] Read a row by its unique event_id. Used by the engineer-
+     * escalation ack-contract: when enqueue returns null (ON CONFLICT), the
+     * caller reads the existing row to tell a delivered/in-flight duplicate
+     * (pending/sent → ok) from a dead one (PR-C revives those).
+     */
+    static async findByEventId(eventId) {
+        try {
+            const result = await db.query(
+                'SELECT * FROM uk_outbox WHERE event_id = $1',
+                [eventId]
+            );
+            return result.rows[0] || null;
+        } catch (error) {
+            logger.error(`UkOutbox.findByEventId error: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
      * Pick the next pending row ready for send. Uses FOR UPDATE SKIP LOCKED
      * so multiple workers/replicas can't pick the same row. Caller is
      * responsible for committing the transaction (markSent/markFailed/markDead).

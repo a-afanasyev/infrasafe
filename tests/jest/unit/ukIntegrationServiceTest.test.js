@@ -464,7 +464,9 @@ describe('UKIntegrationService — Phase 3-5', () => {
             it('engineer_required → "critical" (not "Критическая")', async () => {
                 setup({ uk_category: 'electricity', uk_urgency: 'Срочная' });
 
-                await service.sendAlertToUK(alertData, { engineerRequired: true });
+                // [AUD-001 PR-B Step 5b] engineer path now requires verificationId
+                // (deterministic event_id) and bypasses AlertRequestMap.
+                await service.sendAlertToUK(alertData, { engineerRequired: true, verificationId: 99 });
 
                 expect(overrideFromLastEnqueue()).toBe('critical');
             });

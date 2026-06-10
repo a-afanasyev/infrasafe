@@ -126,10 +126,146 @@ class UKAlertForwarder {
      *   listener (below) after the verification worker hits a chain's
      *   max_reopens_per_24h ceiling.
      */
+    // [AUD-001 PR-B Step 5b] Deterministic, AlertRequestMap-free event_id for an
+    // engineer escalation. The alert.created path keys idempotency on a random
+    // UUID stored in AlertRequestMap; the engineer path has NO mapping (it's a
+    // notification, not a new request-mapping), so we derive a stable UUIDv5-
+    // style id from (verificationId, building) — re-emits of the same escalation
+    // collapse to the same outbox row (ON CONFLICT DO NOTHING).
+    _engineerEventId(verificationId, externalId) {
+        const hash = crypto.createHash('sha1')
+            .update(`engineer_required:${verificationId}:${externalId}`)
+            .digest();
+        const b = Buffer.from(hash.subarray(0, 16));
+        b[6] = (b[6] & 0x0f) | 0x50; // version 5
+        b[8] = (b[8] & 0x3f) | 0x80; // RFC 4122 variant
+        const h = b.toString('hex');
+        return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+    }
+
+    /**
+     * [AUD-001 PR-B Step 5b] Engineer-escalation enqueue — a path SEPARATE from
+     * the per-building AlertRequestMap flow. The old code routed engineer events
+     * through sendAlertToUK's mapping loop, where an existing mapping for the
+     * SAME {alert,building} (the original alert's request) made it `continue` /
+     * hit the UNIQUE(infrasafe_alert_id, building_external_id) — so the engineer
+     * ticket NEVER reached UK. Here we:
+     *   - touch NO AlertRequestMap (escalation is a notification, not a mapping)
+     *   - use a deterministic event_id → durable idempotency via uk_outbox UNIQUE
+     *   - enqueue ALWAYS (outside the UK_USE_WEBHOOK_SENDER gate): the engineer
+     *     event has no pending-mapping to self-heal from, so the outbox IS its
+     *     durable buffer until the drain worker is enabled
+     * Returns true iff the target set (buildings WITH external_id) is non-empty
+     * AND every target has a non-dead outbox row (PR-C revives dead rows).
+     */
+    async _enqueueEngineerEscalation(alertData, verificationId) {
+        if (verificationId == null) {
+            logger.warn(`engineer escalation alert ${alertData.alert_id}: missing verificationId — not enqueued`);
+            return false;
+        }
+        const enabled = await configProxy.isEnabled();
+        if (!enabled) return false;
+
+        const AlertRule = require('../../models/AlertRule');
+        const rule = await AlertRule.findByTypeAndSeverity(alertData.type, alertData.severity);
+        if (!rule) {
+            logger.debug(`engineer escalation alert ${alertData.alert_id}: no matching rule for ${alertData.type}/${alertData.severity}`);
+            return false;
+        }
+
+        const buildings = await this.resolveBuildingIds(alertData.infrastructure_id, alertData.infrastructure_type);
+        const targets = buildings.filter((b) => b.external_id);
+        if (!targets.length) {
+            logger.debug(`engineer escalation alert ${alertData.alert_id}: no buildings with external_id`);
+            return false;
+        }
+
+        let allDelivered = true;
+        for (const building of targets) {
+            try {
+                const eventId = this._engineerEventId(verificationId, building.external_id);
+                const eventBody = this._buildAlertEventBody(alertData, building, eventId, rule, { engineerRequired: true });
+                const enq = await UkOutbox.enqueue({ event_id: eventId, payload_body: eventBody });
+                if (enq) {
+                    await webhookVerifier.logEvent({
+                        direction: 'to_uk',
+                        entity_type: 'alert',
+                        entity_id: String(alertData.alert_id),
+                        action: 'alert.engineer_required.enqueued',
+                        payload: { alert_id: alertData.alert_id, building_id: building.building_id, event_id: eventId },
+                        status: 'pending'
+                    }).catch((logErr) => logger.warn(`engineer escalation: integration_log write failed: ${logErr.message}`));
+                    logger.info(`engineer escalation enqueued event_id=${eventId} for alert ${alertData.alert_id}, building ${building.building_id}`);
+                } else {
+                    // Duplicate (ON CONFLICT). Verify it's not dead — a blind ack
+                    // would bury the escalation forever.
+                    const existing = await UkOutbox.findByEventId(eventId);
+                    if (!existing || existing.status === 'dead') {
+                        // PR-C: UkOutbox.reviveDead. Until then a dead row is not
+                        // delivered — report it so the operator/notification_failures see it.
+                        allDelivered = false;
+                        logger.warn(`engineer escalation event_id=${eventId} exists as ${existing ? existing.status : 'missing'} — not delivered`);
+                    } else {
+                        logger.debug(`engineer escalation event_id=${eventId} already ${existing.status} (duplicate ok)`);
+                    }
+                }
+            } catch (buildingError) {
+                allDelivered = false;
+                logger.error(`engineer escalation failed for building ${building.building_id}: ${buildingError.message}`);
+            }
+        }
+        return allDelivered;
+    }
+
+    // [AUD-001 PR-B Step 5b] Canonical outbound alert body (extracted so the
+    // engineer path and the alert.created path build byte-identical shapes; the
+    // exact bytes are HMAC-signed at send time by ukWebhookClient).
+    _buildAlertEventBody(alertData, building, eventId, rule, { engineerRequired = false } = {}) {
+        const isReopen = !!alertData.reopen_chain_id && (alertData.reopen_sequence || 1) > 1;
+        const effectiveUrgency = (isReopen && rule.reopen_urgency_bump)
+            ? bumpUrgency(rule.uk_urgency)
+            : toUrgencyKey(rule.uk_urgency);
+        return JSON.stringify({
+            event_id: eventId,
+            event: engineerRequired ? 'alert.engineer_required' : 'alert.created',
+            timestamp: new Date().toISOString(),
+            alert: {
+                external_id: building.external_id,
+                type: alertData.type,
+                severity: alertData.severity,
+                message: alertData.message,
+                alert_id: alertData.alert_id,
+                created_at: alertData.created_at || new Date().toISOString(),
+                correlation_id: alertData.correlation_id || null,
+                infrastructure_type: alertData.infrastructure_type,
+                infrastructure_id: alertData.infrastructure_id,
+                metric_id: alertData.metric_id,
+                metric_value: alertData.metric_value,
+                metric_unit: alertData.metric_unit,
+                reopen_chain_id: alertData.reopen_chain_id || null,
+                reopen_sequence: alertData.reopen_sequence || 1,
+                related_request_number: alertData.previous_uk_request_number || null,
+                uk_urgency_override: engineerRequired ? 'critical' : (isReopen ? effectiveUrgency : null),
+                uk_category_override: engineerRequired ? 'Инженерный разбор' : null,
+                engineer_required_reason: engineerRequired ? 'max_reopens_per_24h' : null
+            }
+        });
+    }
+
     async sendAlertToUK(alertData, options = {}) {
-        const { engineerRequired = false } = options;
-        const eventType = engineerRequired ? 'alert.engineer_required' : 'alert.created';
-        const enqueueAction = engineerRequired ? 'alert.engineer_required.enqueued' : 'alert.enqueued';
+        const { engineerRequired = false, verificationId = null } = options;
+        // [AUD-001 PR-B Step 5b] Engineer escalations take a dedicated path that
+        // bypasses AlertRequestMap (the old shared path silently dropped them).
+        if (engineerRequired) {
+            try {
+                return await this._enqueueEngineerEscalation(alertData, verificationId);
+            } catch (error) {
+                logger.error(`sendAlertToUK engineer escalation error: ${error.message}`);
+                return false;
+            }
+        }
+        const eventType = 'alert.created';
+        const enqueueAction = 'alert.enqueued';
         try {
             const enabled = await configProxy.isEnabled();
             if (!enabled) return;
@@ -367,10 +503,23 @@ alertEvents.on(alertEvents.EVENTS.ALERT_CREATED, async ({ alertData, alertId }) 
 // the canonical body / HMAC / outbox / drain path are all identical
 // to alert.created (only event_type + a few fields differ per
 // Sprint 10 spec §2.4).
-alertEvents.on(alertEvents.EVENTS.ALERT_ENGINEER_REQUIRED, async ({ alertData, alertId }) => {
+alertEvents.on(alertEvents.EVENTS.ALERT_ENGINEER_REQUIRED, async ({ alertData, alertId, verificationId }) => {
     try {
+        if (!alertData) {
+            logger.warn(`ALERT_ENGINEER_REQUIRED for alert ${alertId}: missing alertData — skipped`);
+            return;
+        }
         if (!(await configProxy.isEnabled())) return;
-        await singleton.sendAlertToUK({ ...alertData, alert_id: alertId }, { engineerRequired: true });
+        // verificationId is REQUIRED for the deterministic event_id. Enqueue is
+        // ALWAYS attempted (even with UK_USE_WEBHOOK_SENDER off) — the outbox is
+        // the durable buffer. A false return = not delivered → record failure.
+        const delivered = await singleton.sendAlertToUK(
+            { ...alertData, alert_id: alertId },
+            { engineerRequired: true, verificationId }
+        );
+        if (delivered === false) {
+            logger.warn(`Alert ${alertId} engineer escalation not delivered (no target / dead outbox)`);
+        }
     } catch (ukError) {
         logger.error(`Alert ${alertId} UK forwarding failed: ${ukError.message}`);
         try {

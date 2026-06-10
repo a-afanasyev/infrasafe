@@ -254,26 +254,34 @@ class AlertVerificationService {
             // says 'passed' where a reopen actually happened, and the
             // new_alert_id linkage is lost). Re-deriving from the DB closes that
             // gap without a durable event outbox.
-            const supersedingAlertId = await this._findSupersedingAlert(
-                row.reopen_chain_id, row.reopen_sequence, executor
-            );
-            if (supersedingAlertId) {
+            const superseding = await this._findSupersedingAlert(row, executor);
+            if (superseding.outcome === 'reopened') {
                 await this._finalizeAlertStatus(row.original_alert_id, 'resolved', executor);
-                await AlertVerification.markReopened(row.id, supersedingAlertId, executor);
-                logger.info(`alertVerificationService: verification ${row.id} reconciled → reopened (superseding alert ${supersedingAlertId} found in chain ${row.reopen_chain_id}; ALERT_REOPENED event was lost)`);
+                await AlertVerification.markReopened(row.id, superseding.alertId, executor);
+                logger.info(`alertVerificationService: verification ${row.id} reconciled → reopened (superseding alert ${superseding.alertId} in chain ${row.reopen_chain_id})`);
                 return null;
             }
-            if (row.attempts > 0) {
-                // We dispatched the VERIFY event earlier, no reopen happened
-                // in the window → sensor recovered. Mark passed.
-                // [B-020] finalize the parent alert FIRST (now also atomic via
-                // the surrounding transaction): both UPDATEs commit together.
+            if (superseding.outcome === 'conflict') {
+                // [Step 5] A chain-less alert we tried to adopt was taken into a
+                // DIFFERENT chain by a racing verification/replica. Don't claim
+                // 'passed' (the fault may persist) — finalize + skip with reason.
                 await this._finalizeAlertStatus(row.original_alert_id, 'resolved', executor);
+                await AlertVerification.markSkipped(row.id, `adoption conflict for chain ${row.reopen_chain_id}`, executor);
+                return null;
+            }
+            // [AUD-001 PR-B] Checked-ack: 'passed' requires PROOF a checker
+            // really evaluated the fault (last_checked_at). "Dispatched"
+            // (attempts>0) is not enough — the checker swallows errors / can't
+            // tell silent-sensor from healthy. attempts>0 without last_checked_at
+            // → the checker never completed → 'skipped', not a false 'passed'.
+            await this._finalizeAlertStatus(row.original_alert_id, 'resolved', executor);
+            if (row.attempts > 0 && row.last_checked_at) {
                 await AlertVerification.markPassed(row.id, executor);
-                logger.info(`alertVerificationService: verification ${row.id} passed (no reopen within window)`);
+                logger.info(`alertVerificationService: verification ${row.id} passed (checked, no reopen within window)`);
+            } else if (row.attempts > 0) {
+                await AlertVerification.markSkipped(row.id, 'dispatched but checker never completed', executor);
             } else {
                 // We never even got to fire — drain was starved.
-                await this._finalizeAlertStatus(row.original_alert_id, 'resolved', executor);
                 await AlertVerification.markSkipped(row.id, `window expired (${row.window_until})`, executor);
             }
             return null;
@@ -326,11 +334,24 @@ class AlertVerificationService {
                 await this._finalizeAlertStatus(row.original_alert_id, 'engineer_required', executor);
                 await AlertVerification.markEngineerRequired(row.id, executor);
                 logger.warn(`alertVerificationService: chain ${row.reopen_chain_id} exceeded ${ruleQuota} reopens/24h — engineer_required`);
+                // [AUD-001 PR-B Step 5b] The forwarder needs the full alertData
+                // (to match a rule + resolve buildings) and the verificationId
+                // (for the deterministic, AlertRequestMap-free event_id). The
+                // old payload {reopenChainId,lastAlertId,reopenCount} did NOT
+                // match the listener's {alertData,alertId} destructure → the
+                // escalation never reached UK. SELECT the alert on the same
+                // executor; emit happens after COMMIT.
+                const alertRow = await executor.query(
+                    'SELECT * FROM infrastructure_alerts WHERE alert_id = $1',
+                    [row.original_alert_id]
+                );
                 return {
                     event: alertEvents.EVENTS.ALERT_ENGINEER_REQUIRED,
                     payload: {
+                        alertData: alertRow.rows[0] || null,
+                        alertId: row.original_alert_id,
+                        verificationId: row.id,
                         reopenChainId: row.reopen_chain_id,
-                        lastAlertId: row.original_alert_id,
                         reopenCount: recentReopens
                     }
                 };
@@ -375,7 +396,14 @@ class AlertVerificationService {
                 reopenChainId: row.reopen_chain_id,
                 reopenSequence: row.reopen_sequence + 1,
                 originalAlertId: row.original_alert_id,
-                previousUkRequestNumber
+                previousUkRequestNumber,
+                // [AUD-001 PR-B] verificationId → the checker's listener acks via
+                // AlertVerification.markChecked when it really evaluated the
+                // fault. observationSince = enqueue/resolve moment → clamps the
+                // checker's freshness-probe + persistence gate to post-resolve
+                // telemetry only (no false reopen on pre-resolve samples).
+                verificationId: row.id,
+                observationSince: row.created_at
             }
         };
     }
@@ -387,16 +415,34 @@ class AlertVerificationService {
      * the most-restrictive (lowest) value wins.
      */
     /**
-     * [B-021 W1] Find a later alert in the same reopen chain — evidence that a
-     * reopen happened (so the verification should be 'reopened', not 'passed').
-     * Any non-pending-discarded status counts: the reopen alert may itself have
-     * since been resolved/re-verified. Higher reopen_sequence = a newer link.
-     * Indexed by `idx_reopen_chain ON infrastructure_alerts(reopen_chain_id)`
-     * (migration 027). Returns the alert_id or null.
+     * [B-021 W1 + AUD-001 PR-B Step 5] Decide whether a reopen already happened
+     * for this verification, reconciled from DURABLE DB state (the ALERT_REOPENED
+     * event is ephemeral — a crash between createAlert's emit and the listener
+     * loses it). Returns { outcome, alertId }:
+     *
+     *   1. CHAIN MATCH — a later alert already carries this reopen_chain_id (the
+     *      normal reopen path): { outcome:'reopened', alertId }.
+     *   2. FALLBACK + ADOPTION — telemetry during grace created a fresh active
+     *      alert of the same (infra, type-family) WITHOUT the chain (the checker
+     *      hit the dedup index, so the VERIFY-path reopen never inserted). It's
+     *      the same physical fault, so adopt it INTO this chain (atomic UPDATE,
+     *      guard reopen_chain_id IS NULL). Without adoption the quota — counted
+     *      strictly by reopen_chain_id — would reset on the next resolve.
+     *        - adoption won  → { outcome:'reopened', alertId }
+     *        - lost race but adopted into OUR chain → { outcome:'reopened' }
+     *        - adopted into a DIFFERENT chain → { outcome:'conflict' }
+     *   3. Nothing → { outcome:'none' }.
+     *
+     * Runs entirely on `executor` (the drain transaction) so the SELECTs and the
+     * adoption UPDATE are one atomic unit.
      */
-    async _findSupersedingAlert(reopenChainId, reopenSequence, executor = db) {
-        if (!reopenChainId) return null;
-        const result = await executor.query(
+    async _findSupersedingAlert(row, executor = db) {
+        const reopenChainId = row.reopen_chain_id;
+        const reopenSequence = row.reopen_sequence;
+        if (!reopenChainId) return { outcome: 'none' };
+
+        // 1. Chain match — a later link already exists in this chain.
+        const chainMatch = await executor.query(
             `SELECT alert_id FROM infrastructure_alerts
              WHERE reopen_chain_id = $1
                AND reopen_sequence > $2
@@ -405,7 +451,56 @@ class AlertVerificationService {
              LIMIT 1`,
             [reopenChainId, reopenSequence]
         );
-        return result.rows[0] ? result.rows[0].alert_id : null;
+        if (chainMatch.rows[0]) {
+            return { outcome: 'reopened', alertId: chainMatch.rows[0].alert_id };
+        }
+
+        // 2. Fallback — a chain-less alert of the same (infra, type-family)
+        // created strictly within the verification window (after resolve/enqueue,
+        // before window_until). Transformer severities drift between the two
+        // TRANSFORMER_* types, so match the family.
+        const family = (reopenChainId && (row.alert_type === 'TRANSFORMER_OVERLOAD' || row.alert_type === 'TRANSFORMER_CRITICAL_OVERLOAD'))
+            ? ['TRANSFORMER_OVERLOAD', 'TRANSFORMER_CRITICAL_OVERLOAD']
+            : [row.alert_type];
+        const fallback = await executor.query(
+            `SELECT alert_id FROM infrastructure_alerts
+             WHERE infrastructure_type = $1 AND infrastructure_id = $2
+               AND type = ANY($3)
+               AND reopen_chain_id IS NULL
+               AND created_at > $4 AND created_at <= $5
+               AND status IN ('active', 'acknowledged', 'resolved', 'resolved_verifying', 'engineer_required')
+             ORDER BY created_at DESC, alert_id DESC
+             LIMIT 1`,
+            [row.infrastructure_type, row.infrastructure_id, family, row.created_at, row.window_until]
+        );
+        if (!fallback.rows[0]) {
+            return { outcome: 'none' };
+        }
+        const foundId = fallback.rows[0].alert_id;
+
+        // 3. Adopt into this chain (guard IS NULL → idempotent + race-safe).
+        const adopt = await executor.query(
+            `UPDATE infrastructure_alerts
+             SET reopen_chain_id = $1, reopen_sequence = $2, previous_alert_id = $3
+             WHERE alert_id = $4 AND reopen_chain_id IS NULL
+             RETURNING alert_id`,
+            [reopenChainId, reopenSequence + 1, row.original_alert_id, foundId]
+        );
+        if (adopt.rows[0]) {
+            logger.info(`alertVerificationService: adopted chain-less alert ${foundId} into chain ${reopenChainId} (seq ${reopenSequence + 1})`);
+            return { outcome: 'reopened', alertId: foundId };
+        }
+
+        // Lost the adoption race — re-read to see whose chain won.
+        const reread = await executor.query(
+            'SELECT reopen_chain_id FROM infrastructure_alerts WHERE alert_id = $1',
+            [foundId]
+        );
+        if (reread.rows[0] && reread.rows[0].reopen_chain_id === reopenChainId) {
+            // The winner adopted it into OUR chain — still a valid reopen for us.
+            return { outcome: 'reopened', alertId: foundId };
+        }
+        return { outcome: 'conflict' };
     }
 
     async _getReopenQuota(alertType, executor = db) {

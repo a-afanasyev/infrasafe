@@ -299,6 +299,34 @@ class AlertVerification {
     }
 
     /**
+     * [AUD-001 PR-B] Stamp last_checked_at — a checker actually evaluated the
+     * fault condition against fresh post-resolve telemetry and returned
+     * {checked:true}. Unlike the terminal mark* helpers this does NOT change
+     * status (stays 'pending') and does NOT bump attempts; it only records
+     * that a real check completed, so the window-expired branch can mark the
+     * row 'passed' (checked, fault gone) rather than 'skipped' (dispatched but
+     * the checker crashed / had no fresh data and never completed).
+     *
+     * The `status = 'pending'` guard keeps it idempotent and race-safe: if the
+     * row already terminalised (e.g. a reopen landed first), this is a no-op.
+     */
+    static async markChecked(id, executor = db) {
+        try {
+            const result = await executor.query(
+                `UPDATE alert_verifications
+                 SET last_checked_at = NOW()
+                 WHERE id = $1 AND status = 'pending'
+                 RETURNING *`,
+                [id]
+            );
+            return result.rows[0] || null;
+        } catch (error) {
+            logger.error(`AlertVerification.markChecked error: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
      * Count successful reopens in the last `withinHours` for this chain.
      * Used by alertVerificationService to enforce max_reopens_per_24h.
      */

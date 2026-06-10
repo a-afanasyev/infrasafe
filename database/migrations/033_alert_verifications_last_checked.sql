@@ -1,0 +1,33 @@
+-- Migration 033: alert_verifications.last_checked_at (Sprint 11, AUD-001 PR-B)
+--
+-- PR-B reconnects the dead VERIFY_* path: alertVerificationService emits a
+-- VERIFY_<TYPE> event after grace, and (newly in this PR) a checker in
+-- alertService subscribes, re-evaluates the fault on FRESH post-resolve
+-- telemetry, and creates a reopen alert if it still holds.
+--
+-- Problem this column solves — honest passed vs skipped:
+--   The window-expired branch in _processDue previously marked any dispatched
+--   row (attempts>0) as 'passed' ("sensor recovered"). But a checker can
+--   return WITHOUT having actually evaluated the condition — it swallows
+--   exceptions and returns null on DB errors, and controller checkers can't
+--   tell "readings healthy" from "sensor silent". "Dispatched" therefore does
+--   NOT imply "checked". Marking such a row 'passed' asserts a recovery that
+--   was never observed.
+--
+--   last_checked_at is stamped (AlertVerification.markChecked) ONLY when a
+--   checker evaluated the condition against fresh data and returned
+--   {checked:true}. The window-expired branch then distinguishes:
+--     attempts>0 AND last_checked_at IS NOT NULL → passed  (really checked)
+--     attempts>0 AND last_checked_at IS NULL     → skipped (never completed)
+--
+-- Additive + idempotent: ADD COLUMN IF NOT EXISTS, NULL default. No backfill —
+-- existing terminal rows are already past their window and untouched; existing
+-- pending rows simply have NULL until their checker stamps them. Safe to
+-- re-apply (no-op) and safe on a fresh DB.
+--
+-- PR-C (migration 034) adds the dispatch-lease / re-dispatch / engineer-sweep
+-- columns; this migration deliberately ships ONLY last_checked_at so the
+-- minimal reconnect can be verified on prod before the hardening lands.
+
+ALTER TABLE alert_verifications
+    ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ NULL;
