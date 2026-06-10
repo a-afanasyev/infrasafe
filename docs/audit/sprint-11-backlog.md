@@ -13,6 +13,7 @@
 > Обновлён 2026-06-06: закрыт **UK-URGENCY** — каноничные ключи `urgency` (PR #97 / `94c7ddd`, migration 032), задеплоен + прод-верифицирован, контракт подтверждён УК с обеих сторон. См. Closed-секцию + `docs/audit/2026-06-05-uk-urgency-canonical-keys.md`.
 > Обновлён 2026-06-07: **Phase 2 quick-wins смержены** — SEC-16/26/28/30 (PR #98 / `9b9537b`), чистый код+TDD, прод не затронут (2309 тестов зелёные). Открыто из round 2: SEC-13/14/15 (HIGH deploy/compose), SEC-17/19..23/27/31/32 (MED), SEC-34 (LOW).
 > Обновлён 2026-06-07: **SEC-14/15 смержены** (PR #99 / `25c3679`) — immutable app-образ + extracted static (C-extract): убраны dev-watcher/nodemon+devDeps и `.:/app` bind-mount. CI docker-image job + image-composition green, 2313 тестов.
+> Обновлён 2026-06-09: **полный код-аудит (AUD-001..044)** — см. `AUDIT_REPORT.md` (корень) + секцию «Аудит кода 2026-06-09» ниже. Главное: **AUD-001 (P1)** — авто-reopen Sprint 10 мёртв (на `VERIFY_*` нет подписчиков, проверено по всей истории git); **AUD-002 (P1)** — миграции без раннера/чеклиста в деплое. Плюс ревизия бэклога: B-003 описание устарело (rate-limiter/кэш уже гибридные Redis-backed), SEC-34i устарел (`connect.sh` НЕ tracked), SEC-34 b/c/d пересекаются с AUD-031/032/033.
 > Обновлён 2026-06-07: **SEC-14/15 ЗАДЕПЛОЕНЫ на прод** через `update-production.sh` (HEAD `899d533` + guard-фикс симлинка `.env`). Прод-верификация: контейнер без `.env*`/`.git`/`scripts/`/`build/`, mount только `app_logs` (нет `.:/app`); процесс `npm start` (не nodemon), нет nodemon/esbuild; NODE_ENV=production; **qs@6.15.2** (SEC-34k dep-патч доехал с rebuild → закрыт); edge `/`,`/health` 200, `/api/buildings` 401, `/api/buildings-metrics` 200×6. **One-time миграция:** legacy `public/dist` был owned uid1001 → chown 1000:1000 (rename dir требует write на dir для `..`); первый publish сначала упал на этом → rollback сработал штатно (app вернулся, dist verify зелёный) → chown → redeploy ✓. Открыто: SEC-13 (HIGH), SEC-17/19..23/27/31/32 (MED), SEC-34 a–j (LOW).
 
 ---
@@ -706,6 +707,124 @@ event'а — строка остаётся `pending`, что корректно)
 2. ~~**HIGH деплой/compose:** SEC-14/15 re-arch (multi-stage immutable + extracted static).~~ **✅ DONE код (PR #99 / `25c3679`, 2026-06-07)** — прод-деплой отдельным шагом (`update-production.sh`). Остаётся **SEC-13** (admin123 seed — в фазе F, нужен bootstrap-провижен). *(SEC-16 закрыт в 1b.)*
 3. **Edge/infra (Phase E):** ~~SEC-19 (#100), SEC-20 (#101), SEC-21 (#102) + SEC-34 f/g~~ **✅ DONE + DEPLOYED 2026-06-07** (3 последовательных PR, каждый merge→deploy→verify; UK подтвердил SEC-19). ~~Остаётся SEC-22~~ **✅ SEC-22 DONE код (PR-E4)** — УК прислали prefix-контракт, allowlist + edge rate-limit + WS-narrow реализованы (деплой отдельным шагом).
 4. **Остальные MEDIUM** (SEC-23/27/31/32) + SEC-17 scrub + SEC-34 остаток (a–e,h–j; k закрыт с SEC-14). *(SEC-13 — accepted-risk, не код-фикс: admin123 только в dev-seed, прод его не использует, оператор меняет пароль после запуска.)*
+
+---
+
+## Аудит кода 2026-06-09 — AUD-001..AUD-044
+
+> Источник: `AUDIT_REPORT.md` (корень репо) — полный отчёт с file:line, scorecard и roadmap.
+> Метод: 6 параллельных агентов (архитектура / backend / frontend+тесты / dead-code / AppSec / практики),
+> P1-кандидаты перепроверены вручную по коду И истории git. Security: новых P0/P1 НЕТ, npm audit 0 vulns,
+> закрытия SEC-13..34 подтверждены в коде. Ниже — только то, что становится backlog-работой; дубликаты
+> существующих пунктов смаплены, не плодятся.
+
+### P1 — взять в ближайший спринт
+
+- **AUD-001+003+025 · P1 · авто-reopen (Sprint 10) мёртв — на `VERIFY_*` нет подписчиков — CLOSED (2026-06-11, фазировано 3 PR)**
+  - **PR-A** (`be2fc32`, 2026-06-10): AUD-003 cooldown per-type suffix map + AUD-025 validStatuses (`resolved_verifying`/`engineer_required`) + admin-UI. Без миграции.
+  - **PR-B** (`194a466`, 2026-06-10, migration 033): реконнект — 4 `VERIFY_*`-листенера → чекеры в verify-режиме (freshness-probe + observationSince-clamp + continuous-fault gate + transformer direct-calc), `_findSupersedingAlert` fallback/adoption, checked-ack (`last_checked_at`), engineer-эскалация мимо AlertRequestMap. Прод-синтетик-verified end-to-end.
+  - **PR-C** (migration 034): durable-доставка + crash-recovery — re-emit VERIFY_* (`next_dispatch_at` fair-queue), `dispatch_lease_until` lease-gate на всех terminal-ветках retry, reconcile-first на retry-пути, engineer-sweep (`uk_notified_at`/`markUkNotified` at-least-once + fair-rotation), `UkOutbox.reviveDead`, drain-TTL guard (`UK_OUTBOX_MAX_AGE_HOURS`). Ревью: 0 critical, 1 HIGH (revive↔stale loop) пофикшен. `DISPATCH_LEASE_SECONDS=240` — operational bound, калибровать по реальной latency чекера.
+
+  <details><summary>Исходный диагноз (для истории)</summary>
+
+  `src/services/alertVerificationService.js:341-366` эмитит `VERIFY_LEAK/VOLTAGE/HEATING/TRANSFORMER`,
+  но `grep alertEvents.on` по `src/` — подписчиков ноль; `git log -S "on(alertEvents.EVENTS.VERIFY"` —
+  строка существовала ТОЛЬКО в юнит-тесте (`fe670f7`, jest.fn). Чекеры не вызываются → ни один прод-путь
+  не передаёт `reopen_chain_id` в `createAlert` (manual-роут `alertController.createAlert:126-168`
+  reopen-полей не принимает) → каждая верификация заканчивается `markPassed`/`markSkipped`; reopen,
+  urgency bump и `engineer_required` по квоте `max_reopens_per_24h` в автоматическом потоке недостижимы.
+  Прод-синтетика 260524-003, по-видимому, была с ручной инжекцией. ⚠️ B-021 (#93) чинил **реконсиляцию**
+  ALERT_REOPENED — это другой конец трубы; **создание** reopen-алерта не подключено никогда.
+  *Спутник:* **AUD-003** — `_resolveVerifying` чистит cooldown только `:load_check`
+  (`alertService.js:1061`) → для controller-типов ре-детект ещё и маскируется cooldown'ом 15 мин.
+  *Fix одним PR:* подписчики `VERIFY_*` → `check*` с `{bypassCooldown, reopenChainId, reopenSequence,
+  previousAlertId, previousUkRequestNumber}` + проброс в `createAlert`; map type→cooldown-suffix;
+  юнит «emit VERIFY_LEAK → алерт с reopen_chain_id»; прод-синтетик после деплоя. Вместе с **AUD-025**
+  (`alertController.js:12` validStatuses без `resolved_verifying`/`engineer_required` — эскалации не
+  видны через API). *Est:* ~M (день с синтетиком).
+
+  </details>
+- **AUD-002 · P1 · миграции: нет раннера, README оборван на 017, деплой не применяет** —
+  `database/migrations/README.md:36-53` (нет 018–032), `update-production.sh` (0 упоминаний миграций).
+  Риск: деплой кода без нужной схемы. *Fix минимум:* README до 032 + чеклист «pending migrations» в
+  `update-production.sh`; *лучше:* лёгкий раннер со `schema_migrations` (тогда сначала AUD-043: политика
+  roll-forward + дубль номера 012). *Est:* M.
+
+### P2 — спринт-кандидаты (корректность)
+
+| ID | Что | Где | Est |
+|---|---|---|---|
+| AUD-004 | Валидация/аномалии метрик по несуществующим полям (`voltage` vs `electricity_ph1..3`) — телеметрия без типовой проверки, `detectAnomalies` мёртв | `src/services/metricService.js:428,445-481,497` | S/M |
+| AUD-005 | Регистрация: 500 вместо 400 на невалидный email/пароль (plain Error без code; паттерн фикса уже есть в changePassword) | `src/services/authService.js:514-535` + `authController.js:115-123` | S |
+| AUD-006 | Эскалация VOLTAGE WARNING→CRITICAL заблокирована dedup-ключом без severity (комментарий в коде лжёт) | `src/services/alertService.js:343-351` + migration 027:50-52 | M |
+| AUD-007 | `/admin/stats` считает алерты по legacy-таблице `alerts` (0 INSERT по репо) — счётчик всегда 0 | `src/controllers/admin/adminGeneralController.js:18` | S |
+| AUD-013 | `X-CSRF-Token` из map-страницы никогда не уходит (headers-копия снята до CSRF-мутации); hard-fail защищает несуществующий механизм | `public/script.js:214-249` | S |
+| AUD-014 | Любая сетевая ошибка `validateToken()` → принудительный logout админа | `public/admin-auth.js:77-80,186-188` | S/M |
+| AUD-037 | Телеметрический timestamp без clamp — влияет на окна persistence-gate (требует подтверждения) | `src/services/metricService.js:310,439` | S |
+
+### P2 — инфраструктура качества
+
+| ID | Что | Где | Est |
+|---|---|---|---|
+| AUD-015 | Фронтенд (~11.5k LoC) без поведенческих тестов и вне coverage-порога; jsdom-юниты для `public/utils/` + Playwright smoke | jest-конфиг `package.json` | M |
+| AUD-016 | ESLint не видит `public/`/`tests/` (+ v8 EOL, 4 правила) | `.eslintrc.json:16-23` | M |
+| AUD-017 | E2E (~57) не гоняются нигде автоматически | `.github/workflows/ci.yml` | M |
+| AUD-024 | В dev-compose нет Redis → Redis-ветки кода локально не воспроизводятся (см. ревизию B-003 ниже) | `docker-compose.dev.yml` | S |
+| AUD-035 | `jest --forceExit` маскирует open handles; coverage-отчёт от 17 апреля — порог 80% текущим кодом не подтверждён | `package.json` | M |
+
+### P2/P3 — гигиена (батч-кандидаты, см. quick wins в AUDIT_REPORT.md §4)
+
+- **AUD-018** dompurify — мёртвая backend-зависимость (фронт юзает vendored `public/libs/dompurify/`). [S]
+- **AUD-019** корень: 52 PNG (17 МБ), `.playwright-mcp/`, чужой .patch (146 КБ), каталог `~/`, 11 одноразовых deploy/hardening-скриптов; добить `.gitignore` (`.mcp.json`, `/*.patch`). Поглощает операционную часть SEC-34i (см. ревизию). [S]
+- **AUD-020** фантомный `/api/infrastructure-lines` — роут не существует, fetch всегда молча 404 (`map-layers-control.js:1809` и др.). [S]
+- **AUD-021** два расходящихся env-примера; мёртвые и недокументированные переменные. [S]
+- **AUD-022** deprecated-цепочка `docker-compose.prod.yml` + `Dockerfile.prod` + `Dockerfile.frontend-only` + `nginx-frontend-only.conf` + `.dockerignore.frontend` (~400 строк; `setup.sh:28-29` всё ещё выбирает prod.yml) — требует подтверждения ненужности local-Mac-сценария. [M]
+- **AUD-023** QUICK-START/README: порт 8080 vs фактический 8088, счётчики тестов «175»/«1800+». [S]
+- **AUD-026** `/integration/request-counts|building-requests` доступны любому auth-юзеру (by design? подтвердить product-намерение). [S]
+- **AUD-027** `X-XSS-Protection: 1` → `0` (nginx :206,407); helmet `styleSrc https:` шире edge-CSP (`server.js:52`). [S]
+- **AUD-028** unhandledRejection → exit 0 (`server.js:281-284`→`:269`) — аварийный выход неотличим от штатного. [S]
+- **AUD-029/030/036/044** мелочи: catch без лога (`adminGeneralController.js:27`), незащищённый ROLLBACK (`Building.js:305`), `metricCount` всегда 1 + stats через 10k строк (`controllerService.js:202,327`), voltage-классификация без LIMIT-1-предфильтра, молчаливые `.catch(()=>[])` в admin.js:86. [S каждый]
+- **AUD-031** мёртвый код: неподключённый `validateMetricCreate` (`validators.js:78-99` — POST /metrics идёт без него!), 4 мёртвых лимитер-экспорта, событие-сирота `ALERT_SUPPRESSED`, `createSecureTableRow` (= SEC-34c). [S]
+- **AUD-032** debug-пробы hotfix-2026-05-27 в проде (= SEC-34d): `admin-head-probe.js`, `admin-body-probe.js`, flip-trace в `admin-auth.js:44-52`, `login.js:287-290`. [S]
+- **AUD-038** доки: CLAUDE.md Known Issues устарели («console.error» — 0 вхождений; «in-memory rate-limiter/cache» — уже гибрид), swagger 14/21 роутов, `docs/INDEX.md` от 04-17, CLAUDE.md не знает миграцию 032. [S/M]
+- **AUD-041/042** tracked-артефакты (`tests/reports/` 41 отчёт, generator-backup.json, корневые `test_*.sh` — разошедшиеся дубли `tests/bash/*`) + swagger-deps грузятся в прод-образ top-level (`server.js:11-12`). [S]
+
+### P3 — отложенное / требует решения
+
+- **AUD-008/009/010/011/012** — техдолг слоёв: сырой SQL в 6 admin-контроллерах мимо моделей; ~900 строк CRUD-копипасты в 4 моделях при готовой фабрике (+ create-через-truthiness теряет `0`, 500 на пустом теле — `Line.js:111`, `WaterLine.js:134`); water-роуты без контроллеров; envelope-разнобой (apiResponse в 4/29 файлов); `alertService` 1342 LoC. Порядок: фабрика → admin-контроллеры → water → envelope; сплит alertService ПОСЛЕ AUD-001/003/006. [L, по мере касания]
+- **AUD-033** дублирование fetch-обвязки + 4 мёртвых token-блока в `map-layers-control.js` — **вместе с SEC-34b** (один рефактор на cookie/interceptor, см. ревизию). [M]
+- **AUD-039** две модели трансформаторов (`transformers` только в dev-init; admin-вкладка на проде, вероятно, бьёт в отсутствующую таблицу — **проверить на проде**, потом тикет). [L]
+- **AUD-040** API без потребителя: analytics 16 эндпоинтов (фронт зовёт 1), admin 46 (фронт ~4 семейства), `/integration/request-counts` (0 вызовов из public/) — сверить с планами B-008/UK-web до любых удалений. [M-L]
+- **AUD-043** политика roll-forward-only письменно + дубль номера 012 (вместе с AUD-002). [S]
+
+### Ревизия открытых пунктов бэклога (2026-06-09)
+
+| Пункт | Вердикт | Действие |
+|---|---|---|
+| **B-003** Redis multi-replica | **Описание устарело**: «rate-limiter и cacheService хранят state в памяти» — фактически оба ГИБРИДНЫЕ Redis-backed (`rateLimiter.js:4` «Redis-backed when REDIS_URL is set», `cacheService.js` L1 Map + L2 Redis), прод-Redis включён и используется (SEC-21). Реальный остаток: multi-replica-семантика (nonce/blacklist L1 → Redis, SEC-31/SEC-26 остатки), Redis в dev (AUD-024), верификация fallback-веток | Переписать скоуп пункта; триггер прежний (multi-replica) |
+| **B-004** admin.js split | Актуален; счётчик СКОРРЕКТИРОВАН: admin.js **3801** (после SEC-32 −25 строк, не 3826), script.js 2392. Триггер 4500 не достигнут | Без изменений; связать с AUD-012 (бэкенд-аналог) |
+| **B-011** alias collision | Актуален, latent (без изменений) | — |
+| **B-006** UK Kanban | Актуален, owner UK | — |
+| **B-008** frontend-redesign merge | Актуален; добавилась зависимость: AUD-040 (API без потребителя) сверять с ним | — |
+| **B-009** seasonal HEATING | Актуален, Q3 2026 | — |
+| **SEC-17** git-scrub | Актуален (`.env.prod` достижим через `git show 623a059`, секреты ротированы) | — |
+| **SEC-27 / SEC-31** | Актуальны как annotated/latent; SEC-31 остаток входит в переписанный B-003 | — |
+| **SEC-34a** noopener | Актуален | — |
+| **SEC-34b** map-layers token refactor | Актуален; **сливается с AUD-033** в один тикет (рефактор map-layers-control на cookie/interceptor убирает и мёртвые token-блоки, и дублирование) | Один тикет |
+| **SEC-34c** createSecureTableRow | = **AUD-031** (подтверждено: 0 вызовов, удалять) | Дедуп |
+| **SEC-34d** flip-trace debug | = **AUD-032** (подтверждён список файлов) | Дедуп |
+| **SEC-34e** CSP img-src / DOMPurify style | Актуален; делать вместе с AUD-027 (один CSP-проход) | Объединить |
+| **SEC-34h** JWT_2FA_SECRET | Актуален | — |
+| **SEC-34i** connect.sh «git-tracked» | **УСТАРЕЛ/НЕВЕРЕН**: `git ls-files connect.sh` — пусто, файл untracked (в git его нет). Остаточный риск — только локальная гигиена (прод-IP/порт на диске) → поглощается уборкой AUD-019 | Закрыть как mis-scoped, остаток → AUD-019 |
+| **SEC-34j** SSH key-only | Актуален (host-op, вне кода) | — |
+| **B-027 Future** (content-hash бандлов, dist-из-образа, tracked deploy-entrypoint) | Актуальны как perf/infra-беклог; «dist из образа» частично перекрыт C-extract (SEC-14/15) — пересмотреть формулировку (a) при взятии | — |
+| **UK-URGENCY остаток** (admin-UI reopen-meta passthrough, похоронен в Closed-секции) | Актуален, но **зависит от AUD-001**: пока авто-reopen мёртв, reopen-meta в UI показывать нечего (кроме ручных синтетиков). Делать ПОСЛЕ AUD-001 | Перенести в активный список, sequence после AUD-001 |
+
+**Сводка ревизии:** из открытых пунктов ни один не закрылся «сам собой», но 1 неверен (SEC-34i), 1 со
+stale-скоупом (B-003), 3 дедуплицируются с AUD (34b/c/d), 1 потерян в Closed-секции (UK-URGENCY остаток).
+Рекомендованный порядок: **AUD-001+003+025 (вернуть заявленную функциональность) → AUD-002 (миграции) →
+P2-корректность (004/005/006/007) → гигиена-батч quick wins → инфраструктура качества (015/016/017/035)**.
+Детальный roadmap — `AUDIT_REPORT.md` §5.
 
 ---
 

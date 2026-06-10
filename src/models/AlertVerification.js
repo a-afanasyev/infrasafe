@@ -41,6 +41,22 @@ const { randomUUID } = require('crypto');
 const db = require('../config/database');
 const logger = require('../utils/logger');
 
+// [AUD-001 PR-C] Re-dispatch + lease timing (set by markDispatched).
+//   REDISPATCH_INTERVAL_SECONDS — how long after a dispatch before the row is
+//     eligible to be re-picked by pickDue (fair-queue cursor). 60s also stops
+//     the checker being hammered every 15s tick.
+//   DISPATCH_LEASE_SECONDS — operational bound on the checker chain (several
+//     sequential queries at 30s statement_timeout each, plus init). While the
+//     lease is live the window-expired branch must NOT terminalise the row — a
+//     slow checker may still create a reopen that only binds to a 'pending'
+//     row. This is a chosen bound, NOT a proven maximum: if a checker ever
+//     exceeds it the verification→reopened linkage (quota count) is lost, but
+//     the reopen alert itself is still created and reaches UK. Calibrate from
+//     observed checker latency; a heartbeat/generation scheme is a separate
+//     ticket if real overruns appear.
+const REDISPATCH_INTERVAL_SECONDS = 60;
+const DISPATCH_LEASE_SECONDS = 240;
+
 class AlertVerification {
     /**
      * Idempotently enqueue a verification task. Returns the inserted row,
@@ -114,10 +130,18 @@ class AlertVerification {
      */
     static async pickDue(executor = db) {
         try {
+            // [AUD-001 PR-C] Fair queue. A dispatched row sets next_dispatch_at
+            // (NOW()+REDISPATCH_INTERVAL); it stays invisible to pickDue until
+            // that passes, so re-emit is throttled and the checker isn't hammered
+            // every tick. Ordering by COALESCE(next_dispatch_at, run_at) interleaves
+            // fresh rows (run_at) and retries (next_dispatch_at) oldest-due-first —
+            // neither class starves the other (a strict attempts=0-first scheme
+            // would starve retries under a steady stream of fresh verifications).
             const result = await executor.query(
                 `SELECT * FROM alert_verifications
                  WHERE status = 'pending' AND run_at <= NOW()
-                 ORDER BY run_at ASC, id ASC
+                   AND (next_dispatch_at IS NULL OR next_dispatch_at <= NOW())
+                 ORDER BY COALESCE(next_dispatch_at, run_at) ASC, id ASC
                  LIMIT 1
                  FOR UPDATE SKIP LOCKED`
             );
@@ -129,19 +153,34 @@ class AlertVerification {
     }
 
     /**
-     * [Sprint 10 PR-3] Mark that the verification's VERIFY event was
-     * dispatched. Bumps attempts but keeps status='pending' so the row
-     * waits for ALERT_REOPENED match (until window_until). Idempotent
-     * via the `attempts = 0` guard — re-dispatch is prevented.
+     * [Sprint 10 PR-3 → AUD-001 PR-C] Mark that the verification's VERIFY event
+     * was dispatched. Bumps attempts but keeps status='pending' so the row waits
+     * for an ALERT_REOPENED match (until window_until).
+     *
+     * PR-C drops the old `attempts = 0` single-dispatch guard so the row CAN be
+     * re-dispatched (durable at-least-once delivery — a lost emit between COMMIT
+     * and the listener is recovered on a later tick). Re-emit is throttled by
+     * next_dispatch_at (pickDue won't re-pick until it passes); downstream
+     * idempotency holds on the DB (dedup index + pending-guarded mark*).
+     *
+     * Also stamps:
+     *   - next_dispatch_at = NOW()+REDISPATCH_INTERVAL — fair-queue re-pick cursor.
+     *   - dispatch_lease_until = NOW()+DISPATCH_LEASE_SECONDS — while live, the
+     *     window-expired branch must NOT terminalise (a slow checker may still
+     *     bind a reopen to this 'pending' row).
+     * The `status = 'pending'` guard keeps it race-safe (a row that already
+     * terminalised matches zero rows).
      */
     static async markDispatched(id, executor = db) {
         try {
             const result = await executor.query(
                 `UPDATE alert_verifications
-                 SET attempts = attempts + 1
-                 WHERE id = $1 AND status = 'pending' AND attempts = 0
+                 SET attempts = attempts + 1,
+                     next_dispatch_at = NOW() + ($2 * INTERVAL '1 second'),
+                     dispatch_lease_until = NOW() + ($3 * INTERVAL '1 second')
+                 WHERE id = $1 AND status = 'pending'
                  RETURNING *`,
-                [id]
+                [id, REDISPATCH_INTERVAL_SECONDS, DISPATCH_LEASE_SECONDS]
             );
             return result.rows[0] || null;
         } catch (error) {
@@ -322,6 +361,78 @@ class AlertVerification {
             return result.rows[0] || null;
         } catch (error) {
             logger.error(`AlertVerification.markChecked error: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * [AUD-001 PR-C] Engineer-escalation durable ack. Stamped by the forwarder
+     * listener once UK delivery succeeds. Like markChecked it does NOT change
+     * status (the row is already 'engineer_required') and does NOT bump attempts;
+     * the `uk_notified_at IS NULL` guard makes it idempotent — a re-ack matches
+     * zero rows. Once stamped, the engineer sweep skips the row (its working set
+     * is `engineer_required AND uk_notified_at IS NULL`).
+     */
+    static async markUkNotified(id, executor = db) {
+        try {
+            const result = await executor.query(
+                `UPDATE alert_verifications
+                 SET uk_notified_at = NOW()
+                 WHERE id = $1 AND uk_notified_at IS NULL
+                 RETURNING *`,
+                [id]
+            );
+            return result.rows[0] || null;
+        } catch (error) {
+            logger.error(`AlertVerification.markUkNotified error: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * [AUD-001 PR-C] Working set for the engineer-escalation sweep: rows that
+     * reached engineer_required but UK hasn't acked yet, due for a (re)emit.
+     * Ordered by COALESCE(uk_notify_next_attempt_at, processed_at) so the
+     * rotation cursor (set by deferEngineerNotifications before each emit)
+     * pushes just-attempted rows to the tail — 5 permanently-undeliverable
+     * rows can't forever shadow a deliverable one under LIMIT.
+     */
+    static async pickUnnotifiedEngineer(limit = 5, executor = db) {
+        try {
+            const result = await executor.query(
+                `SELECT * FROM alert_verifications
+                 WHERE status = 'engineer_required'
+                   AND uk_notified_at IS NULL
+                   AND (uk_notify_next_attempt_at IS NULL OR uk_notify_next_attempt_at <= NOW())
+                 ORDER BY COALESCE(uk_notify_next_attempt_at, processed_at) ASC, id ASC
+                 LIMIT $1`,
+                [limit]
+            );
+            return result.rows;
+        } catch (error) {
+            logger.error(`AlertVerification.pickUnnotifiedEngineer error: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * [AUD-001 PR-C] Push the given engineer rows into the rotation tail by N
+     * seconds (called under the sweep's advisory lock BEFORE emit, so a picked
+     * row isn't re-selected next tick regardless of the listener outcome). A
+     * no-op for an empty id list (avoids a `= ANY('{}')` round-trip).
+     */
+    static async deferEngineerNotifications(ids, seconds = 300, executor = db) {
+        if (!Array.isArray(ids) || ids.length === 0) return 0;
+        try {
+            const result = await executor.query(
+                `UPDATE alert_verifications
+                 SET uk_notify_next_attempt_at = NOW() + ($2 * INTERVAL '1 second')
+                 WHERE id = ANY($1)`,
+                [ids, Math.max(1, Math.floor(seconds))]
+            );
+            return result.rowCount || 0;
+        } catch (error) {
+            logger.error(`AlertVerification.deferEngineerNotifications error: ${error.message}`);
             throw error;
         }
     }

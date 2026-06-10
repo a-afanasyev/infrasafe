@@ -16,7 +16,8 @@ jest.mock('../../../src/models/AlertRequestMap', () => ({
 }));
 jest.mock('../../../src/models/UkOutbox', () => ({
     enqueue: jest.fn(),
-    findByEventId: jest.fn()
+    findByEventId: jest.fn(),
+    reviveDead: jest.fn()
 }));
 jest.mock('../../../src/models/AlertRule', () => ({ findByTypeAndSeverity: jest.fn() }));
 jest.mock('../../../src/services/uk/configProxy', () => ({ isEnabled: jest.fn() }));
@@ -142,9 +143,19 @@ describe('[AUD-001 PR-B Step 5b] engineer escalation forwarding', () => {
         expect(ok).toBe(true);
     });
 
-    test('duplicate enqueue (null) that is DEAD → not delivered (false) [PR-C revives]', async () => {
+    test('[PR-C] duplicate enqueue (null) that is DEAD → reviveDead resurrects it → delivered (true)', async () => {
+        UkOutbox.enqueue.mockResolvedValue(null);                    // ON CONFLICT
+        UkOutbox.findByEventId.mockResolvedValue({ status: 'dead' });
+        UkOutbox.reviveDead.mockResolvedValue({ id: 7, status: 'pending' });
+        const ok = await forwarder.sendAlertToUK(alertData, { engineerRequired: true, verificationId: 99 });
+        expect(ok).toBe(true);
+        expect(UkOutbox.reviveDead).toHaveBeenCalledTimes(1);
+    });
+
+    test('[PR-C] DEAD + reviveDead loses the race (returns null) → still not delivered (false)', async () => {
         UkOutbox.enqueue.mockResolvedValue(null);
         UkOutbox.findByEventId.mockResolvedValue({ status: 'dead' });
+        UkOutbox.reviveDead.mockResolvedValue(null);                 // someone else already moved it
         const ok = await forwarder.sendAlertToUK(alertData, { engineerRequired: true, verificationId: 99 });
         expect(ok).toBe(false);
     });

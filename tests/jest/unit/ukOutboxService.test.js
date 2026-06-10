@@ -410,6 +410,74 @@ describe('ukOutboxService', () => {
         });
     });
 
+    // [AUD-001 PR-C Finding 3] Drain-TTL guard — a row older than
+    // UK_OUTBOX_MAX_AGE_HOURS is marked dead instead of POSTed, so flipping
+    // UK_USE_WEBHOOK_SENDER on doesn't burst a backlog of stale tickets at UK.
+    describe('[AUD-001 PR-C] drain-TTL guard', () => {
+        beforeEach(() => mockAdvisoryLockAcquired());
+
+        const hoursAgo = (h) => new Date(Date.now() - h * 3600 * 1000).toISOString();
+
+        it('stale row (older than default 24h) → markDead, NO send, failure recorded', async () => {
+            UkOutbox.pickNext.mockResolvedValue({
+                id: 1, event_id: 'old-evt',
+                payload_body: JSON.stringify({ event: 'alert.engineer_required', alert: { alert_id: 7 } }),
+                attempt_count: 0, created_at: hoursAgo(25)
+            });
+            AlertRequestMap.findByIdempotencyKey.mockResolvedValue(null);
+
+            await service._tick();
+
+            expect(ukWebhookClient.send).not.toHaveBeenCalled();
+            expect(UkOutbox.markDead).toHaveBeenCalledWith(1, expect.stringContaining('stale'), null);
+            // dead-letter recorded against the alert_id from the payload body
+            const updateCall = db.query.mock.calls.find(c => /UPDATE infrastructure_alerts/.test(c[0]));
+            expect(updateCall).toBeDefined();
+            expect(updateCall[1][0]).toBe(7);
+        });
+
+        it('fresh row (younger than 24h) → sent normally', async () => {
+            UkOutbox.pickNext.mockResolvedValue({
+                id: 1, event_id: 'fresh-evt', payload_body: '{"event":"alert.created"}',
+                attempt_count: 0, created_at: hoursAgo(1)
+            });
+            ukWebhookClient.send.mockResolvedValue({ outcome: 'success', code: 202 });
+            AlertRequestMap.findByIdempotencyKey.mockResolvedValue(null);
+
+            await service._tick();
+
+            expect(ukWebhookClient.send).toHaveBeenCalledTimes(1);
+            expect(UkOutbox.markDead).not.toHaveBeenCalled();
+        });
+
+        it('row with NO created_at (legacy/test) is never considered stale', async () => {
+            UkOutbox.pickNext.mockResolvedValue({
+                id: 1, event_id: 'no-ts', payload_body: '{"event":"alert.created"}', attempt_count: 0
+            });
+            ukWebhookClient.send.mockResolvedValue({ outcome: 'success', code: 202 });
+            AlertRequestMap.findByIdempotencyKey.mockResolvedValue(null);
+
+            await service._tick();
+
+            expect(ukWebhookClient.send).toHaveBeenCalledTimes(1);
+            expect(UkOutbox.markDead).not.toHaveBeenCalled();
+        });
+
+        it('honours UK_OUTBOX_MAX_AGE_HOURS override (1h) → a 2h-old row is stale', async () => {
+            process.env.UK_OUTBOX_MAX_AGE_HOURS = '1';
+            UkOutbox.pickNext.mockResolvedValue({
+                id: 1, event_id: 'evt', payload_body: '{"event":"alert.created","alert":{"alert_id":3}}',
+                attempt_count: 0, created_at: hoursAgo(2)
+            });
+            AlertRequestMap.findByIdempotencyKey.mockResolvedValue(null);
+
+            await service._tick();
+
+            expect(ukWebhookClient.send).not.toHaveBeenCalled();
+            expect(UkOutbox.markDead).toHaveBeenCalled();
+        });
+    });
+
     describe('_drainOne — empty queue', () => {
         beforeEach(() => mockAdvisoryLockAcquired());
 

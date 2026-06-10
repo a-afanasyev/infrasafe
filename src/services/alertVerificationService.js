@@ -60,6 +60,15 @@ const ADVISORY_LOCK_KEY = 849608648;
 const FAILURE_LOG_THROTTLE_MS = 10 * 60 * 1000; // 10 minutes
 const FAILURE_ESCALATE_THRESHOLD = 5;
 
+// [AUD-001 PR-C] Engineer-escalation sweep — at-least-once (re)delivery of
+// ALERT_ENGINEER_REQUIRED for rows whose UK ticket hasn't been acked yet.
+//   BATCH — rows examined per tick (fair-rotation cursor + LIMIT).
+//   DEFER — how long a picked row is pushed into the rotation tail BEFORE emit,
+//           so 5 permanently-undeliverable rows can't shadow a deliverable one
+//           and re-emits are paced (≈ every 5 min, not every tick).
+const ENGINEER_SWEEP_BATCH = 5;
+const ENGINEER_SWEEP_DEFER_SECONDS = 300;
+
 // Map alert_type → corresponding VERIFY_* event. Unknown types are
 // skipped silently (logged once via _logFailure) — there's nothing to
 // verify if no checker subscribes to the event.
@@ -137,6 +146,10 @@ class AlertVerificationService {
         }
         this._running = true;
 
+        // [AUD-001 PR-C] Engineer-sweep emits are collected under the lock and
+        // fired AFTER the lock is released (pendingEmit pattern) so the advisory
+        // mutex isn't held across the listener fan-out.
+        let sweepEmits = [];
         try {
             // [B-021] Check out ONE client and do lock + drain + unlock all on
             // it. Session-scoped advisory locks are bound to the physical
@@ -162,6 +175,11 @@ class AlertVerificationService {
 
                 try {
                     await this._drainOne(client);
+                    // [AUD-001 PR-C] Under the same lock (serialised across
+                    // replicas), re-deliver any engineer escalation UK hasn't
+                    // acked. Separate query set from the drain — they don't
+                    // contend. Emits deferred to after the unlock.
+                    sweepEmits = await this._sweepEngineerNotifications(client);
                     this._consecutiveFailures = 0;
                     this._lastFailureLogAt = 0;
                 } finally {
@@ -178,6 +196,53 @@ class AlertVerificationService {
         } finally {
             this._running = false;
         }
+
+        for (const e of sweepEmits) {
+            alertEvents.emit(e.event, e.payload);
+        }
+    }
+
+    /**
+     * [AUD-001 PR-C] Engineer-escalation sweep. Picks up to BATCH
+     * engineer_required rows whose UK ticket hasn't been acked
+     * (uk_notified_at IS NULL) and that are due per the rotation cursor, pushes
+     * them all into the tail (DEFER seconds) BEFORE building emits — so a row is
+     * never re-selected next tick regardless of the listener outcome, and
+     * permanently-undeliverable rows can't starve deliverable ones. Returns the
+     * emit descriptors for the caller to fire after the advisory lock is
+     * released.
+     *
+     * Runs as autocommit statements on the (now post-COMMIT) drain client; the
+     * forwarder listener acks via AlertVerification.markUkNotified on success,
+     * which self-terminates this sweep for that row.
+     */
+    async _sweepEngineerNotifications(executor = db) {
+        const rows = await AlertVerification.pickUnnotifiedEngineer(ENGINEER_SWEEP_BATCH, executor);
+        if (!rows.length) return [];
+
+        await AlertVerification.deferEngineerNotifications(
+            rows.map((r) => r.id), ENGINEER_SWEEP_DEFER_SECONDS, executor
+        );
+
+        const emits = [];
+        for (const row of rows) {
+            const alertRow = await executor.query(
+                'SELECT * FROM infrastructure_alerts WHERE alert_id = $1',
+                [row.original_alert_id]
+            );
+            emits.push({
+                event: alertEvents.EVENTS.ALERT_ENGINEER_REQUIRED,
+                payload: {
+                    alertData: alertRow.rows[0] || null,
+                    alertId: row.original_alert_id,
+                    verificationId: row.id,
+                    reopenChainId: row.reopen_chain_id,
+                    reopenCount: null
+                }
+            });
+            logger.info(`alertVerificationService: engineer-sweep re-emitting escalation for verification ${row.id} (alert ${row.original_alert_id})`);
+        }
+        return emits;
     }
 
     /**
@@ -241,19 +306,25 @@ class AlertVerificationService {
             return null; // queue empty / nothing due
         }
 
-        // Window expired
         const now = Date.now();
-        const windowUntilMs = new Date(row.window_until).getTime();
-        if (now > windowUntilMs) {
-            // [B-021 W1] Reconcile reopen from DURABLE DB state before deciding
-            // passed/skipped. The reopen alert (if any) is already persisted by
-            // alertService.createAlert with this reopen_chain_id and a higher
-            // reopen_sequence. The ALERT_REOPENED event that normally records
-            // the reopen is ephemeral — a crash between emit and the listener
-            // loses it, and this branch would then blindly markPassed (audit
-            // says 'passed' where a reopen actually happened, and the
-            // new_alert_id linkage is lost). Re-deriving from the DB closes that
-            // gap without a durable event outbox.
+        const windowExpired = now > new Date(row.window_until).getTime();
+        // [AUD-001 PR-C] A dispatch lease is live while a (possibly slow) checker
+        // may still create a reopen that binds to this 'pending' row. While
+        // active it blocks TERMINALISATION (passed/skipped/suppressed/engineer);
+        // it does NOT block re-dispatch (keeping the verification alive is the
+        // point — markDispatched re-extends the lease).
+        const leaseActive = row.dispatch_lease_until != null
+            && now < new Date(row.dispatch_lease_until).getTime();
+
+        // [B-021 W1 → AUD-001 PR-C] Reconcile a superseding reopen from DURABLE
+        // DB state on any row that was already dispatched (attempts>0 — a checker
+        // may have created a reopen whose ephemeral ALERT_REOPENED was lost) OR
+        // whose window expired. Catches the reopen before we'd otherwise
+        // terminalise the row (passed/skipped/suppressed/engineer). Generalising
+        // this to the in-window retry path (not just window-expired) is what
+        // makes re-emit safe: a late reopen always wins over a suppression/quota
+        // verdict computed on a later tick.
+        if (row.attempts > 0 || windowExpired) {
             const superseding = await this._findSupersedingAlert(row, executor);
             if (superseding.outcome === 'reopened') {
                 await this._finalizeAlertStatus(row.original_alert_id, 'resolved', executor);
@@ -267,6 +338,18 @@ class AlertVerificationService {
                 // 'passed' (the fault may persist) — finalize + skip with reason.
                 await this._finalizeAlertStatus(row.original_alert_id, 'resolved', executor);
                 await AlertVerification.markSkipped(row.id, `adoption conflict for chain ${row.reopen_chain_id}`, executor);
+                return null;
+            }
+        }
+
+        // Window expired
+        if (windowExpired) {
+            // [AUD-001 PR-C] Lease gate — a slow checker may still bind a reopen
+            // to this pending row. Defer terminalisation until the lease ends;
+            // push next_dispatch_at to the lease end so the row doesn't shadow
+            // other due rows every tick.
+            if (leaseActive) {
+                await this._deferToLease(row, executor);
                 return null;
             }
             // [AUD-001 PR-B] Checked-ack: 'passed' requires PROOF a checker
@@ -287,13 +370,8 @@ class AlertVerificationService {
             return null;
         }
 
-        // If we've already dispatched once (attempts > 0) and we're still
-        // inside the window, leave the row pending so the ALERT_REOPENED
-        // listener can match. Subsequent ticks would re-emit, creating
-        // duplicate UK requests — that's wrong.
-        if (row.attempts > 0) {
-            return null;
-        }
+        // In-window. attempts may be > 0 — PR-C re-dispatches (durable
+        // at-least-once delivery); pickDue's next_dispatch_at gate throttles it.
 
         // [Sprint 10 PR-4] AlertSuppression.isActive check. Conditional
         // require kept so a missing model degrades cleanly.
@@ -306,6 +384,13 @@ class AlertVerificationService {
                     row.alert_type
                 );
                 if (suppressed) {
+                    // [AUD-001 PR-C] Lease-gate terminalisation: a checker still
+                    // in flight may produce a reopen that must win over a
+                    // suppression verdict. Defer until the lease expires.
+                    if (leaseActive) {
+                        await this._deferToLease(row, executor);
+                        return null;
+                    }
                     // [B-020] operator chose to ignore — close the alert.
                     await this._finalizeAlertStatus(row.original_alert_id, 'resolved', executor);
                     await AlertVerification.markSuppressed(row.id, executor);
@@ -329,6 +414,12 @@ class AlertVerificationService {
                 row.reopen_chain_id, 24, executor
             );
             if (recentReopens >= ruleQuota) {
+                // [AUD-001 PR-C] Lease-gate: a late reopen from an in-flight
+                // checker must win over an engineer_required verdict. Defer.
+                if (leaseActive) {
+                    await this._deferToLease(row, executor);
+                    return null;
+                }
                 // [B-020] escalate the alert itself — the operator/UI needs
                 // to see engineer_required, not a stuck resolved_verifying.
                 await this._finalizeAlertStatus(row.original_alert_id, 'engineer_required', executor);
@@ -380,11 +471,13 @@ class AlertVerificationService {
             previousUkRequestNumber = prevQuery.rows[0].previous_uk_request_number || null;
         }
 
-        // Mark the row as dispatched so subsequent ticks within the window
-        // don't re-emit. The actual emit happens after COMMIT (caller).
+        // [AUD-001 PR-C] (re-)dispatch. markDispatched now stamps next_dispatch_at
+        // (throttles the re-pick) + dispatch_lease_until (blocks terminalisation
+        // while a checker may be running) and is re-callable (no attempts=0
+        // guard). The actual emit happens after COMMIT (caller).
         await AlertVerification.markDispatched(row.id, executor);
 
-        logger.info(`alertVerificationService: emitted ${verifyEvent} for verification ${row.id} (chain ${row.reopen_chain_id}, seq→${row.reopen_sequence + 1})`);
+        logger.info(`alertVerificationService: emitted ${verifyEvent} for verification ${row.id} (chain ${row.reopen_chain_id}, seq→${row.reopen_sequence + 1}, attempt ${row.attempts + 1})`);
 
         return {
             event: verifyEvent,
@@ -516,6 +609,23 @@ class AlertVerificationService {
         );
         const quota = result.rows[0] && result.rows[0].quota;
         return Number.isFinite(quota) ? quota : 0;
+    }
+
+    /**
+     * [AUD-001 PR-C] Defer a verification past its active dispatch lease. Sets
+     * next_dispatch_at = dispatch_lease_until so pickDue skips the row until the
+     * lease expires (instead of re-selecting it every tick and shadowing other
+     * due rows under LIMIT 1). The `status = 'pending'` guard keeps it a no-op
+     * if the row terminalised meanwhile. Runs on the drain transaction client.
+     */
+    async _deferToLease(row, executor = db) {
+        await executor.query(
+            `UPDATE alert_verifications
+             SET next_dispatch_at = dispatch_lease_until
+             WHERE id = $1 AND status = 'pending'`,
+            [row.id]
+        );
+        logger.debug(`alertVerificationService: verification ${row.id} deferred — dispatch lease active until ${row.dispatch_lease_until}`);
     }
 
     /**

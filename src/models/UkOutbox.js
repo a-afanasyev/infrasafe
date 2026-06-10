@@ -202,6 +202,38 @@ class UkOutbox {
         }
     }
 
+    /**
+     * [AUD-001 PR-C] Revive a terminally-dead row back to pending so the drain
+     * retries it. Used by the engineer-escalation ack-contract: when enqueue
+     * returns null (ON CONFLICT) AND the existing row is 'dead', a blind ack
+     * would bury a critical escalation forever — revive it instead. The
+     * `status = 'dead'` guard makes it idempotent and race-safe (a row another
+     * worker already revived/sent matches zero rows). Resets attempt_count so
+     * the full backoff budget is available again, AND created_at so the
+     * drain-TTL guard (ukOutboxService._isStale) gives the revived row a fresh
+     * delivery window — without this a row dead-by-age would be re-killed on the
+     * very next drain tick, looping forever against the sweep that revives it.
+     */
+    static async reviveDead(eventId) {
+        try {
+            const result = await db.query(
+                `UPDATE uk_outbox
+                 SET status = 'pending',
+                     attempt_count = 0,
+                     next_attempt_at = NOW(),
+                     created_at = NOW(),
+                     last_error = NULL
+                 WHERE event_id = $1 AND status = 'dead'
+                 RETURNING *`,
+                [eventId]
+            );
+            return result.rows[0] || null;
+        } catch (error) {
+            logger.error(`UkOutbox.reviveDead error: ${error.message}`);
+            throw error;
+        }
+    }
+
     static get MAX_ATTEMPTS() {
         return MAX_ATTEMPTS;
     }

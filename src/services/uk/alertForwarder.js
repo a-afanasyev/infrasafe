@@ -200,11 +200,22 @@ class UKAlertForwarder {
                     // Duplicate (ON CONFLICT). Verify it's not dead — a blind ack
                     // would bury the escalation forever.
                     const existing = await UkOutbox.findByEventId(eventId);
-                    if (!existing || existing.status === 'dead') {
-                        // PR-C: UkOutbox.reviveDead. Until then a dead row is not
-                        // delivered — report it so the operator/notification_failures see it.
+                    if (!existing) {
                         allDelivered = false;
-                        logger.warn(`engineer escalation event_id=${eventId} exists as ${existing ? existing.status : 'missing'} — not delivered`);
+                        logger.warn(`engineer escalation event_id=${eventId} missing after ON CONFLICT — not delivered`);
+                    } else if (existing.status === 'dead') {
+                        // [AUD-001 PR-C] A previous send terminally failed. Resurrect
+                        // the row (status→pending, attempt budget reset) so the drain
+                        // retries it; the deterministic event_id means we never create
+                        // a duplicate. Only a lost race (another worker already moved
+                        // it) leaves allDelivered=false → caller records the failure.
+                        const revived = await UkOutbox.reviveDead(eventId);
+                        if (revived) {
+                            logger.info(`engineer escalation event_id=${eventId} revived from dead → pending`);
+                        } else {
+                            allDelivered = false;
+                            logger.warn(`engineer escalation event_id=${eventId} dead and reviveDead matched 0 rows — not delivered`);
+                        }
                     } else {
                         logger.debug(`engineer escalation event_id=${eventId} already ${existing.status} (duplicate ok)`);
                     }
@@ -518,7 +529,18 @@ alertEvents.on(alertEvents.EVENTS.ALERT_ENGINEER_REQUIRED, async ({ alertData, a
             { engineerRequired: true, verificationId }
         );
         if (delivered === false) {
-            logger.warn(`Alert ${alertId} engineer escalation not delivered (no target / dead outbox)`);
+            // Not delivered → DON'T ack. The engineer sweep
+            // (alertVerificationService) re-emits this event on its rotation
+            // until a delivery succeeds — that's the at-least-once guarantee.
+            logger.warn(`Alert ${alertId} engineer escalation not delivered (no target / dead outbox) — sweep will retry`);
+        } else if (verificationId != null) {
+            // [AUD-001 PR-C] Durable ack — stamp uk_notified_at so the sweep
+            // stops re-emitting this escalation. Idempotent (uk_notified_at IS
+            // NULL guard); best-effort so an ack hiccup only causes one extra
+            // sweep emit, never a lost escalation.
+            const AlertVerification = require('../../models/AlertVerification');
+            await AlertVerification.markUkNotified(verificationId).catch((ackErr) =>
+                logger.warn(`engineer escalation ack failed for verification ${verificationId}: ${ackErr.message}`));
         }
     } catch (ukError) {
         logger.error(`Alert ${alertId} UK forwarding failed: ${ukError.message}`);

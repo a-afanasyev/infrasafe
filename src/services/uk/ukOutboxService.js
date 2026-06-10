@@ -52,6 +52,15 @@ const MIN_INTERVAL_MS = 500;
 const MAX_INTERVAL_MS = 60000;
 const WARMUP_DELAY_MS = 5000;
 
+// [AUD-001 PR-C Finding 3] Drain-TTL — a pending row older than this is marked
+// dead instead of POSTed. Closes the "stale-burst on sender-flag flip": events
+// (especially engineer escalations, enqueued outside the UK_USE_WEBHOOK_SENDER
+// gate) can accumulate while the sender is off; flipping it on must not deliver
+// a backlog of long-obsolete tickets to UK. A killed engineer row is revived by
+// the verification engineer-sweep if it still matters.
+const DEFAULT_MAX_AGE_HOURS = 24;
+const MAX_AGE_HOURS_CEILING = 720; // 30 days
+
 // Advisory lock key. Use a stable string hashed to a positive 31-bit int
 // — pg_try_advisory_lock(bigint) needs a deterministic key shared across
 // replicas. The exact value doesn't matter, only stability.
@@ -85,6 +94,27 @@ class UkOutboxService {
         const raw = Number(process.env.UK_OUTBOX_DRAIN_INTERVAL_MS);
         if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_INTERVAL_MS;
         return Math.min(Math.max(Math.floor(raw), MIN_INTERVAL_MS), MAX_INTERVAL_MS);
+    }
+
+    /**
+     * [AUD-001 PR-C Finding 3] Max age (hours) before a pending row is dropped
+     * as stale rather than POSTed. Env-overridable; clamped to [1, 720].
+     */
+    maxAgeHours() {
+        const raw = Number(process.env.UK_OUTBOX_MAX_AGE_HOURS);
+        if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_MAX_AGE_HOURS;
+        return Math.min(Math.max(Math.floor(raw), 1), MAX_AGE_HOURS_CEILING);
+    }
+
+    /**
+     * True when the row's created_at is older than maxAgeHours(). Rows without a
+     * parseable created_at (legacy / test fixtures) are never stale.
+     */
+    _isStale(row) {
+        if (!row || !row.created_at) return false;
+        const created = new Date(row.created_at).getTime();
+        if (!Number.isFinite(created)) return false;
+        return (Date.now() - created) > this.maxAgeHours() * 3600 * 1000;
     }
 
     start() {
@@ -191,6 +221,16 @@ class UkOutboxService {
         const row = await UkOutbox.pickNext();
         if (!row) {
             return; // queue empty — quiet
+        }
+
+        // [AUD-001 PR-C Finding 3] Drain-TTL guard — never POST a stale row.
+        if (this._isStale(row)) {
+            const err = `stale: exceeded UK_OUTBOX_MAX_AGE_HOURS (${this.maxAgeHours()}h)`;
+            await UkOutbox.markDead(row.id, err, null);
+            await this._syncIntegrationLog(row.event_id, 'failed', err);
+            logger.warn(`ukOutboxService: event_id=${row.event_id} dropped as stale (created_at=${row.created_at}) — ${err}`);
+            await this._recordNotificationFailure(row, { outcome: 'dead', code: null, error: err });
+            return;
         }
 
         const outcome = await ukWebhookClient.send(row.payload_body);

@@ -176,6 +176,34 @@ describe('UkOutbox model', () => {
         });
     });
 
+    describe('[AUD-001 PR-C] reviveDead()', () => {
+        it('flips a dead row back to pending, resets attempt_count + next_attempt_at, clears error', async () => {
+            const revived = { id: 9, event_id: 'evt-eng', status: 'pending' };
+            db.query.mockResolvedValue({ rows: [revived] });
+
+            const result = await UkOutbox.reviveDead('evt-eng');
+
+            expect(result).toEqual(revived);
+            const [sql, params] = db.query.mock.calls[0];
+            expect(sql).toMatch(/SET status = 'pending'/);
+            expect(sql).toMatch(/attempt_count = 0/);
+            expect(sql).toMatch(/next_attempt_at = NOW\(\)/);
+            expect(sql).toMatch(/last_error = NULL/);
+            // [AUD-001 PR-C review HIGH] restart the staleness clock — otherwise
+            // a row revived after >MAX_AGE_HOURS is immediately re-killed by the
+            // drain-TTL guard (created_at still old) → revive↔stale infinite loop.
+            expect(sql).toMatch(/created_at = NOW\(\)/);
+            // only acts on a currently-dead row (idempotent / race-safe)
+            expect(sql).toMatch(/WHERE event_id = \$1 AND status = 'dead'/);
+            expect(params).toEqual(['evt-eng']);
+        });
+
+        it('returns null when the row is not dead (already pending/sent or missing)', async () => {
+            db.query.mockResolvedValue({ rows: [] });
+            expect(await UkOutbox.reviveDead('evt-eng')).toBeNull();
+        });
+    });
+
     describe('countByStatus()', () => {
         it('aggregates rows into a status→count object', async () => {
             db.query.mockResolvedValue({

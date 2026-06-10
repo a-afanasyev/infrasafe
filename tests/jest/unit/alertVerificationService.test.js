@@ -31,8 +31,13 @@ jest.mock('../../../src/models/AlertVerification', () => ({
     markEngineerRequired: jest.fn(),
     markSkipped: jest.fn(),
     markDispatched: jest.fn(),
+    markChecked: jest.fn(),
     countRecentReopensForChain: jest.fn(),
-    findPendingByChainId: jest.fn()
+    findPendingByChainId: jest.fn(),
+    // [AUD-001 PR-C] engineer-sweep + ack helpers
+    pickUnnotifiedEngineer: jest.fn(),
+    deferEngineerNotifications: jest.fn(),
+    markUkNotified: jest.fn()
 }));
 
 // [Sprint 10 PR-4] AlertSuppression model exists now — mock it so the
@@ -67,6 +72,12 @@ describe('alertVerificationService', () => {
         // it into the next test (order-dependent failures).
         AlertVerification.findPendingByChainId.mockReset();
         AlertVerification.markReopened.mockReset();
+        // [AUD-001 PR-C] sweep runs every tick after the drain — default to an
+        // empty working set so existing drain tests are unaffected.
+        AlertVerification.pickUnnotifiedEngineer.mockReset();
+        AlertVerification.pickUnnotifiedEngineer.mockResolvedValue([]);
+        AlertVerification.deferEngineerNotifications.mockReset();
+        AlertVerification.deferEngineerNotifications.mockResolvedValue(0);
         db.query.mockReset();
         db.__mockClient.query.mockReset();
         db.__mockClient.release.mockClear();
@@ -375,15 +386,34 @@ describe('alertVerificationService', () => {
             expect(AlertVerification.markPassed).not.toHaveBeenCalled();
         });
 
-        test('[Sprint 10 PR-3] returns quietly when attempts>0 and still in window', async () => {
-            routeClient();
+        test('[AUD-001 PR-C] RE-dispatches when attempts>0 and still in window (durable re-emit, no superseding/suppression/quota)', async () => {
+            routeClient(); // quota null → no quota; no superseding; not suppressed
+            AlertVerification.pickDue.mockResolvedValueOnce({ ...dueRow, attempts: 1 });
+
+            const listener = jest.fn();
+            alertEvents.once(alertEvents.EVENTS.VERIFY_LEAK, listener);
+
+            await service._tick();
+
+            // PR-C drops the single-dispatch guard: an in-window dispatched row is
+            // re-emitted (the previous emit may have been lost). next_dispatch_at
+            // throttles the cadence; reconcile-first protects against double reopen.
+            expect(AlertVerification.markDispatched).toHaveBeenCalledWith(1, db.__mockClient);
+            expect(listener).toHaveBeenCalled();
+            expect(AlertVerification.markPassed).not.toHaveBeenCalled();
+            expect(AlertVerification.markSkipped).not.toHaveBeenCalled();
+        });
+
+        test('[AUD-001 PR-C] reconcile-first on retry: attempts>0 in-window + superseding chain alert → markReopened, NO re-dispatch/suppression/quota', async () => {
+            routeClient({ superseding: 55, quota: 3 });
             AlertVerification.pickDue.mockResolvedValueOnce({ ...dueRow, attempts: 1 });
 
             await service._tick();
 
+            expect(AlertVerification.markReopened).toHaveBeenCalledWith(1, 55, db.__mockClient);
             expect(AlertVerification.markDispatched).not.toHaveBeenCalled();
-            expect(AlertVerification.markPassed).not.toHaveBeenCalled();
-            expect(AlertVerification.markSkipped).not.toHaveBeenCalled();
+            expect(AlertVerification.markSuppressed).not.toHaveBeenCalled();
+            expect(AlertVerification.markEngineerRequired).not.toHaveBeenCalled();
         });
 
         test('[Sprint 10 PR-3] bumps attempts via markDispatched after emit', async () => {
@@ -862,6 +892,150 @@ describe('alertVerificationService', () => {
             expect(calls.some((s) => /^\s*ROLLBACK/.test(s))).toBe(true);
             expect(calls.some((s) => /pg_advisory_unlock/.test(s))).toBe(true);
             expect(db.__mockClient.release).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    // [AUD-001 PR-C] Dispatch-lease gate: while dispatch_lease_until is in the
+    // future a (possibly slow) checker may still create a reopen that must bind
+    // to this pending row — so ANY terminalisation is deferred (next_dispatch_at
+    // pushed to the lease end) rather than executed.
+    describe('[AUD-001 PR-C] dispatch-lease gate', () => {
+        const findClientDefer = () =>
+            db.__mockClient.query.mock.calls.find((c) =>
+                /UPDATE\s+alert_verifications\s+SET\s+next_dispatch_at\s*=\s*dispatch_lease_until/i.test(c[0]));
+
+        const leaseFuture = () => new Date(Date.now() + 120000).toISOString();
+        const leasePast = () => new Date(Date.now() - 1000).toISOString();
+
+        test('window expired + lease ACTIVE → defer (next_dispatch_at=lease), NOT passed/skipped', async () => {
+            routeClient(); // no superseding
+            AlertVerification.pickDue.mockResolvedValueOnce({
+                ...dueRow,
+                window_until: new Date(Date.now() - 60000).toISOString(),
+                attempts: 1,
+                last_checked_at: new Date().toISOString(),
+                dispatch_lease_until: leaseFuture()
+            });
+
+            await service._tick();
+
+            expect(findClientDefer()).toBeDefined();
+            expect(AlertVerification.markPassed).not.toHaveBeenCalled();
+            expect(AlertVerification.markSkipped).not.toHaveBeenCalled();
+        });
+
+        test('window expired + lease EXPIRED + checked → passed (terminalises normally)', async () => {
+            routeClient();
+            AlertVerification.pickDue.mockResolvedValueOnce({
+                ...dueRow,
+                window_until: new Date(Date.now() - 60000).toISOString(),
+                attempts: 1,
+                last_checked_at: new Date().toISOString(),
+                dispatch_lease_until: leasePast()
+            });
+
+            await service._tick();
+
+            expect(findClientDefer()).toBeUndefined();
+            expect(AlertVerification.markPassed).toHaveBeenCalledWith(1, db.__mockClient);
+        });
+
+        test('in-window suppression + lease ACTIVE → defer, NOT suppressed', async () => {
+            routeClient({ quota: 3 });
+            AlertSuppression.isActive.mockResolvedValueOnce(true);
+            AlertVerification.pickDue.mockResolvedValueOnce({
+                ...dueRow, attempts: 1, dispatch_lease_until: leaseFuture()
+            });
+
+            await service._tick();
+
+            expect(findClientDefer()).toBeDefined();
+            expect(AlertVerification.markSuppressed).not.toHaveBeenCalled();
+        });
+
+        test('in-window quota hit + lease ACTIVE → defer, NOT engineer_required', async () => {
+            routeClient({ quota: 3 });
+            AlertVerification.countRecentReopensForChain.mockResolvedValueOnce(3);
+            AlertVerification.pickDue.mockResolvedValueOnce({
+                ...dueRow, attempts: 1, dispatch_lease_until: leaseFuture()
+            });
+
+            await service._tick();
+
+            expect(findClientDefer()).toBeDefined();
+            expect(AlertVerification.markEngineerRequired).not.toHaveBeenCalled();
+        });
+
+        test('in-window quota hit + lease EXPIRED → engineer_required (terminalises)', async () => {
+            routeClient({ quota: 3 });
+            AlertVerification.countRecentReopensForChain.mockResolvedValueOnce(3);
+            AlertVerification.pickDue.mockResolvedValueOnce({
+                ...dueRow, attempts: 1, dispatch_lease_until: leasePast()
+            });
+
+            await service._tick();
+
+            expect(findClientDefer()).toBeUndefined();
+            expect(AlertVerification.markEngineerRequired).toHaveBeenCalledWith(1, db.__mockClient);
+        });
+    });
+
+    // [AUD-001 PR-C] Engineer-escalation sweep — at-least-once (re)delivery of
+    // ALERT_ENGINEER_REQUIRED for engineer_required rows UK hasn't acked.
+    describe('[AUD-001 PR-C] engineer-escalation sweep', () => {
+        test('picks unnotified engineer rows, defers them, emits ALERT_ENGINEER_REQUIRED with alertData', async () => {
+            routeClient();
+            AlertVerification.pickDue.mockResolvedValueOnce(null); // no due verification — isolate the sweep
+            AlertVerification.pickUnnotifiedEngineer.mockResolvedValueOnce([
+                { id: 9, original_alert_id: 21, reopen_chain_id: 'chain-eng' }
+            ]);
+
+            const listener = jest.fn();
+            alertEvents.once(alertEvents.EVENTS.ALERT_ENGINEER_REQUIRED, listener);
+
+            await service._tick();
+
+            // fair-rotation defer BEFORE emit (300s), under the lock
+            expect(AlertVerification.deferEngineerNotifications).toHaveBeenCalledWith([9], 300, db.__mockClient);
+            // emit carries the alertData (forwarder needs it) + verificationId
+            expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+                alertData: expect.objectContaining({ alert_id: 21 }),
+                alertId: 21,
+                verificationId: 9
+            }));
+        });
+
+        test('no unnotified engineer rows → no defer, no emit', async () => {
+            routeClient();
+            AlertVerification.pickDue.mockResolvedValueOnce(null);
+            AlertVerification.pickUnnotifiedEngineer.mockResolvedValueOnce([]);
+
+            const listener = jest.fn();
+            alertEvents.once(alertEvents.EVENTS.ALERT_ENGINEER_REQUIRED, listener);
+
+            await service._tick();
+
+            expect(AlertVerification.deferEngineerNotifications).not.toHaveBeenCalled();
+            expect(listener).not.toHaveBeenCalled();
+        });
+
+        test('sweep emit happens AFTER the advisory lock is released', async () => {
+            routeClient();
+            AlertVerification.pickDue.mockResolvedValueOnce(null);
+            AlertVerification.pickUnnotifiedEngineer.mockResolvedValueOnce([
+                { id: 9, original_alert_id: 21, reopen_chain_id: 'chain-eng' }
+            ]);
+            const emitSpy = jest.spyOn(alertEvents, 'emit');
+
+            await service._tick();
+
+            const unlockIdx = db.__mockClient.query.mock.calls.findIndex((c) => /pg_advisory_unlock/.test(c[0]));
+            const unlockOrder = db.__mockClient.query.mock.invocationCallOrder[unlockIdx];
+            const emitIdx = emitSpy.mock.calls.findIndex((c) => c[0] === alertEvents.EVENTS.ALERT_ENGINEER_REQUIRED);
+            const emitOrder = emitSpy.mock.invocationCallOrder[emitIdx];
+
+            expect(emitOrder).toBeGreaterThan(unlockOrder);
+            emitSpy.mockRestore();
         });
     });
 
