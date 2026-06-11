@@ -197,5 +197,29 @@ fi_max="$(docker compose -f "$COMPOSE" exec -T postgres psql -tA -U postgres -d 
 fi_lock="$(docker compose -f "$COMPOSE" exec -T postgres psql -tA -U postgres -d fresh_init_test -c "SELECT (to_regclass('public.migrate_lock') IS NOT NULL)")"
 [ "$fi_lock" = "t" ] && pass "fresh-init created migrate_lock" || fail "fresh-init migrate_lock missing"
 
+# ===========================================================================
+info "13) image-mode discover_js: runner works with NO host node (prod path)"
+# MIGRATE_NODE_MODE=image forces the container fallback even though this dev host
+# HAS node — reproducing exactly what prod does (node only inside an image). The
+# invariant: image-mode must yield the SAME reconcile as host-mode. This drives
+# discover (ls-tree → image node) AND file_checksum (git show → image node) — a
+# differing checksum or discovery would flip an applied file to drift/pending and
+# diverge the lines. Regression guard for the node-not-found prod bug. (We compare
+# to host-mode rather than hardcode counts, since earlier steps mutated state.)
+host_line="$(migrate "$HEAD_SHA" status 2>/dev/null | grep '^migrate-status:' || true)"
+img_line="$(MIGRATE_COMPOSE_FILE="$COMPOSE" MIGRATE_PG_SERVICE=postgres MIGRATE_PG_USER=postgres \
+    MIGRATE_PG_DB="$PGDB" MIGRATE_TARGET_COMMIT="$HEAD_SHA" \
+    MIGRATE_NODE_MODE=image MIGRATE_NODE_SERVICE=mignode \
+    bash scripts/migrate.sh status 2>/dev/null | grep '^migrate-status:' || true)"
+[ -n "$img_line" ] && pass "image-mode status ran (node via image)" || fail "image-mode produced no status line"
+[ -n "$img_line" ] && [ "$img_line" = "$host_line" ] \
+    && pass "image-mode reconcile identical to host-mode ($img_line)" \
+    || fail "host[$host_line] != image[$img_line]"
+# invalid mode is rejected loudly
+rc=0; MIGRATE_COMPOSE_FILE="$COMPOSE" MIGRATE_PG_USER=postgres MIGRATE_PG_DB="$PGDB" \
+    MIGRATE_TARGET_COMMIT="$HEAD_SHA" MIGRATE_NODE_MODE=bogus \
+    bash scripts/migrate.sh status >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 1 ] && pass "invalid MIGRATE_NODE_MODE rejected (exit 1)" || fail "bogus mode exit $rc (want 1)"
+
 echo ""
 info "summary: pass=$PASS fail=$FAIL"

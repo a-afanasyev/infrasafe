@@ -26,6 +26,13 @@
 # Optional env:
 #   MIGRATE_PG_SERVICE     compose service name (default: postgres)
 #   MIGRATE_PG_DB          database name        (default: infrasafe)
+#   MIGRATE_NODE_MODE      where to run migrate-discover.js: auto|host|image
+#                          (default auto). Production deploy hosts have node ONLY
+#                          inside the app image (scripts/ is not baked in per
+#                          SEC-14 and the host has no node), so 'auto' falls back
+#                          to running node from that image when the host has none.
+#   MIGRATE_NODE_SERVICE   compose service whose image carries node, used by the
+#                          image fallback (default: app)
 
 set -Eeuo pipefail
 
@@ -67,16 +74,56 @@ require_target() {
         || { err "MIGRATE_TARGET_COMMIT '$MIGRATE_TARGET_COMMIT' is not a valid commit"; exit 1; }
 }
 
-# Ordered "<filename>\t<path>" lines for the target commit. node exits 3 on an
-# unsafe filename → pipefail aborts the run.
+# discover_js runs migrate-discover.js. It is self-contained (reads stdin/argv,
+# only the builtin crypto — no git, no repo state), so the bash side owns all git
+# plumbing and merely pipes bytes in. Resolution:
+#   host  — use the host's `node` (dev machines, CI).
+#   image — `docker run` node from MIGRATE_NODE_SERVICE's image with the lib dir
+#           bind-mounted read-only. This is the production path: deploy hosts have
+#           no host node (node lives only inside the app image; scripts/ is NOT
+#           baked into that immutable image, so `compose exec app` can't see this
+#           file either — a fresh `docker run … -v lib` is the way in).
+#   auto  — host if `node` is on PATH, else image.
+MIGRATE_NODE_MODE="${MIGRATE_NODE_MODE:-auto}"
+MIGRATE_NODE_SERVICE="${MIGRATE_NODE_SERVICE:-app}"
+_use_host_node=0
+case "$MIGRATE_NODE_MODE" in
+    host)  _use_host_node=1 ;;
+    image) _use_host_node=0 ;;
+    auto)  command -v node >/dev/null 2>&1 && _use_host_node=1 || _use_host_node=0 ;;
+    *)     err "invalid MIGRATE_NODE_MODE '$MIGRATE_NODE_MODE' (want auto|host|image)"; exit 1 ;;
+esac
+
+if [ "$_use_host_node" = 1 ]; then
+    discover_js() { node "$LIB_DIR/migrate-discover.js" "$@"; }
+else
+    _NODE_IMAGE="$(docker compose -f "$MIGRATE_COMPOSE_FILE" config --images "$MIGRATE_NODE_SERVICE" 2>/dev/null | head -n1 || true)"
+    if [ -z "${_NODE_IMAGE:-}" ]; then
+        _NODE_IMAGE="$(docker compose -f "$MIGRATE_COMPOSE_FILE" images -q "$MIGRATE_NODE_SERVICE" 2>/dev/null | head -n1 || true)"
+    fi
+    [ -n "${_NODE_IMAGE:-}" ] || {
+        err "no host node and could not resolve an image for compose service '$MIGRATE_NODE_SERVICE'"
+        err "set MIGRATE_NODE_SERVICE to a service whose image carries node (e.g. app)."
+        exit 1
+    }
+    warn "host 'node' absent — running migrate-discover.js via image '$_NODE_IMAGE' (service '$MIGRATE_NODE_SERVICE')"
+    # -i keeps stdin open so the git-show / ls-tree pipe reaches node; --rm leaves
+    # nothing behind; lib mounted read-only.
+    discover_js() {
+        docker run --rm -i -v "$LIB_DIR":/miglib:ro --entrypoint node "$_NODE_IMAGE" /miglib/migrate-discover.js "$@"
+    }
+fi
+
+# Ordered "<filename>\t<path>" lines for the target commit. discover_js exits 3 on
+# an unsafe filename → pipefail aborts the run.
 discover_lines() {
     git ls-tree -r -z --format='%(objectname) %(path)' "$MIGRATE_TARGET_COMMIT" -- database/migrations/ \
-        | node "$LIB_DIR/migrate-discover.js" discover
+        | discover_js discover
 }
 
 # sha256 of a blob's content at the target commit. $1 = repo-relative path.
 file_checksum() {
-    git show "$MIGRATE_TARGET_COMMIT:$1" | node "$LIB_DIR/migrate-discover.js" checksum
+    git show "$MIGRATE_TARGET_COMMIT:$1" | discover_js checksum
 }
 
 # --- shared guards ---------------------------------------------------------
@@ -270,7 +317,7 @@ cmd_baseline() {
     fi
     # discovery must be a subset of the frozen allowlist — an extra file means an
     # un-baselined migration exists and must go through 'up', not baseline.
-    discover_lines | cut -f1 | node "$LIB_DIR/migrate-discover.js" validate-baseline
+    discover_lines | cut -f1 | discover_js validate-baseline
 
     # Build the allowlist INSERT (checksums from target blobs). Filenames come
     # from the frozen allowlist (no quotes/metachars) and checksums are hex, so
@@ -280,7 +327,7 @@ cmd_baseline() {
         [ -z "$fn" ] && continue
         ck="$(file_checksum "database/migrations/$fn")"
         values="${values}    ('${fn}', '${ck}'),"$'\n'
-    done < <(node "$LIB_DIR/migrate-discover.js" allowlist)
+    done < <(discover_js allowlist)
     values="${values%,$'\n'}"   # strip trailing comma+newline
 
     say "Running baseline as a single transaction (sentinel matrix → mark 33 applied)…"

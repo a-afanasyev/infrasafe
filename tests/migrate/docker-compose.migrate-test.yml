@@ -19,3 +19,13 @@ services:
       retries: 30
     tmpfs:
       - /var/lib/postgresql/data   # ephemeral storage; nothing persists
+
+  # Node image used ONLY to exercise migrate.sh's image-mode discover_js fallback
+  # (the production path: deploy hosts have no host node — node lives only inside
+  # an image). The runner resolves this service's image via `compose config
+  # --images mignode` and `docker run`s it ad-hoc; it does real work as an exited
+  # one-shot so `up` pulls the image without leaving a lingering container.
+  mignode:
+    image: node:20-alpine
+    command: ["node", "--version"]
+    restart: "no"

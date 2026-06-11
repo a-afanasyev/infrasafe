@@ -12,6 +12,7 @@
 ```bash
 # env: MIGRATE_COMPOSE_FILE, MIGRATE_PG_USER, MIGRATE_TARGET_COMMIT
 #      (опц.) MIGRATE_PG_SERVICE=postgres, MIGRATE_PG_DB=infrasafe
+#      (опц.) MIGRATE_NODE_MODE=auto|host|image, MIGRATE_NODE_SERVICE=app
 scripts/migrate.sh status        # applied / pending / drift (+ ACL-инвариант)
 scripts/migrate.sh up            # применить pending под row-mutex'ом
 scripts/migrate.sh baseline      # one-time: пометить 003-034 applied (см. ниже)
@@ -21,6 +22,14 @@ scripts/migrate.sh repair-acl    # восстановить REVOKE на runner-�
 
 Коды выхода `status`/`up`: `0` чисто · `2` нет `schema_migrations` (fail-close) ·
 `5` drift (checksum-mismatch или DB-only).
+
+**Node на хосте не требуется.** `migrate.sh` host-run, но логика discovery/checksum
+живёт в `scripts/lib/migrate-discover.js`. Прод-хосты не имеют `node` на хосте (node
+есть только внутри образа `app`, а `scripts/` в immutable-образ не запекается). Поэтому
+`MIGRATE_NODE_MODE=auto` (по умолчанию) сам определяет: есть host-`node` → использует
+его; нет → `docker run` node из образа сервиса `MIGRATE_NODE_SERVICE` (default `app`) с
+bind-mount `scripts/lib` (скрипт самодостаточен — только stdin/argv + builtin crypto).
+`host`/`image` форсируют режим явно.
 
 ### Свежая БД (чистый volume)
 
