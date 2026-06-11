@@ -1,0 +1,21 @@
+# PR-1a (AUD-002): ephemeral postgres for the migration-runner e2e harness.
+# Throwaway — `run-migrate-tests.sh` brings it up on an unused port, seeds a
+# synthetic prod-like schema, exercises scripts/migrate.sh, then tears it down
+# with `down -v`. NEVER point this at a real volume.
+name: infrasafe-migrate-test
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: infrasafe_migrate_test
+    # no host port needed — the runner talks via `docker compose exec`
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "infrasafe_migrate_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql/data   # ephemeral storage; nothing persists

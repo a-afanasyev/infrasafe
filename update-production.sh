@@ -19,6 +19,16 @@ APP_CONTAINER="infrasafe-app-1"
 ROLLBACK_TAG="infrasafe-app:rollback"
 EDGE_HEALTH_URL="https://infrasafe.uz/health"
 
+# [PR-1a / AUD-002] migration-runner wiring — DORMANT by default. PR-1b flips this
+# to "true" (ONLY after the one-time prod `migrate.sh baseline`). While false the
+# deploy keeps the legacy `git pull --ff-only` with no schema step. When true the
+# runner applies pending migrations from the fetched target BEFORE the app switch.
+MIGRATE_WIRING_ENABLED="${MIGRATE_WIRING_ENABLED:-false}"
+export MIGRATE_COMPOSE_FILE="$COMPOSE_FILE"
+export MIGRATE_PG_SERVICE="${MIGRATE_PG_SERVICE:-postgres}"
+export MIGRATE_PG_USER="${MIGRATE_PG_USER:-infrasafe_app}"
+export MIGRATE_PG_DB="${MIGRATE_PG_DB:-infrasafe}"
+
 # rollback state flags (read by the ERR trap)
 APP_SWITCHED=0
 DIST_PUBLISHED=0
@@ -91,11 +101,43 @@ if [ -e .env ] && [ "$(readlink -f .env)" != "$(readlink -f .env.prod)" ]; then
     exit 1
 fi
 
-# Step 1 — git
-say "📥 Step 1: git pull"
+# Step 1 — git + (optional) schema migrations BEFORE app switch
 PREV_COMMIT="$(git rev-parse HEAD)"
-git pull --ff-only origin "$(git branch --show-current)"
-ok "✅ code at $(git rev-parse --short HEAD) (prev $(git rev-parse --short "$PREV_COMMIT"))"
+BRANCH="$(git branch --show-current)"
+if [ "$MIGRATE_WIRING_ENABLED" = "true" ]; then
+    say "📥 Step 1: fetch + apply schema migrations (runner wiring ENABLED)"
+    git fetch origin "$BRANCH"
+    MIGRATE_TARGET_COMMIT="$(git rev-parse "origin/$BRANCH")"
+    export MIGRATE_TARGET_COMMIT
+    # Target must be a fast-forward descendant of HEAD — abort BEFORE touching the
+    # schema if origin diverged/force-pushed (otherwise schema applies, then the
+    # --ff-only merge below fails, leaving the schema ahead of the code).
+    git merge-base --is-ancestor HEAD "$MIGRATE_TARGET_COMMIT" \
+        || { err "❌ origin/$BRANCH diverged from HEAD — aborting before any schema change"; exit 1; }
+    # Drift / missing-table guard: status exits non-zero on no schema_migrations
+    # (run baseline first) or on checksum/db-only drift.
+    say "  → migrate status"
+    status_out="$(bash scripts/migrate.sh status)" \
+        || { echo "$status_out"; err "❌ migrate status failed (no schema_migrations, or drift)"; exit 1; }
+    echo "$status_out"
+    pending_n="$(echo "$status_out" | sed -n 's/.*migrate-status: applied=[0-9]* pending=\([0-9]*\).*/\1/p')"
+    # Runner-change deploy-guard: never ship a runner-code change AND pending
+    # migrations in the same release — the runner executes from the OLD checkout,
+    # so a runner change must land in a SEPARATE earlier release.
+    if [ -n "$(git diff --name-only HEAD "$MIGRATE_TARGET_COMMIT" -- scripts/migrate.sh scripts/lib/)" ] \
+       && [ "${pending_n:-0}" -gt 0 ]; then
+        err "❌ runner change + ${pending_n} pending migration(s) in one release — split them"
+        exit 1
+    fi
+    say "  → migrate up (schema before code)"
+    bash scripts/migrate.sh up
+    git merge --ff-only "$MIGRATE_TARGET_COMMIT"
+    ok "✅ migrated + code at $(git rev-parse --short HEAD) (prev $(git rev-parse --short "$PREV_COMMIT"))"
+else
+    say "📥 Step 1: git pull (migration-runner wiring DISABLED)"
+    git pull --ff-only origin "$BRANCH"
+    ok "✅ code at $(git rev-parse --short HEAD) (prev $(git rev-parse --short "$PREV_COMMIT"))"
+fi
 
 # Step 2 — capture rollback image, then build the new app image
 say "🔨 Step 2: build app image"

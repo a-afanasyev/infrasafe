@@ -123,7 +123,7 @@
 │   ├── init/
 │   │   ├── 01_init_database.sql       # Схема БД (PostGIS, все таблицы)
 │   │   └── 02_seed_data.sql           # Тестовые данные (17 зданий, Ташкент)
-│   └── migrations/                    # Миграции 003-010
+│   └── migrations/                    # Миграции 003-034 + раннер (scripts/migrate.sh, AUD-002)
 ├── generator/                         # Сервис генерации метрик (отдельный package.json)
 ├── tests/
 │   ├── jest/

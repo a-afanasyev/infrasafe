@@ -412,4 +412,27 @@ COMMENT ON TABLE controllers IS 'Устройства, установленны�
 COMMENT ON TABLE buildings IS 'Информация о зданиях, где установлены контроллеры';
 COMMENT ON TABLE power_transformers IS 'Электрические трансформаторы для анализа нагрузки';
 COMMENT ON TABLE infrastructure_alerts IS 'Система алертов для инфраструктурных объектов';
+
+-- =============================================================================
+-- Migration-runner note (PR-1a / AUD-002) — INTENTIONALLY no schema_migrations
+-- =============================================================================
+-- Unlike database/init/99_schema_migrations_baseline.sql, this unified bootstrap
+-- does NOT create the runner tables and does NOT self-declare any migrations.
+--
+-- Reason: this file is an incomplete legacy snapshot. It bakes only a partial
+-- early schema and NONE of migrations 011-034 (no alert_rules, integration_config,
+-- account_lockout, totp columns, external_id, infrasafe_runtime role, uk_outbox,
+-- alert_verifications, …). A self-declare manifest here would be a lie — it would
+-- either mark un-baked migrations as applied (skipping them forever) or be unable
+-- to declare a consistent set.
+--
+-- Consequence (by design): on a FRESH unified volume, `scripts/migrate.sh up`
+-- fail-closes (exit 2, no schema_migrations) so an operator reconciles the schema
+-- deliberately instead of the runner replaying migrations onto a divergent base.
+-- The current production DB was bootstrapped long ago and is onboarded to the
+-- runner via `migrate.sh baseline` (sentinel-verified), NOT via this file.
+--
+-- Backlog: regenerate database.sql as a complete current-schema bootstrap
+-- (mirror database/init/) and then add a correct manifest. Tracked separately
+-- (init-schema sync) — out of scope for AUD-002.
 COMMENT ON MATERIALIZED VIEW mv_transformer_load_realtime IS 'Аналитика загрузки трансформаторов в реальном времени';

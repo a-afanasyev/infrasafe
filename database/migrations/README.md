@@ -2,10 +2,30 @@
 
 Инкрементальные миграции PostgreSQL-схемы InfraSafe. Полная схема для свежей БД — в `../init/01_init_database.sql`, тестовый seed — в `../init/02_seed_data.sql`.
 
-## Как применяются
+## Миграционный раннер (PR-1a / AUD-002)
 
-**Свежая БД (чистый volume):**
-PostgreSQL Docker-контейнер автоматически выполняет все файлы из `../init/` в алфавитном порядке (стандартный `/docker-entrypoint-initdb.d`-механизм):
+Источник истины — таблица `schema_migrations` в БД (`filename` PK + `checksum`).
+Раннер `scripts/migrate.sh` применяет миграции из **закреплённого git-коммита**
+(`MIGRATE_TARGET_COMMIT`), а не из рабочего дерева, через `docker compose exec`
+в контейнер postgres (он работает на хосте, вне immutable-образа app).
+
+```bash
+# env: MIGRATE_COMPOSE_FILE, MIGRATE_PG_USER, MIGRATE_TARGET_COMMIT
+#      (опц.) MIGRATE_PG_SERVICE=postgres, MIGRATE_PG_DB=infrasafe
+scripts/migrate.sh status        # applied / pending / drift (+ ACL-инвариант)
+scripts/migrate.sh up            # применить pending под row-mutex'ом
+scripts/migrate.sh baseline      # one-time: пометить 003-034 applied (см. ниже)
+scripts/migrate.sh force-unlock  # снять застрявший migrate_lock (явно)
+scripts/migrate.sh repair-acl    # восстановить REVOKE на runner-таблицах
+```
+
+Коды выхода `status`/`up`: `0` чисто · `2` нет `schema_migrations` (fail-close) ·
+`5` drift (checksum-mismatch или DB-only).
+
+### Свежая БД (чистый volume)
+
+PostgreSQL-контейнер выполняет `../init/*.sql` по алфавиту. Файлы `01-09`
+запекают кумулятивный эффект миграций **003-017**:
 
 | Init-файл | Источник | Что делает |
 | --- | --- | --- |
@@ -15,20 +35,40 @@ PostgreSQL Docker-контейнер автоматически выполняе
 | `04_totp_2fa.sql` | копия `012_totp_2fa.sql` | 2FA-колонки в `users` |
 | `05_account_lockout.sql` | копия `013_account_lockout.sql` | persistent account lockout |
 | `06_performance_indexes.sql` | копия `014_performance_indexes.sql` | PERF-002 / PERF-010 |
-| `07_alert_dedup.sql` | `015_alert_dedup_constraint.sql` + idempotent pre-cleanup для seed-дубликатов | partial UNIQUE для активных alerts |
-| `08_password_changed_at.sql` | копия `016_password_changed_at.sql` | колонка для аудита смены пароля и JWT-cutoff |
+| `07_alert_dedup.sql` | `015_alert_dedup_constraint.sql` + idempotent pre-cleanup | partial UNIQUE для активных alerts |
+| `08_password_changed_at.sql` | копия `016_password_changed_at.sql` | колонка для аудита смены пароля + JWT-cutoff |
+| `09_runtime_role.sql` | копия `017_runtime_role.sql` | least-privilege роль `infrasafe_runtime` |
+| `99_schema_migrations_baseline.sql` | **NEW (PR-1a)** | создаёт runner-таблицы + self-declare 003-017 |
 
-После запуска `docker compose up` чистая БД будет полностью готова — никаких ручных шагов не нужно.
+`99_` запускается **последним**: создаёт `schema_migrations`/`migrate_lock`,
+ревокает у `infrasafe_runtime` DML на них, и объявляет 003-017 как applied.
+**Поэтому свежая БД готова не «полностью»** — миграции **018-034** доносит
+`scripts/migrate.sh up`. Если любой init-файл упал раньше `99_`, таблиц нет →
+`up` fail-close (оператор реконсилит), а не replay на полусобранную схему.
 
-**Существующая БД (живой volume, production):**
-Миграции применяются вручную в порядке нумерации:
+> ⚠️ После fresh-init роль `infrasafe_runtime` создаётся **NOLOGIN** — оператор
+> обязан `ALTER ROLE infrasafe_runtime LOGIN PASSWORD '<strong>'` до старта app.
 
-```bash
-docker exec infrasafe-postgres-1 psql -U postgres -d infrasafe \
-  -f /database/migrations/NNN_description.sql
-```
+**Unified `database.sql` (DR-only)** НЕ несёт self-declare и НЕ создаёт
+runner-таблицы — это неполный legacy-снимок (не запекает 011-034). Fresh-unified
+**намеренно fail-close**; см. футер `database.sql`.
 
-Все миграции **идемпотентны** (`CREATE ... IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, `DROP ... IF EXISTS`) — безопасно выполнять повторно.
+### Существующая БД (живой volume, production)
+
+Прод бутстрапился давно и накатывался вручную. Онбординг в раннер — **one-time**
+`scripts/migrate.sh baseline`: создаёт runner-таблицы, прогоняет sentinel-матрицу
+(≥1 проверка на каждую миграцию 003-034 — что её эффект реально есть в БД) одной
+транзакцией, и помечает frozen-allowlist 003-034 (33 файла) applied **без
+выполнения**. Любой sentinel-fail → ROLLBACK → таблиц не остаётся.
+
+### Roll-forward-only (политика, AUD-043)
+
+Down-скриптов нет. **Применённые миграции неизменяемы** — отредактированный файл
+даёт checksum-drift и `up`/`status` падают (это и есть защита). НЕ все ранние
+миграции идемпотентны (003 — `CREATE INDEX` без guard; 006 — DROP), поэтому
+повторное «ручное» выполнение запрещено — реконсиляция только через раннер.
+Новые миграции (035+) **обязаны** быть транзакционны (свой `BEGIN/COMMIT`) и
+backward-compatible (expand-only).
 
 ## Список миграций
 
@@ -53,13 +93,14 @@ docker exec infrasafe-postgres-1 psql -U postgres -d infrasafe \
 
 ## Примечание про `003_*` и `012_*`
 
-- **003** — каноническая версия `003_power_calculation_v2.sql`. Исторические попытки (`_system`, `_system_fixed`) перенесены в [`_superseded/`](./_superseded/README.md) и **не должны** применяться. Перенос сделан в P1-V4, чтобы будущий автоматический миграционный раннер не выполнил все три файла подряд.
-- **012** имеет два независимых файла с одинаковым номером (`_totp_2fa`, `_fix_materialized_view`) — оба должны быть применены, порядок между ними не важен. (Раздельная проблема — `[P2-11]`, escalated to P1.)
+- **003** — каноническая версия `003_power_calculation_v2.sql`. Исторические попытки (`_system`, `_system_fixed`) перенесены в [`_superseded/`](./_superseded/README.md) и **не должны** применяться. Раннер исключает `_superseded/` строгой regex (`^database/migrations/[0-9]{3}_…\.sql$`).
+- **012** имеет два независимых файла с одинаковым номером (`_totp_2fa`, `_fix_materialized_view`) — оба применяются, порядок между ними не важен. Раннер ключует по **filename**, поэтому обе строки трекаются независимо; лексикографически `012_fix…` идёт перед `012_totp…`. (`[P2-11]` / **AUD-043 — resolved** в PR-1a.)
 
 ## Добавление новой миграции
 
-1. Имя файла: `NNN_snake_case_description.sql`, где `NNN` — следующий свободный номер (016, 017 …).
+1. Имя файла: `NNN_snake_case_description.sql`, где `NNN` — следующий свободный номер (035, 036 …). Charset строго `[A-Za-z0-9._-]` (раннер отвергает пробелы/кавычки).
 2. Начать с комментария, кратко описывающего цель и связанный тикет/фазу.
-3. Использовать идемпотентные конструкции (`IF NOT EXISTS`, `IF EXISTS`).
-4. Дополнить эту таблицу одной строкой.
-5. Если меняется init-схема — синхронизировать `../init/01_init_database.sql`, чтобы свежий volume получил итоговую схему без обхода миграций.
+3. **Обернуть в свою транзакцию** (`BEGIN; … COMMIT;`) — частичный сбой откатывается целиком, re-apply чист. Исключение — только когда нужен `CREATE INDEX CONCURRENTLY` (нельзя в txn): тогда каждый statement обязан быть идемпотентным и crash-safe.
+4. **Backward-compatible (expand-only)**: схема применяется ДО нового app, а rollback оставляет старый app против новой схемы. Только additive (ADD COLUMN/TABLE/INDEX); деструктив (DROP/RENAME колонки) — отдельным contract-релизом.
+5. Дополнить эту таблицу одной строкой. Раннер подхватит файл автоматически (`up`); ручной накат больше не нужен.
+6. Если меняется init-схема для свежего volume — синхронизировать `../init/01_init_database.sql`. Файлы 003-017 уже задекларированы в `../init/99_schema_migrations_baseline.sql`; новые миграции (018+) доносит `up`.
