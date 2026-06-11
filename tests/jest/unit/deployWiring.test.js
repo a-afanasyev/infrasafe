@@ -1,7 +1,8 @@
 // PR-1a (AUD-002): structural guard for the migration-runner deploy wiring in
 // update-production.sh. The runner's runtime behavior is e2e-tested in
 // tests/migrate/run-migrate-tests.sh; this test pins the WIRING contract:
-//   * MIGRATE_WIRING_ENABLED defaults to false (dormant — PR-1a ships it off);
+//   * MIGRATE_WIRING_ENABLED defaults to true (PR-1b enabled it after the one-time
+//     prod baseline; PR-1a shipped it off, 1b flipped the default);
 //   * `migrate.sh status` and `migrate.sh up` run ONLY in the enabled branch,
 //     and BEFORE the app switch (Step 4);
 //   * the disabled branch keeps the legacy `git pull --ff-only`;
@@ -16,8 +17,8 @@ const SCRIPT = fs.readFileSync(
 );
 
 describe('update-production.sh migration wiring', () => {
-    test('MIGRATE_WIRING_ENABLED defaults to false (dormant)', () => {
-        expect(SCRIPT).toMatch(/MIGRATE_WIRING_ENABLED="\$\{MIGRATE_WIRING_ENABLED:-false\}"/);
+    test('MIGRATE_WIRING_ENABLED defaults to true (enabled post-baseline)', () => {
+        expect(SCRIPT).toMatch(/MIGRATE_WIRING_ENABLED="\$\{MIGRATE_WIRING_ENABLED:-true\}"/);
     });
 
     test('migrate up/status live inside the enabled branch only', () => {

@@ -19,11 +19,11 @@ APP_CONTAINER="infrasafe-app-1"
 ROLLBACK_TAG="infrasafe-app:rollback"
 EDGE_HEALTH_URL="https://infrasafe.uz/health"
 
-# [PR-1a / AUD-002] migration-runner wiring — DORMANT by default. PR-1b flips this
-# to "true" (ONLY after the one-time prod `migrate.sh baseline`). While false the
-# deploy keeps the legacy `git pull --ff-only` with no schema step. When true the
-# runner applies pending migrations from the fetched target BEFORE the app switch.
-MIGRATE_WIRING_ENABLED="${MIGRATE_WIRING_ENABLED:-false}"
+# [PR-1a/1b / AUD-002] migration-runner wiring — ENABLED (PR-1b, after the one-time
+# prod `migrate.sh baseline` on 2026-06-12). When true the runner applies pending
+# migrations from the fetched target BEFORE the app switch. Override to "false" to
+# fall back to the legacy `git pull --ff-only` with no schema step (escape hatch).
+MIGRATE_WIRING_ENABLED="${MIGRATE_WIRING_ENABLED:-true}"
 export MIGRATE_COMPOSE_FILE="$COMPOSE_FILE"
 export MIGRATE_PG_SERVICE="${MIGRATE_PG_SERVICE:-postgres}"
 export MIGRATE_PG_USER="${MIGRATE_PG_USER:-infrasafe_app}"
