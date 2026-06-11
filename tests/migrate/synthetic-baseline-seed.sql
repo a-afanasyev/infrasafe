@@ -22,28 +22,33 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO infrasafe_runtime;
 
 -- base tables referenced by sentinels / FKs
-CREATE TABLE buildings (            -- 008: must NOT have a hot_water column
+CREATE TABLE buildings (            -- 008: canonical prod KEEPS hot_water + has_hot_water
     id            SERIAL PRIMARY KEY,
-    primary_line  INT
+    primary_line  INT,
+    hot_water     BOOLEAN,
+    has_hot_water BOOLEAN DEFAULT false
 );
 CREATE TABLE transformers (id SERIAL PRIMARY KEY, geom INT);
 CREATE TABLE power_lines (id SERIAL PRIMARY KEY, main_path INT);
 CREATE TABLE water_lines (id SERIAL PRIMARY KEY, main_path INT);
 CREATE TABLE cold_water_sources (id SERIAL PRIMARY KEY, status TEXT);
-CREATE TABLE token_blacklist (id SERIAL PRIMARY KEY, token_hash TEXT);
+-- 009: mirror prod — token_hash indexed via a UNIQUE key (token_blacklist_token_hash_key),
+-- not 009's named idx_token_blacklist_hash.
+CREATE TABLE token_blacklist (id SERIAL PRIMARY KEY, token_hash TEXT UNIQUE);
 CREATE TABLE users (                -- 016 password_changed_at, 012_totp index
     id                 SERIAL PRIMARY KEY,
     password_changed_at TIMESTAMPTZ,
     totp_enabled       BOOLEAN DEFAULT false
 );
 CREATE TABLE metrics (id SERIAL PRIMARY KEY, controller_id INT, "timestamp" TIMESTAMPTZ);
-CREATE TABLE infrastructure_alerts (   -- 027 reopen_chain_id, 021 metric_id FK
+-- 021: canonical alert table is infrastructure_alerts; the legacy `alerts` table
+-- (021's FK target) does NOT exist on prod, so we do not create it here either.
+CREATE TABLE infrastructure_alerts (   -- 027 reopen_chain_id; 021 canonical alert table
     alert_id        SERIAL PRIMARY KEY,
     status          TEXT,
     reopen_chain_id UUID,
     infra_type      TEXT,
-    metric_id       INT,
-    CONSTRAINT fk_alerts_metric FOREIGN KEY (metric_id) REFERENCES metrics(id)
+    metric_id       INT
 );
 CREATE TABLE alert_request_map (       -- 018 FK to infrastructure_alerts
     id            SERIAL PRIMARY KEY,
@@ -73,8 +78,8 @@ CREATE TABLE alert_verifications (     -- 025, 031 join, 033 last_checked_at, 03
     dispatch_lease_until TIMESTAMPTZ
 );
 
--- materialized views (003, 012_fix)
-CREATE MATERIALIZED VIEW mv_building_power_realtime   AS SELECT 1 AS x;
+-- materialized view (003 + 012_fix both resolve to this canonical one on prod;
+-- 003's building/line MVs were superseded and are absent on canonical prod).
 CREATE MATERIALIZED VIEW mv_transformer_load_realtime AS SELECT 1 AS x;
 
 -- function (020)
@@ -86,7 +91,6 @@ CREATE INDEX idx_transformers_geom               ON transformers(geom);
 CREATE INDEX idx_lines_main_path                 ON power_lines(main_path);
 CREATE INDEX idx_water_lines_main_path           ON water_lines(main_path);
 CREATE INDEX idx_metrics_ctrl_ts                 ON metrics(controller_id, "timestamp");
-CREATE INDEX idx_token_blacklist_hash            ON token_blacklist(token_hash);
 CREATE INDEX idx_cold_water_sources_status       ON cold_water_sources(status);
 CREATE INDEX idx_infrastructure_alerts_infra_status ON infrastructure_alerts(infra_type, status);
 CREATE UNIQUE INDEX idx_active_alert_dedup       ON infrastructure_alerts(alert_id);

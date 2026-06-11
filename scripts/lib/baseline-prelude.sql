@@ -45,9 +45,14 @@ $baseline_acl$;
 -- 3. Sentinel-invariant matrix (one RAISE per failed migration) --------------
 DO $baseline_sentinels$
 BEGIN
-    -- 003 power calculation v2 (materialized view)
-    IF to_regclass('public.mv_building_power_realtime') IS NULL THEN
-        RAISE EXCEPTION 'baseline sentinel failed: 003 mv_building_power_realtime missing'; END IF;
+    -- 003 power calculation v2. Prod was bootstrapped from database.sql, whose
+    -- canonical schema kept ONLY mv_transformer_load_realtime — 003's building/line
+    -- MVs and calculate_phase_power() were superseded and are absent on prod (no
+    -- app code references them; re-running 003 would re-introduce objects not in
+    -- the canonical schema). Verify the surviving canonical power MV. (012_fix also
+    -- checks this MV — on canonical prod both migrations resolve to the same object.)
+    IF to_regclass('public.mv_transformer_load_realtime') IS NULL THEN
+        RAISE EXCEPTION 'baseline sentinel failed: 003 mv_transformer_load_realtime (canonical power MV) missing'; END IF;
     -- 004 coordinates / extended fields (PostGIS index)
     IF to_regclass('public.idx_transformers_geom') IS NULL THEN
         RAISE EXCEPTION 'baseline sentinel failed: 004 idx_transformers_geom missing'; END IF;
@@ -60,14 +65,23 @@ BEGIN
     -- 007 metrics compound index (CREATE INDEX CONCURRENTLY)
     IF to_regclass('public.idx_metrics_ctrl_ts') IS NULL THEN
         RAISE EXCEPTION 'baseline sentinel failed: 007 idx_metrics_ctrl_ts missing'; END IF;
-    -- 008 remove duplicate hot_water (column DROPPED → must be absent)
-    IF EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_schema = 'public' AND table_name = 'buildings'
-                 AND column_name = 'hot_water') THEN
-        RAISE EXCEPTION 'baseline sentinel failed: 008 buildings.hot_water still present'; END IF;
-    -- 009 token_blacklist hash index
-    IF to_regclass('public.idx_token_blacklist_hash') IS NULL THEN
-        RAISE EXCEPTION 'baseline sentinel failed: 009 idx_token_blacklist_hash missing'; END IF;
+    -- 008 remove duplicate hot_water. The canonical database.sql bootstrap KEPT
+    -- buildings.hot_water (the frontend reads item.hot_water) alongside has_hot_water,
+    -- so 008's DROP was effectively reverted on prod — re-running it would break the
+    -- map. Verify 008's populate target has_hot_water exists (its surviving half).
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = 'public' AND table_name = 'buildings'
+                     AND column_name = 'has_hot_water') THEN
+        RAISE EXCEPTION 'baseline sentinel failed: 008 buildings.has_hot_water missing'; END IF;
+    -- 009 token_blacklist hash index. Canonical prod indexes token_hash via a
+    -- UNIQUE key (token_blacklist_token_hash_key), not 009's named non-unique index,
+    -- so lookups are covered. Verify token_blacklist + any index on token_hash.
+    -- (009's idx_token_blacklist_expires is genuinely absent on prod → backlog.)
+    IF to_regclass('public.token_blacklist') IS NULL
+       OR NOT EXISTS (SELECT 1 FROM pg_indexes
+                      WHERE schemaname = 'public' AND tablename = 'token_blacklist'
+                        AND indexdef ILIKE '%token_hash%') THEN
+        RAISE EXCEPTION 'baseline sentinel failed: 009 token_blacklist token_hash index missing'; END IF;
     -- 010 missing indexes (cold_water_sources status — unique to 010)
     IF to_regclass('public.idx_cold_water_sources_status') IS NULL THEN
         RAISE EXCEPTION 'baseline sentinel failed: 010 idx_cold_water_sources_status missing'; END IF;
@@ -106,9 +120,13 @@ BEGIN
     -- 020 MV refresh SECURITY DEFINER wrapper function
     IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'refresh_mv_transformer_load') THEN
         RAISE EXCEPTION 'baseline sentinel failed: 020 refresh_mv_transformer_load missing'; END IF;
-    -- 021 alerts.metric_id FK
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_alerts_metric') THEN
-        RAISE EXCEPTION 'baseline sentinel failed: 021 fk_alerts_metric missing'; END IF;
+    -- 021 alerts.metric_id FK. 021 targeted a legacy `alerts` table that does NOT
+    -- exist on canonical prod (the alert table is infrastructure_alerts) — re-running
+    -- it would error "relation alerts does not exist". Verify the canonical alert
+    -- schema: infrastructure_alerts present AND the legacy `alerts` table absent.
+    IF to_regclass('public.infrastructure_alerts') IS NULL
+       OR to_regclass('public.alerts') IS NOT NULL THEN
+        RAISE EXCEPTION 'baseline sentinel failed: 021 expected canonical alert schema (infrastructure_alerts present, legacy alerts absent)'; END IF;
     -- 022 UK outbox table
     IF to_regclass('public.uk_outbox') IS NULL THEN
         RAISE EXCEPTION 'baseline sentinel failed: 022 uk_outbox missing'; END IF;
