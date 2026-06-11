@@ -29,7 +29,10 @@ scripts/migrate.sh repair-acl    # восстановить REVOKE на runner-�
 `MIGRATE_NODE_MODE=auto` (по умолчанию) сам определяет: есть host-`node` → использует
 его; нет → `docker run` node из образа сервиса `MIGRATE_NODE_SERVICE` (default `app`) с
 bind-mount `scripts/lib` (скрипт самодостаточен — только stdin/argv + builtin crypto).
-`host`/`image` форсируют режим явно.
+Образ резолвится через `docker compose images -q <service>` (service-scoped, нужен
+поднятый контейнер сервиса) — НЕ через `config --images`, который подмешивает образы
+зависимостей. Можно зафиксировать образ явно: `MIGRATE_NODE_IMAGE=<image>`.
+`MIGRATE_NODE_MODE=host|image` форсируют режим явно.
 
 ### Свежая БД (чистый volume)
 

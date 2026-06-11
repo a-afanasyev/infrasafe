@@ -31,8 +31,12 @@
 #                          inside the app image (scripts/ is not baked in per
 #                          SEC-14 and the host has no node), so 'auto' falls back
 #                          to running node from that image when the host has none.
-#   MIGRATE_NODE_SERVICE   compose service whose image carries node, used by the
-#                          image fallback (default: app)
+#   MIGRATE_NODE_SERVICE   compose service whose container image carries node,
+#                          used by the image fallback (default: app). Resolved via
+#                          `docker compose images -q <service>` (service-scoped).
+#   MIGRATE_NODE_IMAGE     pin the node-carrying image explicitly, bypassing
+#                          service resolution (e.g. when the service has no
+#                          container up).
 
 set -Eeuo pipefail
 
@@ -97,13 +101,20 @@ esac
 if [ "$_use_host_node" = 1 ]; then
     discover_js() { node "$LIB_DIR/migrate-discover.js" "$@"; }
 else
-    _NODE_IMAGE="$(docker compose -f "$MIGRATE_COMPOSE_FILE" config --images "$MIGRATE_NODE_SERVICE" 2>/dev/null | head -n1 || true)"
-    if [ -z "${_NODE_IMAGE:-}" ]; then
+    # Resolve the node-carrying image. MIGRATE_NODE_IMAGE pins it explicitly.
+    # Otherwise use `compose images -q <svc>` — the image of THAT service's
+    # container (deterministic, service-scoped). We deliberately do NOT use
+    # `config --images <svc>`: that also lists the service's DEPENDENCIES (e.g.
+    # the postgres/postgis image) in an unstable order, so `head` may pick the
+    # wrong one — exactly the bug this avoids.
+    _NODE_IMAGE="${MIGRATE_NODE_IMAGE:-}"
+    if [ -z "$_NODE_IMAGE" ]; then
         _NODE_IMAGE="$(docker compose -f "$MIGRATE_COMPOSE_FILE" images -q "$MIGRATE_NODE_SERVICE" 2>/dev/null | head -n1 || true)"
     fi
     [ -n "${_NODE_IMAGE:-}" ] || {
         err "no host node and could not resolve an image for compose service '$MIGRATE_NODE_SERVICE'"
-        err "set MIGRATE_NODE_SERVICE to a service whose image carries node (e.g. app)."
+        err "ensure that service has a container (e.g. docker compose up -d $MIGRATE_NODE_SERVICE),"
+        err "or pin it explicitly with MIGRATE_NODE_IMAGE=<image-carrying-node>."
         exit 1
     }
     warn "host 'node' absent — running migrate-discover.js via image '$_NODE_IMAGE' (service '$MIGRATE_NODE_SERVICE')"
