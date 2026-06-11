@@ -215,6 +215,19 @@ describe('MetricController', () => {
 
             expect(next).toHaveBeenCalledWith(expect.any(Error));
         });
+
+        // AUD-004: a bad metric value is a client error (400), not a 500.
+        test('returns 400 on VALIDATION_ERROR', async () => {
+            req.body = { controller_id: 1, electricity_ph1: 'abc' };
+            const error = new Error('Поле electricity_ph1 должно быть числом');
+            error.code = 'VALIDATION_ERROR';
+            metricService.createMetric.mockRejectedValue(error);
+
+            await createMetric(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(next).not.toHaveBeenCalled();
+        });
     });
 
     describe('receiveTelemetry', () => {
@@ -248,6 +261,19 @@ describe('MetricController', () => {
             await receiveTelemetry(req, res, next);
 
             expect(next).toHaveBeenCalledWith(expect.any(Error));
+        });
+
+        // AUD-004 / AUD-037: validation failures from the service are 400s, not 500s.
+        test('returns 400 on VALIDATION_ERROR', async () => {
+            req.body = { serial_number: 'SN-001', metrics: { electricity_ph1: 'abc' } };
+            const error = new Error('Поле electricity_ph1 должно быть числом');
+            error.code = 'VALIDATION_ERROR';
+            metricService.processTelemetry.mockRejectedValue(error);
+
+            await receiveTelemetry(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(next).not.toHaveBeenCalled();
         });
 
         test('returns 400 (not 500) on empty body without touching the service', async () => {

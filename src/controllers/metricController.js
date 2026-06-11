@@ -74,6 +74,10 @@ const createMetric = async (req, res, next) => {
         if (error.code === 'CONTROLLER_NOT_FOUND') {
             return sendNotFound(res, error.message);
         }
+        // AUD-004: bad metric value / shape is a client error.
+        if (error.code === 'VALIDATION_ERROR') {
+            return sendError(res, 400, error.message);
+        }
 
         logger.error(`Error in createMetric: ${error.message}`);
         next(error);
@@ -104,6 +108,10 @@ const receiveTelemetry = async (req, res, next) => {
     } catch (error) {
         if (error.code === 'CONTROLLER_NOT_FOUND') {
             return sendNotFound(res, error.message);
+        }
+        // AUD-004 / AUD-037: bad metric value or out-of-range timestamp → 400.
+        if (error.code === 'VALIDATION_ERROR') {
+            return sendError(res, 400, error.message);
         }
 
         logger.error(`Error in receiveTelemetry: ${error.message}`);

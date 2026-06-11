@@ -257,18 +257,58 @@ describe('MetricService', () => {
         test('processes telemetry data successfully', async () => {
             const telemetryData = {
                 serial_number: 'SN-001',
-                timestamp: '2026-01-01T00:00:00Z',
-                metrics: { voltage: 220, amperage: 10 }
+                timestamp: new Date().toISOString(),
+                metrics: { electricity_ph1: 220, amperage_ph1: 10 }
             };
             Controller.findBySerialNumber.mockResolvedValue(mockController);
             Controller.findById.mockResolvedValue(mockController);
-            Metric.create.mockResolvedValue({ metric_id: 3, controller_id: 1, voltage: 220, amperage: 10 });
+            Metric.create.mockResolvedValue({ metric_id: 3, controller_id: 1, electricity_ph1: 220, amperage_ph1: 10 });
             Controller.updateStatus.mockResolvedValue({});
 
             const result = await metricService.processTelemetry(telemetryData);
 
             expect(result).toHaveProperty('controller_id', 1);
             expect(result).toHaveProperty('metric');
+        });
+
+        // AUD-037: public telemetry must reject an out-of-window timestamp. A future
+        // (or far-past) stamp poisons downstream firstSeenAge math in alertService.
+        // Only the public path rejects — authenticated createMetric still imports history.
+        test('rejects a far-future timestamp with VALIDATION_ERROR', async () => {
+            Controller.findBySerialNumber.mockResolvedValue(mockController);
+            const future = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
+            await expect(
+                metricService.processTelemetry({ serial_number: 'SN-001', timestamp: future, metrics: {} })
+            ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+            expect(Metric.create).not.toHaveBeenCalled();
+        });
+
+        test('rejects a far-past timestamp (>24h) with VALIDATION_ERROR', async () => {
+            Controller.findBySerialNumber.mockResolvedValue(mockController);
+            const old = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+            await expect(
+                metricService.processTelemetry({ serial_number: 'SN-001', timestamp: old, metrics: {} })
+            ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+        });
+
+        test('rejects an unparseable timestamp with VALIDATION_ERROR', async () => {
+            Controller.findBySerialNumber.mockResolvedValue(mockController);
+            await expect(
+                metricService.processTelemetry({ serial_number: 'SN-001', timestamp: 'not-a-date', metrics: {} })
+            ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+        });
+
+        test('accepts a recent timestamp and defaults to NOW when omitted', async () => {
+            Controller.findBySerialNumber.mockResolvedValue(mockController);
+            Controller.findById.mockResolvedValue(mockController);
+            Controller.updateStatus.mockResolvedValue({});
+            Metric.create.mockResolvedValue({ metric_id: 7, controller_id: 1 });
+
+            await expect(
+                metricService.processTelemetry({ serial_number: 'SN-001', metrics: { humidity: 40 } })
+            ).resolves.toHaveProperty('controller_id', 1);
+            const arg = Metric.create.mock.calls[0][0];
+            expect(arg.timestamp).toBeTruthy(); // defaulted to NOW
         });
 
         test('throws CONTROLLER_NOT_FOUND when serial number not found', async () => {
@@ -425,29 +465,53 @@ describe('MetricService', () => {
     });
 
     describe('validateMetricData', () => {
-        test('throws when controller_id is missing', () => {
-            expect(() => metricService.validateMetricData({})).toThrow();
+        // AUD-004: validate the REAL metric columns (electricity_ph*, amperage_ph*,
+        // *_pressure/_temp, air_temp, humidity), not the phantom voltage/power/
+        // temperature fields. All failures are tagged VALIDATION_ERROR so the
+        // controller maps them to 400 instead of a 500 from the pg numeric cast.
+        test('throws VALIDATION_ERROR when controller_id is missing', () => {
+            expect(() => metricService.validateMetricData({}))
+                .toThrow(expect.objectContaining({ code: 'VALIDATION_ERROR' }));
         });
 
-        test('throws when numeric field is not a number', () => {
+        test('throws VALIDATION_ERROR when a real numeric field is non-numeric', () => {
             expect(() => metricService.validateMetricData({
                 controller_id: 1,
-                voltage: 'not-a-number'
-            })).toThrow();
+                electricity_ph1: 'not-a-number'
+            })).toThrow(expect.objectContaining({ code: 'VALIDATION_ERROR' }));
+            expect(() => metricService.validateMetricData({
+                controller_id: 1,
+                amperage_ph2: 'NaN'
+            })).toThrow(expect.objectContaining({ code: 'VALIDATION_ERROR' }));
         });
 
-        test('throws when timestamp is invalid', () => {
+        test('accepts boolean leak_sensor (not numeric-validated)', () => {
+            expect(() => metricService.validateMetricData({
+                controller_id: 1,
+                leak_sensor: true
+            })).not.toThrow();
+        });
+
+        test('accepts a numeric humidity reading', () => {
+            expect(() => metricService.validateMetricData({
+                controller_id: 1,
+                humidity: 55.5
+            })).not.toThrow();
+        });
+
+        test('throws VALIDATION_ERROR when timestamp is invalid', () => {
             expect(() => metricService.validateMetricData({
                 controller_id: 1,
                 timestamp: 'not-a-date'
-            })).toThrow();
+            })).toThrow(expect.objectContaining({ code: 'VALIDATION_ERROR' }));
         });
 
-        test('passes with valid data', () => {
+        test('passes with valid real-field data', () => {
             expect(() => metricService.validateMetricData({
                 controller_id: 1,
-                voltage: 220,
-                amperage: 10,
+                electricity_ph1: 220,
+                amperage_ph1: 10,
+                air_temp: 21.4,
                 timestamp: '2026-01-01T00:00:00Z'
             })).not.toThrow();
         });

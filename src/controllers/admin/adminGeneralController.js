@@ -1,5 +1,6 @@
 const { createError } = require('../../utils/helpers');
 const db = require('../../config/database');
+const logger = require('../../utils/logger');
 
 // Phase 9.3 (YAGNI-007 / YAGNI-008): globalSearch and exportData were
 // pure stubs — globalSearch returned an empty result with "Search
@@ -15,7 +16,10 @@ async function getAdminStats(req, res, next) {
             db.query('SELECT COUNT(*) FROM buildings'),
             db.query('SELECT COUNT(*) FROM controllers'),
             db.query('SELECT COUNT(*) FROM metrics'),
-            db.query("SELECT COUNT(*) FROM alerts WHERE status = 'active'"),
+            // AUD-007: the live alert system is infrastructure_alerts; the legacy
+            // `alerts` table was dropped in migration 028. "Active" for the
+            // dashboard = active + acknowledged (an acknowledged alert is still open).
+            db.query("SELECT COUNT(*) FROM infrastructure_alerts WHERE status IN ('active', 'acknowledged')"),
         ]);
 
         res.json({
@@ -25,6 +29,8 @@ async function getAdminStats(req, res, next) {
             alerts: { active: parseInt(alerts.rows[0].count, 10) },
         });
     } catch (error) {
+        // AUD-029: surface the real cause; the client still gets a generic 500.
+        logger.error(`Error in getAdminStats: ${error.message}`);
         next(createError('Failed to get stats', 500));
     }
 }

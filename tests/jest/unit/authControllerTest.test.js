@@ -243,6 +243,31 @@ describe('AuthController', () => {
             expect(res.status).toHaveBeenCalledWith(409);
         });
 
+        // AUD-005: validation failures from the service map to 400, not 500.
+        test('returns 400 for VALIDATION_ERROR', async () => {
+            req.body = { username: 'ab', email: 'e@t.com', password: 'StrongPass1' };
+            const error = new Error('Имя пользователя должно содержать минимум 3 символа');
+            error.code = 'VALIDATION_ERROR';
+            authService.registerUser.mockRejectedValue(error);
+
+            await authController.register(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(next).not.toHaveBeenCalled();
+        });
+
+        test('returns 400 for INVALID_PASSWORD', async () => {
+            req.body = { username: 'gooduser', email: 'e@t.com', password: 'short' };
+            const error = new Error('Пароль должен содержать минимум 8 символов');
+            error.code = 'INVALID_PASSWORD';
+            authService.registerUser.mockRejectedValue(error);
+
+            await authController.register(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(next).not.toHaveBeenCalled();
+        });
+
         test('calls next for unexpected errors', async () => {
             req.body = { username: 'user', email: 'u@t.com', password: 'StrongPass1' };
             const error = new Error('Unexpected');

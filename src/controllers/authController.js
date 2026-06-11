@@ -117,6 +117,10 @@ const register = async (req, res, next) => {
         if (error.code === 'USER_EXISTS') {
             return res.status(409).json({ error: error.message });
         }
+        // AUD-005: validation failures are client errors, not 500s.
+        if (error.code === 'VALIDATION_ERROR' || error.code === 'INVALID_PASSWORD') {
+            return res.status(400).json({ error: error.message });
+        }
 
         logger.error(`Registration error: ${error.message}`);
         next(error);

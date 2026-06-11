@@ -208,6 +208,26 @@ describe('AuthService', () => {
                 })
             ).rejects.toThrow();
         });
+
+        // AUD-005: register validation failures must be tagged so the controller
+        // maps them to 400 instead of leaking a 500.
+        test('tags short username with code=VALIDATION_ERROR', async () => {
+            await expect(
+                authService.registerUser({ username: 'ab', email: 'ok@test.com', password: 'StrongPass1' })
+            ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+        });
+
+        test('tags bad email with code=VALIDATION_ERROR', async () => {
+            await expect(
+                authService.registerUser({ username: 'gooduser', email: 'not-an-email', password: 'StrongPass1' })
+            ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+        });
+
+        test('tags weak password with code=INVALID_PASSWORD', async () => {
+            await expect(
+                authService.registerUser({ username: 'gooduser', email: 'ok@test.com', password: 'short' })
+            ).rejects.toMatchObject({ code: 'INVALID_PASSWORD' });
+        });
     });
 
     describe('authenticateUser', () => {

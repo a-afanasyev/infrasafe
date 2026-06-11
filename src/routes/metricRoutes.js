@@ -262,16 +262,36 @@ router.get('/:id', metricController.getMetricById);
  *             properties:
  *               controller_id:
  *                 type: integer
- *               temperature:
+ *               electricity_ph1:
+ *                 type: number
+ *               electricity_ph2:
+ *                 type: number
+ *               electricity_ph3:
+ *                 type: number
+ *               amperage_ph1:
+ *                 type: number
+ *               amperage_ph2:
+ *                 type: number
+ *               amperage_ph3:
+ *                 type: number
+ *               cold_water_pressure:
+ *                 type: number
+ *               cold_water_temp:
+ *                 type: number
+ *               hot_water_in_pressure:
+ *                 type: number
+ *               hot_water_out_pressure:
+ *                 type: number
+ *               hot_water_in_temp:
+ *                 type: number
+ *               hot_water_out_temp:
+ *                 type: number
+ *               air_temp:
  *                 type: number
  *               humidity:
  *                 type: number
- *               pressure:
- *                 type: number
- *               co2_level:
- *                 type: number
- *               voltage:
- *                 type: number
+ *               leak_sensor:
+ *                 type: boolean
  *               timestamp:
  *                 type: string
  *                 format: date-time

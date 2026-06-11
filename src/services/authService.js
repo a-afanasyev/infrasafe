@@ -511,13 +511,20 @@ class AuthService {
     }
 
     // Валидация данных пользователя
+    // AUD-005: tag username/email failures with VALIDATION_ERROR (and password
+    // failures with INVALID_PASSWORD via validatePassword) so the register
+    // controller maps them to 400 instead of a generic 500.
     validateUserData({ username, email, password }) {
         if (!username || username.trim().length < 3) {
-            throw new Error('Имя пользователя должно содержать минимум 3 символа');
+            const err = new Error('Имя пользователя должно содержать минимум 3 символа');
+            err.code = 'VALIDATION_ERROR';
+            throw err;
         }
 
         if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-            throw new Error('Некорректный email адрес');
+            const err = new Error('Некорректный email адрес');
+            err.code = 'VALIDATION_ERROR';
+            throw err;
         }
 
         this.validatePassword(password);
@@ -526,11 +533,15 @@ class AuthService {
     // Валидация пароля
     validatePassword(password) {
         if (!password || password.length < 8) {
-            throw new Error('Пароль должен содержать минимум 8 символов');
+            const err = new Error('Пароль должен содержать минимум 8 символов');
+            err.code = 'INVALID_PASSWORD';
+            throw err;
         }
 
         if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
-            throw new Error('Пароль должен содержать строчные и заглавные буквы, а также цифры');
+            const err = new Error('Пароль должен содержать строчные и заглавные буквы, а также цифры');
+            err.code = 'INVALID_PASSWORD';
+            throw err;
         }
     }
 

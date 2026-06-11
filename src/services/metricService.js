@@ -37,6 +37,12 @@ const ALLOWED_METRIC_FIELDS = [
     'air_temp', 'humidity', 'leak_sensor'
 ];
 
+// [AUD-004] The numeric subset of ALLOWED_METRIC_FIELDS — every accepted field
+// except the boolean `leak_sensor` (coerced via coerceBoolish). validateMetricData
+// checks THESE (the real DB numeric columns), not the phantom voltage/power/
+// temperature fields the old validator used.
+const NUMERIC_METRIC_FIELDS = ALLOWED_METRIC_FIELDS.filter((f) => f !== 'leak_sensor');
+
 class MetricService {
     constructor() {
         this.cachePrefix = 'metric';
@@ -284,6 +290,20 @@ class MetricService {
                 throw new Error('Серийный номер контроллера обязателен');
             }
 
+            // [AUD-037] Public telemetry only: reject a timestamp outside
+            // [NOW-24h, NOW+5min]. A future or stale stamp corrupts downstream
+            // firstSeenAge math in alertService. The authenticated createMetric
+            // path is deliberately NOT gated (admin import / replay of history).
+            if (timestamp !== undefined && timestamp !== null && timestamp !== '') {
+                const ts = Date.parse(timestamp);
+                const now = Date.now();
+                if (Number.isNaN(ts) || ts > now + 5 * 60 * 1000 || ts < now - 24 * 60 * 60 * 1000) {
+                    const err = new Error('Некорректная или вне допустимого окна метка времени телеметрии');
+                    err.code = 'VALIDATION_ERROR';
+                    throw err;
+                }
+            }
+
             // Находим контроллер по серийному номеру
             const controller = await Controller.findBySerialNumber(serial_number);
             if (!controller) {
@@ -420,24 +440,34 @@ class MetricService {
 
     // Валидация данных метрики
     validateMetricData(data) {
+        // [AUD-004] All failures tagged VALIDATION_ERROR so the controllers
+        // (receiveTelemetry + createMetric) map them to 400, not a 500 that
+        // previously leaked from a pg numeric cast on bad input.
         if (!data.controller_id) {
-            throw new Error('ID контроллера обязателен');
+            const err = new Error('ID контроллера обязателен');
+            err.code = 'VALIDATION_ERROR';
+            throw err;
         }
 
-        // Валидация числовых значений
-        const numericFields = ['voltage', 'amperage', 'power', 'temperature', 'humidity'];
-
-        numericFields.forEach(field => {
-            if (data[field] !== undefined && data[field] !== null) {
-                if (typeof data[field] !== 'number' || isNaN(data[field])) {
-                    throw new Error(`Поле ${field} должно быть числом`);
+        // Validate the REAL numeric metric columns. Accept numbers and numeric
+        // strings (controllers may send "220.5"); reject genuinely non-numeric
+        // values like "abc". leak_sensor is boolean → excluded.
+        NUMERIC_METRIC_FIELDS.forEach((field) => {
+            const value = data[field];
+            if (value !== undefined && value !== null && value !== '') {
+                if (typeof value === 'boolean' || !Number.isFinite(Number(value))) {
+                    const err = new Error(`Поле ${field} должно быть числом`);
+                    err.code = 'VALIDATION_ERROR';
+                    throw err;
                 }
             }
         });
 
         // Валидация timestamp
         if (data.timestamp && isNaN(Date.parse(data.timestamp))) {
-            throw new Error('Некорректный формат времени');
+            const err = new Error('Некорректный формат времени');
+            err.code = 'VALIDATION_ERROR';
+            throw err;
         }
     }
 
