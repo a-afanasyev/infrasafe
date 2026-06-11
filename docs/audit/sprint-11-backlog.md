@@ -830,6 +830,22 @@ P2-корректность (004/005/006/007) → гигиена-батч quick 
 
 ## Closed / removed
 
+### ✅ AUD-002 + correctness batch + AUD-006 — migration runner, validation 400s, voltage escalate (closed + DEPLOYED 2026-06-12)
+
+Три PR из `AUDIT_REPORT.md`, все **развёрнуты + верифицированы на проде** (план `tingly-munching-badger.md`):
+
+- **AUD-002 (P1) + AUD-043** — полноценный DB-backed migration runner (`scripts/migrate.sh` + `schema_migrations`/`migrate_lock`, `scripts/lib/migrate-discover.js`, sentinel-matrix `baseline-prelude.sql`). Прод **baselined** (33 строки 003-034, mark-applied без выполнения), wiring включён (`MIGRATE_WIRING_ENABLED=true`), **миграция 035 — первая боевая `up` раннером**. Roll-forward-only политика + дубль-012 (filename-keyed) задокументированы (`database/migrations/README.md`). Коммиты `601a0aa` (PR-1a), `91bf2c9` (PR-1b).
+  - **Сверх плана (прод-реалии):** (1) прод-хост без `node` → раннер гоняет discover через образ `app` (`MIGRATE_NODE_MODE=auto`, резолв `docker compose images -q`, НЕ `config --images`); коммиты `4729b18`+`32a73b1`. (2) Прод bootstrap-нут из `database.sql`, не линейно — sentinel'ы 003/008/009/021 переписаны под каноническую реальность (см. ниже), без мутации прод-схемы; коммит `5dca2f4`. (3) e2e-харнесс future-proof под 035+ (`build_baseline_target`).
+- **AUD-004** — валидация числовых полей метрик (`NUMERIC_METRIC_FIELDS`, `leak_sensor` boolean-coercion) → 400 в `createMetric`+`receiveTelemetry`; swagger на реальные поля. **AUD-037** — reject telemetry timestamp вне `[NOW-24h, NOW+5min]` (только публичный `processTelemetry`). **AUD-005** — register тегирует `VALIDATION_ERROR`/`INVALID_PASSWORD` → 400. **AUD-007** — `/admin/stats` из `infrastructure_alerts WHERE status IN ('active','acknowledged')`; **AUD-029** — `logger.error` в catch. Коммит `6e3e293` (PR-2). Прод-smoke: 4× `400` (invalid email, weak pw, non-numeric `electricity_ph1`, timestamp=2099).
+- **AUD-006** — voltage escalate-in-place: WARNING VOLTAGE_ANOMALY, ухудшившийся до CRITICAL, **обновляется in-place** (UPDATE severity, реактивация, immediate notification) вместо drop'а. `activeAlerts` теперь dedup-набор (active+acknowledged); `SEVERITY_RANK`; `_escalateAlert`/`_evaluateGates`; `AlertRule.findPolicyByTypeAndSeverity` (без `enabled`-фильтра); UK `enqueueEscalation` (event `alert.escalated`, gated `UK_ESCALATION_NOTIFY`, default off). **Migration 035** — CRITICAL VOLTAGE_ANOMALY rule (persist=10s). Коммит `fa6975e` (PR-3). **Прод-синтетик пройден E2E** (controller 2): backdated-телеметрия ph1=195 ×2 (спан 65s) → WARNING alert_id=45; ph1=170 ×2 (спан 17s) → **тот же alert_id=45 эскалирован в CRITICAL**, без дубля; UK request 260612-001 создан (existing sender), `alert.escalated` НЕ ушёл (флаг off); синтетик вычищен.
+
+**Остаточные заметки (новые мелкие тикеты, P3):**
+- **AUD-006-resid-009** — `idx_token_blacklist_expires` отсутствует на проде (009 частично суперседнут; token_hash покрыт UNIQUE-ключом, но `expires_at` без индекса → minor perf для очистки протухших токенов). `CREATE INDEX IF NOT EXISTS` через раннер при случае.
+- **AUD-006-resid-021** — миграция 021 (FK `fk_alerts_metric` на legacy `alerts`) obsolete: таблицы `alerts` на проде НЕТ (alert-таблица = `infrastructure_alerts`). 021 помечена applied как no-op.
+- **AUD-004-resid** — `detectAnomalies`/`aggregateMetrics` всё ещё ссылаются на фантомные поля (`voltage`/`temperature`/...) — мёртвый/неточный код, к чистке отдельным тикетом.
+
+---
+
 ### ✅ UK-URGENCY — каноничные ключи `urgency` (closed 2026-06-06)
 
 **Контракт (от УК):** `urgency` → каноничные ключи `low | medium | high | critical` (ранее рус.

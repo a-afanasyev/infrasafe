@@ -50,7 +50,15 @@ psql postgresql://postgres:postgres@localhost:5435/infrasafe
 # Init scripts run automatically via Docker entrypoint from database/init/
 # Schema: database/init/01_init_database.sql
 # Seed data: database/init/02_seed_data.sql
-# Migrations: database/migrations/003-029 (see database/migrations/README.md)
+# Migrations: database/migrations/003-035 (see database/migrations/README.md)
+# Migration runner (AUD-002, LIVE on prod 2026-06-12): scripts/migrate.sh +
+#   schema_migrations/migrate_lock tables. Prod was baselined (003-034 marked
+#   applied without execution); update-production.sh runs `migrate status`+`up`
+#   before the app switch (MIGRATE_WIRING_ENABLED=true). 035 was the first
+#   runner-applied migration. Prod host has NO node → runner runs discover via the
+#   app image (MIGRATE_NODE_MODE=auto, resolved by `docker compose images -q`).
+#   Sentinels 003/008/009/021 are reconciled to canonical-bootstrap reality (prod
+#   came from database.sql, not a linear apply). See memory prod-migration-runner-baselined.
 # Latest migrations: 011 UK integration, 012 TOTP 2FA, 013 account lockout, 014 perf indexes,
 #                    015 alert dedup, 016 password_changed_at, 017 runtime role,
 #                    018 alert_request_map FK (Sprint 5), 019 buildings FK indexes (Sprint 5),
@@ -68,7 +76,8 @@ psql postgresql://postgres:postgres@localhost:5435/infrasafe
 #                    031 B-020 backfill orphaned resolved_verifying alerts (Sprint 11),
 #                    032 uk_urgency canonical keys (Sprint 11),
 #                    033 alert_verifications.last_checked_at (Sprint 11 AUD-001 PR-B),
-#                    034 alert_verifications dispatch/lease/sweep cols + partial index (Sprint 11 AUD-001 PR-C)
+#                    034 alert_verifications dispatch/lease/sweep cols + partial index (Sprint 11 AUD-001 PR-C),
+#                    035 CRITICAL VOLTAGE_ANOMALY rule (AUD-006: voltage escalate-in-place; first runner-applied migration)
 ```
 
 ### Migration runner (AUD-002, PR-1a)
@@ -271,6 +280,19 @@ UK_USE_WEBHOOK_SENDER=false # Master gate for the new HMAC-webhook outbound chan
                            # Default false until UK Phase 2 + secret rotation completes.
 UK_OUTBOX_DRAIN_INTERVAL_MS=2000  # Drain tick (clamped [500, 60000]). Default ≈30/мин rate.
 
+# AUD-006 — voltage escalate-in-place UK notification (deployed 2026-06-12)
+UK_ESCALATION_NOTIFY=false # Master gate for the alert.escalated UK event (a WARNING
+                           # voltage alert escalating in-place to CRITICAL). Default off
+                           # until UK confirms it treats alert.escalated as an urgency
+                           # upgrade on the existing request (by alert_id). When true,
+                           # also ensure UK_USE_WEBHOOK_SENDER=true so the drain delivers.
+                           # The escalate-in-place ALERT logic is live regardless of this flag.
+
+# Migration runner (AUD-002, LIVE 2026-06-12) — operator/deploy env, NOT app runtime:
+# MIGRATE_WIRING_ENABLED=true (update-production.sh runs status+up before app switch),
+# MIGRATE_COMPOSE_FILE, MIGRATE_PG_USER=infrasafe_app, MIGRATE_TARGET_COMMIT,
+# MIGRATE_NODE_MODE=auto|host|image (prod host has no node → image), MIGRATE_NODE_SERVICE=app.
+
 # Sprint 10 — Alert verification + reopen subsystem (deployed dormant 2026-05-23)
 ALERT_VERIFICATION_ENABLED=false       # Master gate. false = worker is created but never ticks.
                                        # Flip to true via the CR-window runbook only after
@@ -318,6 +340,6 @@ ALERT_VERIFICATION_TICK_MS=15000       # Drain interval (clamped [5000, 60000])
 - Frontend redesign (`feature/frontend-redesign`) not yet merged to main.
 - ~~Prod nginx bind-mounts individual HTML files~~ — **resolved**: HTML moved to a directory mount in B-002 (`frontend-html/`), and the nginx **config** moved to a directory mount in B-012 (`nginx-config/`, run via `nginx -c /etc/nginx/custom/nginx.production.conf`). Both inode-traps are closed; `git pull` + `nginx -s reload` now picks up changes without `--force-recreate`.
 - `alertService` persistence gate only fully implemented for LEAK_DETECTED+controller path (SQL aggregation on `metrics`). Other types fail-open in v1, pending rolling-window metric aggregations.
-- **LEAK auto-trigger now live (B-005-LEAK, 2026-05-26)**: `metricService.createMetric` эмитит `alertEvents.LEAK_CHECK` после `leak_sensor=true` insert; `alertService.checkLeak(controllerId)` listener → persistence-gated `createAlert` → UK pipeline. End-to-end ~5 сек в проде verified. **VOLTAGE/HEATING всё ещё manual-only** — следующий тикет B-005 (VOLTAGE+HEATING) в `docs/audit/sprint-11-backlog.md`. Cooldown gotcha (commit `e15436f`): для checkLeak/checkVoltage/checkHeating bump `lastChecks` ТОЛЬКО на success — gate denial должен оставлять cooldown unset, иначе persistence-gate маскируется до конца cooldown window'а.
+- **LEAK auto-trigger now live (B-005-LEAK, 2026-05-26)**: `metricService.createMetric` эмитит `alertEvents.LEAK_CHECK` после `leak_sensor=true` insert; `alertService.checkLeak(controllerId)` listener → persistence-gated `createAlert` → UK pipeline. End-to-end ~5 сек в проде verified. **VOLTAGE + HEATING auto-trigger ТОЖЕ live** (B-005 Sprint 11): `metricService` эмитит `VOLTAGE_CHECK` при любом non-null фазном напряжении (`metricService.js:242`) и `HEATING_CHECK` при `hot_water_in_temp` → listeners `checkVoltage`/`checkHeating`. Voltage-пороги: warn 198-242, crit 180-260; persistence WARNING=60s / CRITICAL=10s. **VOLTAGE escalate-in-place LIVE (AUD-006, 2026-06-12, migration 035):** WARNING→CRITICAL обновляет тот же `alert_id` in-place (UPDATE severity + реактивация + immediate notification) вместо drop'а; UK-нотификация эскалации (`alert.escalated`) gated `UK_ESCALATION_NOTIFY` (default off, dormant до подтверждения УК). Прод-synthetic verified (controller 2: alert_id сохранён WARNING→CRITICAL). Cooldown gotcha (commit `e15436f`): для checkLeak/checkVoltage/checkHeating bump `lastChecks` ТОЛЬКО на success — gate denial должен оставлять cooldown unset, иначе persistence-gate маскируется до конца cooldown window'а.
 
 NEVER delete the project directory or run rm -rf in the project root.
