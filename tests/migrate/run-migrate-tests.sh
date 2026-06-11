@@ -22,7 +22,6 @@ cd "$ROOT"
 COMPOSE="$HERE/docker-compose.migrate-test.yml"
 SEED="$HERE/synthetic-baseline-seed.sql"
 PGDB="infrasafe_migrate_test"
-HEAD_SHA="$(git rev-parse HEAD)"
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; NC='\033[0m'
 PASS=0; FAIL=0
@@ -60,16 +59,41 @@ migrate() {
         bash scripts/migrate.sh "$@"
 }
 
-# build a dangling commit = HEAD + one migration file, without touching the
-# working tree / index / branches. echoes the commit SHA.
+# build a dangling commit = BASELINE_TARGET + one migration file, without touching
+# the working tree / index / branches. echoes the commit SHA. Based on
+# BASELINE_TARGET (003-034 only) so an `up`-test adds exactly ONE pending file,
+# regardless of real 035+ migrations present in HEAD.
 commit_with() {  # $1=filename  $2=content
     local fn="$1" content="$2" idx blob tree commit
     idx="$(mktemp)"
-    GIT_INDEX_FILE="$idx" git read-tree HEAD
+    GIT_INDEX_FILE="$idx" git read-tree "$BASELINE_TARGET"
     blob="$(printf '%s' "$content" | git hash-object -w --stdin)"
     GIT_INDEX_FILE="$idx" git update-index --add --cacheinfo "100644,$blob,database/migrations/$fn"
     tree="$(GIT_INDEX_FILE="$idx" git write-tree)"
-    commit="$(git commit-tree "$tree" -p HEAD -m "e2e: $fn")"
+    commit="$(git commit-tree "$tree" -p "$BASELINE_TARGET" -m "e2e: $fn")"
+    rm -f "$idx"
+    echo "$commit"
+}
+
+# Stable baseline target: HEAD's tree with database/migrations/ pruned to ONLY the
+# 33 frozen allowlist files (003-034). Real migrations beyond the allowlist (035
+# voltage rule, 036+) live in HEAD and go through `up` on prod — they must NOT be
+# in the baseline target, or `baseline` would reject them and `status` would count
+# them pending. Echoes the dangling commit SHA. Future-proofs the harness as new
+# migrations land.
+build_baseline_target() {
+    local idx tree commit p fn allow
+    idx="$(mktemp)"
+    GIT_INDEX_FILE="$idx" git read-tree HEAD
+    allow="$(node scripts/lib/migrate-discover.js allowlist)"
+    while IFS= read -r p; do
+        [ -z "$p" ] && continue
+        fn="${p##*/}"
+        printf '%s\n' "$allow" | grep -qxF -- "$fn" \
+            || GIT_INDEX_FILE="$idx" git update-index --force-remove "$p"
+    done < <(git ls-tree -r --name-only HEAD -- database/migrations/ | grep -E '\.sql$')
+    tree="$(GIT_INDEX_FILE="$idx" git write-tree)"
+    commit="$(git commit-tree "$tree" -p HEAD -m 'e2e: baseline target (003-034 only)')"
     rm -f "$idx"
     echo "$commit"
 }
@@ -80,6 +104,9 @@ runtime_grants_on_runner() {
 }
 
 # --- bring up + seed -------------------------------------------------------
+BASELINE_TARGET="$(build_baseline_target)"
+info "baseline target (003-034 only): $(git rev-parse --short "$BASELINE_TARGET") (HEAD $(git rev-parse --short HEAD))"
+
 info "starting ephemeral postgres (project infrasafe-migrate-test)"
 docker compose -f "$COMPOSE" up -d >/dev/null
 for i in $(seq 1 30); do
@@ -91,14 +118,14 @@ info "synthetic baseline seed loaded"
 
 # ===========================================================================
 info "1) fail-close before baseline (no schema_migrations table)"
-rc=0; migrate "$HEAD_SHA" status >/dev/null 2>&1 || rc=$?
+rc=0; migrate "$BASELINE_TARGET" status >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 2 ] && pass "status fail-closes with exit 2" || fail "status exit $rc (want 2)"
-rc=0; migrate "$HEAD_SHA" up >/dev/null 2>&1 || rc=$?
+rc=0; migrate "$BASELINE_TARGET" up >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 2 ] && pass "up fail-closes with exit 2" || fail "up exit $rc (want 2)"
 
 # ===========================================================================
 info "2) baseline: sentinel matrix passes, marks 33 applied, both tables, ACL revoked"
-rc=0; migrate "$HEAD_SHA" baseline >/dev/null 2>&1 || rc=$?
+rc=0; migrate "$BASELINE_TARGET" baseline >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 0 ] && pass "baseline exit 0" || fail "baseline exit $rc (want 0)"
 n="$(count_applied)"; [ "$n" = "33" ] && pass "schema_migrations has 33 rows" || fail "rows=$n (want 33)"
 t="$(tpsql -c "SELECT (to_regclass('public.migrate_lock') IS NOT NULL)")"
@@ -107,21 +134,21 @@ g="$(runtime_grants_on_runner)"; [ "$g" = "0" ] && pass "ACL: runtime has 0 gran
 
 # ===========================================================================
 info "3) baseline refuses to re-run once schema_migrations exists"
-rc=0; migrate "$HEAD_SHA" baseline >/dev/null 2>&1 || rc=$?
+rc=0; migrate "$BASELINE_TARGET" baseline >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 1 ] && pass "second baseline exits 1" || fail "second baseline exit $rc (want 1)"
 
 # ===========================================================================
 info "4) status clean: 33 applied, 0 pending, exit 0"
-out="$(migrate "$HEAD_SHA" status 2>/dev/null)"; rc=$?
+out="$(migrate "$BASELINE_TARGET" status 2>/dev/null)"; rc=$?
 echo "$out" | grep -q "applied=33 pending=0 drift=0 db_only=0" && pass "status reports applied=33 pending=0" || fail "status: $out"
 [ "${rc:-0}" -eq 0 ] && pass "status exit 0 when clean" || fail "status exit $rc"
 
 # ===========================================================================
 info "5) ACL: manual grant → status warns → repair-acl restores"
 tpsql -c "GRANT SELECT ON schema_migrations TO infrasafe_runtime" >/dev/null
-warnout="$(migrate "$HEAD_SHA" status 2>&1 >/dev/null || true)"
+warnout="$(migrate "$BASELINE_TARGET" status 2>&1 >/dev/null || true)"
 echo "$warnout" | grep -qi "ACL" && pass "status warns on ACL violation" || fail "no ACL warning: $warnout"
-migrate "$HEAD_SHA" repair-acl >/dev/null 2>&1
+migrate "$BASELINE_TARGET" repair-acl >/dev/null 2>&1
 g="$(runtime_grants_on_runner)"; [ "$g" = "0" ] && pass "repair-acl re-revoked (0 grants)" || fail "after repair-acl grants=$g"
 
 # ===========================================================================
@@ -141,27 +168,27 @@ tpsql -c "DELETE FROM schema_migrations WHERE filename='035_e2e_marker.sql'" >/d
 # ===========================================================================
 info "7) drift: an edited applied-migration checksum makes status exit 5"
 tpsql -c "UPDATE schema_migrations SET checksum='deadbeef' WHERE filename='022_uk_outbox.sql'" >/dev/null
-rc=0; migrate "$HEAD_SHA" status >/dev/null 2>&1 || rc=$?
+rc=0; migrate "$BASELINE_TARGET" status >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 5 ] && pass "checksum drift → status exit 5" || fail "drift status exit $rc (want 5)"
 tpsql -c "DELETE FROM schema_migrations WHERE filename='022_uk_outbox.sql'" >/dev/null
 # re-record correct checksum via a fresh up so later steps stay clean
-migrate "$HEAD_SHA" up >/dev/null 2>&1 || true
+migrate "$BASELINE_TARGET" up >/dev/null 2>&1 || true
 
 # ===========================================================================
 info "8) db-only: a recorded file absent from target makes status exit 5"
 tpsql -c "INSERT INTO schema_migrations(filename,checksum) VALUES ('999_ghost.sql','x')" >/dev/null
-rc=0; migrate "$HEAD_SHA" status >/dev/null 2>&1 || rc=$?
+rc=0; migrate "$BASELINE_TARGET" status >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 5 ] && pass "db-only → status exit 5" || fail "db-only status exit $rc (want 5)"
 tpsql -c "DELETE FROM schema_migrations WHERE filename='999_ghost.sql'" >/dev/null
 
 # ===========================================================================
 info "9) migrate_lock row-mutex: a foreign lock blocks up; force-unlock clears it"
 tpsql -c "INSERT INTO migrate_lock(id,locked_by,locked_at) VALUES (1,'someone-else',now())" >/dev/null
-rc=0; migrate "$HEAD_SHA" up >/dev/null 2>&1 || rc=$?
+rc=0; migrate "$BASELINE_TARGET" up >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 1 ] && pass "up aborts while lock held (exit 1)" || fail "locked up exit $rc (want 1)"
 held="$(tpsql -c "SELECT count(*) FROM migrate_lock WHERE id=1")"
 [ "$held" = "1" ] && pass "foreign lock NOT stolen by aborted run" || fail "lock rows=$held (want 1)"
-migrate "$HEAD_SHA" force-unlock >/dev/null 2>&1
+migrate "$BASELINE_TARGET" force-unlock >/dev/null 2>&1
 held="$(tpsql -c "SELECT count(*) FROM migrate_lock WHERE id=1")"
 [ "$held" = "0" ] && pass "force-unlock cleared the lock" || fail "after force-unlock rows=$held"
 
@@ -180,7 +207,7 @@ held="$(tpsql -c "SELECT count(*) FROM migrate_lock WHERE id=1")"
 # ===========================================================================
 info "11) pinned-blob: a dirtied worktree migration file is ignored (target blob wins)"
 echo "-- e2e junk appended to worktree (must be ignored by runner)" >> database/migrations/022_uk_outbox.sql
-rc=0; migrate "$HEAD_SHA" status >/dev/null 2>&1 || rc=$?
+rc=0; migrate "$BASELINE_TARGET" status >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 0 ] && pass "worktree edit ignored — status still clean (reads target blob)" || fail "status exit $rc with dirty worktree (want 0)"
 git checkout -- database/migrations/022_uk_outbox.sql
 
@@ -206,9 +233,9 @@ info "13) image-mode discover_js: runner works with NO host node (prod path)"
 # differing checksum or discovery would flip an applied file to drift/pending and
 # diverge the lines. Regression guard for the node-not-found prod bug. (We compare
 # to host-mode rather than hardcode counts, since earlier steps mutated state.)
-host_line="$(migrate "$HEAD_SHA" status 2>/dev/null | grep '^migrate-status:' || true)"
+host_line="$(migrate "$BASELINE_TARGET" status 2>/dev/null | grep '^migrate-status:' || true)"
 img_line="$(MIGRATE_COMPOSE_FILE="$COMPOSE" MIGRATE_PG_SERVICE=postgres MIGRATE_PG_USER=postgres \
-    MIGRATE_PG_DB="$PGDB" MIGRATE_TARGET_COMMIT="$HEAD_SHA" \
+    MIGRATE_PG_DB="$PGDB" MIGRATE_TARGET_COMMIT="$BASELINE_TARGET" \
     MIGRATE_NODE_MODE=image MIGRATE_NODE_SERVICE=mignode \
     bash scripts/migrate.sh status 2>/dev/null | grep '^migrate-status:' || true)"
 [ -n "$img_line" ] && pass "image-mode status ran (node via image)" || fail "image-mode produced no status line"
@@ -217,7 +244,7 @@ img_line="$(MIGRATE_COMPOSE_FILE="$COMPOSE" MIGRATE_PG_SERVICE=postgres MIGRATE_
     || fail "host[$host_line] != image[$img_line]"
 # invalid mode is rejected loudly
 rc=0; MIGRATE_COMPOSE_FILE="$COMPOSE" MIGRATE_PG_USER=postgres MIGRATE_PG_DB="$PGDB" \
-    MIGRATE_TARGET_COMMIT="$HEAD_SHA" MIGRATE_NODE_MODE=bogus \
+    MIGRATE_TARGET_COMMIT="$BASELINE_TARGET" MIGRATE_NODE_MODE=bogus \
     bash scripts/migrate.sh status >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 1 ] && pass "invalid MIGRATE_NODE_MODE rejected (exit 1)" || fail "bogus mode exit $rc (want 1)"
 
