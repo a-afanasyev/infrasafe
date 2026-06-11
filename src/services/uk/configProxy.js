@@ -60,6 +60,16 @@ class UKConfigProxy {
         }
     }
 
+    /**
+     * [AUD-006] Master gate for the new `alert.escalated` UK notification
+     * (severity escalate-in-place). ENV-driven, default OFF — only the exact
+     * strings "true"/"1" enable it, so a stray "false" is never truthy.
+     */
+    isEscalationNotifyEnabled() {
+        const v = (process.env.UK_ESCALATION_NOTIFY ?? '').toString().trim().toLowerCase();
+        return v === 'true' || v === '1';
+    }
+
     /** Get all config merged with masked sensitive values. */
     async getConfig() {
         const dbConfig = await IntegrationConfig.getAll();

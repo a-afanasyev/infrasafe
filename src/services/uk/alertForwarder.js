@@ -231,14 +231,23 @@ class UKAlertForwarder {
     // [AUD-001 PR-B Step 5b] Canonical outbound alert body (extracted so the
     // engineer path and the alert.created path build byte-identical shapes; the
     // exact bytes are HMAC-signed at send time by ukWebhookClient).
-    _buildAlertEventBody(alertData, building, eventId, rule, { engineerRequired = false } = {}) {
+    _buildAlertEventBody(alertData, building, eventId, rule, { engineerRequired = false, escalated = false } = {}) {
         const isReopen = !!alertData.reopen_chain_id && (alertData.reopen_sequence || 1) > 1;
         const effectiveUrgency = (isReopen && rule.reopen_urgency_bump)
             ? bumpUrgency(rule.uk_urgency)
             : toUrgencyKey(rule.uk_urgency);
+        let event = 'alert.created';
+        if (engineerRequired) event = 'alert.engineer_required';
+        else if (escalated) event = 'alert.escalated';
+        // [AUD-006] escalate-in-place → UK upgrades the EXISTING request's urgency
+        // by alert_id; the override carries the (CRITICAL) policy's urgency key.
+        let urgencyOverride = null;
+        if (engineerRequired) urgencyOverride = 'critical';
+        else if (escalated) urgencyOverride = toUrgencyKey(rule.uk_urgency);
+        else if (isReopen) urgencyOverride = effectiveUrgency;
         return JSON.stringify({
             event_id: eventId,
-            event: engineerRequired ? 'alert.engineer_required' : 'alert.created',
+            event,
             timestamp: new Date().toISOString(),
             alert: {
                 external_id: building.external_id,
@@ -256,11 +265,90 @@ class UKAlertForwarder {
                 reopen_chain_id: alertData.reopen_chain_id || null,
                 reopen_sequence: alertData.reopen_sequence || 1,
                 related_request_number: alertData.previous_uk_request_number || null,
-                uk_urgency_override: engineerRequired ? 'critical' : (isReopen ? effectiveUrgency : null),
+                uk_urgency_override: urgencyOverride,
                 uk_category_override: engineerRequired ? 'Инженерный разбор' : null,
                 engineer_required_reason: engineerRequired ? 'max_reopens_per_24h' : null
             }
         });
+    }
+
+    // [AUD-006] Deterministic, AlertRequestMap-free event_id for a severity
+    // escalation. Keyed on (alert_id, severity, building) — severity is in the key
+    // so a WARNING→CRITICAL escalation never collides with a hypothetical earlier
+    // escalation at a different severity. Re-emits collapse via uk_outbox UNIQUE.
+    _escalationEventId(alertId, severity, externalId) {
+        const hash = crypto.createHash('sha1')
+            .update(`alert_escalated:${alertId}:${severity}:${externalId}`)
+            .digest();
+        const b = Buffer.from(hash.subarray(0, 16));
+        b[6] = (b[6] & 0x0f) | 0x50; // version 5
+        b[8] = (b[8] & 0x3f) | 0x80; // RFC 4122 variant
+        const h = b.toString('hex');
+        return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+    }
+
+    /**
+     * [AUD-006] Voltage escalate-in-place UK notification. Mirrors
+     * _enqueueEngineerEscalation: NO AlertRequestMap (escalation is an urgency
+     * upgrade on the EXISTING request, keyed by alert_id), deterministic event_id
+     * for durable idempotency, enqueue ALWAYS (outside the UK_USE_WEBHOOK_SENDER
+     * gate — the outbox is the durable buffer), reviveDead on a dead duplicate.
+     * The `policy` is passed in by the caller (no re-lookup → no TOCTOU). The
+     * UK_ESCALATION_NOTIFY flag + policy.enabled are gated by the caller; this
+     * method still self-checks integration-enabled. Returns true iff every target
+     * building (those with external_id) has a non-dead outbox row.
+     */
+    async enqueueEscalation(alertData, policy) {
+        if (!policy) return false;
+        const enabled = await configProxy.isEnabled();
+        if (!enabled) return false;
+
+        const buildings = await this.resolveBuildingIds(alertData.infrastructure_id, alertData.infrastructure_type);
+        const targets = buildings.filter((b) => b.external_id);
+        if (!targets.length) {
+            logger.debug(`escalation alert ${alertData.alert_id}: no buildings with external_id`);
+            return false;
+        }
+
+        let allDelivered = true;
+        for (const building of targets) {
+            try {
+                const eventId = this._escalationEventId(alertData.alert_id, alertData.severity, building.external_id);
+                const eventBody = this._buildAlertEventBody(alertData, building, eventId, policy, { escalated: true });
+                const enq = await UkOutbox.enqueue({ event_id: eventId, payload_body: eventBody });
+                if (enq) {
+                    await webhookVerifier.logEvent({
+                        direction: 'to_uk',
+                        entity_type: 'alert',
+                        entity_id: String(alertData.alert_id),
+                        action: 'alert.escalated.enqueued',
+                        payload: { alert_id: alertData.alert_id, building_id: building.building_id, event_id: eventId, severity: alertData.severity },
+                        status: 'pending'
+                    }).catch((logErr) => logger.warn(`escalation: integration_log write failed: ${logErr.message}`));
+                    logger.info(`escalation enqueued event_id=${eventId} for alert ${alertData.alert_id}, building ${building.building_id}`);
+                } else {
+                    const existing = await UkOutbox.findByEventId(eventId);
+                    if (!existing) {
+                        allDelivered = false;
+                        logger.warn(`escalation event_id=${eventId} missing after ON CONFLICT — not delivered`);
+                    } else if (existing.status === 'dead') {
+                        const revived = await UkOutbox.reviveDead(eventId);
+                        if (revived) {
+                            logger.info(`escalation event_id=${eventId} revived from dead → pending`);
+                        } else {
+                            allDelivered = false;
+                            logger.warn(`escalation event_id=${eventId} dead and reviveDead matched 0 rows — not delivered`);
+                        }
+                    } else {
+                        logger.debug(`escalation event_id=${eventId} already ${existing.status} (duplicate ok)`);
+                    }
+                }
+            } catch (buildingError) {
+                allDelivered = false;
+                logger.error(`escalation enqueue failed for building ${building.building_id}: ${buildingError.message}`);
+            }
+        }
+        return allDelivered;
     }
 
     async sendAlertToUK(alertData, options = {}) {

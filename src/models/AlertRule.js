@@ -172,6 +172,25 @@ class AlertRule {
         }
     }
 
+    // [AUD-006] Enabled-AGNOSTIC policy lookup for escalate-in-place. Unlike
+    // findByTypeAndSeverity, this returns the row even when enabled=false: the
+    // escalation still bumps the alert's severity in place (a disabled rule only
+    // suppresses the UK notification). The `enabled` flag is surfaced so the
+    // caller decides whether to notify. A null here is the fail-CLOSE signal —
+    // no policy row means no escalation at all.
+    static async findPolicyByTypeAndSeverity(alertType, severity) {
+        try {
+            const result = await db.query(
+                'SELECT * FROM alert_rules WHERE alert_type = $1 AND severity = $2',
+                [alertType, severity]
+            );
+            return result.rows[0] || null;
+        } catch (error) {
+            logger.error(`AlertRule.findPolicyByTypeAndSeverity error: ${error.message}`);
+            throw error;
+        }
+    }
+
     /**
      * [Sprint 10 PR-5] Rules + per-rule activity stats for the admin UI
      * dashboard. Stats: count of alerts created in last `withinDays`

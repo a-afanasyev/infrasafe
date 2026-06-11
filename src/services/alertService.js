@@ -32,6 +32,10 @@ const COOLDOWN_SUFFIX_BY_TYPE = Object.freeze({
     HEATING_FAILURE: 'heating_check'
 });
 
+// [AUD-006] Total order over severities — escalate-in-place only fires when a
+// newly-classified severity outranks the currently-active one.
+const SEVERITY_RANK = Object.freeze({ INFO: 0, WARNING: 1, CRITICAL: 2 });
+
 class InfrastructureAlertService {
     constructor() {
         // Circuit breaker для операций с БД
@@ -121,10 +125,13 @@ class InfrastructureAlertService {
     // Загрузка активных алертов при старте
     async loadActiveAlerts() {
         try {
+            // [AUD-006 B0] The map is a dedup SET, so load BOTH active and
+            // acknowledged alerts (an acknowledged alert is still "open" and must
+            // be findable for escalate-in-place). Each entry carries its status.
             const query = `
-                SELECT alert_id, type, infrastructure_id, infrastructure_type, severity, created_at
+                SELECT alert_id, type, infrastructure_id, infrastructure_type, severity, status, created_at
                 FROM infrastructure_alerts
-                WHERE status = 'active'
+                WHERE status IN ('active', 'acknowledged')
                 ORDER BY created_at DESC
             `;
 
@@ -135,7 +142,8 @@ class InfrastructureAlertService {
                 this.activeAlerts.set(key, {
                     alert_id: alert.alert_id,
                     created_at: alert.created_at,
-                    severity: alert.severity
+                    severity: alert.severity,
+                    status: alert.status
                 });
             }
 
@@ -545,7 +553,16 @@ class InfrastructureAlertService {
         const checkKey = `controller:${controllerId}:voltage_check`;
         const now = Date.now();
 
-        if (!opts.bypassCooldown && this.lastChecks.has(checkKey)) {
+        // [AUD-006] An OPEN sub-critical VOLTAGE alert (active OR acknowledged)
+        // must be ESCALATED by a worsening reading rather than dropped — so it
+        // BYPASSES the cooldown short-circuit. Verify mode keeps the old behavior
+        // (escalationPossible stays false). Single-replica: loadActiveAlerts keeps
+        // the map authoritative; the DB fallback below covers stale/multi-replica.
+        const alertKey = `controller:${controllerId}:VOLTAGE_ANOMALY`;
+        const inMem = verifyMode ? null : this.activeAlerts.get(alertKey);
+        const escalationPossible = !!inMem && SEVERITY_RANK[inMem.severity] < SEVERITY_RANK.CRITICAL;
+
+        if (!opts.bypassCooldown && !escalationPossible && this.lastChecks.has(checkKey)) {
             const lastCheck = this.lastChecks.get(checkKey);
             if (now - lastCheck < this.alertCooldown * 60 * 1000) {
                 return verifyMode ? { checked: false, alert: null } : null;
@@ -574,19 +591,48 @@ class InfrastructureAlertService {
                 return null;
             }
 
-            // In-memory dedup — fast path before DB. The dedup key is per
-            // alert-type, so a WARNING alert active doesn't block a later
-            // CRITICAL alert (different key). createAlert's DB-level partial
-            // unique index handles the deeper invariant.
-            const alertKey = `controller:${controllerId}:VOLTAGE_ANOMALY`;
-            if (this.activeAlerts.has(alertKey)) {
-                logger.debug(`VOLTAGE_ANOMALY для контроллера ${controllerId} уже активен`);
+            // [AUD-006] Escalate-in-place. An OPEN lower-severity alert (active or
+            // acknowledged) is UPGRADED rather than dropped. The in-mem entry is
+            // the fast path; fall back to a DB read when the map is empty.
+            const existing = inMem || (await this._findActiveAlert('controller', controllerId, 'VOLTAGE_ANOMALY'));
+            if (existing) {
+                if (SEVERITY_RANK[severity] > SEVERITY_RANK[existing.severity]) {
+                    const r = await this._escalateAlert(existing, this._buildVoltageAlertData(controllerId, severity));
+                    switch (r.outcome) {
+                        case 'escalated':
+                            this.lastChecks.set(checkKey, now);
+                            return r.alert;
+                        case 'alreadyCritical':
+                            // Map already synced to the real (≥target) row.
+                            this.lastChecks.set(checkKey, now);
+                            return null;
+                        case 'denied':
+                        case 'retry':
+                            // Gate/fail-close or a race — do NOT bump cooldown so the
+                            // next metric re-evaluates promptly.
+                            return null;
+                        case 'gone': {
+                            // The alert closed under us — create a fresh one with the
+                            // policy snapshot (TOCTOU-safe) the escalation already read.
+                            this.activeAlerts.delete(alertKey);
+                            const created = await this.createAlert(
+                                this._buildVoltageAlertData(controllerId, severity),
+                                { ruleSnapshot: r.policy }
+                            );
+                            if (created) this.lastChecks.set(checkKey, now);
+                            return created;
+                        }
+                        default:
+                            return null;
+                    }
+                }
+                // Same or lower severity than the open alert → already covered.
                 this.lastChecks.set(checkKey, now);
                 return null;
             }
 
+            // No open alert → create a fresh one.
             const alertData = this._buildVoltageAlertData(controllerId, severity);
-
             const createdAlert = await this.createAlert(alertData);
             if (createdAlert) {
                 this.lastChecks.set(checkKey, now);
@@ -759,6 +805,148 @@ class InfrastructureAlertService {
             [controllerId, heating.hot_water_in_critical]
         );
         return result.rows.length > 0;
+    }
+
+    // [AUD-006 B0] Count of in-memory entries whose status is 'active' (the map
+    // also holds 'acknowledged' entries — still open, but not "active").
+    _activeCount() {
+        let n = 0;
+        for (const a of this.activeAlerts.values()) {
+            if (a.status === 'active') n += 1;
+        }
+        return n;
+    }
+
+    // [AUD-006] DB fallback for the dedup set: the newest OPEN (active or
+    // acknowledged) alert of this type for the infrastructure. Used by checkVoltage
+    // when the in-memory map is empty (e.g. just after a restart on another
+    // replica) and by _escalateAlert's race re-read.
+    async _findActiveAlert(infrastructureType, infrastructureId, type) {
+        const result = await db.query(
+            `SELECT alert_id, created_at, severity, status
+             FROM infrastructure_alerts
+             WHERE infrastructure_type = $1 AND infrastructure_id = $2 AND type = $3
+               AND status IN ('active', 'acknowledged')
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [infrastructureType, infrastructureId, type]
+        );
+        return result.rows[0] || null;
+    }
+
+    // [AUD-006] Shared gate evaluation extracted from createAlert so escalate-in-
+    // place applies the SAME persistence + affected-buildings gates before bumping
+    // severity. Returns { allowed, reason }; denies (short-circuits) on the first
+    // failing gate.
+    async _evaluateGates(alertData, rule, sinceTimestamp = null) {
+        const persistenceCheck = await this._checkPersistenceGate(alertData, rule, sinceTimestamp);
+        if (!persistenceCheck.allowed) return persistenceCheck;
+        return await this._checkAffectedBuildingsGate(alertData, rule);
+    }
+
+    // [AUD-006] Escalate an OPEN alert's severity IN PLACE instead of dropping a
+    // worse reading. Returns an explicit {outcome}:
+    //   escalated       — UPDATE bumped severity; alert reactivated + (maybe) UK-notified
+    //   alreadyCritical — a concurrent run already reached ≥ target severity
+    //   gone            — the alert closed between the in-mem read and the UPDATE
+    //   denied          — fail-CLOSE (no policy) or a gate denied
+    //   retry           — race left a lower-severity alert; next tick re-escalates
+    //
+    // Durability mirrors the engineer-escalation path (non-atomic): UPDATE via the
+    // dbBreaker, then BEST-EFFORT immediate notification + UK enqueue (deterministic
+    // event_id → idempotent). We deliberately call sendImmediateNotification, NOT
+    // sendNotifications, so escalation never emits ALERT_CREATED (which would create
+    // a SECOND UK request for the same alert_id).
+    async _escalateAlert(existing, newAlertData) {
+        const AlertRule = require('../models/AlertRule');
+        const targetSeverity = newAlertData.severity;
+
+        // Fail-CLOSE: escalation requires a policy row for the TARGET severity.
+        const policy = await AlertRule.findPolicyByTypeAndSeverity(newAlertData.type, targetSeverity);
+        if (!policy) {
+            logger.info(`Escalation denied: no policy for ${newAlertData.type}/${targetSeverity}`);
+            return { outcome: 'denied' };
+        }
+
+        // Same persistence + affected-buildings gates as a fresh alert.
+        const gates = await this._evaluateGates(newAlertData, policy);
+        if (!gates.allowed) {
+            logger.info(`Escalation denied by gate: ${newAlertData.type}/${targetSeverity} — ${gates.reason}`);
+            return { outcome: 'denied' };
+        }
+
+        const alertKey = `${newAlertData.infrastructure_type}:${newAlertData.infrastructure_id}:${newAlertData.type}`;
+
+        return await this.dbBreaker.execute(async () => {
+            const upd = await db.query(
+                `UPDATE infrastructure_alerts
+                 SET severity = $2,
+                     message = $3,
+                     data = COALESCE(data::jsonb, '{}'::jsonb) || $4::jsonb,
+                     status = 'active',
+                     acknowledged_at = NULL,
+                     acknowledged_by = NULL
+                 WHERE alert_id = $1
+                   AND status IN ('active', 'acknowledged')
+                   AND severity <> $2
+                 RETURNING alert_id, created_at`,
+                [existing.alert_id, targetSeverity, newAlertData.message, JSON.stringify(newAlertData.data || {})]
+            );
+
+            if (upd.rows.length === 0) {
+                // The row wasn't updated — it either closed, or another run already
+                // moved it. Re-read the open alert to decide.
+                const found = await this._findActiveAlert(
+                    newAlertData.infrastructure_type, newAlertData.infrastructure_id, newAlertData.type
+                );
+                if (!found) {
+                    this.activeAlerts.delete(alertKey);
+                    return { outcome: 'gone', policy };
+                }
+                // Sync the map to the real DB row.
+                this.activeAlerts.set(alertKey, {
+                    alert_id: found.alert_id, created_at: found.created_at,
+                    severity: found.severity, status: found.status
+                });
+                if (SEVERITY_RANK[found.severity] >= SEVERITY_RANK[targetSeverity]) {
+                    return { outcome: 'alreadyCritical' };
+                }
+                return { outcome: 'retry' };
+            }
+
+            const { alert_id: alertId, created_at: createdAt } = upd.rows[0];
+            this.activeAlerts.set(alertKey, {
+                alert_id: alertId, created_at: createdAt, severity: targetSeverity, status: 'active'
+            });
+
+            const escalatedAlert = {
+                ...newAlertData, alert_id: alertId, created_at: createdAt,
+                severity: targetSeverity, escalated: true
+            };
+
+            // Best-effort immediate notification (a failure must NOT undo the bump).
+            try {
+                await this.sendImmediateNotification(escalatedAlert, alertId);
+            } catch (notifyErr) {
+                logger.error(`Escalation immediate notification failed for alert ${alertId}: ${notifyErr.message}`);
+            }
+
+            // Best-effort UK escalation notify — gated by the rule being enabled AND
+            // the UK_ESCALATION_NOTIFY master flag. Idempotent enqueue (deterministic
+            // event_id) provides durability without an atomic txn.
+            const configProxy = require('./uk/configProxy');
+            if (policy.enabled && configProxy.isEscalationNotifyEnabled()) {
+                try {
+                    const alertForwarder = require('./uk/alertForwarder');
+                    await alertForwarder.enqueueEscalation(escalatedAlert, policy);
+                } catch (enqErr) {
+                    logger.error(`Escalation UK enqueue failed for alert ${alertId}: ${enqErr.message}`);
+                }
+            }
+
+            logger.info(`Alert ${alertId} escalated in place → ${targetSeverity} (${newAlertData.infrastructure_type}:${newAlertData.infrastructure_id})`);
+            return { outcome: 'escalated', alert: escalatedAlert };
+        });
     }
 
     // [Sprint 10 PR-1] Persistence gate. Returns { allowed, reason }.
@@ -1115,11 +1303,14 @@ class InfrastructureAlertService {
             const createdAt = result.rows[0].created_at;
 
             // Добавляем в активные алерты
+            // [AUD-006 B0] entry carries status so the dedup set distinguishes
+            // active from acknowledged (escalate-in-place needs both).
             const alertKey = `${alertData.infrastructure_type}:${alertData.infrastructure_id}:${alertData.type}`;
             this.activeAlerts.set(alertKey, {
                 alert_id: alertId,
                 created_at: createdAt,
-                severity: alertData.severity
+                severity: alertData.severity,
+                status: 'active'
             });
 
             // Отправляем уведомления
@@ -1250,9 +1441,15 @@ class InfrastructureAlertService {
 
             const alert = result.rows[0];
 
-            // Удаляем из активных алертов
+            // [AUD-006 B0] Do NOT delete — flip the in-memory entry's status to
+            // 'acknowledged'. The dedup set keeps acknowledged alerts so a later
+            // escalate-in-place can find and upgrade them. resolveAlert still
+            // deletes (a resolved alert leaves the open set).
             const alertKey = `${alert.infrastructure_type}:${alert.infrastructure_id}:${alert.type}`;
-            this.activeAlerts.delete(alertKey);
+            const existing = this.activeAlerts.get(alertKey);
+            if (existing) {
+                this.activeAlerts.set(alertKey, { ...existing, status: 'acknowledged' });
+            }
 
             logger.info(`Алерт ${alertId} подтвержден пользователем ${userId}`);
 
@@ -1643,7 +1840,7 @@ class InfrastructureAlertService {
         return {
             period_days: safeDays,
             statistics: result.rows,
-            active_alerts_count: this.activeAlerts.size
+            active_alerts_count: this._activeCount()
         };
     }
 
@@ -1661,7 +1858,7 @@ class InfrastructureAlertService {
     // Статус сервиса алертов
     getStatus() {
         return {
-            active_alerts: this.activeAlerts.size,
+            active_alerts: this._activeCount(),
             last_checks: this.lastChecks.size,
             cooldown_minutes: this.alertCooldown,
             thresholds: this.thresholds,
@@ -1786,5 +1983,6 @@ for (const [event, method] of VERIFY_LISTENER_MAP) {
 
 // [AUD-003] Expose the suffix map for the drift guard test (read-only).
 singleton.COOLDOWN_SUFFIX_BY_TYPE = COOLDOWN_SUFFIX_BY_TYPE;
+singleton.SEVERITY_RANK = SEVERITY_RANK;
 
 module.exports = singleton;

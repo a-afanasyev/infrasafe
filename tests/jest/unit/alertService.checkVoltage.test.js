@@ -41,6 +41,7 @@ jest.mock('../../../src/models/AlertRule', () => ({
     findByTypeAndSeverity: jest.fn()
 }));
 
+const db = require('../../../src/config/database');
 const alertService = require('../../../src/services/alertService');
 
 describe('alertService.checkVoltage (B-005 VOLTAGE auto-trigger)', () => {
@@ -49,6 +50,10 @@ describe('alertService.checkVoltage (B-005 VOLTAGE auto-trigger)', () => {
         alertService.activeAlerts.clear();
         alertService.lastChecks.clear();
         alertService.initialized = true;
+        // [AUD-006] checkVoltage now falls back to _findActiveAlert (a DB read)
+        // when the in-memory map is empty. Default the query to "nothing open" so
+        // the create-path tests below exercise createAlert, not escalation.
+        db.query.mockResolvedValue({ rows: [] });
     });
 
     test('short-circuits when VOLTAGE alert already active for controller', async () => {
@@ -183,5 +188,123 @@ describe('alertService.checkVoltage (B-005 VOLTAGE auto-trigger)', () => {
 
         classifySpy.mockRestore();
         createSpy.mockRestore();
+    });
+
+    // ── [AUD-006] escalate-in-place ────────────────────────────────────────
+    describe('escalate-in-place', () => {
+        const setActive = (id, severity, status = 'active') =>
+            alertService.activeAlerts.set(`controller:${id}:VOLTAGE_ANOMALY`, { alert_id: 99, severity, status });
+
+        test('an active WARNING worsening to CRITICAL escalates in place (not a new alert)', async () => {
+            setActive(42, 'WARNING');
+            const classify = jest.spyOn(alertService, '_classifyVoltageSeverity').mockResolvedValue('CRITICAL');
+            const create = jest.spyOn(alertService, 'createAlert');
+            const escalate = jest.spyOn(alertService, '_escalateAlert')
+                .mockResolvedValue({ outcome: 'escalated', alert: { alert_id: 99, severity: 'CRITICAL', escalated: true } });
+
+            const result = await alertService.checkVoltage(42);
+
+            expect(escalate).toHaveBeenCalledTimes(1);
+            expect(create).not.toHaveBeenCalled();
+            expect(result).toMatchObject({ alert_id: 99, severity: 'CRITICAL' });
+            expect(alertService.lastChecks.has('controller:42:voltage_check')).toBe(true);
+
+            classify.mockRestore(); create.mockRestore(); escalate.mockRestore();
+        });
+
+        test('an ACKNOWLEDGED WARNING still escalates to CRITICAL', async () => {
+            setActive(42, 'WARNING', 'acknowledged');
+            const classify = jest.spyOn(alertService, '_classifyVoltageSeverity').mockResolvedValue('CRITICAL');
+            const escalate = jest.spyOn(alertService, '_escalateAlert')
+                .mockResolvedValue({ outcome: 'escalated', alert: { alert_id: 99, severity: 'CRITICAL' } });
+
+            await alertService.checkVoltage(42);
+            expect(escalate).toHaveBeenCalledTimes(1);
+
+            classify.mockRestore(); escalate.mockRestore();
+        });
+
+        test('cooldown does NOT block an escalation (escalationPossible bypasses it)', async () => {
+            setActive(42, 'WARNING');
+            alertService.lastChecks.set('controller:42:voltage_check', Date.now()); // fresh cooldown
+            const classify = jest.spyOn(alertService, '_classifyVoltageSeverity').mockResolvedValue('CRITICAL');
+            const escalate = jest.spyOn(alertService, '_escalateAlert')
+                .mockResolvedValue({ outcome: 'escalated', alert: { alert_id: 99 } });
+
+            await alertService.checkVoltage(42);
+            expect(classify).toHaveBeenCalled();   // not short-circuited by cooldown
+            expect(escalate).toHaveBeenCalledTimes(1);
+
+            classify.mockRestore(); escalate.mockRestore();
+        });
+
+        test('outcome=denied (gate/fail-close) → null, no createAlert, cooldown NOT bumped', async () => {
+            setActive(42, 'WARNING');
+            const classify = jest.spyOn(alertService, '_classifyVoltageSeverity').mockResolvedValue('CRITICAL');
+            const create = jest.spyOn(alertService, 'createAlert');
+            const escalate = jest.spyOn(alertService, '_escalateAlert').mockResolvedValue({ outcome: 'denied' });
+
+            const result = await alertService.checkVoltage(42);
+            expect(result).toBeNull();
+            expect(create).not.toHaveBeenCalled();
+            expect(alertService.lastChecks.has('controller:42:voltage_check')).toBe(false);
+
+            classify.mockRestore(); create.mockRestore(); escalate.mockRestore();
+        });
+
+        test('outcome=alreadyCritical → null, cooldown bumped (map synced)', async () => {
+            setActive(42, 'WARNING');
+            const classify = jest.spyOn(alertService, '_classifyVoltageSeverity').mockResolvedValue('CRITICAL');
+            const escalate = jest.spyOn(alertService, '_escalateAlert').mockResolvedValue({ outcome: 'alreadyCritical' });
+
+            const result = await alertService.checkVoltage(42);
+            expect(result).toBeNull();
+            expect(alertService.lastChecks.has('controller:42:voltage_check')).toBe(true);
+
+            classify.mockRestore(); escalate.mockRestore();
+        });
+
+        test('outcome=retry → null, cooldown NOT bumped (re-attempt next tick)', async () => {
+            setActive(42, 'WARNING');
+            const classify = jest.spyOn(alertService, '_classifyVoltageSeverity').mockResolvedValue('CRITICAL');
+            const escalate = jest.spyOn(alertService, '_escalateAlert').mockResolvedValue({ outcome: 'retry' });
+
+            const result = await alertService.checkVoltage(42);
+            expect(result).toBeNull();
+            expect(alertService.lastChecks.has('controller:42:voltage_check')).toBe(false);
+
+            classify.mockRestore(); escalate.mockRestore();
+        });
+
+        test('outcome=gone → drop stale map entry and create a fresh alert with the policy snapshot', async () => {
+            setActive(42, 'WARNING');
+            const classify = jest.spyOn(alertService, '_classifyVoltageSeverity').mockResolvedValue('CRITICAL');
+            const policy = { id: 7, uk_urgency: 'critical' };
+            const escalate = jest.spyOn(alertService, '_escalateAlert').mockResolvedValue({ outcome: 'gone', policy });
+            const create = jest.spyOn(alertService, 'createAlert').mockResolvedValue({ alert_id: 500 });
+
+            const result = await alertService.checkVoltage(42);
+
+            expect(create).toHaveBeenCalledTimes(1);
+            expect(create.mock.calls[0][1]).toMatchObject({ ruleSnapshot: policy });
+            expect(result).toMatchObject({ alert_id: 500 });
+
+            classify.mockRestore(); escalate.mockRestore(); create.mockRestore();
+        });
+
+        test('an active CRITICAL is not escalated again (same/lower rank → null, cooldown bumped)', async () => {
+            setActive(42, 'CRITICAL');
+            const classify = jest.spyOn(alertService, '_classifyVoltageSeverity').mockResolvedValue('CRITICAL');
+            const escalate = jest.spyOn(alertService, '_escalateAlert');
+            const create = jest.spyOn(alertService, 'createAlert');
+
+            const result = await alertService.checkVoltage(42);
+            expect(result).toBeNull();
+            expect(escalate).not.toHaveBeenCalled();
+            expect(create).not.toHaveBeenCalled();
+            expect(alertService.lastChecks.has('controller:42:voltage_check')).toBe(true);
+
+            classify.mockRestore(); escalate.mockRestore(); create.mockRestore();
+        });
     });
 });

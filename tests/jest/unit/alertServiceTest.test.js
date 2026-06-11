@@ -122,8 +122,10 @@ describe('AlertService', () => {
             expect(status).toHaveProperty('circuit_breaker_state');
         });
 
-        test('reflects active alerts count', () => {
-            alertService.activeAlerts.set('test:1:WARNING', { alert_id: 1 });
+        test('reflects active alerts count (status-filtered — [AUD-006 B0])', () => {
+            // active counts; acknowledged is "open" but NOT active → excluded
+            alertService.activeAlerts.set('test:1:WARNING', { alert_id: 1, status: 'active' });
+            alertService.activeAlerts.set('test:2:WARNING', { alert_id: 2, status: 'acknowledged' });
             const status = alertService.getStatus();
             expect(status.active_alerts).toBe(1);
             alertService.activeAlerts.clear();
@@ -200,7 +202,10 @@ describe('AlertService', () => {
     });
 
     describe('acknowledgeAlert', () => {
-        test('acknowledges an active alert and removes from activeAlerts', async () => {
+        // [AUD-006 B0] acknowledge no longer DELETES the in-memory entry — it
+        // flips its status to 'acknowledged'. The dedup set must keep an
+        // acknowledged alert so a later escalate-in-place can find and upgrade it.
+        test('acknowledges an active alert and marks the in-memory entry acknowledged (kept)', async () => {
             const alertRow = {
                 alert_id: 10,
                 type: 'TRANSFORMER_OVERLOAD',
@@ -213,14 +218,17 @@ describe('AlertService', () => {
             alertService.activeAlerts.set('transformer:1:TRANSFORMER_OVERLOAD', {
                 alert_id: 10,
                 created_at: new Date(),
-                severity: 'WARNING'
+                severity: 'WARNING',
+                status: 'active'
             });
 
             const result = await alertService.acknowledgeAlert(10, 5);
 
             expect(result.alert_id).toBe(10);
             expect(result.status).toBe('acknowledged');
-            expect(alertService.activeAlerts.has('transformer:1:TRANSFORMER_OVERLOAD')).toBe(false);
+            // entry kept, status flipped (NOT deleted)
+            expect(alertService.activeAlerts.has('transformer:1:TRANSFORMER_OVERLOAD')).toBe(true);
+            expect(alertService.activeAlerts.get('transformer:1:TRANSFORMER_OVERLOAD').status).toBe('acknowledged');
         });
 
         test('throws when alert not found', async () => {
