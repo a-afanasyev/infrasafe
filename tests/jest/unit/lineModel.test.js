@@ -378,4 +378,33 @@ describe('Line Model', () => {
             await expect(Line.findByTransformerId(1)).rejects.toThrow('Failed to fetch lines by transformer');
         });
     });
+
+    // [AUD-009] create/update correctness fixes (aligns create to update's
+    // `!== undefined` semantics; empty body → 400 not 500/no-op).
+    describe('create — AUD-009 correctness', () => {
+        test('preserves explicit zero values (previously lost to truthiness)', async () => {
+            db.query.mockResolvedValue({ rows: [mockRow] });
+
+            await Line.create({ name: 'L', voltage_kv: 0, length_km: 0, commissioning_year: 0 });
+
+            const query = db.query.mock.calls[0][0];
+            const params = db.query.mock.calls[0][1];
+            expect(query).toContain('voltage_kv');
+            expect(query).toContain('length_km');
+            expect(query).toContain('commissioning_year');
+            expect(params.filter(v => v === 0)).toHaveLength(3);
+        });
+
+        test('rejects empty body with 400 instead of a 500', async () => {
+            await expect(Line.create({})).rejects.toMatchObject({ statusCode: 400 });
+            expect(db.query).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('update — AUD-009 empty body', () => {
+        test('rejects a no-valid-fields update with 400 (no DB call)', async () => {
+            await expect(Line.update(1, {})).rejects.toMatchObject({ statusCode: 400 });
+            expect(db.query).not.toHaveBeenCalled();
+        });
+    });
 });

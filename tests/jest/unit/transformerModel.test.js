@@ -207,8 +207,9 @@ describe('Transformer Model', () => {
             expect(result).toBeNull();
         });
 
-        test('throws when no fields to update', async () => {
-            await expect(Transformer.update(1, {})).rejects.toThrow('Failed to update transformer');
+        test('rejects empty body with 400 and no DB call (AUD-009)', async () => {
+            await expect(Transformer.update(1, {})).rejects.toMatchObject({ statusCode: 400 });
+            expect(db.query).not.toHaveBeenCalled();
         });
 
         test('throws on database error', async () => {

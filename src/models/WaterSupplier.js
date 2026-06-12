@@ -1,6 +1,14 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const { createError } = require('../utils/helpers');
+const { buildUpdateQuery } = require('../utils/dynamicUpdateBuilder');
+
+// [AUD-009] Columns writable on update.
+const WATER_SUPPLIER_UPDATE_COLUMNS = [
+    'name', 'supplier_type', 'company_name', 'contact_person', 'phone',
+    'email', 'address', 'contract_number', 'service_area', 'tariff_per_m3',
+    'status', 'notes',
+];
 
 class WaterSupplier {
     constructor(data) {
@@ -166,26 +174,25 @@ class WaterSupplier {
         }
     }
 
-    // Обновить поставщика
+    // Обновить поставщика.
+    // [AUD-009] Делегирует построение SET в общий buildUpdateQuery: частичное
+    // обновление теперь НЕ затирает опущенные колонки в NULL (прежний
+    // full-overwrite был скрытой потерей данных), пустое тело → 400.
     static async update(id, supplierData) {
         try {
-            const {
-                name, supplier_type, company_name, contact_person, phone, email, address,
-                contract_number, service_area, tariff_per_m3, status, notes
-            } = supplierData;
+            let query, params;
+            try {
+                ({ query, params } = buildUpdateQuery(
+                    'water_suppliers', 'supplier_id', id, supplierData, WATER_SUPPLIER_UPDATE_COLUMNS
+                ));
+            } catch (e) {
+                if (e.message === 'No valid fields to update') {
+                    throw createError('No valid fields to update water supplier', 400);
+                }
+                throw e;
+            }
 
-            const { rows } = await db.query(
-                `UPDATE water_suppliers
-                SET name = $1, supplier_type = $2, company_name = $3, contact_person = $4,
-                    phone = $5, email = $6, address = $7, contract_number = $8,
-                    service_area = $9, tariff_per_m3 = $10, status = $11,
-                    notes = $12, updated_at = NOW()
-                WHERE supplier_id = $13
-                RETURNING *`,
-                [name, supplier_type, company_name, contact_person, phone, email, address,
-                 contract_number, service_area, tariff_per_m3, status, notes, id]
-            );
-
+            const { rows } = await db.query(query, params);
             if (!rows.length) {
                 return null;
             }
@@ -194,6 +201,7 @@ class WaterSupplier {
             return new WaterSupplier(rows[0]);
         } catch (error) {
             logger.error(`Error in WaterSupplier.update: ${error.message}`);
+            if (error.statusCode) throw error;
             throw createError(`Failed to update water supplier: ${error.message}`, 500);
         }
     }

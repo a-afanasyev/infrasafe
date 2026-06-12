@@ -213,6 +213,26 @@ describe('WaterSupplier Model', () => {
 
             await expect(WaterSupplier.update(1, mockRow)).rejects.toThrow('Failed to update water supplier');
         });
+
+        // [AUD-009] partial update is now non-destructive (buildUpdateQuery only
+        // sets provided columns) instead of the prior full-overwrite that NULLed
+        // omitted fields; an empty body is a 400 rather than a wipe-to-NULL.
+        test('only sets the provided column, not a full-row overwrite', async () => {
+            db.query.mockResolvedValue({ rows: [mockRow] });
+
+            await WaterSupplier.update(1, { name: 'Renamed' });
+
+            const query = db.query.mock.calls[0][0];
+            const params = db.query.mock.calls[0][1];
+            expect(query).toContain('name = $1');
+            expect(query).not.toContain('company_name =');
+            expect(params).toEqual(['Renamed', 1]);
+        });
+
+        test('rejects empty body with 400 and no DB call', async () => {
+            await expect(WaterSupplier.update(1, {})).rejects.toMatchObject({ statusCode: 400 });
+            expect(db.query).not.toHaveBeenCalled();
+        });
     });
 
     describe('delete', () => {

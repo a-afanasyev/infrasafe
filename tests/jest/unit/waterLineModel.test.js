@@ -401,4 +401,21 @@ describe('WaterLine Model', () => {
             await expect(WaterLine.findByBuildingId(1)).rejects.toThrow('Failed to fetch water line by building');
         });
     });
+
+    // [AUD-009] create/update correctness fixes. (WaterLine's numeric create
+    // fields already used `!== undefined`; the bug was `name` via truthiness
+    // and the empty-body 500.)
+    describe('create — AUD-009 correctness', () => {
+        test('rejects empty body with 400 instead of a 500', async () => {
+            await expect(WaterLine.create({})).rejects.toMatchObject({ statusCode: 400 });
+            expect(db.query).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('update — AUD-009 empty body', () => {
+        test('rejects a no-valid-fields update with 400 (no DB call)', async () => {
+            await expect(WaterLine.update(1, {})).rejects.toMatchObject({ statusCode: 400 });
+            expect(db.query).not.toHaveBeenCalled();
+        });
+    });
 });

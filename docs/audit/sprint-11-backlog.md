@@ -847,6 +847,32 @@ event'а — строка остаётся `pending`, что корректно)
 ### P3 — отложенное / требует решения
 
 - **AUD-008/009/010/011/012** — техдолг слоёв: сырой SQL в 6 admin-контроллерах мимо моделей; ~900 строк CRUD-копипасты в 4 моделях при готовой фабрике (+ create-через-truthiness теряет `0`, 500 на пустом теле — `Line.js:111`, `WaterLine.js:134`); water-роуты без контроллеров; envelope-разнобой (apiResponse в 4/29 файлов); `alertService` 1342 LoC. Порядок: фабрика → admin-контроллеры → water → envelope; сплит alertService ПОСЛЕ AUD-001/003/006. [L, по мере касания]
+
+  #### AUD-009 — закрытие (2026-06-12, scoped дедуп; backend → rebuild)
+
+  **Верификация опровергла «чистую копипасту»**: 4 модели НЕ ложатся на factory без её
+  раздувания — у каждой `findAll(page, limit, **filters**)` (а не factory-`sort/order`),
+  у трёх — `JOIN buildings + array_agg` building-ассоциаций в `findAll`/`findById`
+  (Transformer/WaterSupplier/WaterLine), jsonb-колонки (`main_path`/`branches`),
+  переименование в конструкторе (`supplier_type`→`type`), кастомная create-валидация
+  (Transformer требует ≥3 поля → 400). Реальная дубль — только 4 `update`-метода.
+  Решение пользователя: **scoped дедуп, без раздувания фабрики** (форсить JOIN/filters/
+  transforms в 60-строчную фабрику = over-engineering, против Фазы 3 аудита).
+  - **Баг-фиксы (TDD)**: `Line.create`/`WaterLine.create` truthiness → `!== undefined`
+    (как их `update`) — явный `0` больше не теряется; пустое тело → **400** (был 500).
+  - **Дедуп**: 4 `update` (Line/WaterLine/Transformer/WaterSupplier) переведены на общий
+    `buildUpdateQuery` (jsonb pre-stringify сохранён). **−207 строк** в `src/models/`
+    (341 удалено / 134 добавлено). Пустое/нераспознанное тело апдейта → **400**.
+  - **Бонус-фикс**: `WaterSupplier.update` был деструктивным full-overwrite (затирал
+    опущенные колонки в NULL) → теперь частичный, без потери данных.
+  - **Не тронуто** (осознанно bespoke): все `findAll`/`findById`/`delete`/кастом-файндеры,
+    `Transformer.create` (уже корректный loop) + `WaterSupplier.create` (fixed 12-col insert).
+  - Поведенческие изменения (empty→400, partial-WS-update) задокументированы; consumers
+    (`lineController`/`transformerController`/`waterSupplierRoutes`/`waterLineRoutes`)
+    пробрасывают `statusCode` через `next(error)` → 400 доходит. Тесты: +7 (модельные
+    suites 111 зелёных; full 2590; lint 0 errors).
+  - **Остаётся в пункте**: AUD-008 (admin-контроллеры на модели — следующий по порядку),
+    AUD-010 (water-роуты в контроллеры), AUD-011 (envelope), AUD-012 (сплит alertService).
 - **AUD-033** дублирование fetch-обвязки + 4 мёртвых token-блока в `map-layers-control.js` — **вместе с SEC-34b** (один рефактор на cookie/interceptor, см. ревизию). [M]
 - **AUD-039** две модели трансформаторов (`transformers` только в dev-init; admin-вкладка на проде, вероятно, бьёт в отсутствующую таблицу — **проверить на проде**, потом тикет). [L]
 - **AUD-040** API без потребителя: analytics 16 эндпоинтов (фронт зовёт 1), admin 46 (фронт ~4 семейства), `/integration/request-counts` (0 вызовов из public/) — сверить с планами B-008/UK-web до любых удалений. [M-L]

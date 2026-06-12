@@ -1,6 +1,14 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const { createError } = require('../utils/helpers');
+const { buildUpdateQuery } = require('../utils/dynamicUpdateBuilder');
+
+// [AUD-009] Columns writable on update (matches the prior hand-rolled set —
+// installation_date is create-only, kept that way).
+const TRANSFORMER_UPDATE_COLUMNS = [
+    'name', 'power_kva', 'voltage_kv', 'latitude', 'longitude',
+    'location', 'status', 'manufacturer', 'model',
+];
 
 class Transformer {
     constructor(data) {
@@ -158,91 +166,23 @@ class Transformer {
         }
     }
 
-    // Обновить трансформатор
+    // Обновить трансформатор.
+    // [AUD-009] Делегирует построение SET в общий buildUpdateQuery; пустое тело → 400.
     static async update(id, transformerData) {
         try {
-            const { 
-                name, 
-                power_kva, 
-                voltage_kv,
-                latitude,
-                longitude,
-                location,
-                status,
-                manufacturer,
-                model
-            } = transformerData;
-
-            // Строим динамический SQL запрос для обновления только переданных полей
-            const fields = [];
-            const values = [];
-            let paramCount = 0;
-
-            if (name !== undefined) {
-                paramCount++;
-                fields.push(`name = $${paramCount}`);
-                values.push(name);
-            }
-            if (power_kva !== undefined) {
-                paramCount++;
-                fields.push(`power_kva = $${paramCount}`);
-                values.push(power_kva);
-            }
-            if (voltage_kv !== undefined) {
-                paramCount++;
-                fields.push(`voltage_kv = $${paramCount}`);
-                values.push(voltage_kv);
-            }
-            if (latitude !== undefined) {
-                paramCount++;
-                fields.push(`latitude = $${paramCount}`);
-                values.push(latitude);
-            }
-            if (longitude !== undefined) {
-                paramCount++;
-                fields.push(`longitude = $${paramCount}`);
-                values.push(longitude);
-            }
-            if (location !== undefined) {
-                paramCount++;
-                fields.push(`location = $${paramCount}`);
-                values.push(location);
-            }
-            if (status !== undefined) {
-                paramCount++;
-                fields.push(`status = $${paramCount}`);
-                values.push(status);
-            }
-            if (manufacturer !== undefined) {
-                paramCount++;
-                fields.push(`manufacturer = $${paramCount}`);
-                values.push(manufacturer);
-            }
-            if (model !== undefined) {
-                paramCount++;
-                fields.push(`model = $${paramCount}`);
-                values.push(model);
+            let query, params;
+            try {
+                ({ query, params } = buildUpdateQuery(
+                    'transformers', 'transformer_id', id, transformerData, TRANSFORMER_UPDATE_COLUMNS
+                ));
+            } catch (e) {
+                if (e.message === 'No valid fields to update') {
+                    throw createError('No valid fields to update transformer', 400);
+                }
+                throw e;
             }
 
-            if (fields.length === 0) {
-                throw new Error('No fields to update');
-            }
-
-            // Добавляем updated_at
-            fields.push('updated_at = NOW()');
-
-            // Добавляем ID в конец
-            paramCount++;
-            values.push(id);
-
-            const { rows } = await db.query(
-                `UPDATE transformers
-                SET ${fields.join(', ')}
-                WHERE transformer_id = $${paramCount}
-                RETURNING *`,
-                values
-            );
-
+            const { rows } = await db.query(query, params);
             if (!rows.length) {
                 return null;
             }
@@ -251,6 +191,7 @@ class Transformer {
             return new Transformer(rows[0]);
         } catch (error) {
             logger.error(`Error in Transformer.update: ${error.message}`);
+            if (error.statusCode) throw error;
             throw createError(`Failed to update transformer: ${error.message}`, 500);
         }
     }
