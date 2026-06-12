@@ -1,7 +1,6 @@
 const {
     validateBuildingCreate,
     validateControllerCreate,
-    validateMetricCreate,
     validateIdParam,
     isXSSFree
 } = require('../../../src/middleware/validators');
@@ -268,93 +267,6 @@ describe('Validators Middleware', () => {
             });
 
             const { responded, statusCode } = await runValidation(validateControllerCreate, req);
-
-            expect(responded).toBe(true);
-            expect(statusCode).toBe(400);
-        });
-    });
-
-    describe('validateMetricCreate', () => {
-        test('passes with valid data', async () => {
-            const req = createMockReq({
-                controller_id: 1,
-                electricity_ph1: 220.5,
-                electricity_ph2: 221.0,
-                electricity_ph3: 219.5,
-                cold_water_pressure: 3.5,
-                hot_water_in_pressure: 4.0,
-                hot_water_out_pressure: 3.8
-            });
-
-            const { responded } = await runValidation(validateMetricCreate, req);
-
-            expect(responded).toBe(false);
-        });
-
-        test('fails when controller_id is not an integer', async () => {
-            const req = createMockReq({
-                controller_id: 'abc',
-                electricity_ph1: 220.5,
-                electricity_ph2: 221.0,
-                electricity_ph3: 219.5,
-                cold_water_pressure: 3.5,
-                hot_water_in_pressure: 4.0,
-                hot_water_out_pressure: 3.8
-            });
-
-            const { responded, statusCode } = await runValidation(validateMetricCreate, req);
-
-            expect(responded).toBe(true);
-            expect(statusCode).toBe(400);
-        });
-
-        test('fails when electricity_ph1 is not a float', async () => {
-            const req = createMockReq({
-                controller_id: 1,
-                electricity_ph1: 'not-float',
-                electricity_ph2: 221.0,
-                electricity_ph3: 219.5,
-                cold_water_pressure: 3.5,
-                hot_water_in_pressure: 4.0,
-                hot_water_out_pressure: 3.8
-            });
-
-            const { responded, statusCode } = await runValidation(validateMetricCreate, req);
-
-            expect(responded).toBe(true);
-            expect(statusCode).toBe(400);
-        });
-
-        test('passes with valid ISO 8601 timestamp', async () => {
-            const req = createMockReq({
-                controller_id: 1,
-                timestamp: '2026-01-15T12:00:00.000Z',
-                electricity_ph1: 220.5,
-                electricity_ph2: 221.0,
-                electricity_ph3: 219.5,
-                cold_water_pressure: 3.5,
-                hot_water_in_pressure: 4.0,
-                hot_water_out_pressure: 3.8
-            });
-
-            const { responded } = await runValidation(validateMetricCreate, req);
-
-            expect(responded).toBe(false);
-        });
-
-        test('fails with invalid timestamp format', async () => {
-            const req = createMockReq({
-                controller_id: 1,
-                timestamp: 'not-a-date',
-                electricity_ph1: 220.5,
-                electricity_ph2: 221.0,
-                electricity_ph3: 219.5,
-                cold_water_pressure: 3.5,
-                hot_water_in_pressure: 4.0,
-                hot_water_out_pressure: 3.8
-            });
-
-            const { responded, statusCode } = await runValidation(validateMetricCreate, req);
 
             expect(responded).toBe(true);
             expect(statusCode).toBe(400);

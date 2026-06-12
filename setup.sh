@@ -11,8 +11,8 @@ echo "================================================="
 
 # Проверка наличия .env файла
 if [ ! -f .env ]; then
-    echo -e "${YELLOW}Файл .env не найден. Копируем из env.example...${NC}"
-    cp env.example .env
+    echo -e "${YELLOW}Файл .env не найден. Копируем из .env.example...${NC}"
+    cp .env.example .env
     echo -e "${RED}ВНИМАНИЕ: Отредактируйте файл .env с вашими настройками!${NC}"
 fi
 

@@ -58,12 +58,12 @@ start_dev() {
     
     # Проверяем файл .env
     if [ ! -f .env ]; then
-        echo -e "${YELLOW}📄 Файл .env не найден. Создаем из env.example...${NC}"
-        if [ -f env.example ]; then
-            cp env.example .env
+        echo -e "${YELLOW}📄 Файл .env не найден. Создаем из .env.example...${NC}"
+        if [ -f .env.example ]; then
+            cp .env.example .env
             echo -e "${YELLOW}⚠️  Отредактируйте файл .env при необходимости${NC}"
         else
-            echo -e "${RED}❌ Файл env.example не найден${NC}"
+            echo -e "${RED}❌ Файл .env.example не найден${NC}"
         fi
     fi
     

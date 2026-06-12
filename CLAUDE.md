@@ -334,9 +334,8 @@ ALERT_VERIFICATION_TICK_MS=15000       # Drain interval (clamped [5000, 60000])
 
 - `public/admin.js` (~3,429 lines) and `public/script.js` (~2,335 lines) are still monolithic — Phase 12B.4 activated bundling but did not split entry points.
 - Models execute SQL directly (no repository layer). Phase 6 introduced `createCrudModel` factory for two water-source models; the rest still hand-write queries.
-- Some backend code uses `console.error` instead of Winston logger.
 - Duplication across water-related route files remains (Phase 6 factory covers models only).
-- Rate-limiter and cache are still in-memory — multi-replica deployments will need Redis (tracked in audit plan Phase 11.1/11.2). Sprint 9 outbox is already DB-backed (`uk_outbox`) and Sprint 10 verification queue is DB-backed (`alert_verifications`), both with `pg_try_advisory_lock` for cross-replica coordination.
+- Rate-limiter and cache are **Redis-backed hybrids** (`src/middleware/rateLimiter.js:2,4`, `src/services/cacheService.js:2` — Redis when `REDIS_URL` is set, in-memory Map fallback otherwise), so multi-replica is already coordinated. Sprint 9 outbox (`uk_outbox`) and Sprint 10 verification queue (`alert_verifications`) are DB-backed with `pg_try_advisory_lock` for cross-replica coordination.
 - Frontend redesign (`feature/frontend-redesign`) not yet merged to main.
 - ~~Prod nginx bind-mounts individual HTML files~~ — **resolved**: HTML moved to a directory mount in B-002 (`frontend-html/`), and the nginx **config** moved to a directory mount in B-012 (`nginx-config/`, run via `nginx -c /etc/nginx/custom/nginx.production.conf`). Both inode-traps are closed; `git pull` + `nginx -s reload` now picks up changes without `--force-recreate`.
 - `alertService` persistence gate only fully implemented for LEAK_DETECTED+controller path (SQL aggregation on `metrics`). Other types fail-open in v1, pending rolling-window metric aggregations.

@@ -74,18 +74,8 @@ const validateControllerCreate = [
     handleValidationErrors
 ];
 
-// Валидация для создания/обновления метрики
-const validateMetricCreate = [
-    body('controller_id').isInt().withMessage('ID контроллера должен быть целым числом'),
-    body('timestamp').optional().isISO8601().withMessage('Метка времени должна быть в формате ISO 8601'),
-    body('electricity_ph1').isFloat().withMessage('Электричество фаза 1 должно быть числом'),
-    body('electricity_ph2').isFloat().withMessage('Электричество фаза 2 должно быть числом'),
-    body('electricity_ph3').isFloat().withMessage('Электричество фаза 3 должно быть числом'),
-    body('cold_water_pressure').isFloat().withMessage('Давление холодной воды должно быть числом'),
-    body('hot_water_in_pressure').isFloat().withMessage('Давление горячей воды (вход) должно быть числом'),
-    body('hot_water_out_pressure').isFloat().withMessage('Давление горячей воды (выход) должно быть числом'),
-    handleValidationErrors
-];
+// [AUD-031] validateMetricCreate removed — it was never mounted (POST /metrics
+// validates in metricService, not via this chain). Dead since introduction.
 
 // Валидация ID параметра
 const validateIdParam = [
@@ -96,7 +86,6 @@ const validateIdParam = [
 module.exports = {
     validateBuildingCreate,
     validateControllerCreate,
-    validateMetricCreate,
     validateIdParam,
     isXSSFree
 };

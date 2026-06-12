@@ -507,10 +507,10 @@ module.exports = {
     getAllRateLimitStats,
     resetAllRateLimits,
     destroyAllLimiters,
-    analyticsLimiter,
-    adminLimiter,
-    crudLimiter,
-    telemetryLimiter,
+    // [AUD-031] dropped dead bare exports analyticsLimiter/adminLimiter/
+    // crudLimiter/telemetryLimiter (0 external importers; the apply*RateLimit
+    // wrappers and rateLimitStrict are the public surface). Consts stay
+    // internal — rateLimitStrict still binds adminLimiter below.
     authLimiter,
     registerLimiter,
     passwordChangeLimiter,
