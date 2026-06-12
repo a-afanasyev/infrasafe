@@ -220,24 +220,13 @@ document.addEventListener('DOMContentLoaded', async function () {
             // HttpOnly cookie set by /auth/login carries auth.
             // credentials: 'same-origin' (set below on the fetch call)
             // ensures the cookie is sent.
-
-            // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Добавляем CSRF защиту для изменяющих запросов
-            // [1A-FU2-C-M1] Explicit failure on missing csrfProtection
-            // (load-order regression / module not loaded). Throwing here
-            // surfaces the bug instead of silently omitting the header.
-            const method = (options.method || 'GET').toUpperCase();
-            const csrfApi = window.csrfProtection;
-            const isModifying = csrfApi
-                ? csrfApi.isModifyingMethod(method)
-                : ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
-            if (isModifying) {
-                if (!csrfApi) {
-                    console.error('[CSRF] window.csrfProtection not loaded — refusing modifying request', { method, url });
-                    throw new Error('CSRF protection module not loaded');
-                }
-                const updatedOptions = csrfApi.addToHeaders(options);
-                options.headers = updatedOptions.headers;
-            }
+            // [AUD-013] The client CSRF-token machinery was removed. The server
+            // never validated X-CSRF-Token (see src/middleware/csrfOriginGuard.js);
+            // the real CSRF defense is SameSite=Strict cookies + the server-side
+            // Origin/Referer guard (SEC-23). The old block was also a no-op here:
+            // it mutated options.headers AFTER `headers` was snapshotted above,
+            // and the fetch call below spreads `...options` then overrides with
+            // the stale `headers`, so the token never went out anyway.
 
             // Формируем полный URL
             const fullURL = url.startsWith('http') ? url : `${this.baseURL}${url}`;
@@ -300,13 +289,10 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (typeof showToast === 'function') {
                 showToast('Сессия истекла. Необходимо войти заново.', 'warning');
             }
-            
-            // Если это админская страница, перенаправляем на логин
-            if (window.location.pathname.includes('admin.html')) {
-                setTimeout(() => {
-                    window.location.href = '/login.html';
-                }, 2000);
-            }
+            // [AUD-044] Removed the dead `pathname.includes('admin.html')` redirect:
+            // script.js is loaded only by index.html (the map page), so the admin
+            // branch was unreachable. The admin page has its own guard
+            // (admin-auth.js) that handles 401 → /login.html.
         }
         
         // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Безопасный парсинг JSON ответа

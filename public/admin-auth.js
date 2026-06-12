@@ -21,9 +21,14 @@
 // once on load to prevent confusion (no security gain, just hygiene).
 
 class AdminAuth {
-    constructor() {
+    constructor(options = {}) {
         this.isAuthenticated = false;
         this.fetchIntercepted = false;
+        // [AUD-014] transient-connection-failure retry state (network blip /
+        // backend restart must not log the operator out).
+        this.maxConnectionRetries = 5;
+        this._connectionRetries = 0;
+        this._retryTimer = null;
         // One-shot migration hygiene: scrub leftover legacy entries.
         // [SEC-32] also drop 'token' — the integration section of admin.js used
         // to read it; a stale value would otherwise linger and be XSS-readable.
@@ -32,7 +37,11 @@ class AdminAuth {
             localStorage.removeItem('refresh_token');
             localStorage.removeItem('token');
         } catch (_) { /* private mode etc — non-fatal */ }
-        this.init();
+        // autoInit:false lets unit tests construct the guard without firing the
+        // initial /api/auth/profile probe; the browser singleton inits normally.
+        if (options.autoInit !== false) {
+            this.init();
+        }
     }
 
     init() {
@@ -65,19 +74,73 @@ class AdminAuth {
 
             if (response.ok) {
                 traceLog('validateToken OK → showAdminPanel');
+                this._connectionRetries = 0;
+                this._clearConnectionNotice();
                 this.isAuthenticated = true;
                 this.showAdminPanel();
                 this.setupAuthHeaders();
                 this.setupChangePassword();
                 window.dispatchEvent(new CustomEvent('admin-auth-ready'));
-            } else {
-                traceLog('validateToken NOT OK → logout');
-                this.logout();
+                return;
             }
+
+            // [AUD-014] Only a genuine auth failure means the session is
+            // invalid/expired — log out. 401 = unauthenticated, 403 = the
+            // cookie is present but rejected. Anything else (502 from a
+            // restarting backend, 503, 500) is a transient server condition
+            // and must NOT destroy the session.
+            if (response.status === 401 || response.status === 403) {
+                traceLog('validateToken ' + response.status + ' → logout');
+                this.logout();
+                return;
+            }
+
+            traceLog('validateToken transient status=' + response.status + ' → keep session');
+            this._handleTransientError('server ' + response.status);
         } catch (error) {
-            traceLog('validateToken threw ' + error.name + ': ' + error.message);
-            this.logout();
+            // [AUD-014] fetch rejected — offline / DNS / dropped connection.
+            // A network blip is not an auth failure: keep the session, show a
+            // notice, and retry. The previous code logged the operator out on
+            // every transient timeout.
+            traceLog('validateToken network error: ' + (error && error.message) + ' → keep session');
+            this._handleTransientError('network');
         }
+    }
+
+    /**
+     * [AUD-014] Handle a transient connection failure without destroying the
+     * session: surface a non-blocking notice and schedule a bounded retry.
+     * Never logs out or redirects.
+     * @param {string} detail - short cause label for the trace log
+     */
+    _handleTransientError(detail) {
+        this._connectionRetries = (this._connectionRetries || 0) + 1;
+        this._showConnectionNotice();
+        if (this._connectionRetries <= this.maxConnectionRetries) {
+            const delayMs = Math.min(2000 * this._connectionRetries, 10000);
+            if (this._retryTimer) { clearTimeout(this._retryTimer); }
+            this._retryTimer = setTimeout(() => this.validateToken(), delayMs);
+        }
+    }
+
+    _showConnectionNotice() {
+        let el = document.getElementById('admin-connection-notice');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'admin-connection-notice';
+            el.setAttribute('role', 'status');
+            el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2000;' +
+                'padding:0.5rem 1rem;background:#b45309;color:#fff;text-align:center;font-size:0.9rem;';
+            (document.body || document.documentElement).appendChild(el);
+        }
+        // textContent only — no untrusted HTML.
+        el.textContent = 'Нет связи с сервером. Повторное подключение…';
+    }
+
+    _clearConnectionNotice() {
+        if (this._retryTimer) { clearTimeout(this._retryTimer); this._retryTimer = null; }
+        const el = document.getElementById('admin-connection-notice');
+        if (el) { el.remove(); }
     }
 
     logout() {
@@ -162,25 +225,13 @@ class AdminAuth {
                 options.credentials = 'same-origin';
             }
 
-            const method = (options.method || 'GET').toUpperCase();
-            // [1A-FU2-C-M1] Explicit failure mode for missing csrfProtection.
-            // Earlier code used `window.csrfProtection?.` which silently
-            // omitted the CSRF header if the module hadn't loaded — a load-
-            // order regression would make CSRF a no-op without any signal.
-            // For API-modifying requests we now require csrfProtection to be
-            // present; if it is missing we log loudly and refuse to send.
-            const csrfApi = window.csrfProtection;
-            const isModifying = csrfApi
-                ? csrfApi.isModifyingMethod(method)
-                : ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
-            if (isApiRequest && isModifying) {
-                if (!csrfApi) {
-                    console.error('[CSRF] window.csrfProtection not loaded — refusing to send modifying API request', { method, url });
-                    return Promise.reject(new Error('CSRF protection module not loaded'));
-                }
-                const updatedOptions = csrfApi.addToHeaders(options);
-                options.headers = { ...options.headers, ...updatedOptions.headers };
-            }
+            // [AUD-013] Removed the client CSRF-token block. The server never
+            // validated X-CSRF-Token (src/middleware/csrfOriginGuard.js); the
+            // hard-fail when window.csrfProtection was missing caused the
+            // 2026-05-25 admin-save outage (every mutating request rejected on
+            // a load-order regression) while protecting nothing. Real CSRF
+            // defense is SameSite=Strict cookies + the server-side Origin/Referer
+            // guard (SEC-23).
 
             return originalFetch.call(this, url, options).then(response => {
                 if (response.status === 401 && isApiRequest) {
@@ -426,4 +477,12 @@ class AdminAuth {
     }
 }
 
-window.adminAuth = new AdminAuth();
+// Browser path: instantiate the singleton on load (esbuild bundles this file
+// with bundle:false, so `module` is undefined there and the guard falls
+// through to window). Under CommonJS (Jest unit tests) export the class only —
+// tests build their own instance with a controlled fetch and { autoInit: false }.
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = AdminAuth;
+} else if (typeof window !== 'undefined') {
+    window.adminAuth = new AdminAuth();
+}

@@ -585,7 +585,7 @@ class MapLayersControl {
             // Параллельно загружаем данные трансформаторов и их мощность
             const [transformersResponse, powerResponse] = await Promise.all([
                 fetch(`${this.apiBaseUrl}/transformers?page=1&limit=100`, { headers }),
-                fetch(`${this.apiBaseUrl}/power-analytics/transformers`, { headers }).catch(() => null)
+                fetch(`${this.apiBaseUrl}/power-analytics/transformers`, { headers }).catch((e) => { console.warn('[map] power-analytics load failed — transformers render without power data', e); return null; })
             ]);
 
             if (transformersResponse.status === 401) {

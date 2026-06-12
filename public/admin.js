@@ -83,9 +83,9 @@ document.addEventListener("DOMContentLoaded", function () {
     async function loadEntityCache() {
         const h = {};
         const fetches = [
-            fetch('/api/buildings?limit=200', { headers: h }).then(r => r.json()).then(d => d.data || []).catch(() => []),
-            fetch('/api/controllers?limit=200', { headers: h }).then(r => r.json()).then(d => d.data || []).catch(() => []),
-            fetch('/api/transformers?limit=200', { headers: h }).then(r => r.json()).then(d => d.data || []).catch(() => [])
+            fetch('/api/buildings?limit=200', { headers: h }).then(r => r.json()).then(d => d.data || []).catch((e) => { console.warn('[admin] entity cache: buildings load failed — building names will be blank', e); return []; }),
+            fetch('/api/controllers?limit=200', { headers: h }).then(r => r.json()).then(d => d.data || []).catch((e) => { console.warn('[admin] entity cache: controllers load failed — serial numbers will be blank', e); return []; }),
+            fetch('/api/transformers?limit=200', { headers: h }).then(r => r.json()).then(d => d.data || []).catch((e) => { console.warn('[admin] entity cache: transformers load failed — transformer names will be blank', e); return []; })
         ];
         const [buildings, controllers, transformers] = await Promise.all(fetches);
         buildings.forEach(b => { entityCache.buildings[b.building_id] = b.name; });

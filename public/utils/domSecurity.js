@@ -252,7 +252,7 @@ function getValidToken() {
 }
 
 // Экспорт функций для использования в других модулях
-window.DOMSecurity = {
+const DOMSecurity = {
     setSecureText,
     setSecureHTML,
     showSecureErrorMessage,
@@ -265,6 +265,15 @@ window.DOMSecurity = {
     validateToken,
     getValidToken
 };
+
+if (typeof window !== 'undefined') {
+    window.DOMSecurity = DOMSecurity;
+}
+
+// CommonJS export for unit testing under jsdom (browser path uses window.DOMSecurity).
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = DOMSecurity;
+}
 
 
 
