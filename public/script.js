@@ -1858,6 +1858,13 @@ document.addEventListener('DOMContentLoaded', async function () {
                     return escapeHTML(String(value) + suffix);
                 };
 
+                // [AUD-016] SEC-30: building_id reaches HTML id="" and the fetch URL —
+                // coerce to a clean integer. Declared at ITERATION scope (not inside the
+                // else branch as before) so the popupopen handler below can capture it;
+                // previously it was block-scoped to `else` → ReferenceError in the
+                // handler → power data silently never loaded.
+                const safeBuildingId = /^\d+$/.test(String(item.building_id)) ? String(item.building_id) : '';
+
                 // Create a popup with building details
                 if (status === 'public') {
                     // Анонимный доступ — минимальная информация
@@ -1880,11 +1887,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
                     // Create popup content for building with electricity and cold water data
                     // ИСПРАВЛЕНИЕ XSS: Все пользовательские данные экранируются
-                    // SEC-30: building_id попадает в HTML id="" и в URL fetch'а.
-                    // item.building_id может оказаться свободным building_name (см. fallback
-                    // при создании маркера), поэтому приводим к чистому целому — иначе
-                    // значение может вырваться из атрибута или путь URL'а.
-                    const safeBuildingId = /^\d+$/.test(String(item.building_id)) ? String(item.building_id) : '';
+                    // (safeBuildingId declared at iteration scope above — AUD-016)
                     const buildingName = escapeHTML(item.building_name || '');
                     const ph1Class = !item.electricity_ph1 ? "class='blinking-text-red'" : (!isPhase1Ok ? "class='blinking-cell-orange'" : '');
                     const ph2Class = !item.electricity_ph2 ? "class='blinking-text-red'" : (!isPhase2Ok ? "class='blinking-cell-orange'" : '');

@@ -14,10 +14,60 @@
     "no-constant-condition": "warn",
     "no-undef": "error"
   },
+  "overrides": [
+    {
+      "files": ["public/**/*.js"],
+      "env": {
+        "browser": true,
+        "node": false,
+        "jest": false,
+        "es2022": true
+      },
+      "globals": {
+        "module": "readonly",
+        "L": "readonly",
+        "Chart": "readonly",
+        "DOMPurify": "readonly",
+        "define": "readonly",
+        "InfrastructureLineEditor": "readonly",
+        "MapLayersControl": "readonly",
+        "showToast": "writable",
+        "resetMetricsForm": "writable",
+        "openCoordinateEditor": "writable",
+        "editController": "writable",
+        "deleteController": "writable",
+        "deleteMetric": "writable",
+        "editBuilding": "writable",
+        "deleteBuilding": "writable",
+        "editTransformer": "writable",
+        "deleteTransformer": "writable",
+        "editLine": "writable",
+        "deleteLine": "writable",
+        "editWaterLine": "writable",
+        "deleteWaterLine": "writable",
+        "editWaterSource": "writable",
+        "deleteWaterSource": "writable",
+        "editHeatSource": "writable",
+        "deleteHeatSource": "writable"
+      },
+      "rules": {
+        "no-console": "off",
+        "no-redeclare": ["warn", { "builtinGlobals": false }],
+        "no-unused-vars": "warn",
+        "no-empty": "warn",
+        "no-cond-assign": "warn",
+        "no-useless-escape": "warn",
+        "no-control-regex": "warn",
+        "no-extra-semi": "warn",
+        "getter-return": "warn"
+      }
+    }
+  ],
   "ignorePatterns": [
     "node_modules/",
     "tests/",
-    "public/",
+    "public/dist/",
+    "public/libs/",
     "generator/",
     "frontend-design/",
     "coverage/"

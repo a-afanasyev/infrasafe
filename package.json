@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "lint": "eslint src/",
+    "lint": "eslint src/ public/",
     "test": "jest --forceExit",
     "test:unit": "jest tests/jest/unit",
     "test:integration": "jest tests/jest/integration",
