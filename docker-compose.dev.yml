@@ -92,6 +92,13 @@ services:
       # webhooks toward the real UK endpoint when a developer flips
       # uk_integration_enabled in the admin UI.
       - UK_USE_WEBHOOK_SENDER=${UK_USE_WEBHOOK_SENDER:-false}
+      # [AUD-024] Redis is OFF by default in dev (empty URL → in-memory
+      # fallbacks for rate-limiter / cache / webhook-dedup, single-replica).
+      # To exercise the Redis-backed code paths locally, start the optional
+      # `redis` service and point the app at it:
+      #   REDIS_URL=redis://redis:6379 \
+      #     docker compose -f docker-compose.dev.yml --profile redis up
+      - REDIS_URL=${REDIS_URL:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -106,6 +113,32 @@ services:
       start_period: 20s
     labels:
       - "description=InfraSafe Backend Development"
+      - "version=dev"
+
+  # [AUD-024] Redis — OPTIONAL dev service (parity with prod's Redis-backed
+  # rate-limiter / cache / webhook-dedup). Off by default: lives behind the
+  # `redis` compose profile so a plain `docker compose -f docker-compose.dev.yml
+  # up` keeps the lightweight in-memory fallbacks. Enable with:
+  #   REDIS_URL=redis://redis:6379 \
+  #     docker compose -f docker-compose.dev.yml --profile redis up
+  # No requirepass here — dev is loopback-only and the app's Redis branch keys
+  # on REDIS_URL presence, not auth (prod hardens with SEC-21 requirepass).
+  redis:
+    image: redis:7-alpine
+    profiles: ["redis"]
+    ports:
+      # [SEC-34f] loopback-only — keep dev Redis off the public interface
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - infrasafe-dev
+    restart: unless-stopped
+    labels:
+      - "description=InfraSafe Redis (dev, optional profile)"
       - "version=dev"
 
   # 🗄️ База данных PostgreSQL с PostGIS

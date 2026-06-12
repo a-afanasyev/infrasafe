@@ -772,6 +772,40 @@ event'а — строка остаётся `pending`, что корректно)
 | AUD-024 | В dev-compose нет Redis → Redis-ветки кода локально не воспроизводятся (см. ревизию B-003 ниже) | `docker-compose.dev.yml` | S |
 | AUD-035 | `jest --forceExit` маскирует open handles; coverage-отчёт от 17 апреля — порог 80% текущим кодом не подтверждён | `package.json` | M |
 
+#### Этап 3 — закрытие (2026-06-12)
+
+- **AUD-024 — DONE.** `docker-compose.dev.yml`: добавлен **опциональный** `redis:7-alpine` за compose-профилем
+  `redis` (off по умолчанию — `docker compose up` сохраняет in-memory fallback'ы) + `REDIS_URL=${REDIS_URL:-}`
+  в app-env. Воспроизведение Redis-веток локально:
+  `REDIS_URL=redis://redis:6379 docker compose -f docker-compose.dev.yml --profile redis up`.
+  Без requirepass (dev loopback-only; код ветвится по наличию `REDIS_URL`, не по auth — прод хардёнится
+  SEC-21). `docker compose config -q` зелёный.
+- **AUD-035 — ВЕРИФИЦИРОВАНО, изменения не требуются (push-back на «убрать флаг»).**
+  - **Coverage-порог 80% ПОДТВЕРЖДЁН на текущем коде**: свежий прогон `jest --coverage` →
+    **Statements 91.33% / Branches 84.84% / Functions 89.97% / Lines 91.87%**, все >80%, exit 0.
+    Порог уже энфорсится в CT каждым пушем (`ci.yml` job `test` → `npm run test:coverage`); отчёт от 17 апреля
+    в `tests/reports/` — просто устаревший tracked-артефакт (чистка — AUD-041).
+  - **`--forceExit` НЕ маскирует app-level leak.** Все 9 таймер-сайтов в `src/` уже `.unref()`'нуты
+    (rateLimiter ×2, circuitBreaker, cacheService, authService ×2, totpService, mvRefreshService,
+    ukOutboxService, alertVerificationService, server forceExit). `jest --detectOpenHandles` репортит
+    **0** JS-handle'ов (зависает без отчёта) → остаточный handle — **нативный** (libuv-threadpool, bcrypt),
+    ниже слоя async_hooks. Plain `npx jest` (без `--forceExit`) выходит **0 за 9с**; варнинг
+    «worker failed to exit gracefully» всплывает только под полной параллельной нагрузкой (воркер не успевает
+    слить bcrypt-threadpool до idle-дедлайна jest — jest сам force-killʼит воркер, суммарный exit 0).
+    CI **уже** гоняет no-`--forceExit` путь (`test:coverage`) зелёным. Вывод: локальный `--forceExit` —
+    легитимное DX-удобство (глушит безвредный нативный варнинг), не bug-masking. Оставлен намеренно.
+  - **Парные тест-файлы — отложено («при касании»).** Реальные дубли: `authService.test.js`+
+    `authServiceTest.test.js`, `alertController.test.js`+`alertControllerTest2.test.js` (+ ~25 файлов
+    в `*Test.test.js`-нейминге). Слить при следующем касании этих сьютов.
+- **AUD-017 — ОТЩЕПЛЁН (task #150), блокер.** E2e-сьют (~57) сейчас **НЕ зелёный**, не только «не в CI»:
+  харнесс устарел против cookie+2FA-auth. `e2eHelper.authed()` шлёт `Authorization: Bearer ${token}`, но
+  сервер выдаёт auth через HttpOnly-cookie, а admin-login возвращает `requires2FASetup` без `accessToken`
+  (`authController.js:36-44`); regular-user — токены только в Set-Cookie (`:49-65`). Значит `globalSetup`
+  кладёт `E2E_ADMIN_TOKEN`/`E2E_USER_TOKEN`=undefined → каждый authed-вызов 401. Nightly-job поверх такого
+  сьюта = вечно-красный. Сначала чинить харнесс (cookie-jar + admin-2FA через сид totp_secret/otplib +
+  Origin-заголовок для SEC-23), потом scheduled+workflow_dispatch job на `docker-compose.dev.yml`
+  (database/init seed = admin/admin123 + тест-данные).
+
 ### P2/P3 — гигиена (батч-кандидаты, см. quick wins в AUDIT_REPORT.md §4)
 
 - **AUD-018** dompurify — мёртвая backend-зависимость (фронт юзает vendored `public/libs/dompurify/`). [S]
