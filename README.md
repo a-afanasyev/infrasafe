@@ -26,7 +26,7 @@
 ### DevOps & Инфраструктура
 - **Оркестрация:** Docker Compose (dev, prod, unified, generator)
 - **Reverse Proxy:** Nginx
-- **Тестирование:** Jest (1800+ unit/integration/security тестов, 57 E2E)
+- **Тестирование:** Jest (~2580 unit/integration/security тестов, 143 suites, 57 E2E)
 - **Линтинг:** ESLint
 
 ## Структура проекта
@@ -66,7 +66,7 @@
 │   │   ├── authService.js             # JWT, refresh, blacklist
 │   │   ├── buildingService.js         # Бизнес-логика зданий
 │   │   ├── buildingMetricsService.js  # Агрегация для карты
-│   │   ├── cacheService.js            # Кэширование (in-memory, Redis-ready)
+│   │   ├── cacheService.js            # Кэширование (L1 in-memory + L2 Redis, hybrid)
 │   │   ├── controllerService.js       # IoT-контроллеры
 │   │   ├── metricService.js           # Метрики
 │   │   └── powerAnalyticsService.js   # Анализ электросетей
@@ -170,10 +170,10 @@ docker compose -f docker-compose.unified.yml up --build -d
 
 | Сервис | URL |
 |--------|-----|
-| Карта (карта мониторинга) | http://localhost:8080 |
-| Админ-панель | http://localhost:8080/admin.html |
-| Swagger UI | http://localhost:8080/api-docs |
-| API | http://localhost:8080/api/ |
+| Карта (карта мониторинга) | http://localhost:8088 |
+| Админ-панель | http://localhost:8088/admin.html |
+| Swagger UI | http://localhost:8088/api-docs |
+| API | http://localhost:8088/api/ |
 | Health Check | http://localhost:3000/health |
 
 ### Фронтенд-бандлинг
@@ -193,7 +193,7 @@ npm run build:frontend:watch   # watch-режим: пересборка при �
 ### Тестирование
 
 ```bash
-npm test                  # Все тесты (1800+, 89 suites)
+npm test                  # Все тесты (~2580, 143 suites)
 npm run test:unit         # Unit-тесты (tests/jest/unit/)
 npm run test:integration  # Интеграционные тесты
 npm run test:security     # Тесты безопасности
@@ -238,7 +238,7 @@ openssl rand -base64 32    # TOTP_ENCRYPTION_KEY (2FA)
 
 ### Интеллектуальная аналитика
 - 25+ аналитических эндпоинтов с Circuit Breaker
-- Многоуровневое кэширование (in-memory, Redis-ready)
+- Многоуровневое кэширование (L1 in-memory + L2 Redis, hybrid)
 - Анализ энергоэффективности и прогнозирование нагрузок
 
 ## Архитектура
@@ -246,7 +246,7 @@ openssl rand -base64 32    # TOTP_ENCRYPTION_KEY (2FA)
 ### Трёхслойная архитектура бэкенда
 
 ```
-Nginx (8080) -> /api/* -> Express (3000) -> Routes -> Controllers -> Services -> Models -> PostgreSQL
+Nginx (8088) -> /api/* -> Express (3000) -> Routes -> Controllers -> Services -> Models -> PostgreSQL
 ```
 
 ### Безопасность
@@ -282,7 +282,7 @@ Nginx (8080) -> /api/* -> Express (3000) -> Routes -> Controllers -> Services ->
 
 | Сервис | Описание | Порт |
 |--------|----------|------|
-| frontend | Nginx (статика + API proxy) | 8080 (dev: 8088) |
+| frontend | Nginx (статика + API proxy) | 8088 |
 | app | Node.js Express | 3000 |
 | postgres | PostgreSQL 15 + PostGIS | 5435 (host) -> 5432 (container) |
 

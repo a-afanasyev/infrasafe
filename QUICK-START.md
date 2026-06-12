@@ -5,7 +5,7 @@
 ### Основное приложение
 ```bash
 docker compose -f docker-compose.dev.yml up --build -d
-open http://localhost:8080
+open http://localhost:8088
 ```
 
 ### Генератор метрик (опционально)
@@ -20,9 +20,9 @@ open http://localhost:8081
 
 | Сервис | URL | Логин/Пароль |
 |--------|-----|--------------|
-| Карта | http://localhost:8080/ | - |
-| Админка | http://localhost:8080/admin.html | admin / admin123 |
-| Swagger UI | http://localhost:8080/api-docs | - |
+| Карта | http://localhost:8088/ | - |
+| Админка | http://localhost:8088/admin.html | admin / admin123 |
+| Swagger UI | http://localhost:8088/api-docs | - |
 | API | http://localhost:3000/api | - |
 | Health Check | http://localhost:3000/health | - |
 | Генератор | http://localhost:8081 | - |
@@ -33,7 +33,7 @@ open http://localhost:8081
 ## Тестирование
 
 ```bash
-npm test                  # Все 175 тестов
+npm test                  # Все тесты (~2580, 143 suites)
 npm run test:unit         # Unit-тесты
 npm run test:security     # Тесты безопасности
 npm run test:coverage     # С отчётом покрытия
@@ -72,4 +72,4 @@ docker compose -f docker-compose.dev.yml down -v
 | [docs/POWER-ANALYTICS-API.md](docs/POWER-ANALYTICS-API.md) | API аналитики электросетей |
 | [docs/GENERATOR.md](docs/GENERATOR.md) | Руководство генератора метрик |
 | [docs/DEVELOPMENT_DOCKER_GUIDE.md](docs/DEVELOPMENT_DOCKER_GUIDE.md) | Docker для разработки |
-| Swagger UI | http://localhost:8080/api-docs |
+| Swagger UI | http://localhost:8088/api-docs |

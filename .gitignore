@@ -51,6 +51,9 @@ coverage/
 .nyc_output
 test-results/
 playwright-report/
+# [AUD-041] generated test outputs — load/smoke reports + coverage are
+# regenerated on every run (jest coverageDirectory, run-load/smoke-tests.sh).
+tests/reports/
 
 # ==========================================
 # OS — системные файлы

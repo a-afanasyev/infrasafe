@@ -823,6 +823,27 @@ event'а — строка остаётся `pending`, что корректно)
 - **AUD-038** доки: CLAUDE.md Known Issues устарели («console.error» — 0 вхождений; «in-memory rate-limiter/cache» — уже гибрид), swagger 14/21 роутов, `docs/INDEX.md` от 04-17, CLAUDE.md не знает миграцию 032. [S/M]
 - **AUD-041/042** tracked-артефакты (`tests/reports/` 41 отчёт, generator-backup.json, корневые `test_*.sh` — разошедшиеся дубли `tests/bash/*`) + swagger-deps грузятся в прод-образ top-level (`server.js:11-12`). [S]
 
+#### Гигиена-хвост — закрытие (2026-06-12, repo-only, без деплоя)
+
+- **AUD-018 — DONE.** `dompurify` убран из `package.json` dependencies (0 backend-require; фронт юзает
+  vendored `public/libs/dompurify/purify.min.js`). `package-lock.json` синхронизирован
+  (`npm install --package-lock-only`). Тесты `p1-3-csp-sri` / `xss-protection` зелёные — они string-match'ат
+  HTML на vendored-путь, а не `require('dompurify')`. Прод-образ выкинет пакет на следующем `npm ci`/rebuild
+  (поведение не меняется).
+- **AUD-023 — DONE.** `README.md`+`QUICK-START.md`: все `localhost:8080` → `8088` (dev-фронт публикует 8088,
+  `docker-compose.dev.yml:14`); архитектурная схема `Nginx (8080)`→`8088`; таблица портов `8080 (dev:8088)`→`8088`.
+  Счётчики тестов «1800+/175/89 suites» → «~2580/143 suites» (фактический `npm test`).
+- **AUD-038 — DONE (хвост).** CLAUDE.md Known Issues + «in-memory cache» исправлены ещё в `482fbba`.
+  Здесь: `docs/INDEX.md` дата 04-17→06-12 + «миграции 003-015»→«003-035»; README cache-формулировки
+  «in-memory, Redis-ready»→«L1 in-memory + L2 Redis (hybrid)». **Отложено:** swagger 14/21 роутов — это
+  добавление `@swagger` JSDoc в `integrationRoutes`/`webhookRoutes` (код src/ → image rebuild, не «no-deploy»).
+- **AUD-041 — DONE (хвост, частично).** `tests/reports/` (41 stale load/smoke/unified-отчёта 2025 г.) убраны
+  из git-индекса + `tests/reports/` добавлен в `.gitignore` (выход jest-coverage/smoke регенерируется).
+  **Отложено (нужен doc-ripple/решение):** корневые `test_*.sh` (3 дубля `tests/bash/*` + orphan
+  `test_infrastructure_features.sh` без копии; referenced в `docs/API_TESTING.md`/`docs/analytics.md`);
+  `docs/nginx-production-improved.conf` (referenced из `docs/NGINX-PRODUCTION-REVIEW.md` — не «zero refs»,
+  убирать вместе с ревью-доком); `docs/archive` squash (120 файлов, bulk-решение).
+
 ### P3 — отложенное / требует решения
 
 - **AUD-008/009/010/011/012** — техдолг слоёв: сырой SQL в 6 admin-контроллерах мимо моделей; ~900 строк CRUD-копипасты в 4 моделях при готовой фабрике (+ create-через-truthiness теряет `0`, 500 на пустом теле — `Line.js:111`, `WaterLine.js:134`); water-роуты без контроллеров; envelope-разнобой (apiResponse в 4/29 файлов); `alertService` 1342 LoC. Порядок: фабрика → admin-контроллеры → water → envelope; сплит alertService ПОСЛЕ AUD-001/003/006. [L, по мере касания]

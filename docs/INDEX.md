@@ -1,6 +1,6 @@
 # ИНДЕКС ДОКУМЕНТАЦИИ InfraSafe
 
-> Последнее обновление: 2026-04-17
+> Последнее обновление: 2026-06-12
 
 ---
 
@@ -39,7 +39,7 @@
 
 ### База данных
 
-- **[../database/migrations/README.md](../database/migrations/README.md)** — индекс всех миграций (003-015) с назначением и статусом
+- **[../database/migrations/README.md](../database/migrations/README.md)** — индекс всех миграций (003-035) с назначением и статусом
 - **[MAP_LAYERS_GUIDE.md](MAP_LAYERS_GUIDE.md)** — руководство по слоям карты (entity-релевантно)
 
 ### Docker и развертывание
