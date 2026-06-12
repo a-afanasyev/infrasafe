@@ -1524,12 +1524,10 @@
     <!-- Подключение утилит безопасности -->
     <script src="public/dist/utils/domSecurity.js?v=20260527"></script>
 
-    <!-- [hotfix 2026-05-25] CSRF helper MUST load before admin-auth.js — the
-         fetch interceptor in admin-auth.js refuses to send any modifying API
-         request when window.csrfProtection is missing (returns rejected
-         promise with "CSRF protection module not loaded"). index.html already
-         loaded csrf.js, admin.html did not — every admin save was failing. -->
-    <script src="public/dist/utils/csrf.js?v=20260527"></script>
+    <!-- [AUD-013 phase 2] csrf.js removed — the server never validated
+         X-CSRF-Token (csrfOriginGuard.js); real CSRF defense is SameSite=Strict
+         + the server-side Origin guard (SEC-23). admin-auth.js no longer
+         references window.csrfProtection. -->
 
     <!-- [Sprint 10 PR-5] UK rules client-side validation bounds -->
     <script src="public/dist/utils/ukRulesValidation.js?v=20260527"></script>

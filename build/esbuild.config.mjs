@@ -30,7 +30,6 @@ const ENTRIES = [
     'public/admin-coordinate-editor.js',
     'public/infrastructure-line-editor.js',
     'public/map-layers-control.js',
-    'public/utils/csrf.js',
     'public/utils/domSecurity.js',
     'public/utils/powerUtils.js',
     'public/utils/rateLimiter.js',
