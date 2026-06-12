@@ -105,6 +105,23 @@ describe('Building.deleteCascade', () => {
         expect(mockClient.release).toHaveBeenCalledTimes(1);
     });
 
+    it('preserves the original error when ROLLBACK itself fails [AUD-030]', async () => {
+        const logger = require('../../../src/utils/logger');
+        // BEGIN ok
+        mockClient.query.mockResolvedValueOnce({});
+        // first DELETE fails — the real cause
+        mockClient.query.mockRejectedValueOnce(new Error('DB connection lost'));
+        // ROLLBACK also fails (broken connection) — must NOT mask the cause
+        mockClient.query.mockRejectedValueOnce(new Error('rollback failed: connection closed'));
+
+        await expect(Building.deleteCascade(5)).rejects.toThrow('Failed to cascade-delete building');
+
+        expect(logger.error).toHaveBeenCalledWith(
+            expect.stringContaining('Rollback failed in Building.deleteCascade')
+        );
+        expect(mockClient.release).toHaveBeenCalledTimes(1);
+    });
+
     it('should return null when building does not exist', async () => {
         // BEGIN
         mockClient.query.mockResolvedValueOnce({});

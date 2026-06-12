@@ -302,7 +302,11 @@ class Building {
 
             return result.rows.length ? result.rows[0] : null;
         } catch (error) {
-            await client.query('ROLLBACK');
+            // [AUD-030] Guard ROLLBACK so a broken connection can't mask the
+            // original error (pattern mirrors alertService / alertVerificationService).
+            await client.query('ROLLBACK').catch((rbErr) =>
+                logger.error(`Rollback failed in Building.deleteCascade: ${rbErr.message}`)
+            );
             logger.error(`Error in Building.deleteCascade: ${error.message}`);
             throw createError(`Failed to cascade-delete building: ${error.message}`, 500);
         } finally {

@@ -229,8 +229,11 @@ db.init()
         process.exit(1);
     });
 
-// Graceful shutdown
-const gracefulShutdown = async (signal) => {
+// Graceful shutdown.
+// [AUD-028] exitCode is propagated to process.exit so an abnormal trigger
+// (unhandledRejection) is distinguishable from a clean SIGTERM/SIGINT by
+// process monitors / orchestrators — was always 0 before.
+const gracefulShutdown = async (signal, exitCode = 0) => {
     logger.info(`Received ${signal}, starting graceful shutdown...`);
     const forceExit = setTimeout(() => {
         logger.error('Forced exit after timeout');
@@ -266,7 +269,7 @@ const gracefulShutdown = async (signal) => {
     } catch (e) {
         logger.error('DB close error:', e);
     }
-    process.exit(0);
+    process.exit(exitCode);
 };
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
@@ -280,7 +283,7 @@ process.on('uncaughtException', (err) => {
 
 process.on('unhandledRejection', (reason, _promise) => {
     logger.error('Необработанное отклонение обещания:', reason);
-    gracefulShutdown('unhandledRejection');
+    gracefulShutdown('unhandledRejection', 1);
 });
 
 module.exports = app; // Для тестирования

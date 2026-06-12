@@ -816,8 +816,8 @@ event'а — строка остаётся `pending`, что корректно)
 - **AUD-023** QUICK-START/README: порт 8080 vs фактический 8088, счётчики тестов «175»/«1800+». [S]
 - **AUD-026** `/integration/request-counts|building-requests` доступны любому auth-юзеру (by design? подтвердить product-намерение). [S]
 - **AUD-027** `X-XSS-Protection: 1` → `0` (nginx :206,407); helmet `styleSrc https:` шире edge-CSP (`server.js:52`). [S]
-- **AUD-028** unhandledRejection → exit 0 (`server.js:281-284`→`:269`) — аварийный выход неотличим от штатного. [S]
-- **AUD-029/030/036/044** мелочи: catch без лога (`adminGeneralController.js:27`), незащищённый ROLLBACK (`Building.js:305`), `metricCount` всегда 1 + stats через 10k строк (`controllerService.js:202,327`), voltage-классификация без LIMIT-1-предфильтра, молчаливые `.catch(()=>[])` в admin.js:86. [S каждый]
+- **AUD-028** unhandledRejection → exit 0 (`server.js:281-284`→`:269`) — аварийный выход неотличим от штатного. [S] — **DONE 2026-06-12**: `gracefulShutdown(signal, exitCode=0)` пробрасывает код в `process.exit`; `unhandledRejection` зовёт его с `1`. SIGTERM/SIGINT остаются 0. (Поведение exit-кода не юнит-тестируется — `serverTest.js` структурный-only: вызов хендлера убил бы jest-раннер; нужен subprocess-харнесс.)
+- **AUD-029/030/036/044** мелочи: catch без лога (`adminGeneralController.js:27` — **DONE ранее**), незащищённый ROLLBACK (`Building.js:305` — **DONE 2026-06-12**: `ROLLBACK().catch(log)` чтобы битый коннект не маскировал исходную ошибку; TDD RED→GREEN в `buildingCascadeDelete.test.js`), `.catch(()=>[])` в admin.js (**DONE ранее, AUD-044**). **Остаётся AUD-036** (перф: `metricCount` всегда 1 + stats через 10k строк `controllerService.js:202,327` + voltage-классификация без LIMIT-1-предфильтра) — отдельно, требует аккуратной переработки запросов. [S каждый]
 - **AUD-031** мёртвый код: неподключённый `validateMetricCreate` (`validators.js:78-99` — POST /metrics идёт без него!), 4 мёртвых лимитер-экспорта, событие-сирота `ALERT_SUPPRESSED`, `createSecureTableRow` (= SEC-34c). [S]
 - **AUD-032** debug-пробы hotfix-2026-05-27 в проде (= SEC-34d): `admin-head-probe.js`, `admin-body-probe.js`, flip-trace в `admin-auth.js:44-52`, `login.js:287-290`. [S]
 - **AUD-038** доки: CLAUDE.md Known Issues устарели («console.error» — 0 вхождений; «in-memory rate-limiter/cache» — уже гибрид), swagger 14/21 роутов, `docs/INDEX.md` от 04-17, CLAUDE.md не знает миграцию 032. [S/M]
@@ -873,6 +873,25 @@ event'а — строка остаётся `pending`, что корректно)
     suites 111 зелёных; full 2590; lint 0 errors).
   - **Остаётся в пункте**: AUD-008 (admin-контроллеры на модели — следующий по порядку),
     AUD-010 (water-роуты в контроллеры), AUD-011 (envelope), AUD-012 (сплит alertService).
+
+  #### AUD-008 — верификация + рескоуп (2026-06-12, push-back, миграция НЕ делается)
+
+  Прочитаны 6 admin-контроллеров. Вывод: **«перенести запросы в модели» — не чистый
+  выигрыш, форсить нельзя** (как и factory в AUD-009, только сильнее). Причины:
+  - Admin-слой **намеренно другой** и уже **DRY через Phase-5 билдеры**: списки/`getById`
+    идут через `buildPaginatedList` + bespoke `LIST_CONFIG` с JOIN'ами, которых у моделей
+    НЕТ (`transformer_name`, `connected_buildings_count`, `ARRAY_AGG(buildings)`); все
+    `update` уже на общем `buildUpdateQuery`.
+  - Admin-фичи без аналога в моделях: dependency-checked delete (water-line проверяет
+    connected buildings), batch-операции (`adminService`), тугие per-controller
+    write-allowlists, `gen_random_uuid()` для cold-water.
+  - Миграция на модели → регресс (потеря JOIN'ов/batch/dep-check) ИЛИ раздувание моделей
+    admin-логикой. Единственная реальная дивергенция — `branches ? … : '[]'`
+    (admin-create форсит `'[]'`) против model-omit→PG-default: один create-time дефолт,
+    не структурная дубль. Сверять при касании water-домена (нужен column-default + product).
+  - **Действие**: миграцию не делаем; пункт остаётся «по мере касания». Реальная мелкая
+    дубль (одинаковые plain `delete`/`getById` на 3-4 контроллерах) — кандидат на крошечный
+    helper при следующем касании, не отдельный батч.
 - **AUD-033** дублирование fetch-обвязки + 4 мёртвых token-блока в `map-layers-control.js` — **вместе с SEC-34b** (один рефактор на cookie/interceptor, см. ревизию). [M]
 - **AUD-039** две модели трансформаторов (`transformers` только в dev-init; admin-вкладка на проде, вероятно, бьёт в отсутствующую таблицу — **проверить на проде**, потом тикет). [L]
 - **AUD-040** API без потребителя: analytics 16 эндпоинтов (фронт зовёт 1), admin 46 (фронт ~4 семейства), `/integration/request-counts` (0 вызовов из public/) — сверить с планами B-008/UK-web до любых удалений. [M-L]
