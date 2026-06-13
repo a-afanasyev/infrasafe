@@ -2178,38 +2178,10 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
 
-    // Обработчик формы редактирования линий
-    document.getElementById('edit-line-form').addEventListener('submit', async function(e) {
-        e.preventDefault();
-
-        const id = document.getElementById('edit-line-id').value;
-        const data = {
-            name: document.getElementById('edit-line-name').value,
-            voltage_kv: parseFloat(document.getElementById('edit-line-voltage').value),
-            length_km: parseFloat(document.getElementById('edit-line-length').value),
-            transformer_id: parseInt(document.getElementById('edit-line-transformer-id').value)
-        };
-
-        try {
-            const response = await fetch(`/api/lines/${id}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(data)
-            });
-
-            if (!response.ok) throw new Error('Ошибка обновления линии');
-
-            showToast('Линия успешно обновлена', 'success');
-            closeModal('edit-line-modal');
-            dataLoaded.lines = false;
-            loadLines();
-        } catch (error) {
-            console.error('Error updating line:', error);
-            showToast('Ошибка обновления линии', 'error');
-        }
-    });
+    // [code-review batch] The legacy `edit-line-form` handler was removed — the
+    // form/modal (edit-line-modal) is never opened (editLine() uses
+    // InfrastructureLineEditor with a map). Dead code carrying the same
+    // NaN→null wipe risk; deleted instead of guarded (YAGNI).
 
     // Обработчик формы редактирования источников воды
     document.getElementById('edit-water-source-form').addEventListener('submit', async function(e) {
@@ -2302,9 +2274,8 @@ document.addEventListener("DOMContentLoaded", function () {
         closeModal('edit-transformer-modal');
     });
 
-    document.getElementById('cancel-edit-line').addEventListener('click', function() {
-        closeModal('edit-line-modal');
-    });
+    // [code-review batch] cancel-edit-line handler removed with the dead
+    // edit-line-modal (see the deleted edit-line-form handler above).
 
     document.getElementById('cancel-edit-water-source').addEventListener('click', function() {
         closeModal('edit-water-source-modal');

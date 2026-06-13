@@ -1227,23 +1227,9 @@
         </div>
     </div>
 
-    <!-- Модальное окно редактирования линии -->
-    <div id="edit-line-modal" class="edit-form-overlay" style="display: none;" aria-label="Редактировать линию">
-        <div class="edit-form">
-            <h3>Редактировать линию</h3>
-            <form id="edit-line-form">
-                <input type="hidden" id="edit-line-id">
-                <input type="text" id="edit-line-name" placeholder="Название" required>
-                <input type="number" step="0.1" id="edit-line-voltage" placeholder="Напряжение (кВ)" required>
-                <input type="number" step="0.01" id="edit-line-length" placeholder="Длина (км)" required>
-                <input type="number" id="edit-line-transformer-id" placeholder="ID трансформатора" required>
-                <div class="form-buttons">
-                    <button type="submit">Сохранить</button>
-                    <button type="button" id="cancel-edit-line">Отмена</button>
-                </div>
-            </form>
-        </div>
-    </div>
+    <!-- [code-review batch] edit-line-modal removed — dead UI. It was never
+         opened (editLine() uses the map-based InfrastructureLineEditor); its
+         form carried the same NaN→null coordinate-wipe class. -->
 
     <!-- Модальное окно редактирования источника воды -->
     <div id="edit-water-source-modal" class="edit-form-overlay" style="display: none;" aria-label="Редактировать источник воды">
