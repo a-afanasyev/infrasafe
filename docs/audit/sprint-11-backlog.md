@@ -1344,3 +1344,30 @@ branch**: its `power.html` and `energy-analytics.html` are documented (P1) again
 (incl. `/forecast`) and `/api/analytics/*`, and its JS already calls `analytics/buildings/` + `analytics/transformers/`.
 So they are **intentional API surface for the next frontend, not dead code** — do NOT prune. Operator decision: keep,
 documented as intentional. (Re-evaluate only if the redesign is abandoned.)
+
+### AUD-039 Phase 2 (CONTRACT) — migration 037 BUILT + prod-schema-validated (2026-06-13)
+Follows the deployed+verified Phase 1 (036). `037_drop_power_transformers.sql` (transactional + idempotent):
+1. **Fixes a Phase-1 arity regression** (caught by validating against the REAL prod schema — the mocked unit test
+   could not). `Transformer.findNearestBuildings` calls `find_nearest_buildings_to_transformer($1,$2,$3)` with
+   THREE integer args (id, max_distance, limit), but 036 created only a TWO-arg integer overload → `GET
+   /api/analytics/transformers/:id/buildings` errored `function (integer,integer,integer) does not exist`. Latent
+   (no consumer yet; frontend-redesign plans it). 037 creates the correct 3-arg INTEGER overload on `transformers`
+   (geom ST_Distance + `LIMIT limit_count`, mirroring the legacy VARCHAR 3-arg) and drops 036's 2-arg one.
+2. **Drops the legacy artifacts:** both VARCHAR/power_transformers `find_nearest` overloads, FK
+   `fk_buildings_power_transformer`, `buildings.power_transformer_id` (0 rows reference it — verified), and
+   `DROP TABLE power_transformers CASCADE` (also removes trig_power_transformers_geom).
+**Validation:** dry-run against the real prod schema (BEGIN…ROLLBACK) — the 3-arg call now executes (was an error),
+only the `(integer,integer,integer)` overload remains, power_transformers + the column are gone, `transformers`
+intact (4 rows); idempotent on double-apply. Prod NOT mutated. migrate-discover unit tests green (037 discovered,
+not in the frozen 003-034 baseline).
+**Deferred follow-up (cosmetic, no functional impact):** `database/init/01_init_database.sql` + `02_seed_data.sql`
++ `database.sql` still CREATE+seed power_transformers (incl. the column in ~30 buildings INSERTs). On a fresh DB,
+init creates it, 036 ports its 4 rows into `transformers`, and 037 drops it → identical correct end state, just a
+transient create-then-drop. Excising it cleanly means surgery on ~30 seed INSERTs + the unified snapshot, which is
+error-prone and not CI-verifiable (no fresh-bootstrap test) — left as source hygiene, NOT shipped speculatively.
+**Status:** built + validated; awaiting deploy (`./update-production.sh` runs `migrate up` 037 before the app
+switch — backend image rebuild has no code delta this time, but the runner applies the schema). Recommend a short
+Phase-1 soak first, though Phase 1 verified clean today and data is test-only.
+**Testing gap noted:** the findNearestBuildings unit test is fully mocked → it asserts the 3-arg call but cannot
+catch a missing/мismatched SQL function. A real DB integration test would have caught the 036 regression — folds
+into task #150 (e2e harness).

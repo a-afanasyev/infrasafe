@@ -81,7 +81,11 @@ psql postgresql://postgres:postgres@localhost:5435/infrasafe
 #                    036 canonicalize transformers — Phase 1 EXPAND (AUD-039: add richer cols to `transformers`,
 #                        port the 4 real rows off legacy `power_transformers`, re-point building 5 → Олмазор-1,
 #                        drop the '1111' test row, add INTEGER overload of find_nearest_buildings_to_transformer;
-#                        expand-only — power_transformers + buildings.power_transformer_id dropped later in 037 CONTRACT)
+#                        expand-only — power_transformers + buildings.power_transformer_id dropped later in 037 CONTRACT),
+#                    037 drop power_transformers — Phase 2 CONTRACT (AUD-039: DROP power_transformers + buildings.
+#                        power_transformer_id + FK + the VARCHAR find_nearest overloads; ALSO fixes a Phase-1 arity
+#                        regression — creates the correct 3-arg INTEGER find_nearest(id,radius,limit) the model calls,
+#                        drops 036's mistaken 2-arg one. Deliberate CONTRACT migration; rollback target = Phase-1 image)
 ```
 
 ### Migration runner (AUD-002, PR-1a)
