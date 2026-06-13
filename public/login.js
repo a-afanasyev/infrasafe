@@ -282,34 +282,21 @@
         }
     }
 
-    function traceLog(msg) {
-        try {
-            const buf = JSON.parse(localStorage.getItem('flip-trace') || '[]');
-            buf.push(Date.now() + ' [login] ' + msg);
-            if (buf.length > 80) buf.shift();
-            localStorage.setItem('flip-trace', JSON.stringify(buf));
-        } catch (_) {}
-        console.log('[LOGIN]', msg);
-    }
-
     document.addEventListener('DOMContentLoaded', async () => {
-        traceLog('DOMContentLoaded url=' + location.href);
+        // [AUD-032] removed the flip-trace debug instrumentation (closed
+        // 2026-05-27 hotfix incident). If already authenticated, skip the form.
         try {
             const res = await fetch('/api/auth/profile', {
                 method: 'GET',
                 credentials: 'same-origin'   // browser must send the cookie
             });
-            traceLog('/profile probe status=' + res.status + ' ok=' + res.ok
-                + ' redirected=' + res.redirected);
             if (res.ok) {
-                traceLog('redirecting to /admin.html');
                 window.location.href = '/admin.html';
                 return;
             }
-        } catch (e) {
-            traceLog('/profile threw ' + e.name + ': ' + e.message);
+        } catch (_e) {
+            // No valid session probe — fall through to render the login form.
         }
-        traceLog('rendering login form (no valid session)');
         new LoginHandler();
     });
 }());

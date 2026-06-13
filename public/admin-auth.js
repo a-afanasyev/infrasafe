@@ -5,9 +5,10 @@
 //      server set on /auth/login; the browser sends it automatically.
 //   2. If the session is invalid/expired, redirect to /login.html — where
 //      the full 2FA flow (verify-2fa, setup-2fa, confirm-2fa) lives.
-//   3. Intercept window.fetch to apply CSRF tokens to mutating /api/* calls
-//      and to force logout on the first 401 response. (Authorization header
-//      is no longer injected — cookies handle that.)
+//   3. Intercept window.fetch to force logout on the first 401 from /api/*
+//      and ensure same-origin credentials. (Authorization header and the
+//      client CSRF-token block are no longer injected — cookies handle auth,
+//      and CSRF is defended server-side by SameSite + Origin guard, AUD-013.)
 //
 // This file intentionally does NOT render a login form or speak the 2FA protocol.
 // Duplicating that here historically caused the "different OTP" bug: POST /api/auth/login
@@ -50,30 +51,13 @@ class AdminAuth {
     }
 
     async validateToken() {
-        const traceLog = (msg) => {
-            try {
-                const buf = JSON.parse(localStorage.getItem('flip-trace') || '[]');
-                buf.push(Date.now() + ' [admin] ' + msg);
-                if (buf.length > 80) buf.shift();
-                localStorage.setItem('flip-trace', JSON.stringify(buf));
-            } catch (_) {}
-            console.log('[ADMIN-AUTH]', msg);
-        };
-
-        traceLog('validateToken start url=' + location.href);
         try {
             const response = await fetch('/api/auth/profile', {
                 method: 'GET',
                 credentials: 'same-origin'   // [1A-FU-C-M1] cookie carries auth
             });
 
-            traceLog('validateToken response status=' + response.status
-                + ' ok=' + response.ok
-                + ' type=' + response.type
-                + ' redirected=' + response.redirected);
-
             if (response.ok) {
-                traceLog('validateToken OK → showAdminPanel');
                 this._connectionRetries = 0;
                 this._clearConnectionNotice();
                 this.isAuthenticated = true;
@@ -90,20 +74,17 @@ class AdminAuth {
             // restarting backend, 503, 500) is a transient server condition
             // and must NOT destroy the session.
             if (response.status === 401 || response.status === 403) {
-                traceLog('validateToken ' + response.status + ' → logout');
                 this.logout();
                 return;
             }
 
-            traceLog('validateToken transient status=' + response.status + ' → keep session');
-            this._handleTransientError('server ' + response.status);
-        } catch (error) {
+            this._handleTransientError();
+        } catch (_error) {
             // [AUD-014] fetch rejected — offline / DNS / dropped connection.
             // A network blip is not an auth failure: keep the session, show a
             // notice, and retry. The previous code logged the operator out on
             // every transient timeout.
-            traceLog('validateToken network error: ' + (error && error.message) + ' → keep session');
-            this._handleTransientError('network');
+            this._handleTransientError();
         }
     }
 
@@ -111,9 +92,8 @@ class AdminAuth {
      * [AUD-014] Handle a transient connection failure without destroying the
      * session: surface a non-blocking notice and schedule a bounded retry.
      * Never logs out or redirects.
-     * @param {string} detail - short cause label for the trace log
      */
-    _handleTransientError(detail) {
+    _handleTransientError() {
         this._connectionRetries = (this._connectionRetries || 0) + 1;
         this._showConnectionNotice();
         if (this._connectionRetries <= this.maxConnectionRetries) {
@@ -144,16 +124,6 @@ class AdminAuth {
     }
 
     logout() {
-        // [hotfix 2026-05-27] Persist stack trace so we can read it after navigation.
-        try {
-            const stack = (new Error('logout-trace').stack || '').split('\n').slice(0, 5).join(' | ');
-            const buf = JSON.parse(localStorage.getItem('flip-trace') || '[]');
-            buf.push(Date.now() + ' [admin] logout() called STACK=' + stack);
-            if (buf.length > 80) buf.shift();
-            localStorage.setItem('flip-trace', JSON.stringify(buf));
-            console.warn('[ADMIN-AUTH] logout() called from:\n' + stack);
-        } catch (_) { /* defensive */ }
-
         // [P1-V1 / 1A-FU-C-M1] Best-effort server-side blacklist + cookie clear.
         // No localStorage to clean — cookies are the only token store now.
         // We don't await; network failures must not block the redirect.

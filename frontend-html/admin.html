@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>InfraSafe - Администрирование</title>
-    <!-- [hotfix 2026-05-27 debug] Earliest possible probe to prove admin.html reaches script execution. -->
-    <script src="public/admin-head-probe.js?v=20260527"></script>
     <link rel="icon" type="image/svg+xml" href="public/images/favicon.svg">
     <!-- Скрипт подключается в конце body -->
     <link rel="stylesheet" href="public/css/admin.css">
@@ -1531,9 +1529,6 @@
 
     <!-- [Sprint 10 PR-5] UK rules client-side validation bounds -->
     <script src="public/dist/utils/ukRulesValidation.js?v=20260527"></script>
-
-    <!-- [hotfix 2026-05-27 debug] Probe right before admin-auth.js to verify parsing reaches body. -->
-    <script src="public/admin-body-probe.js?v=20260527"></script>
 
     <!-- Подключаем систему авторизации перед основным скриптом -->
     <script src="public/dist/admin-auth.js?v=20260527"></script>
