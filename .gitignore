@@ -99,6 +99,8 @@ database/backups/
 # ==========================================
 screenshots/
 /*.png
+/*.jpeg
+/*.jpg
 
 # ==========================================
 # Временные файлы анализа в корне
@@ -123,6 +125,21 @@ screenshots/
 *.patch
 *.code-workspace
 map-after-toggle.yml
+# Full-audit report — /audit skill output, regenerated each run (kept local).
+AUDIT_REPORT.md
+# One-off operator/incident scripts kept local; canonical deploy = update-production.sh.
+# Listed explicitly (not by glob) so a future intentional deploy script isn't silently ignored.
+/connect.sh
+/deploy.sh
+/deploy-nosudo.sh
+/deploy-resume.sh
+/deploy-resume2.sh
+/deploy-resume3.sh
+/fix-git-and-redeploy.sh
+/hardening.sh
+/hardening-recover.sh
+/hardening-recover2.sh
+/setup-generator.sh
 
 # ==========================================
 # Сгенерированные документы (пересоздаются агентом)
