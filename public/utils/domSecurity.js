@@ -98,44 +98,6 @@ function clearContainer(container) {
 }
 
 /**
- * Создание безопасной строки таблицы с данными
- * @param {Object} data - Данные для строки
- * @param {Array} fields - Поля для отображения в формате [{key: 'name', secure: true}, ...]
- * @param {string} additionalCells - Дополнительные ячейки (уже безопасный HTML)
- * @returns {HTMLTableRowElement} - Безопасная строка таблицы
- */
-function createSecureTableRow(data, fields, additionalCells = '') {
-    const row = document.createElement('tr');
-    
-    // Добавляем ячейки с данными
-    fields.forEach(field => {
-        const cell = document.createElement('td');
-        const value = data[field.key];
-        
-        if (field.secure === false) {
-            // Для заведомо безопасных данных (например, ID, числа)
-            cell.innerHTML = value || '';
-        } else {
-            // Для всех остальных данных используем безопасное отображение
-            setSecureText(cell, value || '');
-        }
-        
-        row.appendChild(cell);
-    });
-    
-    // Добавляем дополнительные ячейки (например, кнопки)
-    if (additionalCells) {
-        const tempDiv = document.createElement('div');
-        setSecureHTML(tempDiv, additionalCells);
-        while (tempDiv.firstChild) {
-            row.appendChild(tempDiv.firstChild);
-        }
-    }
-    
-    return row;
-}
-
-/**
  * Экранирование HTML символов для безопасного отображения
  * @param {string} text - Текст для экранирования
  * @returns {string} - Экранированный текст
@@ -258,7 +220,6 @@ const DOMSecurity = {
     showSecureErrorMessage,
     showSecureSuccessMessage,
     clearContainer,
-    createSecureTableRow,
     escapeHTML,
     sanitizePopupContent,
     formatPopupValue,

@@ -31,7 +31,6 @@ describe('XSS Protection Tests', () => {
             expect(content).toContain('showSecureErrorMessage');
             expect(content).toContain('showSecureSuccessMessage');
             expect(content).toContain('clearContainer');
-            expect(content).toContain('createSecureTableRow');
             expect(content).toContain('escapeHTML');
         });
         
