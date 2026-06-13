@@ -503,15 +503,37 @@ describe('UKIntegrationService — Phase 3-5', () => {
                 expect(overrideFromLastEnqueue()).toBe('critical');
             });
 
-            it('non-reopen, non-engineer → null (no override)', async () => {
+            // [severity→urgency gap fix] On a plain alert.created we now carry the
+            // per-rule urgency in uk_urgency_override (a field UK already honors on
+            // reopen/engineer/escalated). Previously this was null, so UK fell back
+            // to deriving urgency from severity (WARNING→low), ignoring our rule's
+            // intended urgency. Now the rule's urgency is normalized to a key and
+            // shipped, so UK uses our value as-is.
+            it('non-reopen, non-engineer → rule urgency key (legacy Russian normalized)', async () => {
                 setup({ uk_category: 'electricity', uk_urgency: 'Средняя' });
+
+                await service.sendAlertToUK(alertData);
+
+                expect(overrideFromLastEnqueue()).toBe('medium');
+            });
+
+            it('non-reopen, already-key rule.uk_urgency "high" → "high"', async () => {
+                setup({ uk_category: 'electricity', uk_urgency: 'high' });
+
+                await service.sendAlertToUK(alertData);
+
+                expect(overrideFromLastEnqueue()).toBe('high');
+            });
+
+            it('non-reopen, unknown rule.uk_urgency → null (never ship garbage; UK falls back to severity)', async () => {
+                setup({ uk_category: 'electricity', uk_urgency: 'totally-bogus' });
 
                 await service.sendAlertToUK(alertData);
 
                 expect(overrideFromLastEnqueue()).toBeNull();
             });
 
-            it('unknown urgency value → null override (never ship garbage)', async () => {
+            it('reopen, unknown urgency value → null override (never ship garbage)', async () => {
                 setup({ uk_category: 'electricity', uk_urgency: 'totally-bogus', reopen_urgency_bump: false });
 
                 await service.sendAlertToUK(reopenAlert);

@@ -53,6 +53,13 @@ describe('[FE-119] _buildAlertEventBody — metric/infrastructure context', () =
         expect(body.alert.metric_normal_max).toBe(80);
     });
 
+    test('fresh (non-reopen) alert carries per-rule urgency in uk_urgency_override', () => {
+        // [severity→urgency gap] rule.uk_urgency 'high' must reach the wire as the
+        // override key so UK uses our intended urgency instead of severity-derived.
+        const body = JSON.parse(forwarder._buildAlertEventBody(enriched, building, 'evt-u', rule, {}));
+        expect(body.alert.uk_urgency_override).toBe('high');
+    });
+
     test('metric_value 0 is preserved (nullish-coalescing, not ||)', () => {
         const body = JSON.parse(forwarder._buildAlertEventBody(
             { ...enriched, metric_value: 0 }, building, 'evt-2', rule, {}));

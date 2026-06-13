@@ -260,10 +260,15 @@ class UKAlertForwarder {
         else if (escalated) event = 'alert.escalated';
         // [AUD-006] escalate-in-place → UK upgrades the EXISTING request's urgency
         // by alert_id; the override carries the (CRITICAL) policy's urgency key.
-        let urgencyOverride = null;
+        // [severity→urgency gap] On a plain alert.created we ALSO carry the per-rule
+        // urgency (UK already honors this field). effectiveUrgency already resolves
+        // to toUrgencyKey(rule.uk_urgency) for the non-reopen case (escalated +
+        // fresh) and to the bumped key for a reopen, so a single branch covers
+        // escalated / reopen / fresh. Unknown urgency → null (graceful fallback to
+        // UK's severity-derived urgency).
+        let urgencyOverride;
         if (engineerRequired) urgencyOverride = 'critical';
-        else if (escalated) urgencyOverride = toUrgencyKey(rule.uk_urgency);
-        else if (isReopen) urgencyOverride = effectiveUrgency;
+        else urgencyOverride = effectiveUrgency;
         return JSON.stringify({
             event_id: eventId,
             event,
@@ -509,13 +514,17 @@ class UKAlertForwarder {
                             reopen_sequence: alertData.reopen_sequence || 1,
                             related_request_number: alertData.previous_uk_request_number || null,
                             // For engineer_required: hardcoded override per spec
-                            // §2.4 ("Инженерный разбор" / 'critical'); for the
-                            // reopen-bump path on alert.created: per-rule urgency
-                            // bump up the ladder. Always a canonical key (UK
-                            // contract 2026-06), never Russian.
+                            // §2.4 ("Инженерный разбор" / 'critical'). Otherwise
+                            // carry the per-rule urgency: effectiveUrgency is the
+                            // bumped key on a reopen and toUrgencyKey(rule.uk_urgency)
+                            // on a fresh alert.created — so UK uses our intended
+                            // urgency instead of deriving it from severity
+                            // (severity→urgency gap fix). Always a canonical key (UK
+                            // contract 2026-06), never Russian; unknown → null
+                            // (graceful fallback to UK's severity mapping).
                             uk_urgency_override: engineerRequired
                                 ? 'critical'
-                                : (isReopen ? effectiveUrgency : null),
+                                : effectiveUrgency,
                             // Engineer-required-specific fields. Null on
                             // alert.created so UK schema validation sees a
                             // consistent shape regardless of event type.
