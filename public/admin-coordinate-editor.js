@@ -360,10 +360,13 @@ class CoordinateEditor {
             showToast('✅ Координаты успешно обновлены!', 'success');
             this.close();
             if (this.onSave) {
-                // Historical: legacy callers expect onSave(data); new callers
-                // (add-form picker above) expect onSave(lat, lng). The edit
-                // path receives both — pass the data object as before.
-                this.onSave(result.data);
+                // Always (lat, lng) — every caller's callback is `(lat, lng)`.
+                // Previously this passed `result.data` (an object) on the edit
+                // path, so the callback bound lat=<object>, lng=undefined; the
+                // edit-transformer form fields became "[object Object]"/"undefined"
+                // and the next form submit sent latitude:NaN/longitude:NaN → JSON
+                // null → the coordinates were wiped. Pass the picked numbers.
+                this.onSave(lat, lng);
             }
 
         } catch (error) {
@@ -635,5 +638,12 @@ if (!document.getElementById('coordinate-editor-styles')) {
         }
     `;
     document.head.appendChild(style);
+}
+
+// CommonJS export for unit tests (jsdom). In the browser `module` is undefined
+// (esbuild bundle:false keeps the top-level `CoordinateEditor` / `openCoordinateEditor`
+// as real globals), so this branch is inert there — mirrors public/admin-auth.js.
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { CoordinateEditor, openCoordinateEditor };
 }
 
