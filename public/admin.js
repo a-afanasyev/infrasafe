@@ -2146,6 +2146,16 @@ document.addEventListener("DOMContentLoaded", function () {
             longitude: parseFloat(document.getElementById('edit-transformer-longitude').value)
         };
 
+        // [code-review batch] Abort BEFORE the PUT if any numeric field is NaN —
+        // otherwise JSON.stringify turns NaN into null and the partial update wipes
+        // the stored coordinate / power / voltage.
+        const tCoord = window.CoordValidation.validateCoordinatePair(data.latitude, data.longitude);
+        if (!tCoord.valid) { showToast(tCoord.error, 'error'); return; }
+        if (!window.CoordValidation.isFiniteNumber(data.power_kva) || !window.CoordValidation.isFiniteNumber(data.voltage_kv)) {
+            showToast('Мощность и напряжение должны быть числами', 'error');
+            return;
+        }
+
         try {
             const response = await fetch(`/api/transformers/${id}`, {
                 method: 'PUT',
@@ -2219,6 +2229,10 @@ document.addEventListener("DOMContentLoaded", function () {
             status: document.getElementById('edit-water-source-status').value
         };
 
+        // [code-review batch] guard NaN coords → null wipe (see transformer edit).
+        const wCoord = window.CoordValidation.validateCoordinatePair(data.latitude, data.longitude);
+        if (!wCoord.valid) { showToast(wCoord.error, 'error'); return; }
+
         try {
             const response = await fetch(`/api/cold-water-sources/${id}`, {
                 method: 'PUT',
@@ -2257,6 +2271,10 @@ document.addEventListener("DOMContentLoaded", function () {
             notes: document.getElementById('edit-heat-source-notes').value,
             status: document.getElementById('edit-heat-source-status').value
         };
+
+        // [code-review batch] guard NaN coords → null wipe (see transformer edit).
+        const hCoord = window.CoordValidation.validateCoordinatePair(data.latitude, data.longitude);
+        if (!hCoord.valid) { showToast(hCoord.error, 'error'); return; }
 
         try {
             const response = await fetch(`/api/heat-sources/${id}`, {
@@ -2657,6 +2675,11 @@ document.addEventListener("DOMContentLoaded", function () {
             hot_water_supplier_id: document.getElementById('building-hot-water-supplier').value || null
         };
 
+        // [code-review batch] reject NaN coords before POST (NaN is stored as a
+        // PostgreSQL NaN literal — an unrenderable, unusable coordinate).
+        const abCoord = window.CoordValidation.validateCoordinatePair(data.latitude, data.longitude);
+        if (!abCoord.valid) { showToast(abCoord.error, 'error'); return; }
+
         try {
             const response = await fetch('/api/buildings', {
                 method: 'POST',
@@ -2845,6 +2868,14 @@ document.addEventListener("DOMContentLoaded", function () {
             latitude: parseFloat(document.getElementById('transformer-latitude').value),
             longitude: parseFloat(document.getElementById('transformer-longitude').value)
         };
+
+        // [code-review batch] reject NaN coords / numbers before POST.
+        const atCoord = window.CoordValidation.validateCoordinatePair(data.latitude, data.longitude);
+        if (!atCoord.valid) { showToast(atCoord.error, 'error'); return; }
+        if (!window.CoordValidation.isFiniteNumber(data.power_kva) || !window.CoordValidation.isFiniteNumber(data.voltage_kv)) {
+            showToast('Мощность и напряжение должны быть числами', 'error');
+            return;
+        }
 
         try {
             const response = await fetch('/api/transformers', {
@@ -3103,6 +3134,12 @@ document.addEventListener("DOMContentLoaded", function () {
             management_company: document.getElementById('edit-building-management').value,
             has_hot_water: document.getElementById('edit-building-hot-water').checked
         };
+
+        // [code-review batch] guard NaN coords → null wipe. Building.update uses
+        // fixed-position params (latitude = $4), so a null lands directly on the
+        // column — abort before the PUT instead of erasing the location.
+        const bCoord = window.CoordValidation.validateCoordinatePair(data.latitude, data.longitude);
+        if (!bCoord.valid) { showToast(bCoord.error, 'error'); return; }
 
         // Добавляем поля электроснабжения (если выбраны)
         const primaryTransformer = document.getElementById('edit-building-primary-transformer').value;

@@ -262,11 +262,16 @@ class BuildingService {
 
     // Валидация координат
     validateCoordinates(latitude, longitude) {
-        if (latitude !== undefined && (latitude < -90 || latitude > 90)) {
-            throw new Error('Некорректная широта. Должна быть между -90 и 90');
+        // [code-review batch] A provided-but-non-finite coordinate (null from a
+        // NaN→JSON body, or an explicit NaN) must be rejected. The old range-only
+        // check let it through — `null < -90` and `NaN < -90` both evaluate to
+        // false — so a wiped coordinate reached the DB unblocked. `undefined`
+        // still means "not provided" → skip (preserves partial-update semantics).
+        if (latitude !== undefined && (latitude === null || !Number.isFinite(Number(latitude)) || latitude < -90 || latitude > 90)) {
+            throw new Error('Некорректная широта. Должна быть числом между -90 и 90');
         }
-        if (longitude !== undefined && (longitude < -180 || longitude > 180)) {
-            throw new Error('Некорректная долгота. Должна быть между -180 и 180');
+        if (longitude !== undefined && (longitude === null || !Number.isFinite(Number(longitude)) || longitude < -180 || longitude > 180)) {
+            throw new Error('Некорректная долгота. Должна быть числом между -180 и 180');
         }
     }
 

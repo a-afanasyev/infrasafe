@@ -403,6 +403,21 @@ describe('BuildingService', () => {
         test('does not throw when coordinates are undefined', () => {
             expect(() => buildingService.validateCoordinates(undefined, undefined)).not.toThrow();
         });
+
+        // [code-review batch] A NaN/null coordinate (from a NaN→JSON body) must be
+        // rejected — the old range-only check let it through (`null < -90` is false).
+        test('throws for NaN latitude (the wipe vector)', () => {
+            expect(() => buildingService.validateCoordinates(NaN, 37.6173)).toThrow();
+        });
+
+        test('throws for NaN longitude', () => {
+            expect(() => buildingService.validateCoordinates(55.7558, NaN)).toThrow();
+        });
+
+        test('throws for null latitude/longitude (NaN serialized as JSON null)', () => {
+            expect(() => buildingService.validateCoordinates(null, 37.6173)).toThrow();
+            expect(() => buildingService.validateCoordinates(55.7558, null)).toThrow();
+        });
     });
 
     describe('calculateDistance', () => {

@@ -36,6 +36,8 @@ const ENTRIES = [
     'public/utils/safeJsonParser.js',
     // [Sprint 10 PR-5] UK rules client-side validation bounds
     'public/utils/ukRulesValidation.js',
+    // [code-review batch] coordinate-integrity guard (prevents NaN→null wipe)
+    'public/utils/coordValidation.js',
 ].map(f => path.join(projectRoot, f));
 
 const sharedOptions = {
