@@ -1210,3 +1210,44 @@ with **zero** warnings.
 `.env.prod` (backup `.env.prod.bak-b023-20260601`; `grep -c` 1→0). No postgres recreate needed — the line
 was already shadowed by the literal `POSTGRES_USER=infrasafe_app` in compose, and `docker compose config`
 still resolves to `infrasafe_app`. B-023 fully closed.
+
+### AUD-039 — dual transformer tables (`transformers` vs `power_transformers`) — Phase 1 EXPAND CODE-COMPLETE (2026-06-13)
+**Finding (re-verified on prod, CORRECTS the original audit + an earlier memory note that was backwards):**
+prod carried two divergent transformer worlds. `transformers` (INT `transformer_id`, `power_kva`) is the
+**WIRED/canonical** one — the map's `/api/transformers` layer, `mv_transformer_load_realtime` (rebuilt onto it
+by migration 012), power-analytics, and `buildings.primary/backup_transformer_id` all read it; on prod it held
+**1 test row** (`'1111'`). `power_transformers` (VARCHAR id, `capacity_kva`, richer cols + PostGIS geom) is
+**LEGACY** but was still actively read by `/api/analytics/*` via `PowerTransformer.js` (9 service methods + 3
+CRUD handlers); on prod it held the **4 real test rows** (Фараби-1/2, Олмазор-1, Шифонур-1) — but **0 buildings**
+referenced it. Net symptom: a split-brain where `/analytics` showed the 4 rows while the map showed `'1111'`,
+and `PowerTransformer.js` was itself internally split (its load methods read the transformers-based MV; its CRUD
+read power_transformers). The original audit's "admin tab edits a missing/dead table" framing was wrong on both
+counts (the admin tab edits the canonical `transformers`; neither table is "missing").
+**Decision (operator):** full canonicalization onto `transformers`; preserve the richer columns (add them);
+re-point the one wired building (#5) → Олмазор-1; all transformer data is test data (deletable).
+**Phasing (expand-contract, mandated by the runner forward-policy — drops are NOT expand-only and would break a
+rollback to the old image that still SELECTs power_transformers):**
+- **Phase 1 — EXPAND (this work, migration 036 + immutable-image rebuild):**
+  - `036_canonicalize_transformers.sql` (transactional + idempotent + expand-only): ADD `address`,
+    `voltage_primary`, `voltage_secondary`, `maintenance_contact`, `notes` to `transformers` (geom + trigger
+    already existed since migration 004); port the 4 rows (`capacity_kva`→`power_kva`); re-point building 5 →
+    Олмазор-1; drop the `'1111'` row; CREATE an **INTEGER overload** of `find_nearest_buildings_to_transformer`
+    reading `transformers` (coexists with the VARCHAR/power_transformers one, dropped in 037).
+  - Code: consolidated the 6 read-analytics methods (`getLoadAnalytics`/`getAllWithLoadAnalytics`/
+    `getOverloadedTransformers`/`findNearestBuildings`/`findInRadius`/`getStatistics`) into `Transformer.js`
+    (repointed to `transformers`/INT id/`power_kva`/`transformers.geom`); repointed `analyticsService` (incl.
+    fallback shape `id`→`transformer_id`, `capacity_kva`→`power_kva`, and `findAll` `{data}` unwrap); **removed**
+    the redundant `/api/analytics/transformers` POST/PUT/DELETE handlers + routes (YAGNI — frontend only calls the
+    GET endpoints; writes go through the canonical `/api/transformers`); deleted `PowerTransformer.js`.
+  - `power_transformers` + `buildings.power_transformer_id` + the VARCHAR function left **DORMANT**.
+  - **Tested:** new `transformerModel.test.js` analytics describes (RED→GREEN); `analyticsServiceTest`/
+    `analyticsController` repointed; `powerTransformerModel.test.js` deleted. Full jest **142 suites / 2564 green**,
+    lint clean. Migration **dry-run-validated against the real prod schema** (BEGIN…ROLLBACK): INSERT 4 / UPDATE 1
+    / DELETE 1, building 5 → transformer_id 4 (Олмазор-1), geom auto-populated ×4, `'1111'` gone; **idempotent**
+    (2nd apply INSERT 0/UPDATE 0/DELETE 0). Prod NOT mutated by the dry-run.
+- **Phase 2 — CONTRACT (NOT YET — separate later release after Phase 1 soaks):** migration 037 drops
+  `power_transformers`, `buildings.power_transformer_id`, and the VARCHAR function overload; update `database/init`
+  fresh-bootstrap schema. MUST ship in its own release (committing 037 now would let the next deploy apply 036+037
+  together and collapse the expand-contract safety). See memory [[aud-039-dual-transformer-tables]].
+**Status:** Phase 1 code-complete + tested + migration prod-schema-validated; awaiting commit + deploy
+(`./update-production.sh` — backend + migration). Phase 2 = follow-up.

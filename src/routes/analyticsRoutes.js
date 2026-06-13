@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const analyticsController = require('../controllers/analyticsController');
 const { isAdmin } = require('../middleware/auth');
-const { applyAnalyticsRateLimit, applyAdminRateLimit, applyCrudRateLimit } = require('../middleware/rateLimiter');
+const { applyAnalyticsRateLimit, applyAdminRateLimit } = require('../middleware/rateLimiter');
 
 /**
  * @swagger
@@ -384,80 +384,9 @@ router.post('/circuit-breakers/reset', applyAdminRateLimit, isAdmin, analyticsCo
  */
 router.put('/thresholds', applyAdminRateLimit, isAdmin, analyticsController.updateThresholds);
 
-// === CRUD ЭНДПОИНТЫ ДЛЯ ТРАНСФОРМАТОРОВ ===
-
-/**
- * @swagger
- * /api/analytics/transformers:
- *   post:
- *     summary: Создать новый трансформатор
- *     tags: [Transformers]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/TransformerCreate'
- *     responses:
- *       201:
- *         description: Трансформатор создан
- *       400:
- *         description: Ошибка валидации
- */
-router.post('/transformers', applyCrudRateLimit, isAdmin, analyticsController.createTransformer);
-
-/**
- * @swagger
- * /api/analytics/transformers/{transformerId}:
- *   put:
- *     summary: Обновить трансформатор
- *     tags: [Transformers]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: transformerId
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/TransformerCreate'
- *     responses:
- *       200:
- *         description: Трансформатор обновлен
- *       404:
- *         description: Трансформатор не найден
- */
-router.put('/transformers/:transformerId', applyCrudRateLimit, isAdmin, analyticsController.updateTransformer);
-
-/**
- * @swagger
- * /api/analytics/transformers/{transformerId}:
- *   delete:
- *     summary: Удалить трансформатор
- *     tags: [Transformers]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: transformerId
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Трансформатор удален
- *       404:
- *         description: Трансформатор не найден
- *       400:
- *         description: Нельзя удалить - есть связанные здания
- */
-router.delete('/transformers/:transformerId', applyCrudRateLimit, isAdmin, analyticsController.deleteTransformer);
+// [AUD-039] The transformer CRUD endpoints (POST/PUT/DELETE /analytics/transformers)
+// were removed — they wrote the legacy power_transformers table and duplicated the
+// canonical /api/transformers CRUD. Use /api/transformers for writes; the GET
+// analytics endpoints above remain and now read the canonical `transformers` table.
 
 module.exports = router;

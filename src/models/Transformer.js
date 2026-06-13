@@ -22,6 +22,14 @@ class Transformer {
         this.status = data.status;
         this.manufacturer = data.manufacturer;
         this.model = data.model;
+        // [AUD-039] Richer columns consolidated from the deprecated power_transformers
+        // table (migration 036). Undefined on rows that predate the port — harmless.
+        this.address = data.address;
+        this.voltage_primary = data.voltage_primary;
+        this.voltage_secondary = data.voltage_secondary;
+        this.installation_date = data.installation_date;
+        this.maintenance_contact = data.maintenance_contact;
+        this.notes = data.notes;
         this.created_at = data.created_at;
         this.updated_at = data.updated_at;
         this.primary_buildings = data.primary_buildings || [];
@@ -231,6 +239,92 @@ class Transformer {
             logger.error(`Error in Transformer.findByBuildingId: ${error.message}`);
             throw createError(`Failed to fetch transformers by building: ${error.message}`, 500);
         }
+    }
+
+    // ---- [AUD-039] Analytics read-methods ----
+    // Consolidated from the deprecated PowerTransformer model onto the canonical
+    // `transformers` table. mv_transformer_load_realtime is keyed by transformer_id
+    // (migration 012 rebuilt the MV onto `transformers`); the geo methods read
+    // transformers.geom (kept in sync from lat/lng by trig_transformers_geom).
+
+    // Real-time load analytics for one transformer (from the MV).
+    static async getLoadAnalytics(id) {
+        const { rows } = await db.query(
+            'SELECT * FROM mv_transformer_load_realtime WHERE id = $1',
+            [id]
+        );
+        return rows.length ? rows[0] : null;
+    }
+
+    // All transformers with load analytics, most-loaded first.
+    static async getAllWithLoadAnalytics() {
+        const { rows } = await db.query(
+            'SELECT * FROM mv_transformer_load_realtime ORDER BY load_percent DESC, name'
+        );
+        return rows;
+    }
+
+    // Transformers at/above a load threshold.
+    static async getOverloadedTransformers(threshold = 80) {
+        const { rows } = await db.query(
+            `SELECT * FROM mv_transformer_load_realtime
+             WHERE load_percent >= $1
+             ORDER BY load_percent DESC`,
+            [threshold]
+        );
+        return rows;
+    }
+
+    // Nearest buildings to a transformer. Passes an INTEGER transformer_id →
+    // resolves to the INTEGER overload of the function added in migration 036
+    // (reads `transformers`, not the legacy power_transformers VARCHAR overload).
+    static async findNearestBuildings(id, maxDistance = 1000, limit = 50) {
+        const { rows } = await db.query(
+            'SELECT * FROM find_nearest_buildings_to_transformer($1, $2, $3)',
+            [id, maxDistance, limit]
+        );
+        return rows;
+    }
+
+    // Transformers within a radius (metres) of a point, nearest first.
+    static async findInRadius(latitude, longitude, radiusMeters = 5000) {
+        const { rows } = await db.query(
+            `SELECT t.*,
+                    ST_Distance(
+                        ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
+                        t.geom::geography
+                    ) AS distance_meters
+             FROM transformers t
+             WHERE t.geom IS NOT NULL
+               AND ST_DWithin(
+                   ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
+                   t.geom::geography,
+                   $3
+               )
+             ORDER BY distance_meters`,
+            [latitude, longitude, radiusMeters]
+        );
+        return rows.map(row => ({
+            ...new Transformer(row),
+            distance_meters: parseFloat(row.distance_meters)
+        }));
+    }
+
+    // Aggregate statistics across all transformers (capacity = power_kva).
+    static async getStatistics() {
+        const { rows } = await db.query(
+            `SELECT
+                COUNT(*) AS total_count,
+                COUNT(CASE WHEN status = 'active' THEN 1 END) AS active_count,
+                COUNT(CASE WHEN status = 'maintenance' THEN 1 END) AS maintenance_count,
+                COUNT(CASE WHEN status = 'inactive' THEN 1 END) AS inactive_count,
+                AVG(power_kva) AS avg_capacity,
+                SUM(power_kva) AS total_capacity,
+                MIN(power_kva) AS min_capacity,
+                MAX(power_kva) AS max_capacity
+             FROM transformers`
+        );
+        return rows[0];
     }
 }
 

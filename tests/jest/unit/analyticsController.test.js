@@ -14,12 +14,6 @@ jest.mock('../../../src/services/analyticsService', () => ({
     updateThresholds: jest.fn()
 }));
 
-jest.mock('../../../src/models/PowerTransformer', () => ({
-    create: jest.fn(),
-    update: jest.fn(),
-    delete: jest.fn()
-}));
-
 jest.mock('../../../src/utils/logger', () => ({
     info: jest.fn(),
     error: jest.fn(),
@@ -29,7 +23,6 @@ jest.mock('../../../src/utils/logger', () => ({
 
 const AnalyticsController = require('../../../src/controllers/analyticsController');
 const analyticsService = require('../../../src/services/analyticsService');
-const PowerTransformer = require('../../../src/models/PowerTransformer');
 
 describe('AnalyticsController', () => {
     let req, res, next;
@@ -530,115 +523,8 @@ describe('AnalyticsController', () => {
         });
     });
 
-    describe('createTransformer', () => {
-        test('creates transformer with valid data', async () => {
-            req.body = {
-                id: 'T1', name: 'TP-100', address: '123 St',
-                latitude: 41.3, longitude: 69.2, capacity_kva: 630
-            };
-            const created = { ...req.body };
-            PowerTransformer.create.mockResolvedValue(created);
-            analyticsService.invalidateTransformerCaches.mockResolvedValue();
-
-            await AnalyticsController.createTransformer(req, res, next);
-
-            expect(res.status).toHaveBeenCalledWith(201);
-            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-                success: true,
-                data: created
-            }));
-        });
-
-        test('returns 400 when required field is missing', async () => {
-            req.body = { name: 'TP-100' }; // missing id, address, etc.
-
-            await AnalyticsController.createTransformer(req, res, next);
-
-            expect(res.status).toHaveBeenCalledWith(400);
-        });
-
-        test('delegates to next(error) on model error', async () => {
-            req.body = {
-                id: 'T1', name: 'TP-100', address: '123 St',
-                latitude: 41.3, longitude: 69.2, capacity_kva: 630
-            };
-            const error = new Error('fail');
-            PowerTransformer.create.mockRejectedValue(error);
-
-            await AnalyticsController.createTransformer(req, res, next);
-
-            expect(next).toHaveBeenCalledWith(error);
-        });
-    });
-
-    describe('updateTransformer', () => {
-        test('updates transformer', async () => {
-            req.params.transformerId = '1';
-            req.body = { name: 'Updated' };
-            const updated = { id: 1, name: 'Updated' };
-            PowerTransformer.update.mockResolvedValue(updated);
-            analyticsService.invalidateTransformerCaches.mockResolvedValue();
-
-            await AnalyticsController.updateTransformer(req, res, next);
-
-            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-                success: true,
-                data: updated
-            }));
-        });
-
-        test('returns 404 when transformer not found', async () => {
-            req.params.transformerId = '999';
-            req.body = { name: 'X' };
-            PowerTransformer.update.mockResolvedValue(null);
-
-            await AnalyticsController.updateTransformer(req, res, next);
-
-            expect(res.status).toHaveBeenCalledWith(404);
-        });
-
-        test('delegates to next(error) on error', async () => {
-            req.params.transformerId = '1';
-            req.body = { name: 'X' };
-            const error = new Error('fail');
-            PowerTransformer.update.mockRejectedValue(error);
-
-            await AnalyticsController.updateTransformer(req, res, next);
-
-            expect(next).toHaveBeenCalledWith(error);
-        });
-    });
-
-    describe('deleteTransformer', () => {
-        test('deletes transformer', async () => {
-            req.params.transformerId = '1';
-            PowerTransformer.delete.mockResolvedValue({ id: 1 });
-            analyticsService.invalidateTransformerCaches.mockResolvedValue();
-
-            await AnalyticsController.deleteTransformer(req, res, next);
-
-            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-                success: true
-            }));
-        });
-
-        test('returns 404 when transformer not found', async () => {
-            req.params.transformerId = '999';
-            PowerTransformer.delete.mockResolvedValue(null);
-
-            await AnalyticsController.deleteTransformer(req, res, next);
-
-            expect(res.status).toHaveBeenCalledWith(404);
-        });
-
-        test('delegates to next(error) on error', async () => {
-            req.params.transformerId = '1';
-            const error = new Error('fail');
-            PowerTransformer.delete.mockRejectedValue(error);
-
-            await AnalyticsController.deleteTransformer(req, res, next);
-
-            expect(next).toHaveBeenCalledWith(error);
-        });
-    });
+    // [AUD-039] createTransformer/updateTransformer/deleteTransformer removed —
+    // those handlers wrote the legacy power_transformers table and duplicated the
+    // canonical /api/transformers CRUD (see transformerController). Their routes are
+    // gone from analyticsRoutes; writes go through /api/transformers.
 });

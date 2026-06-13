@@ -1,6 +1,6 @@
 const cacheService = require('./cacheService');
 const { CircuitBreakerFactory } = require('../utils/circuitBreaker');
-const PowerTransformer = require('../models/PowerTransformer');
+const Transformer = require('../models/Transformer');
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const alertEvents = require('../events/alertEvents');
@@ -36,7 +36,7 @@ class AnalyticsService {
 
             // Если кэш пуст, запрашиваем из материализованного представления
             const data = await this.materializedViewBreaker.execute(async () => {
-                const result = await PowerTransformer.getLoadAnalytics(transformerId);
+                const result = await Transformer.getLoadAnalytics(transformerId);
                 if (!result) {
                     throw new Error(`Трансформатор ${transformerId} не найден в аналитических данных`);
                 }
@@ -45,16 +45,16 @@ class AnalyticsService {
             // Fallback: получаем базовые данные из основной таблицы
             async () => {
                 logger.warn(`Используем fallback для трансформатора ${transformerId}`);
-                const transformer = await PowerTransformer.findById(transformerId);
+                const transformer = await Transformer.findById(transformerId);
                 if (!transformer) {
                     throw new Error(`Трансформатор ${transformerId} не найден`);
                 }
 
                 // Возвращаем базовую структуру без детальной аналитики
                 return {
-                    id: transformer.id,
+                    id: transformer.transformer_id,
                     name: transformer.name,
-                    capacity_kva: transformer.capacity_kva,
+                    capacity_kva: transformer.power_kva,
                     status: transformer.status,
                     latitude: transformer.latitude,
                     longitude: transformer.longitude,
@@ -108,12 +108,16 @@ class AnalyticsService {
 
             // Получаем из материализованного представления
             const data = await this.materializedViewBreaker.execute(async () => {
-                return await PowerTransformer.getAllWithLoadAnalytics();
+                return await Transformer.getAllWithLoadAnalytics();
             },
             // Fallback: получаем базовые данные
             async () => {
                 logger.warn('Используем fallback для списка всех трансформаторов');
-                return await PowerTransformer.findAll();
+                // [AUD-039] Transformer.findAll returns { data, pagination } (paginated),
+                // unlike the old PowerTransformer.findAll array — unwrap to keep the
+                // array contract this fallback promises. Large limit ≈ "all".
+                const { data } = await Transformer.findAll(1, 1000);
+                return data;
             });
 
             // Сохраняем в кэш
@@ -137,7 +141,7 @@ class AnalyticsService {
             }
 
             const data = await this.materializedViewBreaker.execute(async () => {
-                return await PowerTransformer.getOverloadedTransformers(actualThreshold);
+                return await Transformer.getOverloadedTransformers(actualThreshold);
             },
             // Fallback: пустой массив для избежания ошибок
             async () => {
@@ -190,7 +194,7 @@ class AnalyticsService {
                 return cached;
             }
 
-            const data = await PowerTransformer.findNearestBuildings(transformerId, maxDistance, limit);
+            const data = await Transformer.findNearestBuildings(transformerId, maxDistance, limit);
             await cacheService.set(cacheKey, data, { ttl: 300 }); // 5 минут
 
             return data;
@@ -207,7 +211,7 @@ class AnalyticsService {
                 return cached;
             }
 
-            const data = await PowerTransformer.findInRadius(latitude, longitude, radiusMeters);
+            const data = await Transformer.findInRadius(latitude, longitude, radiusMeters);
             await cacheService.set(cacheKey, data, { ttl: 600 }); // 10 минут
 
             return data;
@@ -224,7 +228,7 @@ class AnalyticsService {
                 return cached;
             }
 
-            const data = await PowerTransformer.getStatistics();
+            const data = await Transformer.getStatistics();
             await cacheService.set(cacheKey, data, { ttl: 600 }); // 10 минут
 
             return data;

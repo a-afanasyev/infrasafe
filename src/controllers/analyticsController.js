@@ -1,5 +1,4 @@
 const analyticsService = require('../services/analyticsService');
-const PowerTransformer = require('../models/PowerTransformer');
 
 class AnalyticsController {
 
@@ -309,95 +308,9 @@ class AnalyticsController {
         }
     }
 
-    // CRUD операции для трансформаторов
-
-    // Создание трансформатора
-    static async createTransformer(req, res, next) {
-        try {
-            const transformerData = req.body;
-
-            // Валидация обязательных полей
-            const requiredFields = ['id', 'name', 'address', 'latitude', 'longitude', 'capacity_kva'];
-            for (const field of requiredFields) {
-                if (!transformerData[field]) {
-                    return res.status(400).json({
-                        success: false,
-                        message: `Поле ${field} обязательно`
-                    });
-                }
-            }
-
-            const transformer = await PowerTransformer.create(transformerData);
-
-            // Инвалидируем кэши после создания
-            await analyticsService.invalidateTransformerCaches();
-
-            res.status(201).json({
-                success: true,
-                data: transformer,
-                message: 'Трансформатор создан успешно'
-            });
-
-        } catch (error) {
-            next(error);
-        }
-    }
-
-    // Обновление трансформатора
-    static async updateTransformer(req, res, next) {
-        try {
-            const { transformerId } = req.params;
-            const updateData = req.body;
-
-            const transformer = await PowerTransformer.update(transformerId, updateData);
-
-            if (!transformer) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Трансформатор не найден'
-                });
-            }
-
-            // Инвалидируем кэши после обновления
-            await analyticsService.invalidateTransformerCaches();
-
-            res.json({
-                success: true,
-                data: transformer,
-                message: 'Трансформатор обновлен успешно'
-            });
-
-        } catch (error) {
-            next(error);
-        }
-    }
-
-    // Удаление трансформатора
-    static async deleteTransformer(req, res, next) {
-        try {
-            const { transformerId } = req.params;
-
-            const deleted = await PowerTransformer.delete(transformerId);
-
-            if (!deleted) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Трансформатор не найден'
-                });
-            }
-
-            // Инвалидируем кэши после удаления
-            await analyticsService.invalidateTransformerCaches();
-
-            res.json({
-                success: true,
-                message: 'Трансформатор удален успешно'
-            });
-
-        } catch (error) {
-            next(error);
-        }
-    }
+    // [AUD-039] Transformer CRUD removed from /api/analytics — it operated on the
+    // legacy power_transformers table and duplicated /api/transformers (the canonical
+    // transformers CRUD). The frontend only ever called the GET analytics endpoints.
 }
 
 module.exports = AnalyticsController;

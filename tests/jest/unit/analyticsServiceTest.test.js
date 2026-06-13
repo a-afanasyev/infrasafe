@@ -9,7 +9,7 @@ jest.mock('../../../src/utils/logger', () => ({
     debug: jest.fn()
 }));
 
-jest.mock('../../../src/models/PowerTransformer', () => ({
+jest.mock('../../../src/models/Transformer', () => ({
     getLoadAnalytics: jest.fn(),
     findById: jest.fn(),
     getAllWithLoadAnalytics: jest.fn(),
@@ -53,7 +53,7 @@ jest.mock('../../../src/utils/circuitBreaker', () => {
     };
 });
 
-const PowerTransformer = require('../../../src/models/PowerTransformer');
+const Transformer = require('../../../src/models/Transformer');
 const cacheService = require('../../../src/services/cacheService');
 const db = require('../../../src/config/database');
 
@@ -84,33 +84,33 @@ describe('AnalyticsService', () => {
             const result = await analyticsService.getTransformerLoad(1);
 
             expect(result).toEqual(cached);
-            expect(PowerTransformer.getLoadAnalytics).not.toHaveBeenCalled();
+            expect(Transformer.getLoadAnalytics).not.toHaveBeenCalled();
         });
 
         test('fetches from materialized view on cache miss', async () => {
             const data = { id: 1, load_percent: 75, is_fallback: false };
-            PowerTransformer.getLoadAnalytics.mockResolvedValue(data);
+            Transformer.getLoadAnalytics.mockResolvedValue(data);
 
             const result = await analyticsService.getTransformerLoad(1);
 
-            expect(PowerTransformer.getLoadAnalytics).toHaveBeenCalledWith(1);
+            expect(Transformer.getLoadAnalytics).toHaveBeenCalledWith(1);
             expect(cacheService.setTransformerAnalytics).toHaveBeenCalledWith(1, data);
             expect(result).toEqual(data);
         });
 
         test('uses fallback when materialized view fails', async () => {
-            PowerTransformer.getLoadAnalytics.mockRejectedValue(new Error('MV error'));
+            Transformer.getLoadAnalytics.mockRejectedValue(new Error('MV error'));
             const fallbackTransformer = {
-                id: 1,
+                transformer_id: 1,
                 name: 'TP-1',
-                capacity_kva: 630,
+                power_kva: 630,
                 status: 'active',
                 latitude: 41.3,
                 longitude: 69.2,
                 buildings_count: 5,
                 controllers_count: 10
             };
-            PowerTransformer.findById.mockResolvedValue(fallbackTransformer);
+            Transformer.findById.mockResolvedValue(fallbackTransformer);
 
             const result = await analyticsService.getTransformerLoad(1);
 
@@ -130,16 +130,16 @@ describe('AnalyticsService', () => {
             const result = await analyticsService.getAllTransformersWithAnalytics();
 
             expect(result).toEqual(cached);
-            expect(PowerTransformer.getAllWithLoadAnalytics).not.toHaveBeenCalled();
+            expect(Transformer.getAllWithLoadAnalytics).not.toHaveBeenCalled();
         });
 
         test('fetches from DB and caches on miss', async () => {
             const data = [{ id: 1, load_percent: 50 }];
-            PowerTransformer.getAllWithLoadAnalytics.mockResolvedValue(data);
+            Transformer.getAllWithLoadAnalytics.mockResolvedValue(data);
 
             const result = await analyticsService.getAllTransformersWithAnalytics();
 
-            expect(PowerTransformer.getAllWithLoadAnalytics).toHaveBeenCalled();
+            expect(Transformer.getAllWithLoadAnalytics).toHaveBeenCalled();
             expect(cacheService.set).toHaveBeenCalledWith(
                 'transformers:all:analytics',
                 data,
@@ -149,9 +149,11 @@ describe('AnalyticsService', () => {
         });
 
         test('uses fallback findAll when materialized view fails', async () => {
-            PowerTransformer.getAllWithLoadAnalytics.mockRejectedValue(new Error('MV error'));
-            const fallback = [{ id: 1, name: 'TP-1' }];
-            PowerTransformer.findAll.mockResolvedValue(fallback);
+            Transformer.getAllWithLoadAnalytics.mockRejectedValue(new Error('MV error'));
+            const fallback = [{ transformer_id: 1, name: 'TP-1' }];
+            // [AUD-039] Transformer.findAll returns { data, pagination }; the service
+            // unwraps .data for this fallback's array contract.
+            Transformer.findAll.mockResolvedValue({ data: fallback });
 
             const result = await analyticsService.getAllTransformersWithAnalytics();
 
@@ -174,26 +176,26 @@ describe('AnalyticsService', () => {
             // (was 80 locally in analyticsService; unified with alertService
             // via src/config/thresholds.js).
             const data = [{ id: 1, load_percent: 85 }];
-            PowerTransformer.getOverloadedTransformers.mockResolvedValue(data);
+            Transformer.getOverloadedTransformers.mockResolvedValue(data);
 
             const result = await analyticsService.getOverloadedTransformers();
 
-            expect(PowerTransformer.getOverloadedTransformers).toHaveBeenCalledWith(85);
+            expect(Transformer.getOverloadedTransformers).toHaveBeenCalledWith(85);
             expect(result).toEqual(data);
         });
 
         test('uses custom threshold', async () => {
             const data = [{ id: 1, load_percent: 95 }];
-            PowerTransformer.getOverloadedTransformers.mockResolvedValue(data);
+            Transformer.getOverloadedTransformers.mockResolvedValue(data);
 
             const result = await analyticsService.getOverloadedTransformers(90);
 
-            expect(PowerTransformer.getOverloadedTransformers).toHaveBeenCalledWith(90);
+            expect(Transformer.getOverloadedTransformers).toHaveBeenCalledWith(90);
             expect(result).toEqual(data);
         });
 
         test('uses fallback empty array when MV fails', async () => {
-            PowerTransformer.getOverloadedTransformers.mockRejectedValue(new Error('MV error'));
+            Transformer.getOverloadedTransformers.mockRejectedValue(new Error('MV error'));
 
             const result = await analyticsService.getOverloadedTransformers();
 
@@ -201,7 +203,7 @@ describe('AnalyticsService', () => {
         });
 
         test('caches result with short TTL', async () => {
-            PowerTransformer.getOverloadedTransformers.mockResolvedValue([]);
+            Transformer.getOverloadedTransformers.mockResolvedValue([]);
 
             await analyticsService.getOverloadedTransformers();
 
@@ -240,11 +242,11 @@ describe('AnalyticsService', () => {
 
         test('fetches from DB on cache miss', async () => {
             const data = [{ id: 1, distance: 100 }];
-            PowerTransformer.findNearestBuildings.mockResolvedValue(data);
+            Transformer.findNearestBuildings.mockResolvedValue(data);
 
             const result = await analyticsService.findNearestBuildings(1, 1000, 50);
 
-            expect(PowerTransformer.findNearestBuildings).toHaveBeenCalledWith(1, 1000, 50);
+            expect(Transformer.findNearestBuildings).toHaveBeenCalledWith(1, 1000, 50);
             expect(result).toEqual(data);
         });
     });
@@ -261,11 +263,11 @@ describe('AnalyticsService', () => {
 
         test('fetches from DB on cache miss', async () => {
             const data = [{ id: 1, distance: 2000 }];
-            PowerTransformer.findInRadius.mockResolvedValue(data);
+            Transformer.findInRadius.mockResolvedValue(data);
 
             const result = await analyticsService.findTransformersInRadius(41.3, 69.2, 5000);
 
-            expect(PowerTransformer.findInRadius).toHaveBeenCalledWith(41.3, 69.2, 5000);
+            expect(Transformer.findInRadius).toHaveBeenCalledWith(41.3, 69.2, 5000);
             expect(result).toEqual(data);
         });
     });
@@ -282,11 +284,11 @@ describe('AnalyticsService', () => {
 
         test('fetches from DB on cache miss', async () => {
             const data = { total: 10, active: 8 };
-            PowerTransformer.getStatistics.mockResolvedValue(data);
+            Transformer.getStatistics.mockResolvedValue(data);
 
             const result = await analyticsService.getTransformerStatistics();
 
-            expect(PowerTransformer.getStatistics).toHaveBeenCalled();
+            expect(Transformer.getStatistics).toHaveBeenCalled();
             expect(result).toEqual(data);
         });
     });

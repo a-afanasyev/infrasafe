@@ -272,4 +272,108 @@ describe('Transformer Model', () => {
             await expect(Transformer.findByBuildingId(1)).rejects.toThrow('Failed to fetch transformers by building');
         });
     });
+
+    // [AUD-039] Analytics read-methods consolidated from the deprecated
+    // PowerTransformer model onto the canonical `transformers` table.
+    describe('getLoadAnalytics [AUD-039]', () => {
+        test('reads the transformer-keyed MV by id', async () => {
+            const analytics = { id: 1, load_percent: 75 };
+            db.query.mockResolvedValue({ rows: [analytics] });
+
+            const result = await Transformer.getLoadAnalytics(1);
+
+            expect(result).toEqual(analytics);
+            expect(db.query.mock.calls[0][0]).toContain('mv_transformer_load_realtime');
+            expect(db.query.mock.calls[0][1]).toEqual([1]);
+        });
+
+        test('returns null when not found', async () => {
+            db.query.mockResolvedValue({ rows: [] });
+            expect(await Transformer.getLoadAnalytics(999)).toBeNull();
+        });
+    });
+
+    describe('getAllWithLoadAnalytics [AUD-039]', () => {
+        test('returns all rows ordered by load desc', async () => {
+            const rows = [{ id: 1, load_percent: 90 }, { id: 2, load_percent: 50 }];
+            db.query.mockResolvedValue({ rows });
+
+            const result = await Transformer.getAllWithLoadAnalytics();
+
+            expect(result).toHaveLength(2);
+            expect(db.query.mock.calls[0][0]).toContain('ORDER BY load_percent DESC');
+        });
+    });
+
+    describe('getOverloadedTransformers [AUD-039]', () => {
+        test('filters the MV by threshold', async () => {
+            db.query.mockResolvedValue({ rows: [{ id: 1, load_percent: 95 }] });
+
+            await Transformer.getOverloadedTransformers(80);
+
+            expect(db.query.mock.calls[0][0]).toContain('mv_transformer_load_realtime');
+            expect(db.query.mock.calls[0][0]).toContain('load_percent >= $1');
+            expect(db.query.mock.calls[0][1]).toEqual([80]);
+        });
+
+        test('uses default threshold of 80', async () => {
+            db.query.mockResolvedValue({ rows: [] });
+            await Transformer.getOverloadedTransformers();
+            expect(db.query.mock.calls[0][1]).toEqual([80]);
+        });
+    });
+
+    describe('findNearestBuildings [AUD-039]', () => {
+        test('calls the nearest-buildings function with an integer id', async () => {
+            db.query.mockResolvedValue({ rows: [{ building_id: 1, distance_meters: 100 }] });
+
+            const result = await Transformer.findNearestBuildings(1, 1000, 50);
+
+            expect(result).toHaveLength(1);
+            expect(db.query.mock.calls[0][0]).toContain('find_nearest_buildings_to_transformer');
+            expect(db.query.mock.calls[0][1]).toEqual([1, 1000, 50]);
+        });
+
+        test('uses default radius/limit', async () => {
+            db.query.mockResolvedValue({ rows: [] });
+            await Transformer.findNearestBuildings(1);
+            expect(db.query.mock.calls[0][1]).toEqual([1, 1000, 50]);
+        });
+    });
+
+    describe('findInRadius [AUD-039]', () => {
+        test('queries transformers.geom and parses distance', async () => {
+            db.query.mockResolvedValue({ rows: [{ ...mockRow, distance_meters: '150.5' }] });
+
+            const result = await Transformer.findInRadius(41.3, 69.2, 5000);
+
+            expect(result).toHaveLength(1);
+            expect(result[0].distance_meters).toBe(150.5);
+            expect(result[0].transformer_id).toBe(1);
+            expect(db.query.mock.calls[0][0]).toContain('FROM transformers');
+            expect(db.query.mock.calls[0][0]).toContain('t.geom');
+            expect(db.query.mock.calls[0][1]).toEqual([41.3, 69.2, 5000]);
+        });
+
+        test('uses default radius of 5000', async () => {
+            db.query.mockResolvedValue({ rows: [] });
+            await Transformer.findInRadius(41.3, 69.2);
+            expect(db.query.mock.calls[0][1]).toEqual([41.3, 69.2, 5000]);
+        });
+    });
+
+    describe('getStatistics [AUD-039]', () => {
+        test('aggregates over transformers.power_kva', async () => {
+            const stats = { total_count: '4', active_count: '4', avg_capacity: '750' };
+            db.query.mockResolvedValue({ rows: [stats] });
+
+            const result = await Transformer.getStatistics();
+
+            expect(result).toEqual(stats);
+            const sql = db.query.mock.calls[0][0];
+            expect(sql).toContain('FROM transformers');
+            expect(sql).toContain('power_kva');
+            expect(sql).not.toContain('capacity_kva');
+        });
+    });
 });

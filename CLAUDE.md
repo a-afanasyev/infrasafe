@@ -77,7 +77,11 @@ psql postgresql://postgres:postgres@localhost:5435/infrasafe
 #                    032 uk_urgency canonical keys (Sprint 11),
 #                    033 alert_verifications.last_checked_at (Sprint 11 AUD-001 PR-B),
 #                    034 alert_verifications dispatch/lease/sweep cols + partial index (Sprint 11 AUD-001 PR-C),
-#                    035 CRITICAL VOLTAGE_ANOMALY rule (AUD-006: voltage escalate-in-place; first runner-applied migration)
+#                    035 CRITICAL VOLTAGE_ANOMALY rule (AUD-006: voltage escalate-in-place; first runner-applied migration),
+#                    036 canonicalize transformers — Phase 1 EXPAND (AUD-039: add richer cols to `transformers`,
+#                        port the 4 real rows off legacy `power_transformers`, re-point building 5 → Олмазор-1,
+#                        drop the '1111' test row, add INTEGER overload of find_nearest_buildings_to_transformer;
+#                        expand-only — power_transformers + buildings.power_transformer_id dropped later in 037 CONTRACT)
 ```
 
 ### Migration runner (AUD-002, PR-1a)
