@@ -365,13 +365,25 @@ describe('ControllerService', () => {
             expect(result).toEqual(mockStats);
         });
 
-        test('calculates statistics from DB on cache miss', async () => {
-            const controllers = [
-                { controller_id: 1, status: 'online', building_id: 1, type: 'sensor' },
-                { controller_id: 2, status: 'offline', building_id: 1, type: 'sensor' },
-                { controller_id: 3, status: 'maintenance', building_id: 2, type: 'actuator' }
-            ];
-            Controller.findAll.mockResolvedValue({ data: controllers });
+        // [AUD-036 p2] Stats are aggregated in SQL (GROUP BY), not by pulling up to
+        // 10000 rows. The service must NOT fall back to Controller.findAll.
+        test('aggregates statistics via SQL GROUP BY on cache miss', async () => {
+            db.query.mockImplementation((sql) => {
+                if (/GROUP BY status/.test(sql)) {
+                    return Promise.resolve({ rows: [
+                        { status: 'online', n: 1 },
+                        { status: 'offline', n: 1 },
+                        { status: 'maintenance', n: 1 }
+                    ] });
+                }
+                if (/GROUP BY building_id/.test(sql)) {
+                    return Promise.resolve({ rows: [{ k: '1', n: 2 }, { k: '2', n: 1 }] });
+                }
+                if (/COUNT\(\*\)/.test(sql)) {
+                    return Promise.resolve({ rows: [{ n: 3 }] });
+                }
+                return Promise.resolve({ rows: [] });
+            });
 
             const result = await controllerService.getControllersStatistics();
 
@@ -381,12 +393,28 @@ describe('ControllerService', () => {
             expect(result.by_status.maintenance).toBe(1);
             expect(result.by_building['1']).toBe(2);
             expect(result.by_building['2']).toBe(1);
-            expect(result.by_type['sensor']).toBe(2);
-            expect(result.by_type['actuator']).toBe(1);
+            // by_type is vestigial (no `type` column) → { 'Не указан': total }.
+            expect(result.by_type).toEqual({ 'Не указан': 3 });
+            // Must NOT pull the full table.
+            expect(Controller.findAll).not.toHaveBeenCalled();
+        });
+
+        test('empty table → zeroed stats, empty by_building/by_type', async () => {
+            // Total = the COUNT query WITHOUT GROUP BY; the two GROUP BY queries
+            // return no rows on an empty table.
+            db.query.mockImplementation((sql) =>
+                Promise.resolve({ rows: /GROUP BY/.test(sql) ? [] : [{ n: 0 }] }));
+
+            const result = await controllerService.getControllersStatistics();
+
+            expect(result.total).toBe(0);
+            expect(result.by_status).toEqual({ online: 0, offline: 0, maintenance: 0 });
+            expect(result.by_building).toEqual({});
+            expect(result.by_type).toEqual({});
         });
 
         test('caches computed statistics', async () => {
-            Controller.findAll.mockResolvedValue({ data: [] });
+            db.query.mockResolvedValue({ rows: [{ n: 0 }] });
 
             await controllerService.getControllersStatistics();
 
@@ -499,7 +527,7 @@ describe('ControllerService', () => {
 
     describe('getControllersStatistics - error path', () => {
         test('throws on DB error', async () => {
-            Controller.findAll.mockRejectedValue(new Error('DB error'));
+            db.query.mockRejectedValue(new Error('DB error'));
 
             await expect(controllerService.getControllersStatistics()).rejects.toThrow('DB error');
         });

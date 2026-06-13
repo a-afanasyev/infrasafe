@@ -327,34 +327,43 @@ class ControllerService {
                 return cached;
             }
 
-            const allControllers = await Controller.findAll(1, 10000, 'controller_id', 'asc');
-            const controllers = allControllers.data || [];
+            // [AUD-036 p2] Aggregate in SQL (GROUP BY) instead of pulling up to
+            // 10000 rows and counting them in JS.
+            const [statusRes, buildingRes, totalRes] = await Promise.all([
+                db.query('SELECT status, COUNT(*)::int AS n FROM controllers GROUP BY status'),
+                db.query(
+                    "SELECT COALESCE(building_id::text, 'Не привязан') AS k, COUNT(*)::int AS n " +
+                    'FROM controllers GROUP BY building_id'
+                ),
+                db.query('SELECT COUNT(*)::int AS n FROM controllers')
+            ]);
+
+            const total = totalRes.rows[0].n;
+
+            const by_status = { online: 0, offline: 0, maintenance: 0 };
+            for (const row of statusRes.rows) {
+                // Only the three known statuses (mirror the prior JS filter).
+                if (by_status[row.status] !== undefined) {
+                    by_status[row.status] = row.n;
+                }
+            }
+
+            const by_building = {};
+            for (const row of buildingRes.rows) {
+                by_building[row.k] = row.n;
+            }
 
             const stats = {
-                total: controllers.length,
-                by_status: {
-                    online: 0,
-                    offline: 0,
-                    maintenance: 0
-                },
-                by_building: {},
-                by_type: {}
+                total,
+                by_status,
+                by_building,
+                // [AUD-036 p2] `by_type` is vestigial: the controllers table has no
+                // `type` column (cols: vendor, model, building_id, status, …), so the
+                // old JS path always yielded { 'Не указан': total }. Preserved to keep
+                // the /controllers/statistics contract stable; wiring it to
+                // `model`/`vendor` or dropping it is a tracked follow-up.
+                by_type: total > 0 ? { 'Не указан': total } : {}
             };
-
-            controllers.forEach(controller => {
-                // По статусу
-                if (stats.by_status[controller.status] !== undefined) {
-                    stats.by_status[controller.status]++;
-                }
-
-                // По зданиям
-                const buildingId = controller.building_id || 'Не привязан';
-                stats.by_building[buildingId] = (stats.by_building[buildingId] || 0) + 1;
-
-                // По типу (если есть поле type)
-                const type = controller.type || 'Не указан';
-                stats.by_type[type] = (stats.by_type[type] || 0) + 1;
-            });
 
             await cacheService.set(cacheKey, stats, { ttl: this.defaultCacheTTL });
 

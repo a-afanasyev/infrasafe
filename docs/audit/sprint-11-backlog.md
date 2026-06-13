@@ -1272,3 +1272,27 @@ mount (B-012)** → they ride `git pull` but need a **`nginx -s reload`** to tak
 NOT reload nginx). So the deploy is: `update-production.sh` (helmet rebuild) **+ a manual
 `docker exec infrasafe-nginx-1 nginx -s reload`** for the header change. Verify post-deploy:
 `curl -sI https://infrasafe.uz | grep -i x-xss` → `X-XSS-Protection: 0`.
+
+### AUD-036 — perf (minor): metricCount / stats GROUP BY / voltage prefilter — p1+p2 CLOSED, p3 DEFERRED (2026-06-13)
+Three sub-items from the "Перф (мелочи)" finding:
+- **p1 — `metricCount` always 1 (LIMIT 1)** in `controllerService.deleteController` — CLOSED earlier (commit 6f5bcae,
+  deployed): dropped the misleading always-1 field, kept the O(1) LIMIT-1 existence check.
+- **p2 — `getControllersStatistics` pulled up to 10000 rows and counted in JS** (`controllerService.js:330`) —
+  CLOSED: rewritten to three SQL `GROUP BY` aggregations (by_status + by_building) + a `COUNT(*)` total. Found
+  `by_type` is **vestigial** — the `controllers` table has no `type` column (cols: vendor/model/building_id/status/…),
+  so the old JS always produced `{ 'Не указан': total }`; preserved that exact output to keep the
+  `/controllers/statistics` contract (wiring it to `model`/`vendor` or dropping it is a follow-up). The old unit test
+  asserted `by_type['sensor']`/`['actuator']` from **fictional mock rows with a `type` field** (a test passing
+  against a schema that doesn't exist) — rewritten to mock `db.query` GROUP BY rows + assert the real shape +
+  `Controller.findAll` NOT called. Full jest green, lint clean.
+- **p3 — `_classifyVoltageSeverity` 600s COUNT on each telemetry insert without a cheap prefilter** (heating has one
+  at `_hasRecentSubThresholdHeating`) — **DEFERRED (evidence-based push-back).** The suggested "mirror heating's
+  LIMIT-1 prefilter" gives ~no win in the dominant **healthy** case: a healthy controller's 600s window contains no
+  out-of-band row, so `… LIMIT 1` finds nothing and scans the **same** window as the aggregation (only the COUNT
+  FILTER arithmetic is saved, not the index scan). The only genuinely cheaper probe — inspect just the latest sample
+  — would **change persistence-gate semantics** (one healthy latest reading ≠ no anomaly in the window) and risks
+  masking a real alert on the live VOLTAGE / AUD-006 escalate-in-place path. Low value + correctness risk on a hot,
+  delicate path → not worth it. (Safety note for any future attempt: any non-null voltage classification REQUIRES a
+  sample out of the warn band — out-of-crit ⊂ out-of-warn since crit_min<warn_min & crit_max>warn_max, and the
+  ≥2-phase crit rule also needs out-of-warn samples — so a warn-band prefilter would at least be *correct*, just not
+  *faster* for healthy controllers.)
