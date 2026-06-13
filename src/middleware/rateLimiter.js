@@ -389,9 +389,19 @@ const adminLimiter = new SimpleRateLimiter({
     namespace: 'admin'
 });
 
+// [#150] Login/register caps are env-overridable so the E2E suite (many fresh
+// logins + registrations from a single IP) can run green without tripping them.
+// Prod leaves these UNSET → the secure defaults (10 / 5) apply. Only positive
+// integers override. passwordChangeLimiter is intentionally NOT overridable — the
+// E2E rate-limit test asserts its 5-per-window behaviour.
+const envMax = (name, def) => {
+    const n = parseInt(process.env[name], 10);
+    return Number.isInteger(n) && n > 0 ? n : def;
+};
+
 const authLimiter = new SimpleRateLimiter({
     windowMs: 15 * 60 * 1000,
-    max: 10,
+    max: envMax('RATE_LIMIT_AUTH_MAX', 10),
     message: 'Слишком много попыток входа. Попробуйте через 15 минут.',
     keyGenerator: (req) => `auth:login:${req.ip || req.connection.remoteAddress}`,
     namespace: 'auth-login'
@@ -399,7 +409,7 @@ const authLimiter = new SimpleRateLimiter({
 
 const registerLimiter = new SimpleRateLimiter({
     windowMs: 60 * 60 * 1000,
-    max: 5,
+    max: envMax('RATE_LIMIT_REGISTER_MAX', 5),
     message: 'Слишком много регистраций. Попробуйте через час.',
     keyGenerator: (req) => `auth:register:${req.ip || req.connection.remoteAddress}`,
     namespace: 'auth-register'

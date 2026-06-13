@@ -99,6 +99,11 @@ services:
       #   REDIS_URL=redis://redis:6379 \
       #     docker compose -f docker-compose.dev.yml --profile redis up
       - REDIS_URL=${REDIS_URL:-}
+      # [#150] E2E runs many fresh logins/registrations from one IP. CI raises
+      # these so the suite doesn't trip the auth/register rate limiters; unset in
+      # normal dev → the secure defaults (10 login / 5 register) apply.
+      - RATE_LIMIT_AUTH_MAX=${RATE_LIMIT_AUTH_MAX:-}
+      - RATE_LIMIT_REGISTER_MAX=${RATE_LIMIT_REGISTER_MAX:-}
     depends_on:
       postgres:
         condition: service_healthy

@@ -1371,3 +1371,31 @@ Phase-1 soak first, though Phase 1 verified clean today and data is test-only.
 **Testing gap noted:** the findNearestBuildings unit test is fully mocked → it asserts the 3-arg call but cannot
 catch a missing/мismatched SQL function. A real DB integration test would have caught the 036 regression — folds
 into task #150 (e2e harness).
+
+### task #150 (AUD-017) — repair the stale E2E harness + nightly CI — DONE (2026-06-13)
+The E2E harness (`tests/jest/e2e/`) had silently rotted against three auth changes and never ran in CI:
+1. **Bearer → cookie.** Tokens are HttpOnly cookies now, NOT echoed in the response body ([1A-FU2-S-M2]); the old
+   `globalSetup` read `body.accessToken` (always undefined) and `e2eHelper.authed()` sent `Authorization: Bearer`.
+2. **Mandatory admin 2FA.** Admin login returns `{ requires2FA | requires2FASetup, tempToken }`, never tokens.
+3. **CSRF Origin guard (SEC-23)** — cookie-auth mutations need an allowed `Origin`.
+**Fixes:**
+- `globalSetup.js` rewritten: resets the admin's 2FA in the DB (the secret is AES-encrypted → can't seed a known
+  one; reset → drive `setup-2fa` which returns the plaintext secret), generates the TOTP code with `otplib`, drives
+  login → setup-2fa → confirm-2fa, and captures `Set-Cookie` into a Cookie string. Regular user = register + login.
+- `e2eHelper.js` rewritten to cookie auth: `authed(cookie)` sends `Cookie` + `Origin`; `login()`/`registerAndLogin()`
+  return the cookie string in the `accessToken` field (back-compat → the 8 generic suites needed NO changes).
+- `auth.e2e.test.js` rewritten for the cookie + `requires2FA` contract (asserts Set-Cookie / requires2FA, not body
+  tokens; uses fresh non-admin users for refresh/logout/change-password — admin needs the 2FA dance).
+- `admin.e2e.test.js`: dropped the `GET /api/admin/search` test — that endpoint was removed in Phase 9.3
+  (YAGNI-007/008). (Real stale-test catch.)
+- **Rate limiters** `authLimiter` (10/15min) + `registerLimiter` (5/hr) are now env-overridable
+  (`RATE_LIMIT_AUTH_MAX` / `RATE_LIMIT_REGISTER_MAX`, prod defaults unchanged) — a full E2E run does >10 logins +
+  >5 registrations from one IP. `passwordChangeLimiter` left at 5 (a test asserts it). `docker-compose.dev.yml`
+  passes the two through.
+- **`.github/workflows/e2e-nightly.yml`** (new): nightly + `workflow_dispatch`; brings up the dev stack
+  (`docker compose -f docker-compose.dev.yml up -d --build`), waits for app health, runs `npm run test:e2e` with the
+  caps raised + E2E_DB/Origin env. Kept OUT of per-push CI (slow, Docker-heavy).
+**Verified:** full suite green locally against the live container — **11/11 suites, 64 passed, 1 skipped** (recreated
+the dev `app` with the caps raised, secrets preserved, then restored defaults). Unit jest 142/2572 + lint unchanged.
+**Lesson reinforced:** this is the layer that would have caught the AUD-039 `find_nearest` arity regression that the
+mocked unit tests missed — real-DB E2E is the safety net for SQL-function / auth-contract drift.

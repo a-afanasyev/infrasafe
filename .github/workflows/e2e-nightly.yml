@@ -1,0 +1,73 @@
+name: E2E Nightly
+
+# [#150] Real-container E2E: brings up the full dev stack (app + PostGIS + frontend)
+# and runs the cookie/2FA-aware E2E suite against the live API. Kept OUT of the
+# per-push CI (slow, Docker-heavy) — runs nightly + on demand.
+on:
+  schedule:
+    - cron: '0 3 * * *' # 03:00 UTC daily
+  workflow_dispatch: {}
+
+jobs:
+  e2e:
+    name: E2E (Docker stack)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COMPOSE: docker-compose.dev.yml
+      # Dev stack secrets (test-only — never used for a real deployment).
+      JWT_SECRET: ci-e2e-jwt-secret-not-for-production
+      JWT_REFRESH_SECRET: ci-e2e-refresh-secret-not-for-production
+      # Valid base64 of 32 bytes ("0123456789abcdef0123456789abcdef") for AES-256-GCM.
+      TOTP_ENCRYPTION_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+      # Raise the login/register caps so the suite's many fresh sessions from one IP
+      # don't trip the rate limiters (passwordChangeLimiter stays at its default — a
+      # test asserts it).
+      RATE_LIMIT_AUTH_MAX: '10000'
+      RATE_LIMIT_REGISTER_MAX: '10000'
+      # E2E harness → API (dev compose: 127.0.0.1:3000) + DB (127.0.0.1:5435).
+      E2E_BASE_URL: http://localhost:3000
+      E2E_ORIGIN: http://localhost:3000
+      E2E_DB_HOST: localhost
+      E2E_DB_PORT: '5435'
+      E2E_DB_USER: postgres
+      E2E_DB_PASSWORD: postgres
+      E2E_DB_NAME: infrasafe
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install host deps (jest + supertest + pg + otplib for the harness)
+        run: npm ci
+
+      - name: Start the dev stack
+        run: docker compose -f "$COMPOSE" up -d --build
+
+      - name: Wait for the API to be healthy
+        run: |
+          cid="$(docker compose -f "$COMPOSE" ps -q app)"
+          [ -n "$cid" ] || { echo "app container not found"; docker compose -f "$COMPOSE" ps; exit 1; }
+          for i in $(seq 1 60); do
+            s="$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo missing)"
+            [ "$s" = healthy ] && { echo "app healthy"; exit 0; }
+            [ "$s" = unhealthy ] && break
+            sleep 3
+          done
+          echo "::error::app did not become healthy"
+          docker compose -f "$COMPOSE" logs app | tail -80
+          exit 1
+
+      - name: Run E2E suite
+        run: npm run test:e2e
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose -f "$COMPOSE" logs --tail=200
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f "$COMPOSE" down -v

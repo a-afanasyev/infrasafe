@@ -13,10 +13,8 @@ describe('E2E: Admin Operations', () => {
     expect(res.status).toBe(200);
   });
 
-  test('GET /api/admin/search?q=test — global search', async () => {
-    const res = await authed(adminToken).get('/api/admin/search?q=test');
-    expect(res.status).toBe(200);
-  });
+  // [#150] /api/admin/search was removed in Phase 9.3 (YAGNI-007/008) — the
+  // per-entity list endpoints provide search/filter. Stale test dropped.
 
   test('GET /api/admin/buildings — optimized building list', async () => {
     const res = await authed(adminToken).get('/api/admin/buildings');

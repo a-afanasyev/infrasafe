@@ -336,7 +336,15 @@ ALERT_VERIFICATION_TICK_MS=15000       # Drain interval (clamped [5000, 60000])
 - Security tests: `tests/jest/security/` (SQL injection, XSS, general security)
 - E2E tests: `tests/jest/e2e/` — real Docker containers, no mocks — run via `npm run test:e2e`
 - E2E requires running Docker containers; excluded from default `npm test` via testPathIgnorePatterns
-- E2E globalSetup.js caches auth tokens to avoid rate limiter; restart app before running
+- **E2E auth (task #150, 2026-06-13)**: harness is **cookie + mandatory-2FA** aware. `globalSetup.js` resets the
+  admin's 2FA in the DB (E2E_DB_* env, default `postgres:postgres@localhost:5435/infrasafe`), drives
+  login→setup-2fa→confirm-2fa with an `otplib`-generated code, and caches the resulting **Cookie-header strings**
+  (`E2E_ADMIN_COOKIE`/`E2E_USER_COOKIE`); `e2eHelper.authed()` sends `Cookie` + an allowed `Origin` (SEC-23). A full
+  run does >10 logins + >5 registrations from one IP, so set `RATE_LIMIT_AUTH_MAX`/`RATE_LIMIT_REGISTER_MAX` high
+  (env-overridable in `rateLimiter.js`; prod defaults 10/5) — or restart the app between runs to clear the in-memory
+  limiter. Nightly CI: `.github/workflows/e2e-nightly.yml` (schedule + `workflow_dispatch`) brings up
+  `docker-compose.dev.yml`, waits for app health, runs `npm run test:e2e` with the caps raised. Full suite =
+  **11 suites / 64 tests** green.
 
 ## Known Architecture Issues
 

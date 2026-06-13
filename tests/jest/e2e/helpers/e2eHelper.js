@@ -1,55 +1,84 @@
 /**
  * E2E Test Helper — hits the REAL running API (Docker containers).
  * Requires: docker compose -f docker-compose.dev.yml up
+ *
+ * [#150] Auth is cookie-based now (HttpOnly access_token / refresh_token), not
+ * Bearer tokens in the body. `login()`/`registerAndLogin()` return the Cookie
+ * header STRING in the `accessToken` field (kept for back-compat with existing
+ * suites that do `const { accessToken } = await login(); authed(accessToken)…`),
+ * and `authed()` sends it as `Cookie` plus an allowed `Origin` (SEC-23 CSRF guard).
  */
 const request = require('supertest');
 
 const BASE_URL = process.env.E2E_BASE_URL || 'http://localhost:3000';
+const ORIGIN = process.env.E2E_ORIGIN || 'http://localhost:3000';
 
-/** Get admin token from globalSetup (no login request needed) */
+// Set-Cookie array → "name=value; name=value" Cookie request header.
+function cookieHeader(setCookie) {
+  return (setCookie || []).map((c) => c.split(';')[0]).join('; ');
+}
+
+// Pull the refresh_token VALUE out of a Cookie header string (the refresh endpoint
+// also accepts it in the body).
+function refreshTokenFromCookie(cookie) {
+  const m = (cookie || '').match(/(?:^|;\s*)refresh_token=([^;]+)/);
+  return m ? m[1] : '';
+}
+
+/** Cached admin session (cookie) from globalSetup — no login request needed. */
 function login(username = 'admin', password = 'admin123') {
-  if (username === 'admin' && process.env.E2E_ADMIN_TOKEN) {
+  if (username === 'admin' && process.env.E2E_ADMIN_COOKIE) {
+    const cookie = process.env.E2E_ADMIN_COOKIE;
     return Promise.resolve({
-      accessToken: process.env.E2E_ADMIN_TOKEN,
-      refreshToken: process.env.E2E_ADMIN_REFRESH || '',
+      accessToken: cookie, // back-compat: callers pass this into authed()
+      cookie,
+      refreshToken: refreshTokenFromCookie(cookie),
       user: { username: 'admin', role: 'admin' },
     });
   }
-  // For non-admin users, do a real login
+  // Non-admin: real login (no 2FA) → cookies on the response.
   return request(BASE_URL)
     .post('/api/auth/login')
+    .set('Origin', ORIGIN)
     .send({ username, password })
     .then((res) => {
       if (res.status !== 200) throw new Error(`login(${username}) got ${res.status}`);
-      return {
-        accessToken: res.body.accessToken,
-        refreshToken: res.body.refreshToken,
-        user: res.body.user,
-      };
+      const cookie = cookieHeader(res.headers['set-cookie']);
+      return { accessToken: cookie, cookie, refreshToken: refreshTokenFromCookie(cookie), user: res.body.user };
     });
 }
 
-/** Login without cache (for tests that need a fresh token, e.g. logout, refresh) */
-async function loginFresh(username = 'admin', password = 'admin123') {
+/**
+ * Fresh, uncached cookie session — for tests that mutate session state (logout,
+ * refresh, password change) and must not disturb the shared cached session.
+ * Only valid for NON-admin users (admin needs the 2FA dance done in globalSetup);
+ * callers should register a throwaway user first.
+ */
+async function loginFresh(username, password = 'TestPass123') {
   const res = await request(BASE_URL)
     .post('/api/auth/login')
+    .set('Origin', ORIGIN)
     .send({ username, password });
-  if (res.status !== 200) throw new Error(`loginFresh(${username}) got ${res.status}: ${JSON.stringify(res.body)}`);
-  return {
-    accessToken: res.body.accessToken,
-    refreshToken: res.body.refreshToken,
-    user: res.body.user,
-  };
+  if (res.status !== 200) {
+    throw new Error(`loginFresh(${username}) got ${res.status}: ${JSON.stringify(res.body)}`);
+  }
+  if (res.body.requires2FA || res.body.requires2FASetup) {
+    throw new Error(`loginFresh(${username}) hit 2FA — use a non-admin user for fresh sessions`);
+  }
+  const cookie = cookieHeader(res.headers['set-cookie']);
+  return { accessToken: cookie, cookie, refreshToken: refreshTokenFromCookie(cookie), user: res.body.user };
 }
 
-/** Shorthand: create authenticated supertest agent */
-function authed(token) {
+/** Authenticated supertest agent — cookie auth + allowed Origin (CSRF). */
+function authed(cookie) {
+  const withAuth = (method, url) =>
+    request(BASE_URL)[method](url).set('Cookie', cookie).set('Origin', ORIGIN);
   return {
-    get: (url) => request(BASE_URL).get(url).set('Authorization', `Bearer ${token}`),
-    post: (url) => request(BASE_URL).post(url).set('Authorization', `Bearer ${token}`),
-    put: (url) => request(BASE_URL).put(url).set('Authorization', `Bearer ${token}`),
-    patch: (url) => request(BASE_URL).patch(url).set('Authorization', `Bearer ${token}`),
-    delete: (url) => request(BASE_URL).delete(url).set('Authorization', `Bearer ${token}`),
+    get: (url) => withAuth('get', url),
+    post: (url) => withAuth('post', url),
+    put: (url) => withAuth('put', url),
+    patch: (url) => withAuth('patch', url),
+    delete: (url) => withAuth('delete', url),
   };
 }
 
@@ -57,6 +86,7 @@ async function registerUser(username, password = 'TestPass123') {
   const email = `${username}@test.com`;
   const res = await request(BASE_URL)
     .post('/api/auth/register')
+    .set('Origin', ORIGIN)
     .send({ username, password, email });
 
   // 201 = created, 409 = already exists
@@ -67,14 +97,16 @@ async function registerUser(username, password = 'TestPass123') {
   return { username, password, email };
 }
 
-/** Register a new user and login. For non-admin role tests, use the pre-cached E2E_USER_TOKEN. */
+/** Register a new user and login. With no args, reuses the cached test user. */
 async function registerAndLogin(username, password = 'TestPass123') {
-  // Use pre-created test user from globalSetup to avoid rate limiting
-  if (!username && process.env.E2E_USER_TOKEN) {
+  if (!username && process.env.E2E_USER_COOKIE) {
+    const cookie = process.env.E2E_USER_COOKIE;
     return {
       username: process.env.E2E_USER_NAME,
       password,
-      accessToken: process.env.E2E_USER_TOKEN,
+      accessToken: cookie,
+      cookie,
+      refreshToken: refreshTokenFromCookie(cookie),
       user: { username: process.env.E2E_USER_NAME, role: 'user' },
     };
   }
@@ -84,11 +116,11 @@ async function registerAndLogin(username, password = 'TestPass123') {
   return { username: name, password, ...auth };
 }
 
-/** Unauthenticated request */
+/** Unauthenticated request (still sends an allowed Origin for parity). */
 function anon() {
   return {
-    get: (url) => request(BASE_URL).get(url),
-    post: (url) => request(BASE_URL).post(url),
+    get: (url) => request(BASE_URL).get(url).set('Origin', ORIGIN),
+    post: (url) => request(BASE_URL).post(url).set('Origin', ORIGIN),
   };
 }
 
@@ -136,11 +168,13 @@ const factory = {
 };
 
 /** Cleanup helper — delete a building by ID with cascade (controllers/metrics).
- *  Without ?cascade=true the API returns 400 if building has controllers. */
-async function deleteBuilding(token, id) {
+ *  Without ?cascade=true the API returns 400 if building has controllers.
+ *  `cookie` is the Cookie header string (back-compat: tests pass `accessToken`). */
+async function deleteBuilding(cookie, id) {
   const res = await request(BASE_URL)
     .delete(`/api/buildings/${id}?cascade=true`)
-    .set('Authorization', `Bearer ${token}`)
+    .set('Cookie', cookie)
+    .set('Origin', ORIGIN)
     .catch(() => null);
   if (res && res.status !== 200 && res.status !== 404) {
     console.warn(`deleteBuilding(${id}) cleanup returned ${res.status}`);

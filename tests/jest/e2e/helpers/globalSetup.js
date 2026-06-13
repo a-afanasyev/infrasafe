@@ -1,48 +1,118 @@
 /**
- * Global setup: login once before all E2E suites, store tokens in env vars
- * so every suite reuses the same token without hitting the rate limiter.
+ * Global E2E setup [#150] — authenticate ONCE via the CURRENT auth contract and
+ * stash the resulting Cookie-header strings in env so every suite reuses them
+ * (avoids the auth rate limiter).
+ *
+ * Why this was rewritten: the old setup read `body.accessToken` and sent it as a
+ * Bearer header. Two things changed under it:
+ *   1. Tokens are HttpOnly cookies now — NOT echoed in the response body
+ *      ([1A-FU2-S-M2]) — so body.accessToken is always undefined.
+ *   2. Admin login is gated behind mandatory TOTP 2FA — a plain login returns
+ *      { requires2FA | requires2FASetup, tempToken }, never tokens.
+ *
+ * So we now: (a) reset the admin's 2FA in the DB for re-runnability (the secret is
+ * AES-encrypted, so we can't seed a known one — we must drive setup→confirm and
+ * read the plaintext secret it returns), (b) drive login → setup-2fa → confirm-2fa
+ * with an otplib-generated code, and (c) capture Set-Cookie into a Cookie string.
+ * A regular (non-admin) user needs no 2FA — register + login is enough.
  */
-const http = require('http');
+const request = require('supertest');
+const otplib = require('otplib');
+const { Client } = require('pg');
 
-function post(url, body) {
-  return new Promise((resolve, reject) => {
-    const data = JSON.stringify(body);
-    const parsed = new URL(url);
-    const req = http.request({
-      hostname: parsed.hostname,
-      port: parsed.port,
-      path: parsed.pathname,
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
-    }, (res) => {
-      let chunks = '';
-      res.on('data', (c) => { chunks += c; });
-      res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(chunks) }));
-    });
-    req.on('error', reject);
-    req.write(data);
-    req.end();
+const BASE = process.env.E2E_BASE_URL || 'http://localhost:3000';
+// CSRF Origin guard (SEC-23): cookie-auth mutations require an allowed Origin.
+const ORIGIN = process.env.E2E_ORIGIN || 'http://localhost:3000';
+
+// Set-Cookie array → "name=value; name=value" for the Cookie request header.
+function cookieHeader(setCookie) {
+  return (setCookie || []).map((c) => c.split(';')[0]).join('; ');
+}
+
+// Clear the admin's 2FA so login returns requires2FASetup → we can read a fresh
+// plaintext secret from setup-2fa. Best-effort: fresh CI containers already have an
+// unconfigured admin, so a DB failure here is non-fatal — adminCookies() surfaces a
+// clear error only if login then reports requires2FA (already configured).
+async function resetAdmin2FA() {
+  const client = new Client({
+    host: process.env.E2E_DB_HOST || 'localhost',
+    port: parseInt(process.env.E2E_DB_PORT || '5435', 10),
+    user: process.env.E2E_DB_USER || 'postgres',
+    password: process.env.E2E_DB_PASSWORD || 'postgres',
+    database: process.env.E2E_DB_NAME || 'infrasafe',
   });
+  try {
+    await client.connect();
+    await client.query(
+      "UPDATE users SET totp_enabled = false, totp_secret = NULL, recovery_codes = NULL WHERE username = 'admin'"
+    );
+  } catch (e) {
+    console.warn(`[e2e setup] admin 2FA reset skipped (${e.message})`);
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
+async function adminCookies() {
+  await resetAdmin2FA();
+
+  const login = await request(BASE).post('/api/auth/login').set('Origin', ORIGIN)
+    .send({ username: 'admin', password: 'admin123' });
+  if (login.status !== 200) {
+    throw new Error(`[e2e setup] admin login failed (${login.status}). Is the API running?`);
+  }
+
+  // Already-configured admin and the reset didn't take (no DB access) → we have no
+  // secret to compute a code. Fail with an actionable message.
+  if (login.body.requires2FA) {
+    throw new Error('[e2e setup] admin has 2FA configured and the reset failed — run '
+      + 'against fresh containers, or set E2E_DB_HOST/PORT/USER/PASSWORD/NAME so the '
+      + 'setup can reset it.');
+  }
+
+  // Older build with no 2FA gate: cookies are already on the login response.
+  if (!login.body.requires2FASetup) {
+    const cookies = cookieHeader(login.headers['set-cookie']);
+    if (!cookies) throw new Error('[e2e setup] admin login returned no cookies');
+    return cookies;
+  }
+
+  const { tempToken } = login.body;
+  const setup = await request(BASE).post('/api/auth/setup-2fa').set('Origin', ORIGIN)
+    .send({ tempToken });
+  if (setup.status !== 200 || !setup.body.secret) {
+    throw new Error(`[e2e setup] setup-2fa failed (${setup.status})`);
+  }
+
+  const code = String(otplib.generateSync({ secret: setup.body.secret }));
+  const confirm = await request(BASE).post('/api/auth/confirm-2fa').set('Origin', ORIGIN)
+    .send({ tempToken, code });
+  if (confirm.status !== 200) {
+    throw new Error(`[e2e setup] confirm-2fa failed (${confirm.status}): ${JSON.stringify(confirm.body)}`);
+  }
+
+  const cookies = cookieHeader(confirm.headers['set-cookie']);
+  if (!cookies) throw new Error('[e2e setup] confirm-2fa returned no cookies');
+  return cookies;
+}
+
+async function userCookies() {
+  const name = `e2e_testuser_${Date.now()}`;
+  await request(BASE).post('/api/auth/register').set('Origin', ORIGIN)
+    .send({ username: name, password: 'TestPass123', email: `${name}@test.com` });
+  const login = await request(BASE).post('/api/auth/login').set('Origin', ORIGIN)
+    .send({ username: name, password: 'TestPass123' });
+  if (login.status !== 200) {
+    throw new Error(`[e2e setup] test user login failed (${login.status})`);
+  }
+  const cookies = cookieHeader(login.headers['set-cookie']);
+  if (!cookies) throw new Error('[e2e setup] test user login returned no cookies');
+  return { cookies, name };
 }
 
 module.exports = async function globalSetup() {
-  const base = process.env.E2E_BASE_URL || 'http://localhost:3000';
-
-  // Login as admin
-  const admin = await post(`${base}/api/auth/login`, { username: 'admin', password: 'admin123' });
-  if (admin.status !== 200) {
-    throw new Error(`E2E globalSetup: admin login failed (${admin.status}). Is the API running?`);
-  }
-  process.env.E2E_ADMIN_TOKEN = admin.body.accessToken;
-  process.env.E2E_ADMIN_REFRESH = admin.body.refreshToken;
-
-  // Register and login as regular user
-  const testUser = `e2e_testuser_${Date.now()}`;
-  await post(`${base}/api/auth/register`, { username: testUser, password: 'TestPass123', email: `${testUser}@test.com` });
-  const user = await post(`${base}/api/auth/login`, { username: testUser, password: 'TestPass123' });
-  if (user.status !== 200) {
-    throw new Error(`E2E globalSetup: test user login failed (${user.status})`);
-  }
-  process.env.E2E_USER_TOKEN = user.body.accessToken;
-  process.env.E2E_USER_NAME = testUser;
+  process.env.E2E_ADMIN_COOKIE = await adminCookies();
+  const user = await userCookies();
+  process.env.E2E_USER_COOKIE = user.cookies;
+  process.env.E2E_USER_NAME = user.name;
 };

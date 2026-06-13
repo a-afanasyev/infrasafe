@@ -1,28 +1,42 @@
-const { login, loginFresh, authed, anon, BASE_URL } = require('./helpers/e2eHelper');
+const { login, loginFresh, authed, anon, registerUser, BASE_URL } = require('./helpers/e2eHelper');
 const request = require('supertest');
 
+const ORIGIN = process.env.E2E_ORIGIN || 'http://localhost:3000';
+
+// [#150] Auth contract today: tokens are HttpOnly cookies (NOT echoed in the body),
+// and admin login is gated behind mandatory TOTP 2FA. These suites assert that
+// contract (Set-Cookie / requires2FA), not the old Bearer/body-token one.
+function hasCookie(res, name) {
+  return (res.headers['set-cookie'] || []).some((c) => c.startsWith(`${name}=`));
+}
+
 describe('E2E: Auth Flow', () => {
-  test('POST /api/auth/login — valid credentials returns tokens + user', async () => {
+  test('POST /api/auth/login — admin login requires 2FA (no tokens in body)', async () => {
     const res = await request(BASE_URL)
       .post('/api/auth/login')
+      .set('Origin', ORIGIN)
       .send({ username: 'admin', password: 'admin123' });
 
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('accessToken');
-    expect(res.body).toHaveProperty('refreshToken');
-    expect(res.body.user).toHaveProperty('username', 'admin');
-    expect(res.body.user).toHaveProperty('role', 'admin');
+    // Admin always goes through 2FA — either verify (configured) or setup.
+    expect(res.body.requires2FA || res.body.requires2FASetup).toBe(true);
+    expect(res.body).toHaveProperty('tempToken');
+    expect(res.body).not.toHaveProperty('accessToken');
   });
 
   test('POST /api/auth/login — wrong password returns 401', async () => {
+    // Fresh user so admin lockout / rate-limit state can't interfere.
+    const u = `e2e_wrongpw_${Date.now()}`;
+    await registerUser(u);
     const res = await request(BASE_URL)
       .post('/api/auth/login')
-      .send({ username: 'admin', password: 'wrongpass' });
+      .set('Origin', ORIGIN)
+      .send({ username: u, password: 'definitely-wrong' });
 
     expect(res.status).toBe(401);
   });
 
-  test('GET /api/auth/profile — with valid token returns user profile', async () => {
+  test('GET /api/auth/profile — with valid session returns user profile', async () => {
     const { accessToken } = await login();
     const res = await authed(accessToken).get('/api/auth/profile');
 
@@ -32,31 +46,40 @@ describe('E2E: Auth Flow', () => {
     expect(res.body.user).toHaveProperty('role');
   });
 
-  test('POST /api/auth/refresh — returns new access token', async () => {
-    const { refreshToken } = await loginFresh('admin', 'admin123');
+  test('POST /api/auth/refresh — issues a new access cookie', async () => {
+    // Use a fresh non-admin session (admin would need the 2FA dance).
+    const u = `e2e_refresh_${Date.now()}`;
+    await registerUser(u);
+    const { refreshToken } = await loginFresh(u);
+
     const res = await request(BASE_URL)
       .post('/api/auth/refresh')
+      .set('Origin', ORIGIN)
       .send({ refreshToken });
 
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('accessToken');
+    expect(hasCookie(res, 'access_token')).toBe(true);
   });
 
-  test('Protected route without token — returns 401', async () => {
+  test('Protected route without session — returns 401', async () => {
     const res = await anon().get('/api/buildings');
     expect(res.status).toBe(401);
   });
 
-  test('POST /api/auth/logout — invalidates token', async () => {
-    const { accessToken } = await loginFresh('admin', 'admin123');
+  test('POST /api/auth/logout — succeeds and clears cookies', async () => {
+    const u = `e2e_logout_${Date.now()}`;
+    await registerUser(u);
+    const { accessToken } = await loginFresh(u);
+
     const logoutRes = await authed(accessToken).post('/api/auth/logout');
     expect(logoutRes.status).toBe(200);
   });
 
-  test('POST /api/auth/register + login — new user flow', async () => {
+  test('POST /api/auth/register + login — sets the auth cookie', async () => {
     const username = `e2e_user_${Date.now()}`;
     const regRes = await request(BASE_URL)
       .post('/api/auth/register')
+      .set('Origin', ORIGIN)
       .send({ username, password: 'TestPass123', email: `${username}@test.com` });
 
     expect(regRes.status).toBe(201);
@@ -64,10 +87,11 @@ describe('E2E: Auth Flow', () => {
 
     const loginRes = await request(BASE_URL)
       .post('/api/auth/login')
+      .set('Origin', ORIGIN)
       .send({ username, password: 'TestPass123' });
 
     expect(loginRes.status).toBe(200);
-    expect(loginRes.body).toHaveProperty('accessToken');
+    expect(hasCookie(loginRes, 'access_token')).toBe(true);
   });
 });
 
@@ -77,11 +101,12 @@ describe('E2E: POST /api/auth/change-password', () => {
   const NEW_PWD = 'NewPass456';
 
   beforeAll(async () => {
-    // Use a dedicated registered user — admin has 2FA mandatory which complicates flow.
+    // A dedicated registered (non-admin) user — admin has mandatory 2FA.
     const username = `pwtest_${Date.now()}`;
     const email = `${username}@test.local`;
     const reg = await request(BASE_URL)
       .post('/api/auth/register')
+      .set('Origin', ORIGIN)
       .send({ username, email, password: ORIG_PWD, full_name: 'PW Test' });
     if (reg.status !== 201 && reg.status !== 200) {
       throw new Error(`register failed: ${reg.status} ${JSON.stringify(reg.body)}`);
@@ -89,16 +114,15 @@ describe('E2E: POST /api/auth/change-password', () => {
     testUser = { username, email };
   });
 
-  test('changes password and invalidates old tokens', async () => {
+  test('changes password and invalidates old session', async () => {
     const login1 = await loginFresh(testUser.username, ORIG_PWD);
     const access1 = login1.accessToken;
     const refresh1 = login1.refreshToken;
     expect(access1).toBeTruthy();
 
     // The cutoff middleware uses a 5-second skew to tolerate clock-drift between
-    // replicas (see JWT_CUTOFF_SKEW_MS in authService.js). To assert that the
-    // pre-change tokens are actually rejected, the JWT iat must be < (cutoff - 5s).
-    // Wait 6 seconds so the post-change cutoff comfortably exceeds iat + skew.
+    // replicas (JWT_CUTOFF_SKEW_MS). To assert pre-change tokens are rejected, the
+    // JWT iat must be < (cutoff - 5s). Wait 6s so the cutoff exceeds iat + skew.
     await new Promise((r) => setTimeout(r, 6100));
 
     const change = await authed(access1)
@@ -107,31 +131,33 @@ describe('E2E: POST /api/auth/change-password', () => {
     expect(change.status).toBe(200);
     expect(change.body.success).toBe(true);
 
-    // Allow cache invalidation to propagate
     await new Promise((r) => setTimeout(r, 200));
 
-    // Old access token now rejected
+    // Old access session now rejected
     const profileResp = await authed(access1).get('/api/auth/profile');
     expect(profileResp.status).toBe(401);
 
     // Old refresh token now rejected
     const refreshResp = await request(BASE_URL)
       .post('/api/auth/refresh')
+      .set('Origin', ORIGIN)
       .send({ refreshToken: refresh1 });
     expect(refreshResp.status).toBe(401);
 
     // Old password rejected
     const oldLogin = await request(BASE_URL)
       .post('/api/auth/login')
+      .set('Origin', ORIGIN)
       .send({ username: testUser.username, password: ORIG_PWD });
     expect(oldLogin.status).toBe(401);
 
-    // New password works
+    // New password works (cookie issued)
     const newLoginResp = await request(BASE_URL)
       .post('/api/auth/login')
+      .set('Origin', ORIGIN)
       .send({ username: testUser.username, password: NEW_PWD });
     expect(newLoginResp.status).toBe(200);
-    expect(newLoginResp.body.accessToken).toBeTruthy();
+    expect((newLoginResp.headers['set-cookie'] || []).some((c) => c.startsWith('access_token='))).toBe(true);
   }, 30000);
 
   test('returns 400 for wrong current password', async () => {
@@ -153,16 +179,9 @@ describe('E2E: POST /api/auth/change-password', () => {
   });
 
   test('rate-limits after 5 attempts within 15 min', async () => {
-    // Use a fresh user so the per-user rate-limit bucket is empty.
     const rlUsername = `pwtest_rl_${Date.now()}`;
-    const rlEmail = `${rlUsername}@test.local`;
     const rlPwd = 'TestPass123';
-    const reg = await request(BASE_URL)
-      .post('/api/auth/register')
-      .send({ username: rlUsername, email: rlEmail, password: rlPwd, full_name: 'PW RL' });
-    if (reg.status !== 201 && reg.status !== 200) {
-      throw new Error(`rate-limit user register failed: ${reg.status} ${JSON.stringify(reg.body)}`);
-    }
+    await registerUser(rlUsername, rlPwd);
     const { accessToken } = await loginFresh(rlUsername, rlPwd);
 
     const codes = [];
