@@ -429,6 +429,12 @@ class InfrastructureAlertService {
             infrastructure_type: 'controller',
             message: `Протечка в подвале — датчик контроллера ${controllerId} сработал. Уровень воды требует проверки.`,
             affected_buildings: 1,
+            // [FE-119] LEAK is a boolean sensor → label-only per UK. No numeric
+            // metric_value/normal_* (the payload helper nulls them); UK renders
+            // just the label + device.
+            infrastructure_label: `Контроллер №${controllerId}`,
+            metric_id: 'leak_sensor',
+            metric_label: 'Протечка',
             data: {
                 source: 'auto_leak_check',
                 controller_id: controllerId,
@@ -600,13 +606,17 @@ class InfrastructureAlertService {
                 return null;
             }
 
+            // [FE-119 Phase 2] the triggering phase voltage for the UK card —
+            // fetched once and threaded into every non-verify build below.
+            const metricValue = await this._recentVoltageMetric(controllerId);
+
             // [AUD-006] Escalate-in-place. An OPEN lower-severity alert (active or
             // acknowledged) is UPGRADED rather than dropped. The in-mem entry is
             // the fast path; fall back to a DB read when the map is empty.
             const existing = inMem || (await this._findActiveAlert('controller', controllerId, 'VOLTAGE_ANOMALY'));
             if (existing) {
                 if (SEVERITY_RANK[severity] > SEVERITY_RANK[existing.severity]) {
-                    const r = await this._escalateAlert(existing, this._buildVoltageAlertData(controllerId, severity));
+                    const r = await this._escalateAlert(existing, this._buildVoltageAlertData(controllerId, severity, metricValue));
                     switch (r.outcome) {
                         case 'escalated':
                             this.lastChecks.set(checkKey, now);
@@ -625,7 +635,7 @@ class InfrastructureAlertService {
                             // policy snapshot (TOCTOU-safe) the escalation already read.
                             this.activeAlerts.delete(alertKey);
                             const created = await this.createAlert(
-                                this._buildVoltageAlertData(controllerId, severity),
+                                this._buildVoltageAlertData(controllerId, severity, metricValue),
                                 { ruleSnapshot: r.policy }
                             );
                             if (created) this.lastChecks.set(checkKey, now);
@@ -641,7 +651,7 @@ class InfrastructureAlertService {
             }
 
             // No open alert → create a fresh one.
-            const alertData = this._buildVoltageAlertData(controllerId, severity);
+            const alertData = this._buildVoltageAlertData(controllerId, severity, metricValue);
             const createdAlert = await this.createAlert(alertData);
             if (createdAlert) {
                 this.lastChecks.set(checkKey, now);
@@ -654,7 +664,10 @@ class InfrastructureAlertService {
     }
 
     // [AUD-001 PR-B] Canonical VOLTAGE alertData (shared by legacy + verify).
-    _buildVoltageAlertData(controllerId, severity) {
+    // [FE-119 Phase 2] metricValue = the most-deviant out-of-band phase voltage
+    // (legacy path fetches it; the verify/reopen closure omits it → null).
+    _buildVoltageAlertData(controllerId, severity, metricValue = null) {
+        const { voltage } = sharedThresholds;
         return {
             type: 'VOLTAGE_ANOMALY',
             severity,
@@ -664,6 +677,14 @@ class InfrastructureAlertService {
                 ? `Критическая аномалия напряжения на контроллере ${controllerId} — глубокая просадка или несколько фаз вне нормы.`
                 : `Аномалия напряжения на контроллере ${controllerId} — одна из фаз вне допустимого диапазона.`,
             affected_buildings: 1,
+            // [FE-119] metric/infrastructure context for the UK card.
+            infrastructure_label: `Контроллер №${controllerId}`,
+            metric_id: 'voltage',
+            metric_label: 'Напряжение',
+            metric_value: metricValue ?? null,
+            metric_unit: 'В',
+            metric_normal_min: voltage.warn_min,
+            metric_normal_max: voltage.warn_max,
             data: {
                 source: 'auto_voltage_check',
                 controller_id: controllerId,
@@ -671,6 +692,39 @@ class InfrastructureAlertService {
                 classified_severity: severity
             }
         };
+    }
+
+    // [FE-119 Phase 2] The single phase voltage furthest OUTSIDE the working band
+    // [warn_min, warn_max] in the recent window — the value that best explains the
+    // alert. Scans per-phase min/max (a low sag and a high spike are both
+    // candidates) and returns the most-deviant. Defensive: null (no throw) when
+    // the query yields nothing or every phase sits within band.
+    async _recentVoltageMetric(controllerId) {
+        const { voltage } = sharedThresholds;
+        const result = await db.query(
+            `SELECT MIN(electricity_ph1) AS ph1_min, MAX(electricity_ph1) AS ph1_max,
+                    MIN(electricity_ph2) AS ph2_min, MAX(electricity_ph2) AS ph2_max,
+                    MIN(electricity_ph3) AS ph3_min, MAX(electricity_ph3) AS ph3_max
+             FROM metrics
+             WHERE controller_id = $1
+               AND timestamp >= NOW() - INTERVAL '600 seconds'`,
+            [controllerId]
+        );
+        const row = result && result.rows && result.rows[0] ? result.rows[0] : null;
+        if (!row) return null;
+        const candidates = [row.ph1_min, row.ph1_max, row.ph2_min, row.ph2_max, row.ph3_min, row.ph3_max]
+            .filter((v) => v != null)
+            .map(Number)
+            .filter((v) => !Number.isNaN(v));
+        let best = null;
+        let bestDev = 0;
+        for (const v of candidates) {
+            const dev = v < voltage.warn_min
+                ? voltage.warn_min - v
+                : (v > voltage.warn_max ? v - voltage.warn_max : 0);
+            if (dev > bestDev) { bestDev = dev; best = v; }
+        }
+        return best;
     }
 
     // [B-005 / Sprint 11] Classify the current voltage condition. Returns

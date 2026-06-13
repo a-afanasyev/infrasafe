@@ -77,6 +77,77 @@ describe('[FE-119] HEATING_FAILURE metric context', () => {
     });
 });
 
+describe('[FE-119] LEAK_DETECTED — label-only', () => {
+    test('_buildLeakAlertData carries label + infrastructure, no numeric metric', () => {
+        const d = alertService._buildLeakAlertData(3);
+        expect(d.metric_label).toBe('Протечка');
+        expect(d.metric_id).toBe('leak_sensor');
+        expect(d.infrastructure_label).toBe('Контроллер №3');
+        // label-only: no numeric value/bounds (payload helper serializes as null)
+        expect(d.metric_value).toBeUndefined();
+        expect(d.metric_normal_min).toBeUndefined();
+        expect(d.metric_normal_max).toBeUndefined();
+    });
+});
+
+describe('[FE-119 Phase 2] VOLTAGE_ANOMALY metric context', () => {
+    test('_buildVoltageAlertData carries metric/infrastructure fields', () => {
+        const d = alertService._buildVoltageAlertData(7, 'WARNING', 215.3);
+        expect(d.infrastructure_label).toBe('Контроллер №7');
+        expect(d.metric_id).toBe('voltage');
+        expect(d.metric_label).toBe('Напряжение');
+        expect(d.metric_value).toBe(215.3);
+        expect(d.metric_unit).toBe('В');
+        expect(d.metric_normal_min).toBe(198); // voltage.warn_min
+        expect(d.metric_normal_max).toBe(242); // voltage.warn_max
+    });
+
+    test('_buildVoltageAlertData defaults metric_value to null (verify/reopen path)', () => {
+        expect(alertService._buildVoltageAlertData(7, 'WARNING').metric_value).toBeNull();
+    });
+
+    test('_recentVoltageMetric returns the most-deviant out-of-band phase value', async () => {
+        const db = require('../../../src/config/database');
+        // warn band [198, 242]. Deviations: 188→10 (below), 250→8 (above), 245→3.
+        db.query.mockResolvedValue({ rows: [{
+            ph1_min: 215, ph1_max: 230,
+            ph2_min: 188, ph2_max: 240,
+            ph3_min: 245, ph3_max: 250,
+        }] });
+        await expect(alertService._recentVoltageMetric(7)).resolves.toBe(188);
+    });
+
+    test('_recentVoltageMetric returns null when all phases are within band', async () => {
+        const db = require('../../../src/config/database');
+        db.query.mockResolvedValue({ rows: [{
+            ph1_min: 220, ph1_max: 240, ph2_min: 221, ph2_max: 239, ph3_min: 225, ph3_max: 238,
+        }] });
+        await expect(alertService._recentVoltageMetric(7)).resolves.toBeNull();
+    });
+
+    test('_recentVoltageMetric returns null (no throw) when db yields no rows', async () => {
+        const db = require('../../../src/config/database');
+        db.query.mockResolvedValue(undefined);
+        await expect(alertService._recentVoltageMetric(7)).resolves.toBeNull();
+    });
+
+    test('checkVoltage threads the fetched phase value into metric_value (fresh alert)', async () => {
+        jest.spyOn(alertService, '_classifyVoltageSeverity').mockResolvedValue('WARNING');
+        jest.spyOn(alertService, '_recentVoltageMetric').mockResolvedValue(189.4);
+        jest.spyOn(alertService, '_findActiveAlert').mockResolvedValue(null);
+        const createSpy = jest.spyOn(alertService, 'createAlert').mockResolvedValue({ alert_id: 5 });
+
+        await alertService.checkVoltage(7, { bypassCooldown: true });
+
+        expect(createSpy).toHaveBeenCalledTimes(1);
+        const [alertData] = createSpy.mock.calls[0];
+        expect(alertData.type).toBe('VOLTAGE_ANOMALY');
+        expect(alertData.metric_value).toBe(189.4);
+        expect(alertData.metric_label).toBe('Напряжение');
+        expect(alertData.infrastructure_label).toBe('Контроллер №7');
+    });
+});
+
 describe('[FE-119] TRANSFORMER_OVERLOAD metric context', () => {
     test('checkTransformerLoad sets metric/infrastructure fields on the alert', async () => {
         analyticsService.getTransformerLoad.mockResolvedValue({
