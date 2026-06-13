@@ -207,3 +207,30 @@ describe('database initialization', () => {
         expect(result).toBeInstanceOf(Promise);
     });
 });
+
+// [AUD-042] Swagger is dev-only (guarded by `if NODE_ENV !== 'production'`), so
+// it must be lazy-required inside that branch and live in devDependencies — never
+// loaded into the immutable prod image (npm ci --omit=dev).
+describe('[AUD-042] Swagger is dev-only (lazy require + devDependencies)', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const repoRoot = path.resolve(__dirname, '../../..');
+
+    it('server.js does not require swagger at the top level', () => {
+        const src = fs.readFileSync(path.join(repoRoot, 'src/server.js'), 'utf8');
+        const guardIdx = src.indexOf("NODE_ENV !== 'production'");
+        const jsdocIdx = src.indexOf("require('swagger-jsdoc')");
+        const uiIdx = src.indexOf("require('swagger-ui-express')");
+        expect(guardIdx).toBeGreaterThan(0);
+        expect(jsdocIdx).toBeGreaterThan(guardIdx); // required AFTER the dev guard
+        expect(uiIdx).toBeGreaterThan(guardIdx);
+    });
+
+    it('package.json lists swagger under devDependencies, not dependencies', () => {
+        const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+        for (const dep of ['swagger-jsdoc', 'swagger-ui-express']) {
+            expect(pkg.devDependencies).toHaveProperty(dep);
+            expect(pkg.dependencies).not.toHaveProperty(dep);
+        }
+    });
+});

@@ -8,8 +8,9 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
-const swaggerJsdoc = require('swagger-jsdoc');
-const swaggerUi = require('swagger-ui-express');
+// [AUD-042] swagger-jsdoc / swagger-ui-express are lazy-required inside the
+// dev-only block below (search "NODE_ENV !== 'production'") — they are
+// devDependencies and must never load in the immutable prod image.
 
 const apiRoutes = require('./routes');
 const errorHandler = require('./middleware/errorHandler');
@@ -123,6 +124,9 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 // Swagger документация (только в development)
 if (process.env.NODE_ENV !== 'production') {
+    // [AUD-042] Lazy require — dev/test only; kept out of the prod image.
+    const swaggerJsdoc = require('swagger-jsdoc');
+    const swaggerUi = require('swagger-ui-express');
     const swaggerOptions = {
         definition: {
             openapi: '3.0.0',

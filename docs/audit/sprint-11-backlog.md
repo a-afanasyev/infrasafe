@@ -1296,3 +1296,16 @@ Three sub-items from the "Перф (мелочи)" finding:
   sample out of the warn band — out-of-crit ⊂ out-of-warn since crit_min<warn_min & crit_max>warn_max, and the
   ≥2-phase crit rule also needs out-of-warn samples — so a warn-band prefilter would at least be *correct*, just not
   *faster* for healthy controllers.)
+
+### AUD-042 — Swagger libs in the prod image — CLOSED (2026-06-13)
+`swagger-jsdoc` + `swagger-ui-express` were required at the top of `src/server.js:11-12` but only used inside
+`if (process.env.NODE_ENV !== 'production')` (`:155-156`). In the immutable prod image (`npm ci --omit=dev`) the
+branch never runs, yet the libs were forced into `dependencies` and loaded at boot for nothing.
+**Fix:** lazy-`require` both inside the dev guard; moved them from `dependencies` → `devDependencies`
+(package.json + package-lock synced, both now `dev=true`). Prod (`NODE_ENV=production`) skips the branch and the
+libs are no longer installed; dev/test (`NODE_ENV=test`) runs the branch with the libs present. `serverTest`'s
+`jest.mock('swagger-*')` still intercepts the lazy require (hoisted).
+**Tests (TDD):** added to `serverTest.test.js` — server.js requires swagger only AFTER the dev guard, and
+package.json lists both under devDependencies (not dependencies). Full jest green, lint clean.
+**Deploy:** backend → image rebuild (`update-production.sh`); the rebuilt image is slightly smaller and no longer
+carries the swagger libs.
