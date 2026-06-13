@@ -18,6 +18,46 @@
 
 ---
 
+## Статус на 2026-06-13 — код-аудит AUD-001..044 фактически закрыт
+
+> Сверено с git-историей (`git log --grep AUD-`). Аудит 2026-06-09 отработан почти полностью —
+> остаток это **только** deferred-by-design рефакторы и продуктовые развилки. Активно-горящего нет.
+
+### Закрыто из аудита (≈38 из 44 — ✅ deployed/decided)
+- **P1**: AUD-001+003+025 reopen-reconnect (`be2fc32`/`194a466`/`208afdb`); AUD-002+043 migration runner + roll-forward (`601a0aa`/`0beba81`).
+- **P2 корректность**: AUD-004/005/006/007/029/037 (`0beba81`/`602a7dd`); AUD-013/014/044/015 (`9d688c2`); AUD-013 phase-2 — dead csrf.js удалён (`8712354`, task #149).
+- **Инфра качества**: AUD-016 ESLint public/ (`4f537bb`); AUD-017 e2e harness + nightly CI (task #150, `2f49577`/`84066ca`); AUD-024 dev-Redis (`84066ca`); AUD-035 verified-no-change.
+- **Гигиена**: AUD-018/021/023/038/041/042 (`f0c7e00`/`482fbba`/`5d07d84`); **AUD-019 финально закрыт ЭТОЙ сессией** (`9799413` — junk в `.gitignore`, straggler-доки закоммичены, root чист); AUD-027 X-XSS (`d70121e`); AUD-028/030 (`978fa30`); AUD-031/032 dead-code + debug-probes (`482fbba`/`4d053eb`/`4f3d429`).
+- **Архитектура**: AUD-009 scoped-dedup (`29b8443`); AUD-039 две таблицы трансформаторов канонизированы (`ba28249`/`52ee502`/`a9e5c13` — migrations 036/037 deployed + prod-verified); AUD-036 p1+p2 (`6f5bcae`/`91f3c1b`).
+- **AUD-022 ЭТОЙ сессией** (`773374c`) — deprecated compose-цепочка (~460 строк) удалена, impact-traced dev+prod.
+
+### Плюс вне-аудитное (эта сессия)
+- **severity→urgency gap** (`478b84c`, FE-119 follow-up) — на свежем `alert.created` теперь шлём `uk_urgency_override` из per-rule конфига; **e2e-verified на проде** (УК заявка `260613-008` = medium, было low; УК подтвердил).
+- **FE-119** metric/infra context в `alert.created` (`931ec4f`/`625616d`) — все 4 типа, prod-verified.
+
+### Остаётся открытым — НЕТ «just do it», всё по триггеру/решению
+| Пункт | Класс | Когда брать |
+|---|---|---|
+| AUD-008/010/011/012 | deferred-by-design (рефактор слоёв; push-back верифицирован — не чистый выигрыш) | при касании домена; split `alertService` — на следующей крупной alert-фиче |
+| AUD-036 p3 | correctness-risk | voltage-prefilter меняет семантику safety-пути — только с анализом + бенчем |
+| AUD-020 | product-развилка | infra-lines: фича планируется (→ строить роут) или брошена (→ удалить UI)? |
+| AUD-040 | product-развилка | API без потребителя — сверить с frontend-redesign (B-008) / UK-web |
+| AUD-033 (+SEC-34b) | refactor | `map-layers-control` на cookie/interceptor — один тикет |
+| AUD-034 | decided-defer | risk > benefit (`a233a56`) |
+| init-schema `power_transformers` excision | косметика | source-hygiene, не CI-verifiable |
+
+### Carry-over (B-/SEC-, не из аудита)
+- **B-003** Redis multi-replica (rescoped), **B-004** admin.js split (триггер 4500 LoC не достигнут), **B-008** frontend-redesign merge, **B-009** seasonal HEATING (Q3 2026), **B-011** alias collision (latent), **B-006** UK Kanban (owner UK).
+- **SEC-17** git-scrub, **SEC-27/31/32**, **SEC-34 a/e/h/j** — pentest round-2 хвост (активно-эксплуатируемых нет).
+- **UK-URGENCY остаток** (admin-UI reopen-meta passthrough) — **РАЗБЛОКИРОВАН**: зависел от AUD-001, который теперь закрыт → можно брать.
+
+### Рекомендация
+Аудит фактически отработан, ничего не горит. Дальше — либо продуктовые развилки (AUD-020/040, B-008),
+либо deferred-рефакторы «по касанию» (AUD-008/010/011/012), либо разблокированный UK-URGENCY admin-UI
+passthrough. Спекулятивный churn по слоям сейчас противопоказан (свежестабилизированный alert/UK-домен).
+
+---
+
 ## Статус на 2026-06-01 — актуализация
 
 ### Закрыто (полная история — в Closed-секции внизу)
@@ -809,7 +849,7 @@ event'а — строка остаётся `pending`, что корректно)
 ### P2/P3 — гигиена (батч-кандидаты, см. quick wins в AUDIT_REPORT.md §4)
 
 - **AUD-018** dompurify — мёртвая backend-зависимость (фронт юзает vendored `public/libs/dompurify/`). [S]
-- **AUD-019** корень: 52 PNG (17 МБ), `.playwright-mcp/`, чужой .patch (146 КБ), каталог `~/`, 11 одноразовых deploy/hardening-скриптов; добить `.gitignore` (`.mcp.json`, `/*.patch`). Поглощает операционную часть SEC-34i (см. ревизию). [S]
+- **AUD-019** корень: 52 PNG (17 МБ), `.playwright-mcp/`, чужой .patch (146 КБ), каталог `~/`, 11 одноразовых deploy/hardening-скриптов; добить `.gitignore` (`.mcp.json`, `/*.patch`). Поглощает операционную часть SEC-34i (см. ревизию). [S] — **DONE** (`482fbba` первый проход + **`9799413` финал 2026-06-13**): junk в `.gitignore` явными именами (AUDIT_REPORT.md, `/*.jpeg`+`/*.jpg`, 11 операторских скриптов; `update-production.sh` остаётся tracked), 6 straggler-доков закоммичены (secret-scanned — только age-pubkey + плейсхолдеры), `git status` чист (0 untracked). Файлы НЕ удалены — только ignore.
 - **AUD-020** фантомный `/api/infrastructure-lines` — роут не существует, fetch всегда молча 404 (`map-layers-control.js:1809` и др.). [S] — **РЕСКОУП 2026-06-12 (НЕ удаляю, требует product-решения):** верификация показала, что это **незавершённая фича**, а не чистый мёртвый код: фронт несёт целостный `infrastructure-line-editor` (юзается `admin.js`+`admin.html`), маппинг в `admin-coordinate-editor.getAPIEndpoint()`, и per-line загрузку алертов (`loadLineAlerts` вызывается на каждый рендер линии `map-layers-control.js:1618`) — но backend-роут `/api/infrastructure-lines` (унифицированная «infra-line», в отличие от живых `/api/lines`+`/api/water-lines`) никогда не строился. Удаление UI снесёт возможно-плановую работу → класс AUD-039/040 «сверить с планами/product». Развилка аудита («удалить fetch ИЛИ завести роут») требует ответа: фича планируется (→ строить роут) или брошена (→ удалить UI)?
 - **AUD-021** два расходящихся env-примера; мёртвые и недокументированные переменные. [S]
 - **AUD-022** deprecated-цепочка `docker-compose.prod.yml` + `Dockerfile.prod` + `Dockerfile.frontend-only` + `nginx-frontend-only.conf` + `.dockerignore.frontend` (~400 строк; `setup.sh:28-29` всё ещё выбирает prod.yml) — требует подтверждения ненужности local-Mac-сценария. [M] — **DONE 2026-06-13 (commit `228cb18`)**: оператор подтвердил local-Mac-сценарий не нужен. Impact-traced оба канонических пути перед удалением: dev (`docker-compose.dev.yml` → `Dockerfile.dev`+`Dockerfile.frontend.dev`) и прод (`docker-compose.unified.yml` → `Dockerfile.unified`, edge `nginx:alpine`+`./nginx-config`) — нулевые функциональные ссылки на 5 файлов (только comment-level в unified.yml). `.dockerignore.frontend` — нераспознаваемое docker'ом имя (мёртв). Удалил 5 файлов; `setup.sh` mode=prod-ветка убрана (unified/dev only); починены живые доки (CLAUDE.md секция → «Prod runtime», README-tree, PRODUCTION-DEPLOYMENT баннер). Dated-снапшоты + already-disclaimed legacy-runbook'и сохраняют ссылки by design. Verify: оба compose `config -q` парсятся, `bash -n setup.sh` OK. Деплой не нужен (сборочная/локальная инфра, не рантайм).
@@ -901,6 +941,7 @@ event'а — строка остаётся `pending`, что корректно)
   - `power_transformers` (**4 реальных: Фараби/Олмазор/Шифонур, с PostGIS `geom`/координатами**) ← `PowerTransformer.js` / карта + power-analytics / FK `buildings.power_transformer_id`.
   - Т.е. оператор в admin-вкладке правит таблицу `transformers`, **отвязанную от того, что показано на карте** (`power_transformers`); правки невидимы на карте и наоборот. `transformers` фактически не используется (1 мусор-строка, 0 линий). `power_transformers` — живой источник для карты.
   - **Это архитектурное решение (твоё):** канонизировать `power_transformers` (реальные данные+карта), депрекейтнуть `transformers`/`Transformer`/admin-вкладку/`lines.transformer_id`, мигрировать FK — отдельный тикет (~300 строк + контроллер + роуты, L). Краша НЕТ → не срочно, но admin-вкладка трансформаторов сейчас вводит в заблуждение (управляет мёртвой таблицей). Прод-факты: `transformers`=1 row, `power_transformers`=4 rows, `lines`=0, buildings.primary set у 1 здания.
+  - **DONE 2026-06-13 (направление КАНОНИЗАЦИИ ИНВЕРТИРОВАНО после ревизии):** канонизировали НЕ `power_transformers`, а **`transformers`** — потому что именно она WIRED (map `/api/transformers` + MV 012 + analytics + INTEGER FK `buildings.primary/backup_transformer_id`); `power_transformers` оказалась ORPHANED (0 зданий, VARCHAR PK, карта её не читала). Phase 1 EXPAND (`52ee502`, migration 036): порт 4 реальных строк Фараби/Олмазор/Шифонур в `transformers`, drop тестовой '1111', building 5 → Олмазор-1. Phase 2 CONTRACT (`a9e5c13`, migration 037): drop `power_transformers` + `buildings.power_transformer_id` + фикс arity `find_nearest`. Оба deployed через runner + prod-verified (035/036/037 в `schema_migrations`). Урок: mocked unit-тесты дают ложную уверенность по SQL-fn контрактам — валидировать против реальной схемы. **AUD-039 ЗАКРЫТ.**
 - **AUD-040** API без потребителя: analytics 16 эндпоинтов (фронт зовёт 1), admin 46 (фронт ~4 семейства), `/integration/request-counts` (0 вызовов из public/) — сверить с планами B-008/UK-web до любых удалений. [M-L]
 - **AUD-043** политика roll-forward-only письменно + дубль номера 012 (вместе с AUD-002). [S]
 
