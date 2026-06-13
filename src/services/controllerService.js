@@ -198,12 +198,15 @@ class ControllerService {
     // Удалить контроллер с проверкой связанных метрик
     async deleteController(id) {
         try {
-            // Проверяем наличие связанных метрик (limit 1 — existence check only)
-            const metrics = await Metric.findByControllerId(id, null, null, 1);
-            if (metrics.length > 0) {
+            // [AUD-036] Existence check only — LIMIT 1 keeps this O(1) on the
+            // (potentially huge) metrics table. The previous `error.metricCount`
+            // was always 1 (capped by the LIMIT) and had no consumer, so it is
+            // dropped rather than replaced with a full COUNT(*) that would scan
+            // every metric row just to populate an unused, delete-blocked field.
+            const hasMetrics = await Metric.findByControllerId(id, null, null, 1);
+            if (hasMetrics.length > 0) {
                 const error = new Error('Невозможно удалить контроллер с привязанными метриками');
                 error.code = 'CONTROLLER_HAS_METRICS';
-                error.metricCount = metrics.length;
                 throw error;
             }
 
