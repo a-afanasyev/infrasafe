@@ -49,7 +49,7 @@
 ### Carry-over (B-/SEC-, не из аудита)
 - **B-003** Redis multi-replica (rescoped), **B-004** admin.js split (триггер 4500 LoC не достигнут), **B-008** frontend-redesign merge, **B-009** seasonal HEATING (Q3 2026), **B-011** alias collision (latent), **B-006** UK Kanban (owner UK).
 - **SEC-17** git-scrub, **SEC-27/31/32**, **SEC-34 a/e/h/j** — pentest round-2 хвост (активно-эксплуатируемых нет).
-- **UK-URGENCY остаток** (admin-UI reopen-meta passthrough) — **РАЗБЛОКИРОВАН**: зависел от AUD-001, который теперь закрыт → можно брать.
+- **UK-URGENCY остаток** (admin-UI reopen-meta passthrough) — **✅ DONE + DEPLOYED 2026-06-14 (`4941069`)**: «Открыть в УК» на reopen-алерте (`reopen_sequence>1`) шлёт `reopen_sequence`+`related_request`+опц.`reopen_chain_id` в deep-link. Извлечён в тестируемый `public/utils/ukLinkBuilder.js` (+12 jsdom-кейсов), reopen-поля уже на фронте (`/api/alerts` `ia.*`). Контракт имён подтверждён УК; их dashboard-reader (`useSearchParams`) **тоже LIVE с 2026-06-14** — читает `?request=` и сам открывает заявку (стрипает params после открытия, staff-only auth). Фича функциональна end-to-end. Prod-verified: util served live. **Deep-link auth нюанс — был UK-side баг, УК ИСПРАВИЛИ + verified 2026-06-14:** new-tab deep-link форсил UK-релогин при живой сессии (httpOnly-cookie шарится, но UI-флаг per-tab в sessionStorage опережал чтение куки). UK fix (deployed): (A) тихий cookie-bootstrap на cold-start, (B) `?next=` сохраняет deep-link через логин. Наш код не меняли (`_blank` ок). **FULL end-to-end browser-verified на проде** (reopen-демо 260614-001 A + 260614-002 reopen→A): live-session → модал открылся напрямую без логина; clean-browser → `?next=`-redirect → открывает после входа; модал показал «🔁 Повторное обращение №2 · связана с 260614-001» + кнопку open-related + FE-119 metric-блок + срочность «Срочная» (reopen bump), а A=«Средняя» (severity→urgency live). Тикеты 260614-001/002 — cleanup обеих сторон после верификации.
 
 ### Рекомендация
 Аудит фактически отработан, ничего не горит. Дальше — либо продуктовые развилки (AUD-020/040, B-008),
@@ -1016,8 +1016,13 @@ ticket **260605-001**. **УК подтвердил с обеих сторон** 
 фоллбэка; их outbound тоже ключи). Синтетик-строки на проде вычищены (outbox 12 / map 10 / ilog 5875,5876
 / alert 39). Контракт по `urgency` закрыт. Детали — `docs/audit/2026-06-05-uk-urgency-canonical-keys.md`.
 
-**Остаток (отдельный пункт, не блокер):** admin-UI «открыть в УК» reopen-meta passthrough — поля есть с
-PR-3, нужен UI-проброс + использование UK `onOpenRelated` prop. Берётся на map/admin-UX проходе.
+**Остаток — ✅ DONE + DEPLOYED 2026-06-14 (`4941069`):** admin-UI «открыть в УК» reopen-meta passthrough.
+Reopen-поля уже на фронте (`/api/alerts` `ia.*`); B-001 deep-link билдер извлечён в тестируемый
+`public/utils/ukLinkBuilder.js` (+12 jsdom-кейсов, esbuild+admin.html) — на reopen-алерте (`reopen_sequence>1`)
+ссылка несёт `reopen_sequence`+`related_request`+опц.`reopen_chain_id`. Контракт имён подтверждён УК
+(2026-06-14); их dashboard `useSearchParams`-reader **тоже LIVE с 2026-06-14** — читает `?request=` + сам
+открывает модал заявки (стрипает deep-link params после открытия, staff-only auth) → фича работает
+end-to-end. Prod-verified (наш util served live).
 
 ### ✅ Security audit 2026-05-29/30 — SEC-1..12 + P-PENTEST-1/2/3/4 + ротации (closed 2026-05-30)
 
