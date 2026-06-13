@@ -132,8 +132,7 @@
 │   │   └── security/                  # Тесты безопасности (SQL injection, XSS)
 │   └── orchestrator/                  # Unified test runner (bash)
 ├── docker-compose.dev.yml             # Docker для разработки
-├── docker-compose.prod.yml            # Docker для production
-├── docker-compose.unified.yml         # Единое развертывание
+├── docker-compose.unified.yml         # Единое развертывание (прод + локально)
 ├── docker-compose.generator.yml       # Генератор метрик
 ├── index.html                         # Главная страница (карта)
 ├── admin.html                         # Административная панель

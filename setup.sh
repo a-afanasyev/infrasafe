@@ -20,14 +20,11 @@ fi
 if command -v docker &> /dev/null && command -v docker-compose &> /dev/null; then
     echo -e "${GREEN}Docker и Docker Compose установлены. Используем Docker для развертывания.${NC}"
 
-    # Выбор режима запуска
-    read -p "Выберите режим запуска (unified/dev/prod): " mode
+    # Выбор режима запуска (AUD-022: docker-compose.prod.yml удалён как deprecated.
+    # Каноничные пути — unified (полный стек + nginx/TLS) и dev (локальная разработка).)
+    read -p "Выберите режим запуска (unified/dev): " mode
 
-    if [ "$mode" = "prod" ]; then
-        echo "Запуск приложения в production режиме..."
-        docker compose -f docker-compose.prod.yml up -d --build
-        COMPOSE_FILE="docker-compose.prod.yml"
-    elif [ "$mode" = "dev" ]; then
+    if [ "$mode" = "dev" ]; then
         echo "Запуск приложения в development режиме..."
         docker compose -f docker-compose.dev.yml up -d --build
         COMPOSE_FILE="docker-compose.dev.yml"

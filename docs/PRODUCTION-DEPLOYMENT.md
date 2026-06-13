@@ -6,9 +6,9 @@
 > **Бэкенд-изменения требуют пересборки образа** (`docker compose -f docker-compose.unified.yml build app`),
 > `git pull` сам по себе бэкенд-код больше НЕ обновляет. Frontend `public/dist` **извлекается из образа**
 > через `scripts/rebuild-frontend.sh prepare|publish|verify|restore` (staging в `.deploy/`), а НЕ
-> пересобирается через bind-mount. `docker-compose.prod.yml` deprecated (только local Mac) — НЕ
-> использовать на проде. Команды ниже с `docker-compose.prod.yml` / `up -d` устарели; следуйте
-> `update-production.sh`.
+> пересобирается через bind-mount. `docker-compose.prod.yml` **удалён (AUD-022, 2026-06-13)** —
+> прод и локаль идут через `docker-compose.unified.yml`. Команды ниже с `docker-compose.prod.yml` /
+> `up -d` устарели; следуйте `update-production.sh`.
 
 ## ⚠️ ВАЖНО: Безопасное обновление
 
@@ -55,7 +55,7 @@ git pull origin production
 ls -la .env.prod
 
 # Проверьте docker-compose файл
-cat docker-compose.prod.yml
+cat docker-compose.unified.yml
 ```
 
 ### 4. Остановка контейнеров (БЕЗ удаления)
