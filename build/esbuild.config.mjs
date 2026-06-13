@@ -38,6 +38,8 @@ const ENTRIES = [
     'public/utils/ukRulesValidation.js',
     // [code-review batch] coordinate-integrity guard (prevents NaN→null wipe)
     'public/utils/coordValidation.js',
+    // [UK-URGENCY remnant] UK deep-link builder + reopen-meta passthrough
+    'public/utils/ukLinkBuilder.js',
 ].map(f => path.join(projectRoot, f));
 
 const sharedOptions = {

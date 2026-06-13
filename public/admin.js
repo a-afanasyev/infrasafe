@@ -1034,26 +1034,20 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
 
-    // [B-001 / Sprint 11] Build a UK request deep-link from the configured
-    // template. Substitutes ${uk_frontend_url} and ${uk_request_number}.
-    // Returns null when configuration is incomplete so callers can skip
-    // rendering the link.
+    // [B-001 / Sprint 11 + UK-URGENCY remnant] Build a UK request deep-link.
+    // Delegates to the tested util (public/utils/ukLinkBuilder.js) which handles
+    // the ${uk_frontend_url}/${uk_request_number} substitution AND the optional
+    // reopen-meta passthrough (reopen_sequence/related_request/reopen_chain_id)
+    // so the UK side can show "Повторное обращение №N · связана с XXX". Returns
+    // null when config is incomplete (or the util bundle failed to load) so
+    // callers skip rendering the link.
     //
-    // Confirmed format with UK team 2026-05-27:
+    // Confirmed base format with UK team 2026-05-27:
     //   ${uk_frontend_url}/dashboard?request=${uk_request_number}
-    //   → https://infrasafe.uz/uk/dashboard?request=260527-001
-    // UK side will add useSearchParams to KanbanPage in a follow-up to
-    // auto-open the request modal; until then the link lands on the
-    // dashboard without the modal — acceptable per UK team.
-    function buildUkRequestUrl(uk_request_number) {
-        const config = integrationState.config || {};
-        const baseUrl = (config.uk_frontend_url || '').replace(/\/$/, '');
-        const template = config.uk_request_url_template
-            || '${uk_frontend_url}/dashboard?request=${uk_request_number}';
-        if (!baseUrl || !uk_request_number) return null;
-        return template
-            .replace(/\$\{uk_frontend_url\}/g, baseUrl)
-            .replace(/\$\{uk_request_number\}/g, encodeURIComponent(uk_request_number));
+    function buildUkRequestUrl(uk_request_number, reopenMeta) {
+        if (!window.UkLinkBuilder) return null;
+        return window.UkLinkBuilder.buildUkRequestUrl(
+            uk_request_number, integrationState.config || {}, reopenMeta);
     }
 
     // [B-001 / Sprint 11] Open the UK request(s) linked to an alert in a
@@ -1064,8 +1058,17 @@ document.addEventListener("DOMContentLoaded", function () {
         const requests = Array.isArray(item.uk_requests) ? item.uk_requests : [];
         if (requests.length === 0) return;
 
+        // [UK-URGENCY remnant] reopen context for the deep-link. /api/alerts
+        // returns ia.* so the alert item carries these directly. previous
+        // request number is `previous_uk_request_number` on the alert row.
+        const reopenMeta = {
+            reopen_sequence: item.reopen_sequence,
+            reopen_chain_id: item.reopen_chain_id,
+            related_request_number: item.previous_uk_request_number,
+        };
+
         if (requests.length === 1) {
-            const url = buildUkRequestUrl(requests[0].uk_request_number);
+            const url = buildUkRequestUrl(requests[0].uk_request_number, reopenMeta);
             if (url) {
                 window.open(url, '_blank', 'noopener,noreferrer');
             } else {
@@ -1092,7 +1095,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         requests.forEach(req => {
             const link = document.createElement('a');
-            link.href = buildUkRequestUrl(req.uk_request_number) || '#';
+            link.href = buildUkRequestUrl(req.uk_request_number, reopenMeta) || '#';
             link.target = '_blank';
             link.rel = 'noopener noreferrer';
             link.textContent = `№${req.uk_request_number}` + (req.status ? ` · ${req.status}` : '');
