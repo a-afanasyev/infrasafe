@@ -1309,3 +1309,13 @@ libs are no longer installed; dev/test (`NODE_ENV=test`) runs the branch with th
 package.json lists both under devDependencies (not dependencies). Full jest green, lint clean.
 **Deploy:** backend → image rebuild (`update-production.sh`); the rebuilt image is slightly smaller and no longer
 carries the swagger libs.
+
+### AUD-034 — backend duplication (alertForwarder catch blocks / rateLimiter classes) — DEFERRED (2026-06-13)
+Two pure-cleanliness dedups: near-identical catch/enqueue handling across the UK alertForwarder listeners, and
+`SimpleRateLimiter` ≈ `SimpleSlowDown` (~100 shared lines → common base class). **Deferred (evidence-based):** zero
+functional payoff, and both sit on the project's most incident-prone surfaces — the UK delivery/outbox/escalation
+path (B-010/011, B-021/022, AUD-001 PR-A/B/C) and the rate limiter (security). A refactor whose only goal is fewer
+lines, on paths where a subtle behavior change is costly, is net-negative right now. Revisit opportunistically when
+either file is opened for a functional change (extract the helper / base class as part of that work, under its tests).
+The audit's line numbers (alertForwarder :329-359/:370-400) are already stale post-AUD-001, reinforcing "touch it
+when you're there, not speculatively."
