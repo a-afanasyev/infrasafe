@@ -231,6 +231,25 @@ class UKAlertForwarder {
     // [AUD-001 PR-B Step 5b] Canonical outbound alert body (extracted so the
     // engineer path and the alert.created path build byte-identical shapes; the
     // exact bytes are HMAC-signed at send time by ukWebhookClient).
+    // [FE-119] Optional metric/infrastructure context shared by both payload
+    // builders (escalation path here + the main alert.created loop in
+    // sendAlertToUK). All fields are pass-throughs from alertData; `?? null`
+    // gives a stable shape (key always present, null when N/A — 0 preserved).
+    // UK reads these from the raw payload and ignores absent/null keys.
+    _optionalMetricBlock(alertData) {
+        return {
+            infrastructure_type: alertData.infrastructure_type ?? null,
+            infrastructure_id: alertData.infrastructure_id ?? null,
+            infrastructure_label: alertData.infrastructure_label ?? null,
+            metric_id: alertData.metric_id ?? null,
+            metric_label: alertData.metric_label ?? null,
+            metric_value: alertData.metric_value ?? null,
+            metric_unit: alertData.metric_unit ?? null,
+            metric_normal_min: alertData.metric_normal_min ?? null,
+            metric_normal_max: alertData.metric_normal_max ?? null,
+        };
+    }
+
     _buildAlertEventBody(alertData, building, eventId, rule, { engineerRequired = false, escalated = false } = {}) {
         const isReopen = !!alertData.reopen_chain_id && (alertData.reopen_sequence || 1) > 1;
         const effectiveUrgency = (isReopen && rule.reopen_urgency_bump)
@@ -257,11 +276,7 @@ class UKAlertForwarder {
                 alert_id: alertData.alert_id,
                 created_at: alertData.created_at || new Date().toISOString(),
                 correlation_id: alertData.correlation_id || null,
-                infrastructure_type: alertData.infrastructure_type,
-                infrastructure_id: alertData.infrastructure_id,
-                metric_id: alertData.metric_id,
-                metric_value: alertData.metric_value,
-                metric_unit: alertData.metric_unit,
+                ...this._optionalMetricBlock(alertData),
                 reopen_chain_id: alertData.reopen_chain_id || null,
                 reopen_sequence: alertData.reopen_sequence || 1,
                 related_request_number: alertData.previous_uk_request_number || null,
@@ -484,12 +499,10 @@ class UKAlertForwarder {
                             alert_id: alertData.alert_id,
                             created_at: alertData.created_at || new Date().toISOString(),
                             correlation_id: alertData.correlation_id || null,
-                            // Опционально поля (UK сохраняет в raw, не для логики):
-                            infrastructure_type: alertData.infrastructure_type,
-                            infrastructure_id: alertData.infrastructure_id,
-                            metric_id: alertData.metric_id,
-                            metric_value: alertData.metric_value,
-                            metric_unit: alertData.metric_unit,
+                            // [FE-119] Опционально metric/infrastructure context
+                            // (UK сохраняет в raw, не для логики) — общий хелпер
+                            // с escalation-путём, чтобы схема не разъезжалась.
+                            ...this._optionalMetricBlock(alertData),
                             // [Sprint 10 PR-3] Reopen context (optional fields,
                             // UK can ignore unknowns per Phase 2 contract):
                             reopen_chain_id: alertData.reopen_chain_id || null,

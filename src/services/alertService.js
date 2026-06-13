@@ -232,6 +232,9 @@ class InfrastructureAlertService {
             }
 
             // Создаем алерт
+            const thresholdUsed = alertType.includes('CRITICAL')
+                ? this.thresholds.transformer_critical
+                : this.thresholds.transformer_overload;
             const alertData = {
                 type: alertType,
                 infrastructure_id: transformerId,
@@ -239,14 +242,20 @@ class InfrastructureAlertService {
                 severity: severity,
                 message: message,
                 affected_buildings: loadData.buildings_count || 0,
+                // [FE-119] metric/infrastructure context for the UK card.
+                infrastructure_label: `Трансформатор №${transformerId}`,
+                metric_id: 'load_percent',
+                metric_label: 'Загрузка трансформатора',
+                metric_value: loadPercent,
+                metric_unit: '%',
+                metric_normal_min: 0,
+                metric_normal_max: thresholdUsed,
                 data: {
                     load_percent: loadPercent,
                     capacity_kva: loadData.capacity_kva,
                     active_controllers: loadData.active_controllers_count,
                     last_metric_time: loadData.last_metric_time,
-                    threshold_used: alertType.includes('CRITICAL') ?
-                        this.thresholds.transformer_critical :
-                        this.thresholds.transformer_overload
+                    threshold_used: thresholdUsed
                 }
             };
 
@@ -759,7 +768,9 @@ class InfrastructureAlertService {
                 return null;
             }
 
-            const alertData = this._buildHeatingAlertData(controllerId);
+            // [FE-119] fetch the triggering ГВС temperature for the UK card.
+            const minTemp = await this._recentHeatingMinTemp(controllerId);
+            const alertData = this._buildHeatingAlertData(controllerId, minTemp);
 
             const createdAlert = await this.createAlert(alertData);
             if (createdAlert) {
@@ -773,7 +784,10 @@ class InfrastructureAlertService {
     }
 
     // [AUD-001 PR-B] Canonical HEATING alertData (shared by legacy + verify).
-    _buildHeatingAlertData(controllerId) {
+    // [FE-119] metricValue = the triggering ГВС temperature (the legacy path
+    // fetches it; the verify/reopen closure omits it → null, UK ignores null).
+    _buildHeatingAlertData(controllerId, metricValue = null) {
+        const { heating } = sharedThresholds;
         return {
             type: 'HEATING_FAILURE',
             severity: 'CRITICAL',
@@ -781,12 +795,39 @@ class InfrastructureAlertService {
             infrastructure_type: 'controller',
             message: `Отказ теплоснабжения — температура ГВС на контроллере ${controllerId} ниже допустимой.`,
             affected_buildings: 1,
+            // [FE-119] metric/infrastructure context for the UK card.
+            infrastructure_label: `Контроллер №${controllerId}`,
+            metric_id: 'hot_water_in_temp',
+            metric_label: 'Температура ГВС',
+            metric_value: metricValue ?? null,
+            metric_unit: '°C',
+            metric_normal_min: heating.hot_water_in_critical,
+            metric_normal_max: null,
             data: {
                 source: 'auto_heating_check',
                 controller_id: controllerId,
                 detected_at: new Date().toISOString()
             }
         };
+    }
+
+    // [FE-119] Worst (lowest) sub-threshold ГВС temperature in the recent
+    // window — the value the rule fired on. Defensive: returns null (no throw)
+    // when the query yields nothing, so a metric-fetch failure never blocks the
+    // alert (metric_value just stays null).
+    async _recentHeatingMinTemp(controllerId) {
+        const { heating } = sharedThresholds;
+        const result = await db.query(
+            `SELECT MIN(hot_water_in_temp) AS min_temp
+             FROM metrics
+             WHERE controller_id = $1
+               AND hot_water_in_temp IS NOT NULL
+               AND hot_water_in_temp < $2
+               AND timestamp >= NOW() - INTERVAL '600 seconds'`,
+            [controllerId, heating.hot_water_in_critical]
+        );
+        const v = result && result.rows && result.rows[0] ? result.rows[0].min_temp : null;
+        return v == null ? null : Number(v);
     }
 
     // [B-005 / Sprint 11] Quick predicate — is there at least one sub-
