@@ -249,3 +249,41 @@ describe('[P1-3] helmet CSP no longer carries unsafe-eval anywhere', () => {
         expect(helmetBlock).toMatch(/reportUri:\s*\[\s*['"]\/api\/csp-report['"]\s*\]/);
     });
 });
+
+// [AUD-027] (a) X-XSS-Protection is retired: OWASP recommends "0" because the
+// legacy auditor in older browsers is itself an XS-Leak / filter-bypass vector,
+// and modern browsers ignore the header — CSP is the real defence.
+describe('[AUD-027] X-XSS-Protection disabled per OWASP (value "0")', () => {
+    const confs = [
+        'nginx-config/nginx.production.conf',
+        'nginx-config/nginx.dev.conf',
+        'nginx.conf'
+    ];
+    test.each(confs)('%s sets X-XSS-Protection "0", never the legacy "1; mode=block"', (file) => {
+        const conf = read(file);
+        expect(conf).toMatch(/add_header\s+X-XSS-Protection\s+"0"/);
+        expect(conf).not.toMatch(/X-XSS-Protection\s+"1;\s*mode=block"/);
+    });
+});
+
+// [AUD-027] (b) helmet's app-level CSP must mirror the stricter edge CSP — a
+// blanket `https:` on style-src/font-src is wider than the edge
+// (fonts.googleapis.com / fonts.gstatic.com) and is a silent drift source.
+describe('[AUD-027] helmet CSP mirrors the edge (no blanket https: on style/font-src)', () => {
+    const serverJs = read('src/server.js');
+    function directive(name) {
+        const m = serverJs.match(new RegExp(name + ':\\s*(\\[[^\\]]+\\])'));
+        expect(m).toBeTruthy();
+        return m[1];
+    }
+    test('styleSrc drops the bare https: token and keeps fonts.googleapis.com', () => {
+        const styleSrc = directive('styleSrc');
+        expect(styleSrc).not.toMatch(/["']https:["']/);
+        expect(styleSrc).toMatch(/fonts\.googleapis\.com/);
+    });
+    test('fontSrc drops the bare https: token and keeps fonts.gstatic.com', () => {
+        const fontSrc = directive('fontSrc');
+        expect(fontSrc).not.toMatch(/["']https:["']/);
+        expect(fontSrc).toMatch(/fonts\.gstatic\.com/);
+    });
+});

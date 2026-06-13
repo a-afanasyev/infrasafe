@@ -51,7 +51,11 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            styleSrc: ["'self'", "'unsafe-inline'", "https:"],
+            // [AUD-027] Mirror the stricter edge CSP — a blanket `https:` on
+            // style-src/font-src was wider than nginx (fonts.googleapis.com /
+            // fonts.gstatic.com) and a silent drift source. 'unsafe-inline' stays
+            // for the existing style="..." attributes (tracked CSS-only refactor).
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             // [SEC-18] CDN hosts removed: DOMPurify is self-hosted, so
             // cdn.jsdelivr.net / unpkg.com are dead config. The edge nginx CSP
             // already dropped them — keep helmet's app-level CSP in sync.
@@ -59,7 +63,7 @@ app.use(helmet({
                 ? ["'self'"]
                 : ["'self'", "'unsafe-inline'"],
             imgSrc: ["'self'", "data:", "https:", "https://*.tile.openstreetmap.org"],
-            fontSrc: ["'self'", "https:", "data:"],
+            fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
             connectSrc: ["'self'", "https://*.tile.openstreetmap.org"],
             frameSrc: ["'none'"],
             objectSrc: ["'none'"],

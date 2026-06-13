@@ -1251,3 +1251,24 @@ rollback to the old image that still SELECTs power_transformers):**
   together and collapse the expand-contract safety). See memory [[aud-039-dual-transformer-tables]].
 **Status:** Phase 1 code-complete + tested + migration prod-schema-validated; awaiting commit + deploy
 (`./update-production.sh` — backend + migration). Phase 2 = follow-up.
+
+### AUD-027 — security headers (X-XSS-Protection + helmet/edge CSP drift) — CLOSED (2026-06-13)
+Two S-severity header issues from the audit:
+- **(a) `X-XSS-Protection: "1; mode=block"`** in 4 configs (`nginx-config/nginx.production.conf:206,407`,
+  `nginx-config/nginx.dev.conf:136`, `nginx.conf:88`) — OWASP retires this header (`0`): the legacy XSS auditor
+  in older browsers is itself an XS-Leak / filter-bypass vector and modern browsers ignore it; CSP is the real
+  defence. → all 4 set to `"0"`.
+- **(b) helmet app-CSP `styleSrc`/`fontSrc` carried a blanket `https:`** (`src/server.js:54,62`) — wider than the
+  edge CSP (`style-src … https://fonts.googleapis.com`, `font-src … https://fonts.gstatic.com`). Currently masked
+  by the two-CSP-header intersection but a latent drift source. → mirrored the edge: styleSrc →
+  `'self' 'unsafe-inline' https://fonts.googleapis.com`, fontSrc → `'self' data: https://fonts.gstatic.com`.
+  (`imgSrc`'s `https:` was left — the edge `img-src` is also `https:`, so no drift; `connectSrc` OSM/wss differ by
+  design.)
+**Tests (TDD RED→GREEN):** added to `tests/jest/unit/p1-3-csp-sri.test.js` — X-XSS `"0"` (not `1; mode=block`) in
+all 3 tracked configs + helmet style/font-src drop the bare `https:` token and keep the fonts hosts. Full jest
+green, lint clean.
+**Deploy:** helmet is app code → image rebuild via `./update-production.sh`. The nginx configs are a **directory
+mount (B-012)** → they ride `git pull` but need a **`nginx -s reload`** to take effect (update-production.sh does
+NOT reload nginx). So the deploy is: `update-production.sh` (helmet rebuild) **+ a manual
+`docker exec infrasafe-nginx-1 nginx -s reload`** for the header change. Verify post-deploy:
+`curl -sI https://infrasafe.uz | grep -i x-xss` → `X-XSS-Protection: 0`.
