@@ -1319,3 +1319,28 @@ lines, on paths where a subtle behavior change is costly, is net-negative right 
 either file is opened for a functional change (extract the helper / base class as part of that work, under its tests).
 The audit's line numbers (alertForwarder :329-359/:370-400) are already stale post-AUD-001, reinforcing "touch it
 when you're there, not speculatively."
+
+### AUD-020 — InfrastructureLineEditor dead default endpoint — CLOSED (2026-06-13)
+The editor is **actively used** (5 instantiations in `admin.js`), each passing an explicit
+`apiEndpoint: '/api/lines'` or `'/api/water-lines'` (both real routes). The only dead part was the constructor
+default `options.apiEndpoint || '/api/infrastructure-lines'` — a route that never existed (a silent 404 trap), plus
+a matching help-text line in `src/routes/index.js`. The audit's "build the route or remove the UI" framing was off:
+the UI works fine. **Fix:** made `apiEndpoint` required (throw if missing — fail loud, not a phantom 404) and
+removed the `/api/infrastructure-lines` help line from index.js. No behavior change (all callers pass it). No test
+depended on the default. Lint clean (no new warnings), full jest green. Deploy: frontend bundle + backend → image
+rebuild.
+
+### AUD-026 / AUD-040 (request-counts) — ACCEPTED, no change (operator decision 2026-06-13)
+`GET /integration/request-counts` + `GET /integration/building-requests/:externalId` are reachable by any
+authenticated user (mounted before `router.use(isAdmin)`) and have **0 frontend consumers**. Operator decision:
+**keep as-is** — they're intentional InfraSafe API surface for a planned map/requests layer; any-authed access is
+acceptable (read-only aggregated counts, not admin data). No code change. (Revisit if they remain unconsumed long
+term — tighten to admin or drop then.)
+
+### AUD-040 (analytics endpoints) — NOT DEAD, intentional API surface (verified 2026-06-13)
+The ~9 analytics endpoints with no *legacy*-frontend consumer (overloaded / search / statistics / forecast /
+nearest-buildings / per-id load, …) are **consumed (or planned) by the unmerged `feature/frontend-redesign`
+branch**: its `power.html` and `energy-analytics.html` are documented (P1) against `/api/analytics/transformers/*`
+(incl. `/forecast`) and `/api/analytics/*`, and its JS already calls `analytics/buildings/` + `analytics/transformers/`.
+So they are **intentional API surface for the next frontend, not dead code** — do NOT prune. Operator decision: keep,
+documented as intentional. (Re-evaluate only if the redesign is abandoned.)

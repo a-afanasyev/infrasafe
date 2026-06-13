@@ -21,7 +21,7 @@ class InfrastructureLineEditor {
      * @param {number} options.lineId - ID линии (null для новой)
      * @param {Object} options.existingData - Существующие данные линии (для редактирования)
      * @param {Function} options.onSave - Callback после успешного сохранения
-     * @param {string} options.apiEndpoint - Кастомный API endpoint (default: '/api/infrastructure-lines')
+     * @param {string} options.apiEndpoint - REQUIRED API endpoint, e.g. '/api/lines' or '/api/water-lines'
      * @param {Object} options.additionalFields - Дополнительные поля для отображения в форме
      */
     constructor(options) {
@@ -29,7 +29,14 @@ class InfrastructureLineEditor {
         this.lineId = options.lineId || null;
         this.existingData = options.existingData || null;
         this.onSave = options.onSave;
-        this.apiEndpoint = options.apiEndpoint || '/api/infrastructure-lines';
+        // [AUD-020] apiEndpoint is required — every caller passes '/api/lines' or
+        // '/api/water-lines'. The old `|| '/api/infrastructure-lines'` default
+        // pointed at a route that never existed (a silent 404 trap); fail loudly
+        // instead so a future caller that forgets it is caught immediately.
+        if (!options.apiEndpoint) {
+            throw new Error('InfrastructureLineEditor: apiEndpoint is required (e.g. /api/lines or /api/water-lines)');
+        }
+        this.apiEndpoint = options.apiEndpoint;
         this.additionalFields = options.additionalFields || {};
         
         // Точки основного пути (парсим если строка JSON)
