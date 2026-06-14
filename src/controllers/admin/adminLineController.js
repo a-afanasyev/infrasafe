@@ -4,6 +4,7 @@ const { createError } = require('../../utils/helpers');
 const { buildPaginatedList } = require('../../utils/adminQueryBuilder');
 const { buildUpdateQuery } = require('../../utils/dynamicUpdateBuilder');
 const adminService = require('../../services/adminService');
+const Line = require('../../models/Line');
 
 /**
  * Admin power-line operations: optimized list, full CRUD, batch ops.
@@ -123,11 +124,9 @@ async function updateLine(req, res, next) {
 async function deleteLine(req, res, next) {
     try {
         const { id } = req.params;
-        const result = await pool.query(
-            'DELETE FROM lines WHERE line_id = $1 RETURNING *',
-            [id]
-        );
-        if (result.rows.length === 0) {
+        // [AUD-008] delegate to model; deleted row not serialized to client.
+        const deleted = await Line.delete(id);
+        if (!deleted) {
             return next(createError('Line not found', 404));
         }
         res.json({ success: true, message: 'Line deleted successfully' });

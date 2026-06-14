@@ -30,6 +30,10 @@ const express = require('express');
 const WaterLine = require('../../../src/models/WaterLine');
 const waterLineRoutes = require('../../../src/routes/waterLineRoutes');
 
+// [AUD-010/011] Routes now delegate to waterLineController, which sends the
+// canonical error envelope { success:false, error:{ message, status } } via
+// apiResponse.sendError/sendNotFound — no central error handler needed in the
+// harness (controllers self-send on every error path).
 describe('waterLineRoutes', () => {
     let app;
 
@@ -38,11 +42,6 @@ describe('waterLineRoutes', () => {
         app = express();
         app.use(express.json());
         app.use('/api/water-lines', waterLineRoutes);
-        // Error handler
-        app.use((err, req, res, _next) => {
-            const status = err.statusCode || 500;
-            res.status(status).json({ message: err.message });
-        });
     });
 
     // -------------------------------------------------------------------------
@@ -69,7 +68,9 @@ describe('waterLineRoutes', () => {
             const res = await request(app).get('/api/water-lines');
 
             expect(res.status).toBe(500);
-            expect(res.body.message).toBe('Ошибка получения водных линий');
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Ошибка получения водных линий');
+            expect(res.body.error.status).toBe(500);
         });
     });
 
@@ -94,7 +95,8 @@ describe('waterLineRoutes', () => {
             const res = await request(app).get('/api/water-lines/999');
 
             expect(res.status).toBe(404);
-            expect(res.body.message).toBe('Водная линия не найдена');
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Водная линия не найдена');
         });
 
         it('returns 500 on database error', async () => {
@@ -103,7 +105,8 @@ describe('waterLineRoutes', () => {
             const res = await request(app).get('/api/water-lines/1');
 
             expect(res.status).toBe(500);
-            expect(res.body.message).toBe('Ошибка получения водной линии');
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Ошибка получения водной линии');
         });
     });
 
@@ -130,7 +133,8 @@ describe('waterLineRoutes', () => {
             const res = await request(app).get('/api/water-lines/999/supplier');
 
             expect(res.status).toBe(404);
-            expect(res.body.message).toBe('Водная линия не найдена');
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Водная линия не найдена');
         });
 
         it('returns 500 on database error', async () => {
@@ -139,7 +143,8 @@ describe('waterLineRoutes', () => {
             const res = await request(app).get('/api/water-lines/1/supplier');
 
             expect(res.status).toBe(500);
-            expect(res.body.message).toBe('Ошибка получения поставщика линии');
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Ошибка получения поставщика линии');
         });
     });
 
@@ -170,7 +175,8 @@ describe('waterLineRoutes', () => {
                 .send({ name: 'Bad Line' });
 
             expect(res.status).toBe(500);
-            expect(res.body.message).toBe('Ошибка создания водной линии');
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Ошибка создания водной линии');
         });
     });
 
@@ -199,7 +205,8 @@ describe('waterLineRoutes', () => {
                 .send({ name: 'Ghost' });
 
             expect(res.status).toBe(404);
-            expect(res.body.message).toBe('Водная линия не найдена');
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Водная линия не найдена');
         });
 
         it('returns 500 on update error', async () => {
@@ -210,7 +217,8 @@ describe('waterLineRoutes', () => {
                 .send({ name: 'Failing' });
 
             expect(res.status).toBe(500);
-            expect(res.body.message).toBe('Ошибка обновления водной линии');
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Ошибка обновления водной линии');
         });
     });
 
@@ -234,7 +242,8 @@ describe('waterLineRoutes', () => {
             const res = await request(app).delete('/api/water-lines/999');
 
             expect(res.status).toBe(404);
-            expect(res.body.message).toBe('Водная линия не найдена');
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Водная линия не найдена');
         });
 
         it('returns 500 on deletion error', async () => {
@@ -243,7 +252,8 @@ describe('waterLineRoutes', () => {
             const res = await request(app).delete('/api/water-lines/1');
 
             expect(res.status).toBe(500);
-            expect(res.body.message).toBe('Ошибка удаления водной линии');
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Ошибка удаления водной линии');
         });
     });
 });

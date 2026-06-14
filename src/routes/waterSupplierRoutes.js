@@ -1,110 +1,13 @@
 const express = require('express');
-const WaterSupplier = require('../models/WaterSupplier');
-const { createError } = require('../utils/helpers');
-const { applyCrudRateLimit } = require('../middleware/rateLimiter');
-const { validatePagination } = require('../utils/queryValidation');
-const logger = require('../utils/logger');
-
 const router = express.Router();
+const waterSupplierController = require('../controllers/waterSupplierController');
+const { applyCrudRateLimit } = require('../middleware/rateLimiter');
 
-// GET /api/water-suppliers - Получить всех поставщиков воды
-router.get('/', async (req, res, next) => {
-    try {
-        const { page, limit, type } = req.query;
-        // [SEC-33] clamp page/limit (raw strings → NaN/negative reached SQL)
-        const { pageNum, limitNum } = validatePagination(page, limit, 100);
-        const filters = {};
-
-        if (type) {
-            filters.type = type;
-        }
-
-        // Number() = CodeQL-recognized numeric barrier (values already clamped ints)
-        const waterSuppliers = await WaterSupplier.findAll(Number(pageNum), Number(limitNum), filters);
-        res.json(waterSuppliers);
-    } catch (error) {
-        logger.error(`Error fetching water suppliers: ${error.message}`, {
-            stack: error.stack,
-            endpoint: '/api/water-suppliers',
-            method: 'GET',
-            query: req.query
-        });
-        next(createError('Ошибка получения поставщиков воды', 500));
-    }
-});
-
-// GET /api/water-suppliers/:id - Получить поставщика воды по ID
-router.get('/:id', async (req, res, next) => {
-    try {
-        const waterSupplier = await WaterSupplier.findById(req.params.id);
-        if (!waterSupplier) {
-            return next(createError('Поставщик воды не найден', 404));
-        }
-        res.json(waterSupplier);
-    } catch (error) {
-        logger.error(`Error fetching water supplier: ${error.message}`, {
-            stack: error.stack,
-            endpoint: `/api/water-suppliers/${req.params.id}`,
-            method: 'GET',
-            id: req.params.id
-        });
-        next(createError('Ошибка получения поставщика воды', 500));
-    }
-});
-
-// POST /api/water-suppliers - Создать нового поставщика воды
-router.post('/', applyCrudRateLimit, async (req, res, next) => {
-    try {
-        const waterSupplier = await WaterSupplier.create(req.body);
-        res.status(201).json(waterSupplier);
-    } catch (error) {
-        logger.error(`Error creating water supplier: ${error.message}`, {
-            stack: error.stack,
-            endpoint: '/api/water-suppliers',
-            method: 'POST',
-            body: req.body
-        });
-        next(createError('Ошибка создания поставщика воды', 500));
-    }
-});
-
-// PUT /api/water-suppliers/:id - Обновить поставщика воды
-router.put('/:id', applyCrudRateLimit, async (req, res, next) => {
-    try {
-        const waterSupplier = await WaterSupplier.update(req.params.id, req.body);
-        if (!waterSupplier) {
-            return next(createError('Поставщик воды не найден', 404));
-        }
-        res.json(waterSupplier);
-    } catch (error) {
-        logger.error(`Error updating water supplier: ${error.message}`, {
-            stack: error.stack,
-            endpoint: `/api/water-suppliers/${req.params.id}`,
-            method: 'PUT',
-            id: req.params.id,
-            body: req.body
-        });
-        next(createError('Ошибка обновления поставщика воды', 500));
-    }
-});
-
-// DELETE /api/water-suppliers/:id - Удалить поставщика воды
-router.delete('/:id', applyCrudRateLimit, async (req, res, next) => {
-    try {
-        const result = await WaterSupplier.delete(req.params.id);
-        if (!result) {
-            return next(createError('Поставщик воды не найден', 404));
-        }
-        res.json({ message: 'Поставщик воды успешно удален' });
-    } catch (error) {
-        logger.error(`Error deleting water supplier: ${error.message}`, {
-            stack: error.stack,
-            endpoint: `/api/water-suppliers/${req.params.id}`,
-            method: 'DELETE',
-            id: req.params.id
-        });
-        next(createError('Ошибка удаления поставщика воды', 500));
-    }
-});
+// Маршруты для поставщиков воды (AUD-010: thin delegation to controller)
+router.get('/', waterSupplierController.getAllWaterSuppliers);
+router.get('/:id', waterSupplierController.getWaterSupplierById);
+router.post('/', applyCrudRateLimit, waterSupplierController.createWaterSupplier);
+router.put('/:id', applyCrudRateLimit, waterSupplierController.updateWaterSupplier);
+router.delete('/:id', applyCrudRateLimit, waterSupplierController.deleteWaterSupplier);
 
 module.exports = router;

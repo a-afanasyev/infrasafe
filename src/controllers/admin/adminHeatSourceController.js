@@ -3,6 +3,7 @@ const logger = require('../../utils/logger');
 const { createError } = require('../../utils/helpers');
 const { buildPaginatedList } = require('../../utils/adminQueryBuilder');
 const { buildUpdateQuery } = require('../../utils/dynamicUpdateBuilder');
+const HeatSource = require('../../models/HeatSource');
 
 /**
  * Admin heat-source operations: optimized list, full CRUD.
@@ -120,11 +121,9 @@ async function updateHeatSource(req, res, next) {
 async function deleteHeatSource(req, res, next) {
     try {
         const { id } = req.params;
-        const result = await pool.query(
-            'DELETE FROM heat_sources WHERE id = $1 RETURNING *',
-            [id]
-        );
-        if (result.rows.length === 0) {
+        // [AUD-008] delegate to model; deleted row not serialized to client.
+        const deleted = await HeatSource.delete(id);
+        if (!deleted) {
             return next(createError('Heat source not found', 404));
         }
         res.json({ success: true, message: 'Heat source deleted successfully' });

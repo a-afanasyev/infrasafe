@@ -4,6 +4,7 @@ const { createError } = require('../../utils/helpers');
 const { buildPaginatedList } = require('../../utils/adminQueryBuilder');
 const { buildUpdateQuery } = require('../../utils/dynamicUpdateBuilder');
 const adminService = require('../../services/adminService');
+const Transformer = require('../../models/Transformer');
 
 /**
  * Admin transformer operations: optimized list, full CRUD, batch ops.
@@ -126,11 +127,11 @@ async function updateTransformer(req, res, next) {
 async function deleteTransformer(req, res, next) {
     try {
         const { id } = req.params;
-        const result = await pool.query(
-            'DELETE FROM transformers WHERE transformer_id = $1 RETURNING *',
-            [id]
-        );
-        if (result.rows.length === 0) {
+        // [AUD-008] delegate to model (hits canonical `transformers` table);
+        // deleted row is not serialized to the client, so model-instance vs
+        // plain-row shape is irrelevant here.
+        const deleted = await Transformer.delete(id);
+        if (!deleted) {
             return next(createError('Transformer not found', 404));
         }
         res.json({ success: true, message: 'Transformer deleted successfully' });

@@ -29,6 +29,9 @@ const express = require('express');
 const WaterSupplier = require('../../../src/models/WaterSupplier');
 const waterSupplierRoutes = require('../../../src/routes/waterSupplierRoutes');
 
+// [AUD-010/011] Routes now delegate to waterSupplierController, which sends the
+// canonical error envelope { success:false, error:{ message, status } } via
+// apiResponse.sendError/sendNotFound — controllers self-send on every error path.
 describe('waterSupplierRoutes', () => {
     let app;
 
@@ -37,11 +40,6 @@ describe('waterSupplierRoutes', () => {
         app = express();
         app.use(express.json());
         app.use('/api/water-suppliers', waterSupplierRoutes);
-        // Error handler
-        app.use((err, req, res, _next) => {
-            const status = err.statusCode || 500;
-            res.status(status).json({ message: err.message });
-        });
     });
 
     // -------------------------------------------------------------------------
@@ -88,7 +86,8 @@ describe('waterSupplierRoutes', () => {
             const res = await request(app).get('/api/water-suppliers');
 
             expect(res.status).toBe(500);
-            expect(res.body.message).toBe('Ошибка получения поставщиков воды');
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Ошибка получения поставщиков воды');
         });
     });
 
@@ -113,7 +112,8 @@ describe('waterSupplierRoutes', () => {
             const res = await request(app).get('/api/water-suppliers/999');
 
             expect(res.status).toBe(404);
-            expect(res.body.message).toBe('Поставщик воды не найден');
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Поставщик воды не найден');
         });
 
         it('returns 500 on database error', async () => {
@@ -122,7 +122,8 @@ describe('waterSupplierRoutes', () => {
             const res = await request(app).get('/api/water-suppliers/1');
 
             expect(res.status).toBe(500);
-            expect(res.body.message).toBe('Ошибка получения поставщика воды');
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Ошибка получения поставщика воды');
         });
     });
 
@@ -153,7 +154,8 @@ describe('waterSupplierRoutes', () => {
                 .send({ name: 'Bad Supplier' });
 
             expect(res.status).toBe(500);
-            expect(res.body.message).toBe('Ошибка создания поставщика воды');
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Ошибка создания поставщика воды');
         });
     });
 
@@ -182,7 +184,8 @@ describe('waterSupplierRoutes', () => {
                 .send({ name: 'Ghost' });
 
             expect(res.status).toBe(404);
-            expect(res.body.message).toBe('Поставщик воды не найден');
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Поставщик воды не найден');
         });
 
         it('returns 500 on update error', async () => {
@@ -193,7 +196,8 @@ describe('waterSupplierRoutes', () => {
                 .send({ name: 'Failing' });
 
             expect(res.status).toBe(500);
-            expect(res.body.message).toBe('Ошибка обновления поставщика воды');
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Ошибка обновления поставщика воды');
         });
     });
 
@@ -217,7 +221,8 @@ describe('waterSupplierRoutes', () => {
             const res = await request(app).delete('/api/water-suppliers/999');
 
             expect(res.status).toBe(404);
-            expect(res.body.message).toBe('Поставщик воды не найден');
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Поставщик воды не найден');
         });
 
         it('returns 500 on deletion error', async () => {
@@ -226,7 +231,8 @@ describe('waterSupplierRoutes', () => {
             const res = await request(app).delete('/api/water-suppliers/1');
 
             expect(res.status).toBe(500);
-            expect(res.body.message).toBe('Ошибка удаления поставщика воды');
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Ошибка удаления поставщика воды');
         });
     });
 });

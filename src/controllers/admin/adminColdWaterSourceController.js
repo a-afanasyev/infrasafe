@@ -3,6 +3,7 @@ const logger = require('../../utils/logger');
 const { createError } = require('../../utils/helpers');
 const { buildPaginatedList } = require('../../utils/adminQueryBuilder');
 const { buildUpdateQuery } = require('../../utils/dynamicUpdateBuilder');
+const ColdWaterSource = require('../../models/ColdWaterSource');
 
 /**
  * Admin cold-water source operations: optimized list, full CRUD.
@@ -120,11 +121,9 @@ async function updateColdWaterSource(req, res, next) {
 async function deleteColdWaterSource(req, res, next) {
     try {
         const { id } = req.params;
-        const result = await pool.query(
-            'DELETE FROM cold_water_sources WHERE id = $1 RETURNING *',
-            [id]
-        );
-        if (result.rows.length === 0) {
+        // [AUD-008] delegate to model; deleted row not serialized to client.
+        const deleted = await ColdWaterSource.delete(id);
+        if (!deleted) {
             return next(createError('Cold water source not found', 404));
         }
         res.json({ success: true, message: 'Cold water source deleted successfully' });
