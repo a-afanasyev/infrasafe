@@ -26,7 +26,7 @@
 ### DevOps & Инфраструктура
 - **Оркестрация:** Docker Compose (dev, prod, unified, generator)
 - **Reverse Proxy:** Nginx
-- **Тестирование:** Jest (~2580 unit/integration/security тестов, 143 suites, 57 E2E)
+- **Тестирование:** Jest (~2618 unit/integration/security тестов, 148 suites, 57 E2E)
 - **Линтинг:** ESLint
 
 ## Структура проекта
@@ -192,7 +192,7 @@ npm run build:frontend:watch   # watch-режим: пересборка при �
 ### Тестирование
 
 ```bash
-npm test                  # Все тесты (~2580, 143 suites)
+npm test                  # Все тесты (~2618, 148 suites)
 npm run test:unit         # Unit-тесты (tests/jest/unit/)
 npm run test:integration  # Интеграционные тесты
 npm run test:security     # Тесты безопасности

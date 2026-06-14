@@ -33,7 +33,7 @@ open http://localhost:8081
 ## Тестирование
 
 ```bash
-npm test                  # Все тесты (~2580, 143 suites)
+npm test                  # Все тесты (~2618, 148 suites)
 npm run test:unit         # Unit-тесты
 npm run test:security     # Тесты безопасности
 npm run test:coverage     # С отчётом покрытия

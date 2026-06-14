@@ -44,31 +44,8 @@ describe('domSecurity.formatPopupValue', () => {
     });
 });
 
-describe('domSecurity.validateToken', () => {
-    const makeJwt = (payload) =>
-        ['h', Buffer.from(JSON.stringify(payload)).toString('base64'), 's'].join('.');
-
-    test('rejects non-string / malformed tokens', () => {
-        expect(DOMSecurity.validateToken(null).valid).toBe(false);
-        expect(DOMSecurity.validateToken('a.b').valid).toBe(false);
-    });
-
-    test('accepts a token whose exp is in the future', () => {
-        const token = makeJwt({ sub: 'admin', exp: Math.floor(Date.now() / 1000) + 3600 });
-        const result = DOMSecurity.validateToken(token);
-        expect(result.valid).toBe(true);
-        expect(result.payload.sub).toBe('admin');
-    });
-
-    test('rejects an expired token and clears the stored admin_token', () => {
-        localStorage.setItem('admin_token', 'stale');
-        const token = makeJwt({ sub: 'admin', exp: Math.floor(Date.now() / 1000) - 10 });
-        const result = DOMSecurity.validateToken(token);
-        expect(result.valid).toBe(false);
-        expect(result.error).toBe('Токен истек');
-        expect(localStorage.getItem('admin_token')).toBeNull();
-    });
-});
+// [AUD-021 hygiene] validateToken / getValidToken removed as dead code
+// (cookie-auth migration, AUD-033) — their tests removed with them.
 
 describe('domSecurity.setSecureText', () => {
     test('writes text as textContent, never as live markup', () => {

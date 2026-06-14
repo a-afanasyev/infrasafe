@@ -157,61 +157,10 @@ function formatPopupValue(value, suffix = '', defaultValue = 'Нет данны�
     return escapeHTML(String(numValue) + suffix);
 }
 
-/**
- * Валидация JWT токена
- * @param {string} token - Токен для валидации
- * @returns {Object} - {valid: boolean, payload: Object|null, error: string|null}
- */
-function validateToken(token) {
-    if (!token || typeof token !== 'string') {
-        return { valid: false, payload: null, error: 'Токен отсутствует или имеет неверный формат' };
-    }
-    
-    // Проверка формата JWT (должен содержать 3 части, разделенные точками)
-    const parts = token.split('.');
-    if (parts.length !== 3) {
-        return { valid: false, payload: null, error: 'Неверный формат токена' };
-    }
-    
-    try {
-        // Декодируем payload (вторая часть токена)
-        const payload = JSON.parse(atob(parts[1]));
-        
-        // Проверяем срок действия токена (если есть поле exp)
-        if (payload.exp) {
-            const expirationTime = payload.exp * 1000; // exp в секундах, преобразуем в миллисекунды
-            if (Date.now() >= expirationTime) {
-                // Токен истек
-                localStorage.removeItem('admin_token');
-                return { valid: false, payload: null, error: 'Токен истек' };
-            }
-        }
-        
-        return { valid: true, payload: payload, error: null };
-    } catch (e) {
-        return { valid: false, payload: null, error: 'Ошибка декодирования токена: ' + e.message };
-    }
-}
-
-/**
- * Получение валидного токена из localStorage с проверкой
- * @returns {string|null} - Валидный токен или null
- */
-function getValidToken() {
-    const token = localStorage.getItem('admin_token');
-    if (!token) {
-        return null;
-    }
-    
-    const validation = validateToken(token);
-    if (!validation.valid) {
-        console.warn('Токен невалиден:', validation.error);
-        localStorage.removeItem('admin_token');
-        return null;
-    }
-    
-    return token;
-}
+// [AUD-021 hygiene] validateToken / getValidToken removed — dead since the
+// cookie-auth migration (AUD-033): the map/admin never read a localStorage
+// 'admin_token' anymore. getValidToken had no callers; validateToken was used
+// only by getValidToken.
 
 // Экспорт функций для использования в других модулях
 const DOMSecurity = {
@@ -222,9 +171,7 @@ const DOMSecurity = {
     clearContainer,
     escapeHTML,
     sanitizePopupContent,
-    formatPopupValue,
-    validateToken,
-    getValidToken
+    formatPopupValue
 };
 
 if (typeof window !== 'undefined') {
