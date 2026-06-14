@@ -8,33 +8,16 @@ const alertEvents = require('../events/alertEvents');
 // events instead. We still need analyticsService to PULL data (load numbers,
 // overloaded transformer list), which is a plain function call.
 const analyticsService = require('./analyticsService');
-
-// [SEC-7] Cap on the number of alert_request_map rows aggregated into the
-// inline uk_requests array per alert in getActiveAlerts(). A mass/transformer
-// outage can map thousands of buildings to a single alert; bounding the
-// per-alert sub-array prevents an unbounded JSON build (memory spike) on the
-// admin endpoint. The array is truncated (most-recent first), not the request.
-const UK_REQUESTS_MAX_PER_ALERT = 100;
-
-// [AUD-003] Maps an alert type to the cooldown-key suffix its checker uses
-// (checkTransformerLoad → :load_check, checkLeak → :leak_check, etc.). On a
-// system-initiated resolve, _resolveVerifying clears the cooldown so the
-// checker can re-evaluate after grace. The old code hardcoded ':load_check',
-// which only matched transformer alerts — for controller types (leak/voltage/
-// heating) it cleared a non-existent key and left re-detection masked by the
-// 15-min cooldown. The drift guard in alertService.resolveAlert.test.js asserts
-// every checker's checkKey suffix is represented here.
-const COOLDOWN_SUFFIX_BY_TYPE = Object.freeze({
-    TRANSFORMER_OVERLOAD: 'load_check',
-    TRANSFORMER_CRITICAL_OVERLOAD: 'load_check',
-    LEAK_DETECTED: 'leak_check',
-    VOLTAGE_ANOMALY: 'voltage_check',
-    HEATING_FAILURE: 'heating_check'
-});
-
-// [AUD-006] Total order over severities — escalate-in-place only fires when a
-// newly-classified severity outranks the currently-active one.
-const SEVERITY_RANK = Object.freeze({ INFO: 0, WARNING: 1, CRITICAL: 2 });
+// [AUD-012] Constants split out (delegate-only). Re-required here so every
+// bare reference in the class body resolves unchanged; the singleton still
+// re-exports COOLDOWN_SUFFIX_BY_TYPE / SEVERITY_RANK at the bottom of the file.
+const { UK_REQUESTS_MAX_PER_ALERT, COOLDOWN_SUFFIX_BY_TYPE, SEVERITY_RANK } = require('./alert/alertConstants');
+// [AUD-012] Pure alertData builders split out (delegate-only).
+const alertDataBuilders = require('./alert/alertDataBuilders');
+// [AUD-012] Stateless read-only SQL helpers split out (delegate-only).
+const alertQueries = require('./alert/alertQueries');
+// [AUD-012] Alert creation gates split out (delegate-only).
+const alertGates = require('./alert/alertGates');
 
 class InfrastructureAlertService {
     constructor() {
@@ -301,45 +284,9 @@ class InfrastructureAlertService {
     // LEAST(100, AVG(total_amperage) * 0.4 / power_kva * 100). Returns null when
     // no controller has a post-resolve sample. Keep this formula in sync with
     // 012_fix_materialized_view.sql / 003_power_calculation_v2.sql.
+    // [AUD-012] delegate-only → alert/alertQueries.
     async _getTransformerLoadSince(transformerId, observationSince) {
-        const result = await db.query(
-            `SELECT
-                 t.name,
-                 t.power_kva AS capacity_kva,
-                 COUNT(DISTINCT b.building_id) AS buildings_count,
-                 COUNT(m.timestamp) AS sample_count,
-                 MAX(m.timestamp) AS last_metric_time,
-                 CASE WHEN t.power_kva > 0 THEN
-                     LEAST(100, AVG(COALESCE(m.amperage_ph1,0) + COALESCE(m.amperage_ph2,0) + COALESCE(m.amperage_ph3,0))
-                                FILTER (WHERE m.timestamp IS NOT NULL)
-                                * 0.4 / t.power_kva * 100)
-                 ELSE 0 END AS load_percent
-             FROM transformers t
-             LEFT JOIN buildings b
-                 ON (t.transformer_id = b.primary_transformer_id OR t.transformer_id = b.backup_transformer_id)
-             LEFT JOIN controllers c ON b.building_id = c.building_id
-             LEFT JOIN LATERAL (
-                 SELECT amperage_ph1, amperage_ph2, amperage_ph3, timestamp
-                 FROM metrics
-                 WHERE controller_id = c.controller_id AND timestamp > $2
-                 ORDER BY timestamp DESC LIMIT 1
-             ) m ON true
-             WHERE t.transformer_id = $1
-             GROUP BY t.transformer_id, t.name, t.power_kva`,
-            [transformerId, observationSince]
-        );
-        const row = result.rows[0];
-        if (!row || parseInt(row.sample_count, 10) === 0) {
-            return null; // no post-resolve telemetry from any controller
-        }
-        return {
-            name: row.name,
-            capacity_kva: row.capacity_kva,
-            buildings_count: parseInt(row.buildings_count, 10),
-            load_percent: parseFloat(row.load_percent),
-            last_metric_time: row.last_metric_time,
-            active_controllers_count: null
-        };
+        return alertQueries.getTransformerLoadSince(transformerId, observationSince);
     }
 
     // [B-005 / 2026-05-25] LEAK auto-trigger from telemetry.
@@ -420,38 +367,14 @@ class InfrastructureAlertService {
         }
     }
 
-    // [AUD-001 PR-B] Canonical LEAK alertData (shared by legacy + verify paths).
+    // [AUD-012] delegate-only → alert/alertDataBuilders. Thin wrappers preserve
+    // the `this._buildX` / `this._applyReopenContext` surface (direct-called by tests).
     _buildLeakAlertData(controllerId) {
-        return {
-            type: 'LEAK_DETECTED',
-            severity: 'CRITICAL',
-            infrastructure_id: controllerId,
-            infrastructure_type: 'controller',
-            message: `Протечка в подвале — датчик контроллера ${controllerId} сработал. Уровень воды требует проверки.`,
-            affected_buildings: 1,
-            // [FE-119] LEAK is a boolean sensor → label-only per UK. No numeric
-            // metric_value/normal_* (the payload helper nulls them); UK renders
-            // just the label + device.
-            infrastructure_label: `Контроллер №${controllerId}`,
-            metric_id: 'leak_sensor',
-            metric_label: 'Протечка',
-            data: {
-                source: 'auto_leak_check',
-                controller_id: controllerId,
-                detected_at: new Date().toISOString()
-            }
-        };
+        return alertDataBuilders.buildLeakAlertData(controllerId);
     }
 
-    // [AUD-001 PR-B] Merge reopen-chain fields from a VERIFY payload's
-    // reopenContext into alertData so createAlert persists the chain linkage
-    // and emits ALERT_REOPENED.
     _applyReopenContext(alertData, ctx) {
-        alertData.reopen_chain_id = ctx.chainId;
-        alertData.reopen_sequence = ctx.sequence;
-        alertData.previous_alert_id = ctx.previousAlertId;
-        alertData.previous_uk_request_number = ctx.previousUkRequestNumber;
-        return alertData;
+        return alertDataBuilders.applyReopenContext(alertData, ctx);
     }
 
     // [AUD-001 PR-B] Shared verify-mode evaluator for the controller checkers
@@ -509,44 +432,9 @@ class InfrastructureAlertService {
     //   false — latest fresh sample is healthy (recovered)
     //   true  — latest fresh sample is anomalous (fault may still hold)
     // Per-profile predicate; voltage uses the warn band (any phase out).
+    // [AUD-012] delegate-only → alert/alertQueries.
     async _latestProfileSampleAnomalous(profile, controllerId, observationSince) {
-        if (profile === 'leak') {
-            const r = await db.query(
-                `SELECT leak_sensor FROM metrics
-                 WHERE controller_id = $1 AND leak_sensor IS NOT NULL AND timestamp > $2
-                 ORDER BY timestamp DESC LIMIT 1`,
-                [controllerId, observationSince]
-            );
-            if (r.rows.length === 0) return null;
-            return r.rows[0].leak_sensor === true;
-        }
-        if (profile === 'heating') {
-            const { heating } = sharedThresholds;
-            const r = await db.query(
-                `SELECT hot_water_in_temp FROM metrics
-                 WHERE controller_id = $1 AND hot_water_in_temp IS NOT NULL AND timestamp > $2
-                 ORDER BY timestamp DESC LIMIT 1`,
-                [controllerId, observationSince]
-            );
-            if (r.rows.length === 0) return null;
-            return r.rows[0].hot_water_in_temp < heating.hot_water_in_critical;
-        }
-        if (profile === 'voltage') {
-            const { voltage } = sharedThresholds;
-            const r = await db.query(
-                `SELECT electricity_ph1, electricity_ph2, electricity_ph3 FROM metrics
-                 WHERE controller_id = $1
-                   AND (electricity_ph1 IS NOT NULL OR electricity_ph2 IS NOT NULL OR electricity_ph3 IS NOT NULL)
-                   AND timestamp > $2
-                 ORDER BY timestamp DESC LIMIT 1`,
-                [controllerId, observationSince]
-            );
-            if (r.rows.length === 0) return null;
-            const row = r.rows[0];
-            const out = (v) => v != null && (v < voltage.warn_min || v > voltage.warn_max);
-            return out(row.electricity_ph1) || out(row.electricity_ph2) || out(row.electricity_ph3);
-        }
-        return null;
+        return alertQueries.latestProfileSampleAnomalous(profile, controllerId, observationSince);
     }
 
     // [B-005 / Sprint 11] VOLTAGE auto-trigger. Mirrors checkLeak contract:
@@ -663,35 +551,9 @@ class InfrastructureAlertService {
         }
     }
 
-    // [AUD-001 PR-B] Canonical VOLTAGE alertData (shared by legacy + verify).
-    // [FE-119 Phase 2] metricValue = the most-deviant out-of-band phase voltage
-    // (legacy path fetches it; the verify/reopen closure omits it → null).
+    // [AUD-012] delegate-only → alert/alertDataBuilders.
     _buildVoltageAlertData(controllerId, severity, metricValue = null) {
-        const { voltage } = sharedThresholds;
-        return {
-            type: 'VOLTAGE_ANOMALY',
-            severity,
-            infrastructure_id: controllerId,
-            infrastructure_type: 'controller',
-            message: severity === 'CRITICAL'
-                ? `Критическая аномалия напряжения на контроллере ${controllerId} — глубокая просадка или несколько фаз вне нормы.`
-                : `Аномалия напряжения на контроллере ${controllerId} — одна из фаз вне допустимого диапазона.`,
-            affected_buildings: 1,
-            // [FE-119] metric/infrastructure context for the UK card.
-            infrastructure_label: `Контроллер №${controllerId}`,
-            metric_id: 'voltage',
-            metric_label: 'Напряжение',
-            metric_value: metricValue ?? null,
-            metric_unit: 'В',
-            metric_normal_min: voltage.warn_min,
-            metric_normal_max: voltage.warn_max,
-            data: {
-                source: 'auto_voltage_check',
-                controller_id: controllerId,
-                detected_at: new Date().toISOString(),
-                classified_severity: severity
-            }
-        };
+        return alertDataBuilders.buildVoltageAlertData(controllerId, severity, metricValue);
     }
 
     // [FE-119 Phase 2] The single phase voltage furthest OUTSIDE the working band
@@ -699,32 +561,9 @@ class InfrastructureAlertService {
     // alert. Scans per-phase min/max (a low sag and a high spike are both
     // candidates) and returns the most-deviant. Defensive: null (no throw) when
     // the query yields nothing or every phase sits within band.
+    // [AUD-012] delegate-only → alert/alertQueries.
     async _recentVoltageMetric(controllerId) {
-        const { voltage } = sharedThresholds;
-        const result = await db.query(
-            `SELECT MIN(electricity_ph1) AS ph1_min, MAX(electricity_ph1) AS ph1_max,
-                    MIN(electricity_ph2) AS ph2_min, MAX(electricity_ph2) AS ph2_max,
-                    MIN(electricity_ph3) AS ph3_min, MAX(electricity_ph3) AS ph3_max
-             FROM metrics
-             WHERE controller_id = $1
-               AND timestamp >= NOW() - INTERVAL '600 seconds'`,
-            [controllerId]
-        );
-        const row = result && result.rows && result.rows[0] ? result.rows[0] : null;
-        if (!row) return null;
-        const candidates = [row.ph1_min, row.ph1_max, row.ph2_min, row.ph2_max, row.ph3_min, row.ph3_max]
-            .filter((v) => v != null)
-            .map(Number)
-            .filter((v) => !Number.isNaN(v));
-        let best = null;
-        let bestDev = 0;
-        for (const v of candidates) {
-            const dev = v < voltage.warn_min
-                ? voltage.warn_min - v
-                : (v > voltage.warn_max ? v - voltage.warn_max : 0);
-            if (dev > bestDev) { bestDev = dev; best = v; }
-        }
-        return best;
+        return alertQueries.recentVoltageMetric(controllerId);
     }
 
     // [B-005 / Sprint 11] Classify the current voltage condition. Returns
@@ -735,41 +574,9 @@ class InfrastructureAlertService {
     // [AUD-001 PR-B] sinceTimestamp (verify mode) clamps the window to
     // post-resolve telemetry: timestamp > GREATEST(NOW() - 600s, observationSince).
     // Without it the 600s lookback would re-classify pre-resolve samples.
+    // [AUD-012] delegate-only → alert/alertQueries.
     async _classifyVoltageSeverity(controllerId, sinceTimestamp = null) {
-        const { voltage } = sharedThresholds;
-        const params = [controllerId, voltage.warn_min, voltage.warn_max, voltage.crit_min, voltage.crit_max];
-        let sinceClause = '';
-        if (sinceTimestamp) {
-            params.push(sinceTimestamp);
-            sinceClause = `AND timestamp > $${params.length}::timestamptz`;
-        }
-        const result = await db.query(
-            `SELECT
-                COUNT(*) FILTER (
-                    WHERE electricity_ph1 NOT BETWEEN $2 AND $3
-                       OR electricity_ph2 NOT BETWEEN $2 AND $3
-                       OR electricity_ph3 NOT BETWEEN $2 AND $3
-                ) AS warn_samples,
-                COUNT(*) FILTER (
-                    WHERE (CASE WHEN electricity_ph1 NOT BETWEEN $2 AND $3 THEN 1 ELSE 0 END)
-                        + (CASE WHEN electricity_ph2 NOT BETWEEN $2 AND $3 THEN 1 ELSE 0 END)
-                        + (CASE WHEN electricity_ph3 NOT BETWEEN $2 AND $3 THEN 1 ELSE 0 END) >= 2
-                      OR electricity_ph1 NOT BETWEEN $4 AND $5
-                      OR electricity_ph2 NOT BETWEEN $4 AND $5
-                      OR electricity_ph3 NOT BETWEEN $4 AND $5
-                ) AS crit_samples
-            FROM metrics
-            WHERE controller_id = $1
-              AND (electricity_ph1 IS NOT NULL OR electricity_ph2 IS NOT NULL OR electricity_ph3 IS NOT NULL)
-              AND timestamp >= NOW() - INTERVAL '600 seconds'
-              ${sinceClause}`,
-            params
-        );
-        const warnSamples = parseInt(result.rows[0].warn_samples, 10);
-        const critSamples = parseInt(result.rows[0].crit_samples, 10);
-        if (critSamples > 0) return 'CRITICAL';
-        if (warnSamples > 0) return 'WARNING';
-        return null;
+        return alertQueries.classifyVoltageSeverity(controllerId, sinceTimestamp);
     }
 
     // [B-005 / Sprint 11] HEATING auto-trigger. Hot-water inlet temperature
@@ -837,69 +644,26 @@ class InfrastructureAlertService {
         }
     }
 
-    // [AUD-001 PR-B] Canonical HEATING alertData (shared by legacy + verify).
-    // [FE-119] metricValue = the triggering ГВС temperature (the legacy path
-    // fetches it; the verify/reopen closure omits it → null, UK ignores null).
+    // [AUD-012] delegate-only → alert/alertDataBuilders.
     _buildHeatingAlertData(controllerId, metricValue = null) {
-        const { heating } = sharedThresholds;
-        return {
-            type: 'HEATING_FAILURE',
-            severity: 'CRITICAL',
-            infrastructure_id: controllerId,
-            infrastructure_type: 'controller',
-            message: `Отказ теплоснабжения — температура ГВС на контроллере ${controllerId} ниже допустимой.`,
-            affected_buildings: 1,
-            // [FE-119] metric/infrastructure context for the UK card.
-            infrastructure_label: `Контроллер №${controllerId}`,
-            metric_id: 'hot_water_in_temp',
-            metric_label: 'Температура ГВС',
-            metric_value: metricValue ?? null,
-            metric_unit: '°C',
-            metric_normal_min: heating.hot_water_in_critical,
-            metric_normal_max: null,
-            data: {
-                source: 'auto_heating_check',
-                controller_id: controllerId,
-                detected_at: new Date().toISOString()
-            }
-        };
+        return alertDataBuilders.buildHeatingAlertData(controllerId, metricValue);
     }
 
     // [FE-119] Worst (lowest) sub-threshold ГВС temperature in the recent
     // window — the value the rule fired on. Defensive: returns null (no throw)
     // when the query yields nothing, so a metric-fetch failure never blocks the
     // alert (metric_value just stays null).
+    // [AUD-012] delegate-only → alert/alertQueries.
     async _recentHeatingMinTemp(controllerId) {
-        const { heating } = sharedThresholds;
-        const result = await db.query(
-            `SELECT MIN(hot_water_in_temp) AS min_temp
-             FROM metrics
-             WHERE controller_id = $1
-               AND hot_water_in_temp IS NOT NULL
-               AND hot_water_in_temp < $2
-               AND timestamp >= NOW() - INTERVAL '600 seconds'`,
-            [controllerId, heating.hot_water_in_critical]
-        );
-        const v = result && result.rows && result.rows[0] ? result.rows[0].min_temp : null;
-        return v == null ? null : Number(v);
+        return alertQueries.recentHeatingMinTemp(controllerId);
     }
 
     // [B-005 / Sprint 11] Quick predicate — is there at least one sub-
     // threshold hot_water_in_temp reading in the recent window? Used by
     // checkHeating to short-circuit on healthy controllers.
+    // [AUD-012] delegate-only → alert/alertQueries.
     async _hasRecentHeatingAnomaly(controllerId) {
-        const { heating } = sharedThresholds;
-        const result = await db.query(
-            `SELECT 1
-             FROM metrics
-             WHERE controller_id = $1
-               AND hot_water_in_temp IS NOT NULL
-               AND hot_water_in_temp < $2
-               AND timestamp >= NOW() - INTERVAL '600 seconds'
-             LIMIT 1`,
-            [controllerId, heating.hot_water_in_critical]
-        );
-        return result.rows.length > 0;
+        return alertQueries.hasRecentHeatingAnomaly(controllerId);
     }
 
     // [AUD-006 B0] Count of in-memory entries whose status is 'active' (the map
@@ -1054,117 +818,10 @@ class InfrastructureAlertService {
     // For TRANSFORMER_* — still fail-open in v1 (analyticsService aggregates
     // pre-window, persistence semantics would require rolling helpers that
     // are out of scope here).
+    // [AUD-012] delegate-only → alert/alertGates. (Spied by tests — delegator
+    // preserves the surface; verify sub-path runs module-local inside the gate.)
     async _checkPersistenceGate(alertData, rule, sinceTimestamp = null) {
-        const minSeconds = rule.min_persistence_seconds;
-        if (!minSeconds || minSeconds <= 0) {
-            return { allowed: true, reason: 'persistence disabled (min=0)' };
-        }
-
-        // [AUD-001 PR-B] Verify mode: the fault must HOLD NOW, measured only on
-        // post-resolve telemetry. Count the fault as continuous from the first
-        // anomalous sample AFTER the last healthy one (silence is not fault
-        // time), require ≥2 anomalous samples and span ≥ minSeconds.
-        if (sinceTimestamp) {
-            return await this._checkVerifyPersistenceGate(alertData, rule, sinceTimestamp);
-        }
-
-        const { type, severity, infrastructure_type, infrastructure_id } = alertData;
-        const lookbackSeconds = Math.max(minSeconds * 2, 600);
-
-        if (type === 'LEAK_DETECTED' && infrastructure_type === 'controller') {
-            const result = await db.query(
-                `SELECT COUNT(*) AS samples, MIN(timestamp) AS first_seen
-                 FROM metrics
-                 WHERE controller_id = $1
-                   AND leak_sensor = true
-                   AND timestamp >= NOW() - ($2::int * INTERVAL '1 second')`,
-                [infrastructure_id, lookbackSeconds]
-            );
-            const samples = parseInt(result.rows[0].samples, 10);
-            const firstSeen = result.rows[0].first_seen;
-            if (samples < 2) {
-                return { allowed: false, reason: `LEAK persistence: only ${samples} leak samples in lookback window` };
-            }
-            const firstSeenAge = (Date.now() - new Date(firstSeen).getTime()) / 1000;
-            if (firstSeenAge < minSeconds) {
-                return { allowed: false, reason: `LEAK persistence: condition observed for ${firstSeenAge.toFixed(0)}s, need ${minSeconds}s` };
-            }
-            return { allowed: true, reason: `LEAK persistence OK: ${samples} samples spanning ${firstSeenAge.toFixed(0)}s` };
-        }
-
-        if (type === 'VOLTAGE_ANOMALY' && infrastructure_type === 'controller') {
-            // Two-tier predicate: WARNING needs ≥2 samples with any phase
-            // outside the warn band; CRITICAL needs ≥2 samples with either
-            // 2+ phases outside warn band OR any phase outside crit band.
-            // We pick the predicate that matches the alertData.severity so
-            // a WARNING alert isn't blocked by absence of CRITICAL samples
-            // and vice versa.
-            const { voltage } = sharedThresholds;
-            const filterClause = severity === 'CRITICAL'
-                ? `((CASE WHEN electricity_ph1 NOT BETWEEN $3 AND $4 THEN 1 ELSE 0 END)
-                  + (CASE WHEN electricity_ph2 NOT BETWEEN $3 AND $4 THEN 1 ELSE 0 END)
-                  + (CASE WHEN electricity_ph3 NOT BETWEEN $3 AND $4 THEN 1 ELSE 0 END)) >= 2
-                  OR electricity_ph1 NOT BETWEEN $5 AND $6
-                  OR electricity_ph2 NOT BETWEEN $5 AND $6
-                  OR electricity_ph3 NOT BETWEEN $5 AND $6`
-                : `electricity_ph1 NOT BETWEEN $3 AND $4
-                   OR electricity_ph2 NOT BETWEEN $3 AND $4
-                   OR electricity_ph3 NOT BETWEEN $3 AND $4`;
-
-            const params = severity === 'CRITICAL'
-                ? [infrastructure_id, lookbackSeconds,
-                   voltage.warn_min, voltage.warn_max,
-                   voltage.crit_min, voltage.crit_max]
-                : [infrastructure_id, lookbackSeconds,
-                   voltage.warn_min, voltage.warn_max];
-
-            const result = await db.query(
-                `SELECT COUNT(*) AS samples, MIN(timestamp) AS first_seen
-                 FROM metrics
-                 WHERE controller_id = $1
-                   AND timestamp >= NOW() - ($2::int * INTERVAL '1 second')
-                   AND (electricity_ph1 IS NOT NULL OR electricity_ph2 IS NOT NULL OR electricity_ph3 IS NOT NULL)
-                   AND (${filterClause})`,
-                params
-            );
-            const samples = parseInt(result.rows[0].samples, 10);
-            const firstSeen = result.rows[0].first_seen;
-            if (samples < 2) {
-                return { allowed: false, reason: `VOLTAGE persistence (${severity}): only ${samples} samples in lookback window` };
-            }
-            const firstSeenAge = (Date.now() - new Date(firstSeen).getTime()) / 1000;
-            if (firstSeenAge < minSeconds) {
-                return { allowed: false, reason: `VOLTAGE persistence (${severity}): condition observed for ${firstSeenAge.toFixed(0)}s, need ${minSeconds}s` };
-            }
-            return { allowed: true, reason: `VOLTAGE persistence OK (${severity}): ${samples} samples spanning ${firstSeenAge.toFixed(0)}s` };
-        }
-
-        if (type === 'HEATING_FAILURE' && infrastructure_type === 'controller') {
-            const { heating } = sharedThresholds;
-            const result = await db.query(
-                `SELECT COUNT(*) AS samples, MIN(timestamp) AS first_seen
-                 FROM metrics
-                 WHERE controller_id = $1
-                   AND hot_water_in_temp IS NOT NULL
-                   AND hot_water_in_temp < $3
-                   AND timestamp >= NOW() - ($2::int * INTERVAL '1 second')`,
-                [infrastructure_id, lookbackSeconds, heating.hot_water_in_critical]
-            );
-            const samples = parseInt(result.rows[0].samples, 10);
-            const firstSeen = result.rows[0].first_seen;
-            if (samples < 2) {
-                return { allowed: false, reason: `HEATING persistence: only ${samples} sub-threshold samples in lookback window` };
-            }
-            const firstSeenAge = (Date.now() - new Date(firstSeen).getTime()) / 1000;
-            if (firstSeenAge < minSeconds) {
-                return { allowed: false, reason: `HEATING persistence: condition observed for ${firstSeenAge.toFixed(0)}s, need ${minSeconds}s` };
-            }
-            return { allowed: true, reason: `HEATING persistence OK: ${samples} samples spanning ${firstSeenAge.toFixed(0)}s` };
-        }
-
-        // Fail-open for unsupported type/infra combinations (TRANSFORMER_*
-        // still pending rolling-window aggregations in analyticsService).
-        return { allowed: true, reason: `persistence not enforced for ${type}/${infrastructure_type} in v1` };
+        return alertGates.checkPersistenceGate(alertData, rule, sinceTimestamp);
     }
 
     // [AUD-001 PR-B] Verify-mode persistence gate. Unlike the legacy gate
@@ -1178,124 +835,19 @@ class InfrastructureAlertService {
     // silence is NOT charged as fault time, and an "anomaly → healthy → anomaly"
     // sequence restarts the clock. Clamp `timestamp > observationSince` keeps
     // pre-resolve telemetry out. Returns { allowed, reason }.
+    // [AUD-012] delegate-only → alert/alertGates.
     async _checkVerifyPersistenceGate(alertData, rule, sinceTimestamp) {
-        const minSeconds = rule.min_persistence_seconds;
-        const { type, infrastructure_type, infrastructure_id } = alertData;
-
-        if (type === 'LEAK_DETECTED' && infrastructure_type === 'controller') {
-            const result = await db.query(
-                `WITH s AS (
-                     SELECT timestamp, leak_sensor FROM metrics
-                     WHERE controller_id = $1 AND leak_sensor IS NOT NULL AND timestamp > $2
-                 ),
-                 h AS (SELECT MAX(timestamp) AS last_healthy FROM s WHERE leak_sensor = false)
-                 SELECT
-                     MIN(s.timestamp) FILTER (WHERE s.leak_sensor = true AND s.timestamp > COALESCE(h.last_healthy, $2)) AS fault_start,
-                     MAX(s.timestamp) FILTER (WHERE s.leak_sensor = true AND s.timestamp > COALESCE(h.last_healthy, $2)) AS last_fault,
-                     COUNT(*)          FILTER (WHERE s.leak_sensor = true AND s.timestamp > COALESCE(h.last_healthy, $2)) AS n
-                 FROM s, h`,
-                [infrastructure_id, sinceTimestamp]
-            );
-            return this._evaluateVerifyFaultWindow('LEAK', result.rows[0], minSeconds);
-        }
-
-        if (type === 'HEATING_FAILURE' && infrastructure_type === 'controller') {
-            const { heating } = sharedThresholds;
-            const result = await db.query(
-                `WITH s AS (
-                     SELECT timestamp, hot_water_in_temp FROM metrics
-                     WHERE controller_id = $1 AND hot_water_in_temp IS NOT NULL AND timestamp > $2
-                 ),
-                 h AS (SELECT MAX(timestamp) AS last_healthy FROM s WHERE hot_water_in_temp >= $3)
-                 SELECT
-                     MIN(s.timestamp) FILTER (WHERE s.hot_water_in_temp < $3 AND s.timestamp > COALESCE(h.last_healthy, $2)) AS fault_start,
-                     MAX(s.timestamp) FILTER (WHERE s.hot_water_in_temp < $3 AND s.timestamp > COALESCE(h.last_healthy, $2)) AS last_fault,
-                     COUNT(*)          FILTER (WHERE s.hot_water_in_temp < $3 AND s.timestamp > COALESCE(h.last_healthy, $2)) AS n
-                 FROM s, h`,
-                [infrastructure_id, sinceTimestamp, heating.hot_water_in_critical]
-            );
-            return this._evaluateVerifyFaultWindow('HEATING', result.rows[0], minSeconds);
-        }
-
-        if (type === 'VOLTAGE_ANOMALY' && infrastructure_type === 'controller') {
-            const { severity } = alertData;
-            const { voltage } = sharedThresholds;
-            // Null-safe per-sample anomaly predicate matching the legacy gate.
-            const warnOut = (p) => `COALESCE(${p} NOT BETWEEN $3 AND $4, false)`;
-            const critOut = (p) => `COALESCE(${p} NOT BETWEEN $5 AND $6, false)`;
-            const anomaly = severity === 'CRITICAL'
-                ? `((${warnOut('electricity_ph1')}::int + ${warnOut('electricity_ph2')}::int + ${warnOut('electricity_ph3')}::int) >= 2
-                    OR ${critOut('electricity_ph1')} OR ${critOut('electricity_ph2')} OR ${critOut('electricity_ph3')})`
-                : `(${warnOut('electricity_ph1')} OR ${warnOut('electricity_ph2')} OR ${warnOut('electricity_ph3')})`;
-            const params = severity === 'CRITICAL'
-                ? [infrastructure_id, sinceTimestamp, voltage.warn_min, voltage.warn_max, voltage.crit_min, voltage.crit_max]
-                : [infrastructure_id, sinceTimestamp, voltage.warn_min, voltage.warn_max];
-            const result = await db.query(
-                `WITH s AS (
-                     SELECT timestamp, electricity_ph1, electricity_ph2, electricity_ph3 FROM metrics
-                     WHERE controller_id = $1
-                       AND (electricity_ph1 IS NOT NULL OR electricity_ph2 IS NOT NULL OR electricity_ph3 IS NOT NULL)
-                       AND timestamp > $2
-                 ),
-                 h AS (SELECT MAX(timestamp) AS last_healthy FROM s WHERE NOT ${anomaly})
-                 SELECT
-                     MIN(s.timestamp) FILTER (WHERE ${anomaly} AND s.timestamp > COALESCE(h.last_healthy, $2)) AS fault_start,
-                     MAX(s.timestamp) FILTER (WHERE ${anomaly} AND s.timestamp > COALESCE(h.last_healthy, $2)) AS last_fault,
-                     COUNT(*)          FILTER (WHERE ${anomaly} AND s.timestamp > COALESCE(h.last_healthy, $2)) AS n
-                 FROM s, h`,
-                params
-            );
-            return this._evaluateVerifyFaultWindow(`VOLTAGE/${severity}`, result.rows[0], minSeconds);
-        }
-
-        // Fail-open for unsupported type/infra combinations (TRANSFORMER_*
-        // measured separately via _getTransformerLoadSince in verify mode).
-        return { allowed: true, reason: `verify persistence not enforced for ${type}/${infrastructure_type}` };
+        return alertGates.checkVerifyPersistenceGate(alertData, rule, sinceTimestamp);
     }
 
-    // [AUD-001 PR-B] Shared decision for the continuous-fault window: ≥2
-    // anomalous samples spanning ≥ minSeconds since faultStart.
+    // [AUD-012] delegate-only → alert/alertGates.
     _evaluateVerifyFaultWindow(label, row, minSeconds) {
-        // Defensive: the controller CTEs `FROM s, h` return zero rows if `s` is
-        // empty (no metrics in window). _runVerify's freshness-probe guarantees
-        // ≥1 fresh sample before we get here, but guard anyway so a future caller
-        // (or an empty-table edge) denies cleanly instead of throwing on undefined.
-        if (!row || row.n == null) {
-            return { allowed: false, reason: `${label} verify: no samples in window` };
-        }
-        const n = parseInt(row.n, 10);
-        if (n < 2 || !row.fault_start) {
-            return { allowed: false, reason: `${label} verify: only ${n} anomalous samples since last healthy` };
-        }
-        const spanSeconds = (new Date(row.last_fault).getTime() - new Date(row.fault_start).getTime()) / 1000;
-        if (spanSeconds < minSeconds) {
-            return { allowed: false, reason: `${label} verify: continuous fault held ${spanSeconds.toFixed(0)}s, need ${minSeconds}s` };
-        }
-        return { allowed: true, reason: `${label} verify OK: ${n} samples spanning ${spanSeconds.toFixed(0)}s of continuous fault` };
+        return alertGates.evaluateVerifyFaultWindow(label, row, minSeconds);
     }
 
-    // [Sprint 10 PR-1] Affected-buildings gate. Returns { allowed, reason }.
-    // Uses alertForwarder.resolveBuildingIds (lazy require to avoid load-order
-    // issues — alertForwarder is loaded by server.js after alertService).
+    // [AUD-012] delegate-only → alert/alertGates. (Spied by tests.)
     async _checkAffectedBuildingsGate(alertData, rule) {
-        const minBuildings = rule.min_affected_buildings;
-        if (!minBuildings || minBuildings <= 1) {
-            return { allowed: true, reason: 'buildings gate default (min=1)' };
-        }
-
-        const alertForwarder = require('./uk/alertForwarder');
-        const buildings = await alertForwarder.resolveBuildingIds(
-            alertData.infrastructure_id,
-            alertData.infrastructure_type
-        );
-
-        if (buildings.length < minBuildings) {
-            return {
-                allowed: false,
-                reason: `buildings gate: ${buildings.length} buildings affected, need ${minBuildings}`
-            };
-        }
-        return { allowed: true, reason: `buildings gate OK: ${buildings.length} affected` };
+        return alertGates.checkAffectedBuildingsGate(alertData, rule);
     }
 
     // Создание нового алерта.
