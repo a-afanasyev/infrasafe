@@ -2138,6 +2138,14 @@ document.addEventListener('DOMContentLoaded', async function () {
             apiClient.isAuthenticated = false;
         }
         updateAuthButton();
+        // [AUD-033] Drive the map's JWT-gated infra layers from the
+        // server-authoritative probe (was broken: map read a dead admin_token
+        // and never auto-loaded infra for an already-logged-in operator).
+        // handleAuthChange is gated behind mapLayersControl._ready so it can't
+        // race init(); fire-and-forget. Login/logout paths call it separately.
+        if (window.mapLayersControl) {
+            window.mapLayersControl.handleAuthChange(apiClient.isAuthenticated);
+        }
     })();
 
     // Кнопка "Войти"/"Выйти" в header

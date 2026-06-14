@@ -1,5 +1,5 @@
 class MapLayersControl {
-    constructor(map) {
+    constructor(map, opts = {}) {
         this.map = map;
         this.layers = {};
         this.overlays = {};
@@ -9,6 +9,11 @@ class MapLayersControl {
         this.apiBaseUrl = window.BACKEND_URL || '/api';
         // Хранилище счетчиков слоев для обновления после создания DOM
         this.layerCounts = new Map();
+        // [AUD-033] Readiness gate: resolved at the end of init() so a fast
+        // boot-probe handleAuthChange(true) waits for overlays to be set up
+        // before loading JWT-gated infra layers (no event-loop-timing reliance).
+        this._readyResolve = null;
+        this._ready = new Promise((res) => { this._readyResolve = res; });
         
         // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Вспомогательные функции для безопасной работы с данными
         this.escapeHTML = (text) => {
@@ -34,30 +39,32 @@ class MapLayersControl {
             return;
         }
         
-        // Ждем полной загрузки DOM только если DOM еще не готов
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => {
-                this.init();
-            });
-        } else {
-            // DOM уже готов, инициализируем сразу
-            // Используем setTimeout для гарантии что карта полностью инициализирована
-            setTimeout(() => {
-                this.init();
-            }, 0);
+        // Ждем полной загрузки DOM только если DOM еще не готов.
+        // [AUD-033] opts.autoInit === false — тест-шов (мы сами зовём init()).
+        if (opts.autoInit !== false) {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', () => {
+                    this.init();
+                });
+            } else {
+                // DOM уже готов, инициализируем сразу
+                // Используем setTimeout для гарантии что карта полностью инициализирована
+                setTimeout(() => {
+                    this.init();
+                }, 0);
+            }
         }
     }
 
-    // Проверяем наличие токена (авторизован ли пользователь)
-    isAuthenticated() {
-        if (window.DOMSecurity && window.DOMSecurity.getValidToken) {
-            return !!window.DOMSecurity.getValidToken();
-        }
-        return !!localStorage.getItem('admin_token');
-    }
+    // [AUD-033] isAuthenticated() удалён: читал мёртвый admin_token (всегда null),
+    // gate был ложным. Авторитет — серверная boot-проба в script.js, которая зовёт
+    // handleAuthChange(true). Куки-сессия едет в fetch автоматически (same-origin).
 
-    // Обработка смены состояния авторизации (вызывается из script.js)
+    // Обработка смены состояния авторизации (вызывается из script.js boot-пробы
+    // и login/logout). [AUD-033] Ждём готовности init() (overlays созданы), чтобы
+    // быстрая серверная проба не обогнала инициализацию слоёв.
     async handleAuthChange(isLoggedIn) {
+        await this._ready;
         if (isLoggedIn) {
             // Загружаем данные инфраструктурных слоев
             await this.loadInfrastructureLayers();
@@ -102,6 +109,7 @@ class MapLayersControl {
         // Проверяем что карта существует
         if (!this.map) {
             console.error('❌ Map is not defined! Cannot initialize MapLayersControl');
+            this._readyResolve();
             return;
         }
 
@@ -113,55 +121,30 @@ class MapLayersControl {
             }
             this.setupEventHandlers();
 
-            // Загружаем данные для слоев — инфраструктурные только при наличии токена
-            const layerPromises = [
-                this.loadLayerDataSilent("🏢 Здания")
-            ];
-
-            if (this.isAuthenticated()) {
-                layerPromises.push(
-                    this.loadLayerDataSilent("⚡ Трансформаторы"),
-                    this.loadLayerDataSilent("🔌 Линии электропередач"),
-                    this.loadLayerDataSilent("💧 Источники воды"),
-                    this.loadLayerDataSilent("🚰 Линии водоснабжения"),
-                    this.loadLayerDataSilent("🔥 Источники тепла"),
-                    this.loadLayerDataSilent("📊 Контроллеры"),
-                    this.loadLayerDataSilent("⚠️ Алерты")
-                );
-            } else {
-                // [B-024] Anonymous visitors can't load auth-gated layer details
-                // (those endpoints 401), but the PUBLIC /map-layer-counts endpoint
-                // returns aggregate integer counts so the panel shows honest
-                // numbers instead of a wall of (0) until login.
-                layerPromises.push(this.loadPublicLayerCounts());
-            }
-
-            await Promise.all(layerPromises);
+            // [AUD-033] init() грузит ТОЛЬКО публичные слои: здания + публичные
+            // счётчики (/map-layer-counts). Инфраструктурные (JWT-gated) слои
+            // подгружает handleAuthChange(true), вызываемый серверно-авторитетной
+            // boot-пробой в script.js — никакой client-side проверки токена здесь.
+            // [B-024] Публичный /map-layer-counts отдаёт честные агрегаты вместо
+            // стены (0) до логина.
+            await Promise.all([
+                this.loadLayerDataSilent("🏢 Здания"),
+                this.loadPublicLayerCounts()
+            ]);
 
         } catch (error) {
             console.error('❌ Error initializing MapLayersControl:', error);
+        } finally {
+            // [AUD-033] overlays готовы (initializeLayers отработал синхронно в
+            // начале try) → снимаем readiness-гейт для handleAuthChange.
+            this._readyResolve();
         }
     }
     
     // Загружаем данные слоя без отображения на карте (только для обновления счетчика)
     async loadLayerDataSilent(layerName) {
-        // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Используем валидацию токена
-        let token = null;
-        if (window.DOMSecurity && window.DOMSecurity.getValidToken) {
-            token = window.DOMSecurity.getValidToken();
-        } else {
-            token = localStorage.getItem('admin_token');
-        }
-        
-        const headers = {
-            'Authorization': token ? `Bearer ${token}` : undefined,
-            'Content-Type': 'application/json'
-        };
-        
-        // Удаляем Authorization если токена нет
-        if (!token) {
-            delete headers['Authorization'];
-        }
+        // [AUD-033] auth via httpOnly cookie (same-origin fetch); no Bearer header.
+        const headers = { 'Content-Type': 'application/json' };
         
         try {
             switch (layerName) {
@@ -506,23 +489,8 @@ class MapLayersControl {
     }
 
     async loadLayerData(layerName) {
-        // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Используем валидацию токена
-        let token = null;
-        if (window.DOMSecurity && window.DOMSecurity.getValidToken) {
-            token = window.DOMSecurity.getValidToken();
-        } else {
-            token = localStorage.getItem('admin_token');
-        }
-        
-        const headers = {
-            'Authorization': token ? `Bearer ${token}` : undefined,
-            'Content-Type': 'application/json'
-        };
-        
-        // Удаляем Authorization если токена нет
-        if (!token) {
-            delete headers['Authorization'];
-        }
+        // [AUD-033] auth via httpOnly cookie (same-origin fetch); no Bearer header.
+        const headers = { 'Content-Type': 'application/json' };
 
         try {
             switch (layerName) {
@@ -1089,18 +1057,8 @@ class MapLayersControl {
         container.style.display = 'block';
         
         try {
-            // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Используем валидацию токена
-            let token = null;
-            if (window.DOMSecurity && window.DOMSecurity.getValidToken) {
-                token = window.DOMSecurity.getValidToken();
-            } else {
-                token = localStorage.getItem('admin_token');
-            }
-            
+            // [AUD-033] auth via httpOnly cookie (same-origin fetch).
             const headers = {};
-            if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
-            }
             
             const response = await fetch(`${this.apiBaseUrl}/analytics/transformers/${transformerId}/load`, {
                 headers: headers
@@ -1175,17 +1133,9 @@ class MapLayersControl {
 
     async updateRealTimeMetrics() {
         // Обновляем метрики для видимых слоев
-        // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Используем валидацию токена
-        let token = null;
-        if (window.DOMSecurity && window.DOMSecurity.getValidToken) {
-            token = window.DOMSecurity.getValidToken();
-        } else {
-            token = localStorage.getItem('admin_token');
-        }
-        
+        // [AUD-033] auth via httpOnly cookie (same-origin fetch); no Bearer header.
         if (this.map.hasLayer(this.overlays["⚡ Трансформаторы"])) {
             await this.loadTransformers({
-                'Authorization': token ? `Bearer ${token}` : undefined,
                 'Content-Type': 'application/json'
             });
         }
