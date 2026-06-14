@@ -50,7 +50,7 @@
 
 ### Carry-over (B-/SEC-, не из аудита)
 - **B-003** Redis multi-replica (rescoped), **B-004** admin.js split (триггер 4500 LoC не достигнут), **B-008** frontend-redesign merge, **B-009** seasonal HEATING (Q3 2026), **B-011** alias collision (latent), **B-006** UK Kanban (owner UK).
-- **SEC-17** git-scrub, **SEC-27/31/32**, **SEC-34 a/e/h/j** — pentest round-2 хвост (активно-эксплуатируемых нет).
+- ~~**SEC-17** git-scrub~~ — **✅ CLOSED accepted-risk 2026-06-14** (все секреты ротированы; scrub истории решено не делать — см. секцию). **SEC-27/31/32**, **SEC-34 a/e/h/j** — pentest round-2 хвост (активно-эксплуатируемых нет).
 - **UK-URGENCY остаток** (admin-UI reopen-meta passthrough) — **✅ DONE + DEPLOYED 2026-06-14 (`4941069`)**: «Открыть в УК» на reopen-алерте (`reopen_sequence>1`) шлёт `reopen_sequence`+`related_request`+опц.`reopen_chain_id` в deep-link. Извлечён в тестируемый `public/utils/ukLinkBuilder.js` (+12 jsdom-кейсов), reopen-поля уже на фронте (`/api/alerts` `ia.*`). Контракт имён подтверждён УК; их dashboard-reader (`useSearchParams`) **тоже LIVE с 2026-06-14** — читает `?request=` и сам открывает заявку (стрипает params после открытия, staff-only auth). Фича функциональна end-to-end. Prod-verified: util served live. **Deep-link auth нюанс — был UK-side баг, УК ИСПРАВИЛИ + verified 2026-06-14:** new-tab deep-link форсил UK-релогин при живой сессии (httpOnly-cookie шарится, но UI-флаг per-tab в sessionStorage опережал чтение куки). UK fix (deployed): (A) тихий cookie-bootstrap на cold-start, (B) `?next=` сохраняет deep-link через логин. Наш код не меняли (`_blank` ок). **FULL end-to-end browser-verified на проде** (reopen-демо 260614-001 A + 260614-002 reopen→A): live-session → модал открылся напрямую без логина; clean-browser → `?next=`-redirect → открывает после входа; модал показал «🔁 Повторное обращение №2 · связана с 260614-001» + кнопку open-related + FE-119 metric-блок + срочность «Срочная» (reopen bump), а A=«Средняя» (severity→urgency live). Тикеты 260614-001/002 — cleanup обеих сторон после верификации.
 
 ### Рекомендация
@@ -93,7 +93,7 @@ passthrough. Спекулятивный churn по слоям сейчас пр�
 | ~~SEC-14/15~~ (HIGH) | — | **✅ CLOSED + DEPLOYED** PR #99 / `25c3679`, прод 2026-06-07 | immutable app (npm start, --omit=dev) + extracted static; `.:/app` убран. Прод-verified (нет секретов/.git/scripts; npm start; qs-патч SEC-34k доехал) |
 | ~~SEC-13~~ (HIGH→LOW) | — | **✅ ACCEPTED-RISK 2026-06-07** | `admin123` seed только в dev (`database/init/`); прод init = `database.sql` без юзеров. Пароль меняется оператором после запуска (runbook). Остаточный риск принят |
 | ~~SEC-26/28/30~~ (MEDIUM) | — | **✅ CLOSED** PR #98 / `9b9537b` (2026-06-07) | TOTP TTL 120с / idempotent recovery (cache) / building_id sanitize |
-| **SEC-17/19..23/27/31/32** (MEDIUM) | P2-P3 | pentest round 2 | scrub / uk-metrics leak / nginx-rl / Redis-pass / CSRF / stale-cache / blacklist / admin.js-cleanup / … — детали в секции |
+| **SEC-19..23** (MEDIUM) | P2-P3 | pentest round 2 | uk-metrics leak / nginx-rl / Redis-pass / CSRF / … — детали в секции (SEC-17 ✅ CLOSED accepted-risk; SEC-27/31/32 хвост) |
 | **SEC-34** (LOW/INFO) | P3-P4 | pentest round 2 | hardening-пачка (noopener, SSH key-only, `npm audit fix`, …) |
 
 ### Рекомендация
@@ -640,14 +640,16 @@ event'а — строка остаётся `pending`, что корректно)
 
 ### MEDIUM
 
-- **SEC-17 · MEDIUM · git-history scrub секретов/кредов** (поглощает прежние M-0 + H-2) —
+- **SEC-17 · ✅ CLOSED — accepted-risk, scrub НЕ требуется (2026-06-14)** — git-history содержит
   `623a059:.env.prod` (`DB_PASSWORD,JWT_SECRET,JWT_REFRESH_SECRET,SESSION_SECRET`),
-  `da44ed4:generator/.env` (`admin/Admin123`), `.env`. *Статус:* JWT/refresh **ротированы** (SEC-3,
-  подтв. live-forge→401), `SESSION_SECRET` не используется, БД снаружи закрыта (port-scan: 80/443/SSH) →
-  активного вектора нет; остаток — физический scrub. *Fix:*
-  `git filter-repo --path .env --path .env.prod --path generator/.env --invert-paths` + force-push +
-  уведомить клонировавших; CI `trufflehog`/`git-secrets` (есть `docs/audit/secret-hygiene-checklist.md`);
-  подтвердить ротацию generator-admin-пароля. *Trigger:* при готовности переписать историю. *Est:* ~2ч.
+  `da44ed4:generator/.env` (`admin/Admin123`), `.env`. **Все секреты ротированы** (оператор подтвердил
+  полную ротацию 2026-06-14; JWT/refresh ранее подтверждены live-forge→401, `SESSION_SECRET` не используется,
+  БД снаружи закрыта — port-scan 80/443/SSH). Активного вектора нет. Превентив от будущих утечек стоит:
+  **`gitleaks` в CI** (`.github/workflows/ci.yml:80`, скан полной истории) + `.gitignore` покрывает все
+  `.env*`. **Переписывание истории решено НЕ делать**: ценность косметическая (секреты мертвы), а
+  `git filter-repo` + force-push сломал бы прод-деплой (`git merge --ff-only` в `~/infrasafe`), 10 открытых
+  dependabot-PR и потребовал бы ребейза `feature/frontend-redesign` — цена/риск >> выгоды. Требование
+  scrub'а снято.
 - **SEC-18 · ✅ CLOSED (PR #96 / `59ae6a6`, deployed+verified live 2026-06-02) · MEDIUM · split-brain CSP — helmet всё ещё несёт CDN** — `src/server.js:54-56`
   `scriptSrc [... 'https://cdn.jsdelivr.net', 'https://unpkg.com']` (подтв. live на `/api/*`). Остаток
   P-PENTEST-1. *Fix:* убрать оба CDN-хоста из helmet `scriptSrc` (мертвы после self-host DOMPurify;
