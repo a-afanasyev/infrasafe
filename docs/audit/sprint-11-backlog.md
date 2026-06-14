@@ -38,11 +38,13 @@
 ### Остаётся открытым — НЕТ «just do it», всё по триггеру/решению
 | Пункт | Класс | Когда брать |
 |---|---|---|
-| AUD-008/010/011/012 | deferred-by-design (рефактор слоёв; push-back верифицирован — не чистый выигрыш) | при касании домена; split `alertService` — на следующей крупной alert-фиче |
-| AUD-036 p3 | correctness-risk | voltage-prefilter меняет семантику safety-пути — только с анализом + бенчем |
+| ~~AUD-010/011~~ | **✅ DONE + DEPLOYED 2026-06-14 (`ee852f8`, PR-3)** | water-роуты → `waterLineController`/`waterSupplierController`; error-path → канонический envelope (`sendError`/`sendNotFound`); success RAW (zero-break). |
+| AUD-008 | **частично DONE 2026-06-14 (`ee852f8`, PR-3)**: 4 admin `delete`→`Model.delete` (shape-safe — удаляемая сущность не сериализуется). **Остаток отложен:** getById-swaps + admin-WaterLine-create-swap меняют success-shape (plain row → instance: роняет `geom`/`created_at`/`updated_at`, добавляет `[]`) = тихий слом prod-admin-UI контракта ради ~4 строк | при отдельном аудите потребителей admin.js |
+| ~~AUD-012~~ | **✅ DONE 2026-06-14 (PR-2)**: delegate-only split — `alertService.js` 2083→1634 LoC; константы/builders/queries/gates вынесены в `src/services/alert/*`, тонкие `this._x`-делегаторы сохраняют test-surface; полный сьют **2621** diff=0 | — |
+| ~~AUD-036 p3~~ | **WONTFIX 2026-06-14** (docs): voltage-prefilter меняет семантику safety-пути + COUNT cooldown-gated + index-backed (не hot path) — value≈0, correctness-risk | — |
 | AUD-020 | product-развилка | infra-lines: фича планируется (→ строить роут) или брошена (→ удалить UI)? |
 | AUD-040 | product-развилка | API без потребителя — сверить с frontend-redesign (B-008) / UK-web |
-| AUD-033 (+SEC-34b) | refactor | `map-layers-control` на cookie/interceptor — один тикет |
+| ~~AUD-033 (+SEC-34b)~~ | **✅ DONE + DEPLOYED + prod-verified 2026-06-14 (`b08087f`, PR-1)** | map auth-gate был БАГ (dead `admin_token`-гейт → инфра-слои не авто-грузились залогиненному); фикс на cookie + boot-probe→`handleAuthChange`. |
 | AUD-034 | decided-defer | risk > benefit (`a233a56`) |
 | init-schema `power_transformers` excision | косметика | source-hygiene, не CI-verifiable |
 
@@ -1319,7 +1321,7 @@ NOT reload nginx). So the deploy is: `update-production.sh` (helmet rebuild) **+
 `docker exec infrasafe-nginx-1 nginx -s reload`** for the header change. Verify post-deploy:
 `curl -sI https://infrasafe.uz | grep -i x-xss` → `X-XSS-Protection: 0`.
 
-### AUD-036 — perf (minor): metricCount / stats GROUP BY / voltage prefilter — p1+p2 CLOSED, p3 DEFERRED (2026-06-13)
+### AUD-036 — perf (minor): metricCount / stats GROUP BY / voltage prefilter — p1+p2 CLOSED, p3 WONTFIX (2026-06-14)
 Three sub-items from the "Перф (мелочи)" finding:
 - **p1 — `metricCount` always 1 (LIMIT 1)** in `controllerService.deleteController` — CLOSED earlier (commit 6f5bcae,
   deployed): dropped the misleading always-1 field, kept the O(1) LIMIT-1 existence check.
@@ -1332,7 +1334,11 @@ Three sub-items from the "Перф (мелочи)" finding:
   against a schema that doesn't exist) — rewritten to mock `db.query` GROUP BY rows + assert the real shape +
   `Controller.findAll` NOT called. Full jest green, lint clean.
 - **p3 — `_classifyVoltageSeverity` 600s COUNT on each telemetry insert without a cheap prefilter** (heating has one
-  at `_hasRecentSubThresholdHeating`) — **DEFERRED (evidence-based push-back).** The suggested "mirror heating's
+  at `_hasRecentSubThresholdHeating`) — **WONTFIX (2026-06-14, evidence-based push-back; reconfirmed at the AUD-012
+  split — the classifier now lives in `src/services/alert/alertQueries.js:classifyVoltageSeverity`, logic unchanged).**
+  Also note the COUNT is NOT actually run per-insert in the common path: `checkVoltage`'s 15-min cooldown gate fires
+  BEFORE the classifier except when an open sub-critical alert is escalating, and the query is index-backed
+  (`idx_metrics_ctrl_ts`). The suggested "mirror heating's
   LIMIT-1 prefilter" gives ~no win in the dominant **healthy** case: a healthy controller's 600s window contains no
   out-of-band row, so `… LIMIT 1` finds nothing and scans the **same** window as the aggregation (only the COUNT
   FILTER arithmetic is saved, not the index scan). The only genuinely cheaper probe — inspect just the latest sample
