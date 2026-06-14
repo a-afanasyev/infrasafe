@@ -961,7 +961,7 @@ event'а — строка остаётся `pending`, что корректно)
 | **B-009** seasonal HEATING | Актуален, Q3 2026 | — |
 | **SEC-17** git-scrub | Актуален (`.env.prod` достижим через `git show 623a059`, секреты ротированы) | — |
 | **SEC-27 / SEC-31** | Актуальны как annotated/latent; SEC-31 остаток входит в переписанный B-003 | — |
-| **SEC-34a** noopener | Актуален | — |
+| ~~SEC-34a~~ noopener | **✅ CLOSED + DEPLOYED 2026-06-14 (`c3f6933`)**: `rel="noopener noreferrer"` на 8 внешних `target=_blank` в `index.html`+`contacts.html` (внутренние `/uk/` оставлены `rel="noopener"`); прод git-pull + nginx reload, live-verified | — |
 | **SEC-34b** map-layers token refactor | Актуален; **сливается с AUD-033** в один тикет (рефактор map-layers-control на cookie/interceptor убирает и мёртвые token-блоки, и дублирование) | Один тикет |
 | **SEC-34c** createSecureTableRow | = **AUD-031** (подтверждено: 0 вызовов, удалять) | Дедуп |
 | **SEC-34d** flip-trace debug | = **AUD-032** (подтверждён список файлов) | Дедуп |
