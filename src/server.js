@@ -63,7 +63,10 @@ app.use(helmet({
             scriptSrc: isProduction
                 ? ["'self'"]
                 : ["'self'", "'unsafe-inline'"],
-            imgSrc: ["'self'", "data:", "https:", "https://*.tile.openstreetmap.org"],
+            // [SEC-34e] Tightened: dropped the blanket `https:` (a beacon/exfil
+            // channel) — only the Leaflet raster-tile hosts are needed (OSM base
+            // layers + OpenTopoMap relief layer). Mirrors the edge nginx CSP.
+            imgSrc: ["'self'", "data:", "https://*.tile.openstreetmap.org", "https://*.tile.opentopomap.org"],
             fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
             connectSrc: ["'self'", "https://*.tile.openstreetmap.org"],
             frameSrc: ["'none'"],
