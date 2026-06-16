@@ -42,6 +42,11 @@ class AuthService {
             throw new Error('JWT_REFRESH_SECRET environment variable is required');
         }
         this.jwtRefreshSecret = process.env.JWT_REFRESH_SECRET;
+        // [SEC-34h] 2FA temp-tokens (scope:'2fa') are signed with a dedicated
+        // secret so they form a distinct credential class from access tokens.
+        // dev/test may leave JWT_2FA_SECRET unset → fall back to JWT_SECRET.
+        // In production env.js fails fast if it is missing OR equal to JWT_SECRET.
+        this.jwt2faSecret = process.env.JWT_2FA_SECRET || this.jwtSecret;
         this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || '1h';
         this.refreshTokenExpiresIn = '7d';
         this.cachePrefix = 'auth';
@@ -190,7 +195,7 @@ class AuthService {
     generateTempToken(user) {
         return jwt.sign(
             { user_id: user.user_id, username: user.username, role: user.role, scope: '2fa' },
-            this.jwtSecret,
+            this.jwt2faSecret,
             { expiresIn: '5m', issuer: 'infrasafe-api', audience: 'infrasafe-client' }
         );
     }
@@ -200,7 +205,7 @@ class AuthService {
     // password change so a mid-session password change invalidates any
     // outstanding 2FA temp token (mirrors the access/refresh cutoff check).
     async verifyTempToken(token) {
-        const decoded = jwt.verify(token, this.jwtSecret, {
+        const decoded = jwt.verify(token, this.jwt2faSecret, {
             algorithms: ['HS256'],
             issuer: 'infrasafe-api',
             audience: 'infrasafe-client'

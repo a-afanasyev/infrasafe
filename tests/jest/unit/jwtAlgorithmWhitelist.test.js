@@ -91,11 +91,14 @@ describe('[P1-V3] JWT algorithms whitelist — RS256→HS256 confusion blocked',
         const originalEnv = process.env;
 
         beforeEach(() => {
-            process.env = { ...originalEnv, JWT_SECRET: HS_SECRET };
+            process.env = { ...originalEnv, JWT_SECRET: HS_SECRET, JWT_2FA_SECRET: HS_SECRET };
             // Force the service to pick up the new env-derived secret. The
             // singleton caches jwtSecret at construction; mutate directly so
             // we don't depend on require-cache invalidation in tests.
             authService.jwtSecret = HS_SECRET;
+            // [SEC-34h] verifyTempToken now verifies under jwt2faSecret; these
+            // tokens are signed with HS_SECRET, so align both secrets here.
+            authService.jwt2faSecret = HS_SECRET;
         });
 
         afterEach(() => {

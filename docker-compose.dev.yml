@@ -77,6 +77,9 @@ services:
       # .env before `docker compose -f docker-compose.dev.yml up`.
       - JWT_SECRET=${JWT_SECRET}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      # [SEC-34h] dedicated 2FA temp-token secret; dev may leave it unset →
+      # authService falls back to JWT_SECRET (prod requires a distinct value).
+      - JWT_2FA_SECRET=${JWT_2FA_SECRET}
       - CORS_ORIGINS=http://localhost:8088,http://localhost:3000
       - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}
       # MV refresh scheduler relies on prod-only functions that are not in

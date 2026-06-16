@@ -130,3 +130,10 @@ jobs:
           else
             echo "❌ public/dist bundles missing from image"; exit 1
           fi
+          # MUST contain the bootstrap-admin CLI (SEC-13) — scripts/ is not
+          # shipped, so this lives under src/ to be present in the image.
+          if docker run --rm "$IMG" sh -c 'ls /app/src/cli/create-admin.js >/dev/null 2>&1'; then
+            echo "✓ src/cli/create-admin.js present"
+          else
+            echo "❌ src/cli/create-admin.js missing from image (SEC-13 bootstrap CLI)"; exit 1
+          fi
