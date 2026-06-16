@@ -15,6 +15,8 @@ const REQUIRED_VARS = [
 
 const PRODUCTION_REQUIRED_VARS = [
     'CORS_ORIGINS',
+    // [SEC-34h] 2FA temp-tokens are signed with a dedicated secret in prod.
+    'JWT_2FA_SECRET',
 ];
 
 // [SEC-12] NODE_ENV gates the security posture (Helmet CSP, Swagger exposure).
@@ -49,6 +51,17 @@ function validateEnv() {
 
     if (missing.length > 0) {
         const message = `Missing required environment variables: ${missing.join(', ')}`;
+        logger.error(message);
+        throw new Error(message);
+    }
+
+    // [SEC-34h] The presence filter above guarantees JWT_2FA_SECRET is set in
+    // production, but not that it actually differs from JWT_SECRET. A shared
+    // value defeats the credential-class separation, so fail fast on equality.
+    if (isProduction && process.env.JWT_2FA_SECRET === process.env.JWT_SECRET) {
+        const message =
+            'JWT_2FA_SECRET must differ from JWT_SECRET in production (SEC-34h): ' +
+            'the 2FA temp-token must use a dedicated signing secret.';
         logger.error(message);
         throw new Error(message);
     }

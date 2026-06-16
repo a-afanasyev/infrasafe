@@ -57,9 +57,12 @@ const authenticateJWT = async (req, res, next) => {
         });
 
         // SEC-1: reject scoped tokens (e.g. the 2FA temp-token, scope:'2fa') on
-        // normal routes. generateTempToken signs with the SAME JWT_SECRET, so a
-        // pre-2FA temp-token would otherwise be accepted as a full access token,
-        // bypassing 2FA. Normal access tokens (generateTokens) carry NO scope.
+        // normal routes. Even though the 2FA temp-token is now signed with a
+        // dedicated secret (SEC-34h: JWT_2FA_SECRET), in dev/test that secret
+        // falls back to JWT_SECRET, so a pre-2FA temp-token could still verify
+        // here and be accepted as a full access token, bypassing 2FA. The scope
+        // guard is the real defense. Normal access tokens (generateTokens) carry
+        // NO scope.
         if (decoded.scope) {
             logger.warn(`Scoped token (scope=${decoded.scope}) rejected on access-token route`);
             return res.status(401).json({
