@@ -1510,16 +1510,18 @@ document.addEventListener('DOMContentLoaded', async function () {
     window.buildingsData = [];
 
     // Функция загрузки данных с сервера
+    // [R2-28] Guards: prevent overlapping loads; auto-fit only on first render.
+    let isLoadingData = false;
+    let hasFitBounds = false;
     async function loadData() {
+        // [R2-28] Skip if a load is already in flight — the periodic interval can
+        // race a manual refresh or the post-login load.
+        if (isLoadingData) return false;
+        isLoadingData = true;
         try {
-            // Очищаем старые маркеры и хранилища данных
-            markers.clearLayers();
-            // Очищаем хранилище popup контента
-            buildingPopupStorage.clear();
-            // Очищаем хранилище данных зданий для промышленной панели
-            window.buildingsData = [];
-
-            // Fetch data from the backend using API client
+            // [R2-28] Fetch FIRST — do NOT clear the map before the request. If the
+            // fetch fails or is slow, the current markers stay put instead of the
+            // map going blank; we swap in fresh data only after a valid response.
             const response = await apiClient.fetch('/buildings-metrics');
             
             // Проверяем статус ответа
@@ -1573,6 +1575,11 @@ document.addEventListener('DOMContentLoaded', async function () {
 
             // Счетчик зданий с протечкой
             let leakBuildingsCount = 0;
+
+            // [R2-28] Response is valid — now safe to swap in fresh markers/storage.
+            markers.clearLayers();
+            buildingPopupStorage.clear();
+            window.buildingsData = [];
 
             data.forEach((item) => {
                 // Проверяем наличие валидных координат
@@ -1890,9 +1897,11 @@ document.addEventListener('DOMContentLoaded', async function () {
                 });
             });
 
-            // Обновляем информацию на карте
-            if (markers.getLayers().length > 0) {
+            // [R2-28] Auto-fit only on the first successful render, so periodic
+            // refreshes don't yank the user's current pan/zoom.
+            if (!hasFitBounds && markers.getLayers().length > 0) {
                 map.fitBounds(markers.getBounds(), { padding: [50, 50] });
+                hasFitBounds = true;
             }
 
             // Синхронизируем статусы с промышленной панелью
@@ -1918,6 +1927,9 @@ document.addEventListener('DOMContentLoaded', async function () {
             // Скрываем skeleton и показываем ошибку
             hideMapSkeleton();
             return false;
+        } finally {
+            // [R2-28] Always release the in-flight guard, success or failure.
+            isLoadingData = false;
         }
     }
 
