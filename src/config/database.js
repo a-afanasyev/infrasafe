@@ -29,8 +29,14 @@ const init = async () => {
         });
 
         // Устанавливаем statement_timeout для каждого нового соединения
+        // [R2-27] Guard the fire-and-forget query: an unhandled rejection here
+        // (e.g. connection dropped mid-SET) would bubble to the process-level
+        // unhandledRejection handler → gracefulShutdown(1), i.e. a restart on a
+        // non-fatal per-connection error. Log and move on instead.
         pool.on('connect', (client) => {
-            client.query('SET statement_timeout = 30000');
+            client.query('SET statement_timeout = 30000').catch((err) => {
+                logger.warn(`Failed to set statement_timeout on new DB connection: ${err.message}`);
+            });
         });
 
         // Проверка соединения

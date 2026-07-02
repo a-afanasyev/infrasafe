@@ -80,7 +80,9 @@ class AlertRuleChange {
             await client.query('COMMIT');
             return inserted;
         } catch (error) {
-            await client.query('ROLLBACK');
+            // [R2-22] Guard ROLLBACK: on a dropped connection the ROLLBACK itself
+            // throws and would mask the original error. Swallow it, keep the cause.
+            await client.query('ROLLBACK').catch(() => {});
             logger.error(`AlertRuleChange.createBatch error: ${error.message}`);
             throw error;
         } finally {
