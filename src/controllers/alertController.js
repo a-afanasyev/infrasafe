@@ -1,5 +1,7 @@
 const alertService = require('../services/alertService');
 const { validatePagination } = require('../utils/queryValidation');
+// [R2-05] Canonical error envelope { success:false, error:{ message, status } }.
+const { sendError } = require('../utils/apiResponse');
 
 class AlertController {
 
@@ -13,17 +15,17 @@ class AlertController {
             // are valid query filters so escalations surface through the API.
             const validStatuses = ['active', 'acknowledged', 'resolved', 'resolved_verifying', 'engineer_required'];
             if (status && !validStatuses.includes(status)) {
-                return res.status(400).json({ success: false, message: 'Недопустимый статус' });
+                return sendError(res, 400, 'Недопустимый статус');
             }
             // [R2-23] typeof guard: a duplicated query param (?severity=a&severity=b)
             // arrives as an array in Express → .toUpperCase() would throw → 500.
             const validSeverities = ['INFO', 'WARNING', 'CRITICAL'];
             if (severity !== undefined && (typeof severity !== 'string' || !validSeverities.includes(severity.toUpperCase()))) {
-                return res.status(400).json({ success: false, message: 'Недопустимый уровень важности' });
+                return sendError(res, 400, 'Недопустимый уровень важности');
             }
             const validInfraTypes = ['transformer', 'controller', 'water_source', 'heat_source'];
             if (infrastructure_type !== undefined && (typeof infrastructure_type !== 'string' || !validInfraTypes.includes(infrastructure_type.toLowerCase()))) {
-                return res.status(400).json({ success: false, message: 'Недопустимый тип инфраструктуры' });
+                return sendError(res, 400, 'Недопустимый тип инфраструктуры');
             }
 
             const filters = {};
@@ -69,10 +71,7 @@ class AlertController {
             const userId = req.user?.user_id; // Из JWT токена
 
             if (!userId) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Требуется авторизация для подтверждения алертов'
-                });
+                return sendError(res, 401, 'Требуется авторизация для подтверждения алертов');
             }
 
             const alert = await alertService.acknowledgeAlert(parseInt(alertId), userId);
@@ -85,10 +84,7 @@ class AlertController {
 
         } catch (error) {
             if (error.message && error.message.includes('не найден')) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Алерт не найден или уже обработан'
-                });
+                return sendError(res, 404, 'Алерт не найден или уже обработан');
             }
             next(error);
         }
@@ -101,10 +97,7 @@ class AlertController {
             const userId = req.user?.user_id; // Из JWT токена
 
             if (!userId) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Требуется авторизация для закрытия алертов'
-                });
+                return sendError(res, 401, 'Требуется авторизация для закрытия алертов');
             }
 
             const alert = await alertService.resolveAlert(parseInt(alertId), userId);
@@ -117,10 +110,7 @@ class AlertController {
 
         } catch (error) {
             if (error.message && error.message.includes('не найден')) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Алерт не найден или уже обработан'
-                });
+                return sendError(res, 404, 'Алерт не найден или уже обработан');
             }
             next(error);
         }
@@ -141,19 +131,13 @@ class AlertController {
 
             // Валидация обязательных полей
             if (!type || !infrastructure_id || !infrastructure_type || !severity || !message) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Обязательные поля: type, infrastructure_id, infrastructure_type, severity, message'
-                });
+                return sendError(res, 400, 'Обязательные поля: type, infrastructure_id, infrastructure_type, severity, message');
             }
 
             // Валидация severity
             const validSeverities = ['INFO', 'WARNING', 'CRITICAL'];
             if (!validSeverities.includes(severity.toUpperCase())) {
-                return res.status(400).json({
-                    success: false,
-                    message: `Недопустимый уровень severity. Разрешены: ${validSeverities.join(', ')}`
-                });
+                return sendError(res, 400, `Недопустимый уровень severity. Разрешены: ${validSeverities.join(', ')}`);
             }
 
             const alertData = {
@@ -188,10 +172,7 @@ class AlertController {
             const { transformerId } = req.params;
 
             if (!transformerId) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'ID трансформатора обязателен'
-                });
+                return sendError(res, 400, 'ID трансформатора обязателен');
             }
 
             const alert = await alertService.checkTransformerLoad(transformerId);
@@ -238,10 +219,7 @@ class AlertController {
             const period = days ? parseInt(days) : 7;
 
             if (period < 1 || period > 365) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Период должен быть от 1 до 365 дней'
-                });
+                return sendError(res, 400, 'Период должен быть от 1 до 365 дней');
             }
 
             const statistics = await alertService.getAlertStatistics(period);
@@ -287,19 +265,13 @@ class AlertController {
 
             const invalidKeys = Object.keys(newThresholds).filter(key => !validKeys.includes(key));
             if (invalidKeys.length > 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: `Недопустимые ключи: ${invalidKeys.join(', ')}. Разрешены: ${validKeys.join(', ')}`
-                });
+                return sendError(res, 400, `Недопустимые ключи: ${invalidKeys.join(', ')}. Разрешены: ${validKeys.join(', ')}`);
             }
 
             // Проверяем, что значения числовые и положительные
             for (const [key, value] of Object.entries(newThresholds)) {
                 if (typeof value !== 'number' || value <= 0) {
-                    return res.status(400).json({
-                        success: false,
-                        message: `Значение ${key} должно быть положительным числом`
-                    });
+                    return sendError(res, 400, `Значение ${key} должно быть положительным числом`);
                 }
             }
 
@@ -353,26 +325,17 @@ class AlertController {
             // Lookup the alert to extract its {infra_type, infra_id, type} tuple
             const alert = await alertService.getAlertById(parseInt(alertId, 10));
             if (!alert) {
-                return res.status(404).json({ success: false, message: 'Алерт не найден' });
+                return sendError(res, 404, 'Алерт не найден');
             }
 
             if (!Number.isFinite(Number(duration_hours)) || Number(duration_hours) <= 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'duration_hours должен быть положительным числом (1..24)'
-                });
+                return sendError(res, 400, 'duration_hours должен быть положительным числом (1..24)');
             }
             if (Number(duration_hours) > AlertSuppression.MAX_SUPPRESSION_HOURS) {
-                return res.status(400).json({
-                    success: false,
-                    message: `Максимальная длительность подавления ${AlertSuppression.MAX_SUPPRESSION_HOURS} часов`
-                });
+                return sendError(res, 400, `Максимальная длительность подавления ${AlertSuppression.MAX_SUPPRESSION_HOURS} часов`);
             }
             if (!reason || !AlertSuppression.VALID_REASONS.includes(reason)) {
-                return res.status(400).json({
-                    success: false,
-                    message: `reason обязателен и должен быть одним из: ${AlertSuppression.VALID_REASONS.join(', ')}`
-                });
+                return sendError(res, 400, `reason обязателен и должен быть одним из: ${AlertSuppression.VALID_REASONS.join(', ')}`);
             }
 
             const suppression = await AlertSuppression.create({
@@ -407,10 +370,7 @@ class AlertController {
 
             const cleared = await AlertSuppression.clear(parseInt(id, 10), clearedBy);
             if (!cleared) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Подавление не найдено или уже снято'
-                });
+                return sendError(res, 404, 'Подавление не найдено или уже снято');
             }
 
             return res.json({

@@ -50,7 +50,8 @@ describe('AlertController', () => {
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
                     success: false,
-                    message: expect.stringContaining('Обязательные поля')
+                    // [R2-05] canonical envelope: message nested under error{}
+                    error: expect.objectContaining({ message: expect.stringContaining('Обязательные поля'), status: 400 })
                 })
             );
         });
@@ -68,7 +69,7 @@ describe('AlertController', () => {
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
                     success: false,
-                    message: expect.stringContaining('severity')
+                    error: expect.objectContaining({ message: expect.stringContaining('severity'), status: 400 })
                 })
             );
         });
@@ -424,7 +425,7 @@ describe('AlertController', () => {
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
                     success: false,
-                    message: expect.stringContaining('invalid_key')
+                    error: expect.objectContaining({ message: expect.stringContaining('invalid_key'), status: 400 })
                 })
             );
         });
