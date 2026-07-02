@@ -736,8 +736,7 @@ class MapLayersControl {
         const managementCompany = this.escapeHTML(building.management_company || 'Не указана');
         const controllerSerial = building.controller_serial ? this.escapeHTML(building.controller_serial) : '';
         const controllerStatus = building.controller_status ? this.escapeHTML(building.controller_status) : '';
-        const buildingId = this.escapeHTML(String(building.building_id || ''));
-        
+
         // Форматируем метрики безопасно
         const formatMetric = (value, suffix = '') => {
             if (value === null || value === undefined) return '';
@@ -828,51 +827,16 @@ class MapLayersControl {
                     `}
                 </div>
                 ${metricsHTML}
-                <div class="building-actions">
-                    ${hasController ? `<button onclick="mapLayersControl.showBuildingMetrics('${buildingId}')" class="btn-metrics">📊 Показать метрики</button>` : ''}
-                    <button onclick="mapLayersControl.showBuildingDetails('${buildingId}')" class="btn-details">ℹ️ Подробности</button>
-                </div>
             </div>
         `;
-        
+        // [R2-11] Removed the "Показать метрики"/"Подробности" action buttons:
+        // they used inline onclick (stripped by sanitizePopup/DOMPurify and a CSP
+        // violation) calling showBuildingMetrics/showBuildingDetails, which were
+        // never implemented. The metrics + full details already render inline
+        // above (${metricsHTML} + the info rows), so the buttons were both broken
+        // and redundant.
         // Санитизируем весь popup контент перед возвратом
         return this.sanitizePopup(popupHTML);
-    }
-
-    createTransformerPopup(transformer) {
-        const loadPercent = parseFloat(transformer.load_percent) || 0;
-        
-        return `
-            <div class="transformer-popup">
-                <h4>⚡ ${transformer.name}</h4>
-                <div class="transformer-info">
-                    <p><strong>Мощность:</strong> ${transformer.capacity_kva} кВА</p>
-                    <p><strong>Загрузка:</strong> 
-                        <span class="load-indicator" style="color: ${this.getLoadColor(loadPercent)}">
-                            ${loadPercent.toFixed(1)}%
-                        </span>
-                    </p>
-                    <p><strong>Статус:</strong> 
-                        <span class="status-badge status-${transformer.status}">${transformer.status}</span>
-                    </p>
-                    <p><strong>Подключенных зданий:</strong> ${transformer.buildings_count}</p>
-                    <p><strong>Контроллеров:</strong> ${transformer.controllers_count}</p>
-                </div>
-                
-                <div class="transformer-actions">
-                    <button onclick="mapLayersControl.showTransformerMetrics('${transformer.id}')" class="btn-metrics">
-                        📊 Показать метрики
-                    </button>
-                    <button onclick="mapLayersControl.showNearbyBuildings('${transformer.id}')" class="btn-buildings">
-                        🏢 Ближайшие здания
-                    </button>
-                </div>
-                
-                <div id="transformer-metrics-${transformer.id}" class="metrics-container" style="display: none;">
-                    <div class="loading">Загрузка метрик...</div>
-                </div>
-            </div>
-        `;
     }
 
     async loadWaterLines(headers) {
@@ -936,66 +900,6 @@ class MapLayersControl {
             console.warn('Ошибка при загрузке линий водоснабжения:', error);
             this.updateLayerCount("🚰 Линии водоснабжения", 0);
         }
-    }
-
-    createWaterLine(line, coordinates) {
-        const pressureColor = this.getPressureColor(parseFloat(line.pressure_rating));
-        const weight = 3 + (line.diameter_mm / 100);
-        
-        const polyline = L.polyline(coordinates, {
-            color: pressureColor,
-            weight: Math.min(weight, 8),
-            opacity: 0.7,
-            dashArray: line.line_type === 'hot_water' ? '5, 5' : null
-        });
-
-        // ИСПРАВЛЕНИЕ XSS: Санитизируем данные линии водоснабжения
-        const lineName = this.escapeHTML(line.name || '');
-        const lineDiameter = line.diameter_mm ? this.escapeHTML(String(line.diameter_mm) + ' мм') : '';
-        const linePressure = line.pressure_rating ? this.escapeHTML(String(line.pressure_rating) + ' бар') : '';
-        const lineMaterial = this.escapeHTML(line.material || '');
-        const lineLength = line.length_km ? this.escapeHTML(String(line.length_km) + ' км') : '';
-        const lineType = this.escapeHTML(line.line_type || 'Не указан');
-        const lineStatus = this.escapeHTML(line.status || '');
-        const lineBuildingsCount = line.connected_buildings_count ? this.escapeHTML(String(line.connected_buildings_count)) : '0';
-        
-        const popupHTML = `
-            <div class="water-line-popup">
-                <h4>🚰 ${lineName}</h4>
-                ${lineDiameter ? `<p><strong>Диаметр:</strong> ${lineDiameter}</p>` : ''}
-                ${linePressure ? `<p><strong>Давление:</strong> ${linePressure}</p>` : ''}
-                ${lineMaterial ? `<p><strong>Материал:</strong> ${lineMaterial}</p>` : ''}
-                ${lineLength ? `<p><strong>Длина:</strong> ${lineLength}</p>` : ''}
-                <p><strong>Тип:</strong> ${lineType}</p>
-                ${lineStatus ? `<p><strong>Статус:</strong> <span class="status-badge status-${lineStatus}">${lineStatus}</span></p>` : ''}
-                <p><strong>Подключенных зданий:</strong> ${lineBuildingsCount}</p>
-            </div>
-        `;
-        
-        // Санитизируем popup перед использованием
-        const sanitizedPopup = this.sanitizePopup(popupHTML);
-        polyline.bindPopup(sanitizedPopup);
-
-        return polyline;
-    }
-
-    generateLineCoordinates(line) {
-        // В реальном проекте координаты должны храниться в БД как GeoJSON
-        // Здесь генерируем примерные координаты для демонстрации
-        const baseLatitude = 41.3111;
-        const baseLongitude = 69.2797;
-        
-        const startLat = baseLatitude + (Math.random() - 0.5) * 0.1;
-        const startLng = baseLongitude + (Math.random() - 0.5) * 0.1;
-        const endLat = startLat + (Math.random() - 0.5) * 0.05;
-        const endLng = startLng + (Math.random() - 0.5) * 0.05;
-        
-        return [
-            [startLat, startLng],
-            [startLat + (endLat - startLat) * 0.3, startLng + (endLng - startLng) * 0.2],
-            [startLat + (endLat - startLat) * 0.7, startLng + (endLng - startLng) * 0.8],
-            [endLat, endLng]
-        ];
     }
 
     getLoadColor(loadPercent) {
@@ -1564,9 +1468,6 @@ class MapLayersControl {
                 });
             }
 
-            // Загружаем и отображаем алерты на линии (если есть)
-            this.loadLineAlerts(lineData.line_id, lineData, layer);
-
         } catch (error) {
             console.error('Ошибка при отрисовке линии:', error);
         }
@@ -1747,148 +1648,6 @@ class MapLayersControl {
         return this.sanitizePopup(popupHTML);
     }
 
-    /**
-     * Загрузка и отображение алертов на линии
-     * 
-     * @param {number} lineId - ID линии
-     * @param {Object} lineData - Данные линии
-     * @param {Object} layer - Leaflet layer group
-     */
-    async loadLineAlerts(lineId, lineData, layer) {
-        try {
-            const response = await fetch(`${this.apiBaseUrl}/infrastructure-lines/${lineId}/alerts?active_only=true`);
-            
-            if (!response.ok) {
-                return; // Алерты опциональны
-            }
-
-            const result = await response.json();
-            const alerts = result.data || [];
-
-            // Отображаем каждый алерт
-            alerts.forEach(alert => {
-                this.displayLineAlert(alert, lineData, layer);
-            });
-
-        } catch (error) {
-            console.warn(`Не удалось загрузить алерты для линии ${lineId}:`, error);
-        }
-    }
-
-    /**
-     * Отображение алерта на линии
-     * 
-     * @param {Object} alert - Данные алерта
-     * @param {Object} lineData - Данные линии
-     * @param {Object} layer - Leaflet layer group
-     */
-    displayLineAlert(alert, lineData, layer) {
-        try {
-            // Парсим координаты точки алерта
-            const alertPoint = alert.alert_point;
-            const lat = parseFloat(alertPoint.lat);
-            const lng = parseFloat(alertPoint.lng);
-
-            // Цвет маркера в зависимости от серьезности
-            const severityColors = {
-                'INFO': '#2196F3',
-                'WARNING': '#FF9800',
-                'CRITICAL': '#F44336'
-            };
-            const markerColor = severityColors[alert.severity] || '#757575';
-
-            // Создаем маркер аварии
-            const alertMarker = L.circleMarker([lat, lng], {
-                radius: 8,
-                fillColor: markerColor,
-                color: '#FFFFFF',
-                weight: 2,
-                opacity: 1,
-                fillOpacity: 0.8
-            });
-
-            // ИСПРАВЛЕНИЕ XSS: Санитизируем данные алерта на линии
-            const alertLineName = this.escapeHTML(lineData.name || '');
-            const alertSeverity = this.escapeHTML(alert.severity || '');
-            const alertDescription = alert.description ? this.escapeHTML(alert.description) : '';
-            const alertMessage = alert.alert_message ? this.escapeHTML(alert.alert_message) : '';
-            const alertCreatedAt = alert.created_at ? new Date(alert.created_at).toLocaleString('ru-RU') : '';
-            
-            const alertPopupHTML = `
-                <div style="min-width: 200px;">
-                    <h4 style="margin: 0 0 10px 0; color: ${markerColor};">⚠️ Авария на линии</h4>
-                    <p style="margin: 5px 0;"><strong>Линия:</strong> ${alertLineName}</p>
-                    <p style="margin: 5px 0;"><strong>Серьезность:</strong> <span style="color: ${markerColor}; font-weight: bold;">${alertSeverity}</span></p>
-                    ${alertDescription ? `<p style="margin: 5px 0;"><strong>Описание:</strong> ${alertDescription}</p>` : ''}
-                    ${alertMessage ? `<p style="margin: 5px 0;"><strong>Сообщение:</strong> ${alertMessage}</p>` : ''}
-                    <p style="margin: 5px 0; font-size: 11px; color: #757575;"><strong>Создан:</strong> ${alertCreatedAt}</p>
-                </div>
-            `;
-            
-            // Санитизируем popup перед использованием
-            const sanitizedAlertPopup = this.sanitizePopup(alertPopupHTML);
-            alertMarker.bindPopup(sanitizedAlertPopup);
-            
-            // Tooltip с безопасным текстом
-            const alertTooltipSeverity = this.escapeHTML(alert.severity || '');
-            const alertTooltipDescription = alert.description ? this.escapeHTML(alert.description) : 'Авария';
-            alertMarker.bindTooltip(`⚠️ ${alertTooltipSeverity}: ${alertTooltipDescription}`, {
-                permanent: false,
-                direction: 'top'
-            });
-
-            // Добавляем на карту
-            alertMarker.addTo(layer);
-
-            // Подсвечиваем проблемный сегмент линии (опционально)
-            if (alert.segment_start_index !== undefined && alert.segment_end_index !== undefined) {
-                this.highlightLineSegment(lineData, alert.segment_start_index, alert.segment_end_index, layer);
-            }
-
-        } catch (error) {
-            console.error('Ошибка при отображении алерта:', error);
-        }
-    }
-
-    /**
-     * Подсветка проблемного сегмента линии
-     * 
-     * @param {Object} lineData - Данные линии
-     * @param {number} startIndex - Индекс начальной точки
-     * @param {number} endIndex - Индекс конечной точки
-     * @param {Object} layer - Leaflet layer group
-     */
-    highlightLineSegment(lineData, startIndex, endIndex, layer) {
-        try {
-            // Извлекаем сегмент из main_path
-            const segment = lineData.main_path.slice(startIndex, endIndex + 1);
-            
-            if (segment.length < 2) {
-                return; // Нужно минимум 2 точки
-            }
-
-            const segmentPath = segment.map(point => [
-                parseFloat(point.lat),
-                parseFloat(point.lng)
-            ]);
-
-            // Создаем подсвеченную линию (более толстая, красная)
-            const highlightLine = L.polyline(segmentPath, {
-                color: '#F44336', // Красный
-                weight: 6,
-                opacity: 1.0,
-                className: 'pulsing-line', // CSS анимация (если добавить)
-                lineCap: 'round',
-                lineJoin: 'round'
-            });
-
-            // Добавляем на карту
-            highlightLine.addTo(layer);
-
-        } catch (error) {
-            console.error('Ошибка при подсветке сегмента:', error);
-        }
-    }
 }
 
 // Инициализация после загрузки карты

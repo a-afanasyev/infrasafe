@@ -40,6 +40,10 @@ const ENTRIES = [
     'public/utils/coordValidation.js',
     // [UK-URGENCY remnant] UK deep-link builder + reopen-meta passthrough
     'public/utils/ukLinkBuilder.js',
+    // [R2-10] section-id normalizer + corrected bulk-delete endpoint map
+    'public/utils/sectionId.js',
+    // [R2-12] shared 2FA/auth network + QR-validation layer
+    'public/utils/authFlow.js',
 ].map(f => path.join(projectRoot, f));
 
 const sharedOptions = {

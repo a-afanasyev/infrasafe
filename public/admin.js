@@ -1,6 +1,46 @@
 document.addEventListener("DOMContentLoaded", function () {
     const backendURL = "/api";
 
+    // [R2-10] Section-id helpers (public/utils/sectionId.js, loaded before this).
+    // State objects use camelCase keys (waterSources); DOM ids + loadSectionData
+    // cases + bulk maps use kebab (water-sources). toDomId bridges the two so
+    // water/heat checkboxes, bulk-delete and pagination buttons wire up. Fallback
+    // regex keeps the panel working even if the util script fails to load.
+    const toDomId = (window.SectionId && window.SectionId.toDomId) ||
+        ((s) => String(s == null ? '' : s).replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase());
+    // Corrected REST base path per section (water-sources → /api/cold-water-sources).
+    const bulkDeleteEndpoint = (window.SectionId && window.SectionId.bulkDeleteEndpoint) ||
+        (() => null);
+
+    // [R2-30] Double-submit guard. Wraps an async submit handler so the form's
+    // submit button is disabled for the duration of the request and re-enabled in
+    // finally (success OR error) — a slow POST no longer lets an impatient double
+    // click create duplicate rows. A re-entrant submit while in flight is dropped.
+    function withSubmitGuard(handler) {
+        return async function (e) {
+            const form = e && e.target;
+            const btn = form && form.querySelector('button[type="submit"], input[type="submit"], button:not([type])');
+            if (btn) {
+                if (btn.dataset.submitting === '1') { if (e) e.preventDefault(); return; }
+                btn.dataset.submitting = '1';
+                btn.disabled = true;
+            }
+            try {
+                return await handler.call(this, e);
+            } finally {
+                if (btn) { btn.dataset.submitting = '0'; btn.disabled = false; }
+            }
+        };
+    }
+
+    // [R2-30] Register a submit handler on a form by id, wrapped in the
+    // double-submit guard. The close paren/semicolon stays `});` so call sites
+    // read exactly like the addEventListener they replace.
+    function guardSubmit(formId, handler) {
+        const form = document.getElementById(formId);
+        if (form) form.addEventListener('submit', withSubmitGuard(handler));
+    }
+
     // Переменные для пагинации всех сущностей
     const pagination = {
         buildings: { page: 1, limit: 10, total: 0 },
@@ -1280,11 +1320,12 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     function updateCheckboxHandlers(section) {
+        const dom = toDomId(section); // [R2-10] DOM ids are kebab; state key stays as-is
         // Обработчик для кнопки "Выбрать все" (button, не checkbox!)
-        const selectAllBtn = document.getElementById(`${section}-select-all`);
+        const selectAllBtn = document.getElementById(`${dom}-select-all`);
         if (selectAllBtn && !selectAllBtn.dataset.handlerSet) {
             selectAllBtn.addEventListener('click', function() {
-                const checkboxes = document.querySelectorAll(`#${section}-section .item-checkbox`);
+                const checkboxes = document.querySelectorAll(`#${dom}-section .item-checkbox`);
                 const allChecked = Array.from(checkboxes).every(cb => cb.checked);
                 
                 // Если все выбраны - снимаем выбор, иначе выбираем все
@@ -1306,10 +1347,10 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         
         // Обработчик для чекбокса "выбрать все" (если есть в заголовке таблицы)
-        const selectAllCheckbox = document.getElementById(`${section}-select-all-checkbox`);
+        const selectAllCheckbox = document.getElementById(`${dom}-select-all-checkbox`);
         if (selectAllCheckbox && !selectAllCheckbox.dataset.handlerSet) {
             selectAllCheckbox.addEventListener('change', function() {
-                const checkboxes = document.querySelectorAll(`#${section}-section .item-checkbox`);
+                const checkboxes = document.querySelectorAll(`#${dom}-section .item-checkbox`);
                 checkboxes.forEach(checkbox => {
                     checkbox.checked = this.checked;
                     const id = checkbox.dataset.id;
@@ -1325,7 +1366,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         // Обработчики для отдельных чекбоксов
-        const itemCheckboxes = document.querySelectorAll(`#${section}-section .item-checkbox`);
+        const itemCheckboxes = document.querySelectorAll(`#${dom}-section .item-checkbox`);
         itemCheckboxes.forEach(checkbox => {
             checkbox.addEventListener('change', function() {
                 const id = this.dataset.id;
@@ -1337,7 +1378,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 updateBatchButtons(section);
 
                 // Обновляем текст кнопки "Выбрать все"
-                const selectAllBtn = document.getElementById(`${section}-select-all`);
+                const selectAllBtn = document.getElementById(`${dom}-select-all`);
                 if (selectAllBtn) {
                     const allChecked = Array.from(itemCheckboxes).every(cb => cb.checked);
                     selectAllBtn.textContent = allChecked ? 'Снять выбор' : 'Выбрать все';
@@ -1353,10 +1394,11 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function updateBatchButtons(section) {
+        const dom = toDomId(section); // [R2-10] kebab DOM ids; state key stays as-is
         const selectedCount = selectedItems[section].size;
-        const bulkDeleteBtn = document.getElementById(`${section}-bulk-delete`);
-        const bulkStatusBtn = document.getElementById(`${section}-bulk-status`);
-        const bulkStatusSelect = document.getElementById(`${section}-bulk-status-select`);
+        const bulkDeleteBtn = document.getElementById(`${dom}-bulk-delete`);
+        const bulkStatusBtn = document.getElementById(`${dom}-bulk-status`);
+        const bulkStatusSelect = document.getElementById(`${dom}-bulk-status-select`);
 
         if (bulkDeleteBtn) {
             bulkDeleteBtn.disabled = selectedCount === 0;
@@ -1387,14 +1429,15 @@ document.addEventListener("DOMContentLoaded", function () {
     
     // Обработчик массового удаления
     async function handleBulkDelete(section) {
+        const dom = toDomId(section); // [R2-10] kebab id for maps/loadSectionData; state key stays
         const selectedCount = selectedItems[section].size;
         const selectedIds = Array.from(selectedItems[section]);
-        
+
         if (selectedCount === 0) {
             showToast('Не выбрано элементов для удаления', 'warning');
             return;
         }
-        
+
         const sectionNames = {
             'buildings': 'зданий',
             'controllers': 'контроллеров',
@@ -1405,8 +1448,8 @@ document.addEventListener("DOMContentLoaded", function () {
             'heat-sources': 'источников тепла',
             'metrics': 'метрик'
         };
-        
-        const sectionName = sectionNames[section] || 'элементов';
+
+        const sectionName = sectionNames[dom] || 'элементов';
         
         if (!confirm(`⚠️ ВНИМАНИЕ!\n\nВы уверены, что хотите удалить ${selectedCount} ${sectionName}?\n\nЭта операция необратима!`)) {
             return;
@@ -1418,20 +1461,10 @@ document.addEventListener("DOMContentLoaded", function () {
         // Показываем прогресс
         showToast(`Удаление ${selectedCount} ${sectionName}...`, 'info');
         
-        // Определяем endpoint для каждой секции
-        const endpoints = {
-            'buildings': '/api/buildings',
-            'controllers': '/api/controllers',
-            'transformers': '/api/transformers',
-            'lines': '/api/lines',
-            'water-lines': '/api/water-lines',
-            'water-sources': '/api/water-sources',
-            'heat-sources': '/api/heat-sources',
-            'metrics': '/api/metrics'
-        };
-        
-        const endpoint = endpoints[section];
-        
+        // [R2-10] Endpoint resolved via the tested section map (water-sources →
+        // /api/cold-water-sources; the old inline map wrongly used /api/water-sources).
+        const endpoint = bulkDeleteEndpoint(section);
+
         if (!endpoint) {
             showToast(`Ошибка: неизвестная секция ${section}`, 'error');
             return;
@@ -1470,17 +1503,18 @@ document.addEventListener("DOMContentLoaded", function () {
         
         // Очищаем выбранные элементы
         selectedItems[section].clear();
-        
-        // Перезагружаем данные
+
+        // Перезагружаем данные (loadSectionData switches on the kebab id)
         dataLoaded[section] = false;
-        loadSectionData(section);
+        loadSectionData(dom);
     }
-    
+
     // Обработчик массового изменения статуса
     async function handleBulkStatusChange(section) {
+        const dom = toDomId(section); // [R2-10] kebab id for DOM/loadSectionData; state key stays
         const selectedCount = selectedItems[section].size;
         const selectedIds = Array.from(selectedItems[section]);
-        const statusSelect = document.getElementById(`${section}-bulk-status-select`);
+        const statusSelect = document.getElementById(`${dom}-bulk-status-select`);
         
         if (selectedCount === 0) {
             showToast('Не выбрано элементов для изменения статуса', 'warning');
@@ -1509,8 +1543,8 @@ document.addEventListener("DOMContentLoaded", function () {
             'controllers': '/api/controllers'
         };
         
-        const endpoint = endpoints[section];
-        
+        const endpoint = endpoints[dom];
+
         if (!endpoint) {
             showToast(`Массовое изменение статуса не поддерживается для ${section}`, 'error');
             return;
@@ -1551,10 +1585,10 @@ document.addEventListener("DOMContentLoaded", function () {
         
         // Очищаем выбранные элементы
         selectedItems[section].clear();
-        
-        // Перезагружаем данные
+
+        // Перезагружаем данные (loadSectionData switches on the kebab id)
         dataLoaded[section] = false;
-        loadSectionData(section);
+        loadSectionData(dom);
     }
 
     // ===============================================
@@ -1562,9 +1596,10 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     function updatePagination(section) {
-        const pageInfo = document.getElementById(`${section}-page-info`);
-        const prevBtn = document.getElementById(`${section}-prev-page`);
-        const nextBtn = document.getElementById(`${section}-next-page`);
+        const dom = toDomId(section); // [R2-10] kebab DOM ids; state key stays as-is
+        const pageInfo = document.getElementById(`${dom}-page-info`);
+        const prevBtn = document.getElementById(`${dom}-prev-page`);
+        const nextBtn = document.getElementById(`${dom}-next-page`);
 
         const currentPage = pagination[section].page;
         const total = pagination[section].total || 0;
@@ -1583,7 +1618,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 if (pagination[section].page > 1) {
                     pagination[section].page--;
                     dataLoaded[section] = false;
-                    loadSectionData(section);
+                    loadSectionData(dom);
                 }
             });
         }
@@ -1597,7 +1632,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 if (pagination[section].page < tp) {
                     pagination[section].page++;
                     dataLoaded[section] = false;
-                    loadSectionData(section);
+                    loadSectionData(dom);
                 }
             });
         }
@@ -2137,7 +2172,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     // Обработчик формы редактирования трансформаторов
-    document.getElementById('edit-transformer-form').addEventListener('submit', async function(e) {
+    guardSubmit('edit-transformer-form', async function(e) {
         e.preventDefault();
 
         const id = document.getElementById('edit-transformer-id').value;
@@ -2187,7 +2222,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // NaN→null wipe risk; deleted instead of guarded (YAGNI).
 
     // Обработчик формы редактирования источников воды
-    document.getElementById('edit-water-source-form').addEventListener('submit', async function(e) {
+    guardSubmit('edit-water-source-form', async function(e) {
         e.preventDefault();
 
         const id = document.getElementById('edit-water-source-id').value;
@@ -2230,7 +2265,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // Обработчик формы редактирования источников тепла
-    document.getElementById('edit-heat-source-form').addEventListener('submit', async function(e) {
+    guardSubmit('edit-heat-source-form', async function(e) {
         e.preventDefault();
 
         const id = document.getElementById('edit-heat-source-id').value;
@@ -2627,7 +2662,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // ОБРАБОТЧИК ФОРМЫ ДОБАВЛЕНИЯ ЗДАНИЯ
     // ===============================================
 
-    document.getElementById('add-building-form').addEventListener('submit', async function(e) {
+    guardSubmit('add-building-form', async function(e) {
         e.preventDefault();
 
         const data = {
@@ -2688,7 +2723,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // ОБРАБОТЧИК ФОРМЫ ДОБАВЛЕНИЯ КОНТРОЛЛЕРА
     // ===============================================
 
-    document.getElementById('add-controller-form').addEventListener('submit', async function(e) {
+    guardSubmit('add-controller-form', async function(e) {
         e.preventDefault();
 
         const data = {
@@ -2730,7 +2765,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // Обработчик формы добавления метрики
-    document.getElementById('add-metric-form').addEventListener('submit', async function(e) {
+    guardSubmit('add-metric-form', async function(e) {
         e.preventDefault();
 
         const data = {
@@ -2832,7 +2867,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // ОБРАБОТЧИК ФОРМЫ ДОБАВЛЕНИЯ ТРАНСФОРМАТОРА
     // ===============================================
 
-    document.getElementById('add-transformer-form').addEventListener('submit', async function(e) {
+    guardSubmit('add-transformer-form', async function(e) {
         e.preventDefault();
 
         const data = {
@@ -2974,8 +3009,8 @@ document.addEventListener("DOMContentLoaded", function () {
         const newForm = form.cloneNode(true);
         form.parentNode.replaceChild(newForm, form);
 
-        // Добавляем обработчик сохранения
-        newForm.addEventListener('submit', async (e) => {
+        // Добавляем обработчик сохранения ([R2-30] guarded against double-submit)
+        newForm.addEventListener('submit', withSubmitGuard(async (e) => {
             e.preventDefault();
 
             const formData = new FormData(newForm);
@@ -3000,7 +3035,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 console.error('Error saving:', error);
                 showToast('Ошибка сохранения: ' + error.message, 'error');
             }
-        });
+        }));
 
         // Добавляем обработчик отмены
         // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
@@ -3094,7 +3129,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     // Обработчик формы редактирования здания
-    document.getElementById('edit-building-form').addEventListener('submit', async (e) => {
+    guardSubmit('edit-building-form', async (e) => {
         e.preventDefault();
         const id = document.getElementById('edit-building-id').value;
 
@@ -3273,6 +3308,11 @@ document.addEventListener("DOMContentLoaded", function () {
             const response = await fetch(`${backendURL}/integration/config`, {
                 headers: {}
             });
+            // [R2-29] Guard response.ok before .json() so a 4xx/5xx routes into
+            // catch and surfaces to the operator instead of silently no-op'ing.
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
             const data = await response.json();
             if (data.success) {
                 integrationState.config = data.data;
@@ -3280,6 +3320,7 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         } catch (error) {
             console.error('Failed to load integration config:', error);
+            showToast('Ошибка загрузки настроек интеграции', 'error');
         }
     }
 
@@ -3337,6 +3378,10 @@ document.addEventListener("DOMContentLoaded", function () {
             const response = await fetch(`${backendURL}/integration/rules/stats?days=${days}`, {
                 headers: {}
             });
+            // [R2-29] Route non-ok into catch (setRulesStatus surfaces the error).
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
             const data = await response.json();
             if (data.success) {
                 integrationState.rules = data.data;
@@ -3673,6 +3718,10 @@ document.addEventListener("DOMContentLoaded", function () {
             const response = await fetch(`${backendURL}/integration/logs?${params}`, {
                 headers: {}
             });
+            // [R2-29] Guard response.ok before .json() so failures surface.
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
             const data = await response.json();
             if (data.success) {
                 integrationState.logs = data.data;
@@ -3680,6 +3729,7 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         } catch (error) {
             console.error('Failed to load integration logs:', error);
+            showToast('Ошибка загрузки журнала интеграции', 'error');
         }
     }
 

@@ -858,157 +858,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
         
         /**
-         * Загрузка контента вкладки ФИЛЬТРЫ
-         * Интеграция с существующими фильтрами
-         */
-        loadFiltersContent() {
-            const filtersContent = document.querySelector('.tab-content[data-content="filters"]');
-            if (!filtersContent) return;
-            
-            // Очищаем содержимое если оно уже было загружено
-            if (filtersContent.dataset.loaded) {
-                return;
-            }
-            filtersContent.dataset.loaded = 'true';
-            
-            // Создаем секцию для фильтров
-            const filtersSection = document.createElement('div');
-            filtersSection.className = 'tab-section';
-            
-            // Создаем заголовок
-            const filtersTitle = document.createElement('h3');
-            filtersTitle.textContent = 'Фильтры по объектам';
-            filtersSection.appendChild(filtersTitle);
-            
-            // Фильтр по статусу
-            const statusFilterGroup = document.createElement('div');
-            statusFilterGroup.style.cssText = 'margin-bottom: 16px;';
-            
-            const statusLabel = document.createElement('label');
-            statusLabel.textContent = 'Статус:';
-            statusLabel.style.cssText = 'display: block; margin-bottom: 8px; color: #e0e0e0; font-size: 13px; font-weight: 500;';
-            
-            const statusSelect = document.createElement('select');
-            statusSelect.id = 'industrial-status-filter';
-            statusSelect.multiple = true;
-            statusSelect.style.cssText = 'width: 100%; padding: 8px; background: #253041; border: 1px solid #3a4a5e; color: #e0e0e0; border-radius: 4px; font-size: 13px;';
-            
-            ['active', 'maintenance', 'inactive', 'critical'].forEach(value => {
-                const option = document.createElement('option');
-                option.value = value;
-                option.textContent = {
-                    'active': 'Активный',
-                    'maintenance': 'Обслуживание',
-                    'inactive': 'Неактивный',
-                    'critical': 'Критический'
-                }[value];
-                statusSelect.appendChild(option);
-            });
-            
-            statusFilterGroup.appendChild(statusLabel);
-            statusFilterGroup.appendChild(statusSelect);
-            filtersSection.appendChild(statusFilterGroup);
-            
-            // Фильтр по загрузке трансформаторов
-            const loadFilterGroup = document.createElement('div');
-            loadFilterGroup.style.cssText = 'margin-bottom: 16px;';
-            
-            const loadLabel = document.createElement('label');
-            loadLabel.textContent = 'Загрузка трансформаторов:';
-            loadLabel.style.cssText = 'display: block; margin-bottom: 8px; color: #e0e0e0; font-size: 13px; font-weight: 500;';
-            
-            const loadInputContainer = document.createElement('div');
-            loadInputContainer.style.cssText = 'display: flex; align-items: center; gap: 12px;';
-            
-            const loadInput = document.createElement('input');
-            loadInput.type = 'range';
-            loadInput.id = 'industrial-load-filter';
-            loadInput.min = '0';
-            loadInput.max = '100';
-            loadInput.value = '100';
-            loadInput.style.cssText = 'flex: 1; height: 6px; background: #3a4a5e; border-radius: 3px; appearance: none;';
-            
-            // Стили для range input
-            loadInput.style.webkitAppearance = 'none';
-            loadInput.style.appearance = 'none';
-            
-            const loadValue = document.createElement('span');
-            loadValue.id = 'industrial-load-value';
-            loadValue.textContent = '100%';
-            loadValue.style.cssText = 'color: #34a236; font-size: 13px; font-weight: 600; min-width: 45px;';
-            
-            loadInput.addEventListener('input', (e) => {
-                loadValue.textContent = e.target.value + '%';
-            });
-            
-            loadInputContainer.appendChild(loadInput);
-            loadInputContainer.appendChild(loadValue);
-            
-            loadFilterGroup.appendChild(loadLabel);
-            loadFilterGroup.appendChild(loadInputContainer);
-            filtersSection.appendChild(loadFilterGroup);
-            
-            // Фильтр по типу воды
-            const waterFilterGroup = document.createElement('div');
-            waterFilterGroup.style.cssText = 'margin-bottom: 20px;';
-            
-            const waterLabel = document.createElement('label');
-            waterLabel.textContent = 'Тип водоснабжения:';
-            waterLabel.style.cssText = 'display: block; margin-bottom: 8px; color: #e0e0e0; font-size: 13px; font-weight: 500;';
-            
-            const waterSelect = document.createElement('select');
-            waterSelect.id = 'industrial-water-type-filter';
-            waterSelect.style.cssText = 'width: 100%; padding: 8px; background: #253041; border: 1px solid #3a4a5e; color: #e0e0e0; border-radius: 4px; font-size: 13px;';
-            
-            [['', 'Все'], ['cold_water', 'Холодная вода'], ['hot_water', 'Горячая вода']].forEach(([value, text]) => {
-                const option = document.createElement('option');
-                option.value = value;
-                option.textContent = text;
-                waterSelect.appendChild(option);
-            });
-            
-            waterFilterGroup.appendChild(waterLabel);
-            waterFilterGroup.appendChild(waterSelect);
-            filtersSection.appendChild(waterFilterGroup);
-            
-            // Кнопки управления
-            const buttonsContainer = document.createElement('div');
-            buttonsContainer.style.cssText = 'display: flex; gap: 12px; margin-top: 20px;';
-            
-            const applyBtn = document.createElement('button');
-            applyBtn.textContent = 'Применить';
-            applyBtn.style.cssText = 'flex: 1; padding: 12px; background: #34a236; border: none; border-radius: 4px; color: #1a2332; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 200ms;';
-            applyBtn.addEventListener('mouseenter', () => applyBtn.style.background = '#3fa341');
-            applyBtn.addEventListener('mouseleave', () => applyBtn.style.background = '#34a236');
-            applyBtn.addEventListener('click', () => {
-                if (window.mapLayersControl && typeof window.mapLayersControl.applyFilters === 'function') {
-                    window.mapLayersControl.applyFilters();
-                }
-            });
-            
-            const resetBtn = document.createElement('button');
-            resetBtn.textContent = 'Сбросить';
-            resetBtn.style.cssText = 'flex: 1; padding: 12px; background: #3a4a5e; border: none; border-radius: 4px; color: #e0e0e0; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 200ms;';
-            resetBtn.addEventListener('mouseenter', () => resetBtn.style.background = '#4a5a6e');
-            resetBtn.addEventListener('mouseleave', () => resetBtn.style.background = '#3a4a5e');
-            resetBtn.addEventListener('click', () => {
-                if (window.mapLayersControl && typeof window.mapLayersControl.resetFilters === 'function') {
-                    window.mapLayersControl.resetFilters();
-                }
-                statusSelect.selectedIndex = -1;
-                loadInput.value = '100';
-                loadValue.textContent = '100%';
-                waterSelect.value = '';
-            });
-            
-            buttonsContainer.appendChild(applyBtn);
-            buttonsContainer.appendChild(resetBtn);
-            filtersSection.appendChild(buttonsContainer);
-            
-            filtersContent.appendChild(filtersSection);
-        }
-        
-        /**
          * Получить ссылку на контроллер слоев карты
          * Используется для интеграции с MapLayersControl
          */
@@ -1661,16 +1510,18 @@ document.addEventListener('DOMContentLoaded', async function () {
     window.buildingsData = [];
 
     // Функция загрузки данных с сервера
+    // [R2-28] Guards: prevent overlapping loads; auto-fit only on first render.
+    let isLoadingData = false;
+    let hasFitBounds = false;
     async function loadData() {
+        // [R2-28] Skip if a load is already in flight — the periodic interval can
+        // race a manual refresh or the post-login load.
+        if (isLoadingData) return false;
+        isLoadingData = true;
         try {
-            // Очищаем старые маркеры и хранилища данных
-            markers.clearLayers();
-            // Очищаем хранилище popup контента
-            buildingPopupStorage.clear();
-            // Очищаем хранилище данных зданий для промышленной панели
-            window.buildingsData = [];
-
-            // Fetch data from the backend using API client
+            // [R2-28] Fetch FIRST — do NOT clear the map before the request. If the
+            // fetch fails or is slow, the current markers stay put instead of the
+            // map going blank; we swap in fresh data only after a valid response.
             const response = await apiClient.fetch('/buildings-metrics');
             
             // Проверяем статус ответа
@@ -1724,6 +1575,11 @@ document.addEventListener('DOMContentLoaded', async function () {
 
             // Счетчик зданий с протечкой
             let leakBuildingsCount = 0;
+
+            // [R2-28] Response is valid — now safe to swap in fresh markers/storage.
+            markers.clearLayers();
+            buildingPopupStorage.clear();
+            window.buildingsData = [];
 
             data.forEach((item) => {
                 // Проверяем наличие валидных координат
@@ -2041,9 +1897,11 @@ document.addEventListener('DOMContentLoaded', async function () {
                 });
             });
 
-            // Обновляем информацию на карте
-            if (markers.getLayers().length > 0) {
+            // [R2-28] Auto-fit only on the first successful render, so periodic
+            // refreshes don't yank the user's current pan/zoom.
+            if (!hasFitBounds && markers.getLayers().length > 0) {
                 map.fitBounds(markers.getBounds(), { padding: [50, 50] });
+                hasFitBounds = true;
             }
 
             // Синхронизируем статусы с промышленной панелью
@@ -2069,6 +1927,9 @@ document.addEventListener('DOMContentLoaded', async function () {
             // Скрываем skeleton и показываем ошибку
             hideMapSkeleton();
             return false;
+        } finally {
+            // [R2-28] Always release the in-flight guard, success or failure.
+            isLoadingData = false;
         }
     }
 
@@ -2249,12 +2110,8 @@ document.addEventListener('DOMContentLoaded', async function () {
             hideMapErrors();
 
             try {
-                const response = await fetch('/api/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
-                const data = await response.json();
+                // [R2-12] Shared POST-JSON boilerplate; branching unchanged.
+                const { res: response, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.login, { username, password });
 
                 // Order matters: /api/auth/login returns `{success:true, requires2FA:true, tempToken}`
                 // for admin accounts — checking `data.success` first would close the modal
@@ -2268,26 +2125,15 @@ document.addEventListener('DOMContentLoaded', async function () {
                 } else if (response.ok && data.requires2FASetup) {
                     mapTempToken = data.tempToken;
                     // Fetch QR setup
-                    const setupRes = await fetch('/api/auth/setup-2fa', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ tempToken: mapTempToken })
-                    });
-                    const setupData = await setupRes.json();
+                    const { res: setupRes, data: setupData } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.setup2fa, { tempToken: mapTempToken });
                     if (setupRes.ok) {
-                        // [1A-FU-C-M3] Defence-in-depth: validate qrCodeUrl
-                        // scheme + length before assigning to img.src. The
-                        // totpService produces exactly `data:image/png;base64,<...>`;
-                        // anything else is a server regression or injection
-                        // attempt — refuse to render. Mirrors public/login.js.
-                        const qrUrl = String(setupData.qrCodeUrl || '');
-                        const QR_PREFIX = 'data:image/png;base64,';
-                        const QR_MAX_LEN = 8 * 1024; // 8KB — actual QR is ~1-2KB
-                        if (!qrUrl.startsWith(QR_PREFIX) || qrUrl.length > QR_MAX_LEN) {
+                        // [R2-12] QR validation single-sourced in AuthFlow (security
+                        // check gating img.src; must not drift from login.js).
+                        if (!AuthFlow.validateQrCodeUrl(setupData.qrCodeUrl)) {
                             showMapError('map-login-error', 'Сервер вернул некорректный QR-код');
                             return;
                         }
-                        document.getElementById('map-qr-img').src = qrUrl;
+                        document.getElementById('map-qr-img').src = String(setupData.qrCodeUrl);
                         document.getElementById('map-qr-secret').textContent = setupData.secret;
                         document.getElementById('map-recovery-codes').textContent = setupData.recoveryCodes.join('\n');
                         showMapLoginStep('setup');
@@ -2321,12 +2167,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             btn.disabled = true;
             hideMapErrors();
             try {
-                const res = await fetch('/api/auth/verify-2fa', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ tempToken: mapTempToken, code })
-                });
-                const data = await res.json();
+                const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.verify2fa, { tempToken: mapTempToken, code });
                 // [1A-FU2-S-M2] success marker is `data.success` (cookies set).
                 if (res.ok && data.success) {
                     await completeMapLogin(data);
@@ -2359,12 +2200,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             btn.disabled = true;
             hideMapErrors();
             try {
-                const res = await fetch('/api/auth/confirm-2fa', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ tempToken: mapTempToken, code })
-                });
-                const data = await res.json();
+                const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.confirm2fa, { tempToken: mapTempToken, code });
                 // [1A-FU2-S-M2] success marker is `data.success` (cookies set).
                 if (res.ok && data.success) {
                     await completeMapLogin(data);
