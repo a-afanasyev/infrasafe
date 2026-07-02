@@ -12,6 +12,35 @@ document.addEventListener("DOMContentLoaded", function () {
     const bulkDeleteEndpoint = (window.SectionId && window.SectionId.bulkDeleteEndpoint) ||
         (() => null);
 
+    // [R2-30] Double-submit guard. Wraps an async submit handler so the form's
+    // submit button is disabled for the duration of the request and re-enabled in
+    // finally (success OR error) — a slow POST no longer lets an impatient double
+    // click create duplicate rows. A re-entrant submit while in flight is dropped.
+    function withSubmitGuard(handler) {
+        return async function (e) {
+            const form = e && e.target;
+            const btn = form && form.querySelector('button[type="submit"], input[type="submit"], button:not([type])');
+            if (btn) {
+                if (btn.dataset.submitting === '1') { if (e) e.preventDefault(); return; }
+                btn.dataset.submitting = '1';
+                btn.disabled = true;
+            }
+            try {
+                return await handler.call(this, e);
+            } finally {
+                if (btn) { btn.dataset.submitting = '0'; btn.disabled = false; }
+            }
+        };
+    }
+
+    // [R2-30] Register a submit handler on a form by id, wrapped in the
+    // double-submit guard. The close paren/semicolon stays `});` so call sites
+    // read exactly like the addEventListener they replace.
+    function guardSubmit(formId, handler) {
+        const form = document.getElementById(formId);
+        if (form) form.addEventListener('submit', withSubmitGuard(handler));
+    }
+
     // Переменные для пагинации всех сущностей
     const pagination = {
         buildings: { page: 1, limit: 10, total: 0 },
@@ -2143,7 +2172,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     // Обработчик формы редактирования трансформаторов
-    document.getElementById('edit-transformer-form').addEventListener('submit', async function(e) {
+    guardSubmit('edit-transformer-form', async function(e) {
         e.preventDefault();
 
         const id = document.getElementById('edit-transformer-id').value;
@@ -2193,7 +2222,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // NaN→null wipe risk; deleted instead of guarded (YAGNI).
 
     // Обработчик формы редактирования источников воды
-    document.getElementById('edit-water-source-form').addEventListener('submit', async function(e) {
+    guardSubmit('edit-water-source-form', async function(e) {
         e.preventDefault();
 
         const id = document.getElementById('edit-water-source-id').value;
@@ -2236,7 +2265,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // Обработчик формы редактирования источников тепла
-    document.getElementById('edit-heat-source-form').addEventListener('submit', async function(e) {
+    guardSubmit('edit-heat-source-form', async function(e) {
         e.preventDefault();
 
         const id = document.getElementById('edit-heat-source-id').value;
@@ -2633,7 +2662,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // ОБРАБОТЧИК ФОРМЫ ДОБАВЛЕНИЯ ЗДАНИЯ
     // ===============================================
 
-    document.getElementById('add-building-form').addEventListener('submit', async function(e) {
+    guardSubmit('add-building-form', async function(e) {
         e.preventDefault();
 
         const data = {
@@ -2694,7 +2723,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // ОБРАБОТЧИК ФОРМЫ ДОБАВЛЕНИЯ КОНТРОЛЛЕРА
     // ===============================================
 
-    document.getElementById('add-controller-form').addEventListener('submit', async function(e) {
+    guardSubmit('add-controller-form', async function(e) {
         e.preventDefault();
 
         const data = {
@@ -2736,7 +2765,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // Обработчик формы добавления метрики
-    document.getElementById('add-metric-form').addEventListener('submit', async function(e) {
+    guardSubmit('add-metric-form', async function(e) {
         e.preventDefault();
 
         const data = {
@@ -2838,7 +2867,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // ОБРАБОТЧИК ФОРМЫ ДОБАВЛЕНИЯ ТРАНСФОРМАТОРА
     // ===============================================
 
-    document.getElementById('add-transformer-form').addEventListener('submit', async function(e) {
+    guardSubmit('add-transformer-form', async function(e) {
         e.preventDefault();
 
         const data = {
@@ -2980,8 +3009,8 @@ document.addEventListener("DOMContentLoaded", function () {
         const newForm = form.cloneNode(true);
         form.parentNode.replaceChild(newForm, form);
 
-        // Добавляем обработчик сохранения
-        newForm.addEventListener('submit', async (e) => {
+        // Добавляем обработчик сохранения ([R2-30] guarded against double-submit)
+        newForm.addEventListener('submit', withSubmitGuard(async (e) => {
             e.preventDefault();
 
             const formData = new FormData(newForm);
@@ -3006,7 +3035,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 console.error('Error saving:', error);
                 showToast('Ошибка сохранения: ' + error.message, 'error');
             }
-        });
+        }));
 
         // Добавляем обработчик отмены
         // ИСПРАВЛЕНИЕ XSS: Замена onclick на addEventListener для CSP compliance
@@ -3100,7 +3129,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     // Обработчик формы редактирования здания
-    document.getElementById('edit-building-form').addEventListener('submit', async (e) => {
+    guardSubmit('edit-building-form', async (e) => {
         e.preventDefault();
         const id = document.getElementById('edit-building-id').value;
 
