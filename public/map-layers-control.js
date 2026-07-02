@@ -736,8 +736,7 @@ class MapLayersControl {
         const managementCompany = this.escapeHTML(building.management_company || 'Не указана');
         const controllerSerial = building.controller_serial ? this.escapeHTML(building.controller_serial) : '';
         const controllerStatus = building.controller_status ? this.escapeHTML(building.controller_status) : '';
-        const buildingId = this.escapeHTML(String(building.building_id || ''));
-        
+
         // Форматируем метрики безопасно
         const formatMetric = (value, suffix = '') => {
             if (value === null || value === undefined) return '';
@@ -828,13 +827,14 @@ class MapLayersControl {
                     `}
                 </div>
                 ${metricsHTML}
-                <div class="building-actions">
-                    ${hasController ? `<button onclick="mapLayersControl.showBuildingMetrics('${buildingId}')" class="btn-metrics">📊 Показать метрики</button>` : ''}
-                    <button onclick="mapLayersControl.showBuildingDetails('${buildingId}')" class="btn-details">ℹ️ Подробности</button>
-                </div>
             </div>
         `;
-        
+        // [R2-11] Removed the "Показать метрики"/"Подробности" action buttons:
+        // they used inline onclick (stripped by sanitizePopup/DOMPurify and a CSP
+        // violation) calling showBuildingMetrics/showBuildingDetails, which were
+        // never implemented. The metrics + full details already render inline
+        // above (${metricsHTML} + the info rows), so the buttons were both broken
+        // and redundant.
         // Санитизируем весь popup контент перед возвратом
         return this.sanitizePopup(popupHTML);
     }
