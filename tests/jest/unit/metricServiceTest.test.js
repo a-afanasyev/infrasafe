@@ -236,21 +236,8 @@ describe('MetricService', () => {
             );
         });
 
-        test('detects anomalies when voltage is out of range', async () => {
-            const metricData = { controller_id: 1, voltage: 300 };
-            Controller.findById.mockResolvedValue(mockController);
-            Metric.create.mockResolvedValue({ metric_id: 2, ...metricData, anomalies: ['voltage_out_of_range:300'] });
-            Controller.updateStatus.mockResolvedValue({});
-
-            const result = await metricService.createMetric(metricData);
-
-            // The create is called with the data that includes anomalies
-            expect(Metric.create).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    anomalies: expect.arrayContaining([expect.stringContaining('voltage_out_of_range')])
-                })
-            );
-        });
+        // [R2-06] Removed "detects anomalies when voltage is out of range" — the
+        // detectAnomalies path was deleted (phantom fields, unpersisted output).
     });
 
     describe('processTelemetry', () => {
@@ -517,77 +504,27 @@ describe('MetricService', () => {
         });
     });
 
-    describe('detectAnomalies', () => {
-        test('detects voltage out of range', () => {
-            const anomalies = metricService.detectAnomalies({ voltage: 300 });
-
-            expect(anomalies).toContainEqual(expect.stringContaining('voltage_out_of_range'));
+    // [R2-06] detectAnomalies removed (phantom fields, unpersisted output).
+    // aggregateMetrics kept but fixed to the real numeric schema fields.
+    describe('aggregateMetrics [R2-06: real fields]', () => {
+        test('returns count 0 for empty/null input', () => {
+            expect(metricService.aggregateMetrics([]).count).toBe(0);
+            expect(metricService.aggregateMetrics(null).count).toBe(0);
         });
 
-        test('detects amperage out of range', () => {
-            const anomalies = metricService.detectAnomalies({ amperage: 150 });
-
-            expect(anomalies).toContainEqual(expect.stringContaining('amperage_out_of_range'));
-        });
-
-        test('detects temperature out of range', () => {
-            const anomalies = metricService.detectAnomalies({ temperature: 100 });
-
-            expect(anomalies).toContainEqual(expect.stringContaining('temperature_out_of_range'));
-        });
-
-        test('detects humidity out of range', () => {
-            const anomalies = metricService.detectAnomalies({ humidity: 110 });
-
-            expect(anomalies).toContainEqual(expect.stringContaining('humidity_out_of_range'));
-        });
-
-        test('returns empty array when all values are normal', () => {
-            const anomalies = metricService.detectAnomalies({
-                voltage: 220,
-                amperage: 10,
-                temperature: 25,
-                humidity: 50
-            });
-
-            expect(anomalies).toHaveLength(0);
-        });
-
-        test('returns empty array when no thresholded fields present', () => {
-            const anomalies = metricService.detectAnomalies({ controller_id: 1 });
-
-            expect(anomalies).toHaveLength(0);
-        });
-    });
-
-    describe('aggregateMetrics', () => {
-        test('returns empty aggregation for empty array', () => {
-            const result = metricService.aggregateMetrics([]);
-
-            expect(result.count).toBe(0);
-            expect(result.voltage).toBeNull();
-        });
-
-        test('returns empty aggregation for null', () => {
-            const result = metricService.aggregateMetrics(null);
-
-            expect(result.count).toBe(0);
-        });
-
-        test('aggregates metrics correctly', () => {
+        test('aggregates REAL numeric fields (electricity_ph1, air_temp), not phantom voltage', () => {
             const metrics = [
-                { voltage: 220, amperage: 10, timestamp: '2026-01-01T12:00:00Z' },
-                { voltage: 230, amperage: 15, timestamp: '2026-01-01T11:00:00Z' }
+                { electricity_ph1: 220, air_temp: 20, timestamp: '2026-01-01T12:00:00Z' },
+                { electricity_ph1: 230, air_temp: 24, timestamp: '2026-01-01T11:00:00Z' }
             ];
 
             const result = metricService.aggregateMetrics(metrics);
 
             expect(result.count).toBe(2);
-            expect(result.voltage.min).toBe(220);
-            expect(result.voltage.max).toBe(230);
-            expect(result.voltage.avg).toBe(225);
-            expect(result.amperage.min).toBe(10);
-            expect(result.amperage.max).toBe(15);
+            expect(result.electricity_ph1).toEqual({ min: 220, max: 230, avg: 225, count: 2 });
+            expect(result.air_temp).toEqual({ min: 20, max: 24, avg: 22, count: 2 });
+            // Phantom field is no longer part of the shape.
+            expect(result.voltage).toBeUndefined();
         });
     });
 
