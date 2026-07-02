@@ -77,15 +77,22 @@ const validateControllerCreate = [
 // [AUD-031] validateMetricCreate removed — it was never mounted (POST /metrics
 // validates in metricService, not via this chain). Dead since introduction.
 
-// Валидация ID параметра
-const validateIdParam = [
-    param('id').isInt().withMessage('ID должен быть целым числом'),
+// [R2-16] Generalized integer path-param validator factory. A non-integer path
+// param otherwise reaches pg as-is → 22P02 → 500 instead of a clean 400. Use for
+// ANY numeric route param — validateIdParam below only matches the literal `:id`,
+// so routes with `:alertId` / `:transformerId` need validateIntParam('alertId').
+const validateIntParam = (name = 'id') => [
+    param(name).isInt().withMessage(`Параметр ${name} должен быть целым числом`),
     handleValidationErrors
 ];
+
+// Валидация ID параметра (`:id`). Kept as a named export for existing call sites.
+const validateIdParam = validateIntParam('id');
 
 module.exports = {
     validateBuildingCreate,
     validateControllerCreate,
     validateIdParam,
+    validateIntParam,
     isXSSFree
 };

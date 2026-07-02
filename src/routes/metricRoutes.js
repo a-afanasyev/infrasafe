@@ -2,6 +2,7 @@ const express = require('express');
 const metricController = require('../controllers/metricController');
 const { isAdmin } = require('../middleware/auth');
 const { applyCrudRateLimit } = require('../middleware/rateLimiter');
+const { validateIntParam } = require('../middleware/validators');
 const router = express.Router();
 
 /**
@@ -331,6 +332,6 @@ router.post('/', applyCrudRateLimit, isAdmin, metricController.createMetric);
  *       404:
  *         description: Метрика не найдена
  */
-router.delete('/:id', applyCrudRateLimit, isAdmin, metricController.deleteMetric);
+router.delete('/:id', applyCrudRateLimit, isAdmin, validateIntParam('id'), metricController.deleteMetric);
 
 module.exports = router;

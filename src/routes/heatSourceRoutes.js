@@ -3,6 +3,7 @@ const router = express.Router();
 const heatSourceController = require('../controllers/heatSourceController');
 const { applyCrudRateLimit } = require('../middleware/rateLimiter');
 const { isAdmin } = require('../middleware/auth');
+const { validateIntParam } = require('../middleware/validators');
 
 /**
  * @swagger
@@ -150,7 +151,7 @@ router.post('/', applyCrudRateLimit, isAdmin, heatSourceController.create);
  *       404:
  *         description: Источник не найден
  */
-router.put('/:id', applyCrudRateLimit, isAdmin, heatSourceController.update);
+router.put('/:id', applyCrudRateLimit, isAdmin, validateIntParam('id'), heatSourceController.update);
 
 /**
  * @swagger
@@ -170,6 +171,6 @@ router.put('/:id', applyCrudRateLimit, isAdmin, heatSourceController.update);
  *       404:
  *         description: Источник не найден
  */
-router.delete('/:id', applyCrudRateLimit, isAdmin, heatSourceController.remove);
+router.delete('/:id', applyCrudRateLimit, isAdmin, validateIntParam('id'), heatSourceController.remove);
 
 module.exports = router;

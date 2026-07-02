@@ -105,11 +105,16 @@ const findBuildingsInRadius = async (req, res, next) => {
             return sendError(res, 400, 'Latitude and longitude are required');
         }
 
-        const result = await buildingService.findBuildingsInRadius(
-            parseFloat(latitude),
-            parseFloat(longitude),
-            parseInt(radius)
-        );
+        // [R2-16] Guard non-numeric query params — a NaN would otherwise reach pg
+        // (22P02 → 500) instead of a clean 400.
+        const lat = parseFloat(latitude);
+        const lng = parseFloat(longitude);
+        const radiusMeters = parseInt(radius, 10);
+        if (Number.isNaN(lat) || Number.isNaN(lng) || Number.isNaN(radiusMeters)) {
+            return sendError(res, 400, 'latitude, longitude and radius must be numeric');
+        }
+
+        const result = await buildingService.findBuildingsInRadius(lat, lng, radiusMeters);
 
         return res.status(200).json(result);
     } catch (error) {

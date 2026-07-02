@@ -191,6 +191,14 @@ describe('API Integration Tests', () => {
 
             expect(response.status).toBe(200);
         });
+
+        test('DELETE /api/buildings/:id - нечисловой id → 400, не 500 (R2-16)', async () => {
+            const response = await request(app)
+                .delete('/api/buildings/not-a-number')
+                .set('Authorization', `Bearer ${forgeAdminToken()}`);
+
+            expect(response.status).toBe(400);
+        });
     });
 
     describe('Controllers Endpoints', () => {
