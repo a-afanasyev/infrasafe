@@ -134,6 +134,13 @@ class AlertController {
                 return sendError(res, 400, 'Обязательные поля: type, infrastructure_id, infrastructure_type, severity, message');
             }
 
+            // [R2-23 follow-up] typeof guard — a duplicated/array body value
+            // (e.g. severity=['CRITICAL']) is truthy, so it slips past the check
+            // above; .toUpperCase()/.toLowerCase() below would then throw → 500.
+            if (typeof severity !== 'string' || typeof infrastructure_type !== 'string') {
+                return sendError(res, 400, 'Поля severity и infrastructure_type должны быть строками');
+            }
+
             // Валидация severity
             const validSeverities = ['INFO', 'WARNING', 'CRITICAL'];
             if (!validSeverities.includes(severity.toUpperCase())) {
