@@ -95,7 +95,9 @@ describe('Database module', () => {
             const connectCall = mockPoolInstance.on.mock.calls.find(call => call[0] === 'connect');
             const connectHandler = connectCall[1];
 
-            const mockConnClient = { query: jest.fn() };
+            // [R2-27] handler now guards the query with .catch(), so query must
+            // return a promise.
+            const mockConnClient = { query: jest.fn().mockResolvedValue({}) };
             connectHandler(mockConnClient);
 
             expect(mockConnClient.query).toHaveBeenCalledWith('SET statement_timeout = 30000');

@@ -66,6 +66,31 @@ function validateEnv() {
         throw new Error(message);
     }
 
+    // [R2-26] Presence alone is not enough — a short/low-entropy secret (e.g.
+    // JWT_SECRET=1) passes the filter above but is trivially brute-forceable.
+    // Enforce a minimum length for crypto secrets in production.
+    if (isProduction) {
+        const MIN_SECRET_LEN = 32;
+        // JWT/TOTP secrets are always required; the UK webhook HMAC keys are
+        // optional (integration may be off) so they're only length-checked when set
+        // — a short HMAC key would let an attacker brute-force it and forge inbound
+        // UK webhooks (building.deleted etc.).
+        const secretVars = [
+            'JWT_SECRET', 'JWT_REFRESH_SECRET', 'JWT_2FA_SECRET', 'TOTP_ENCRYPTION_KEY',
+            'INFRASAFE_WEBHOOK_SECRET', 'UK_WEBHOOK_SECRET',
+        ];
+        const weak = secretVars.filter(
+            name => process.env[name] && process.env[name].length < MIN_SECRET_LEN
+        );
+        if (weak.length > 0) {
+            const message =
+                `Weak secrets in production (min ${MIN_SECRET_LEN} chars): ${weak.join(', ')}. ` +
+                'Generate with e.g. `openssl rand -base64 32`.';
+            logger.error(message);
+            throw new Error(message);
+        }
+    }
+
     // UK integration env vars: warn if missing (integration is optional,
     // defaults to disabled in DB, but if enabled without these it fails silently).
     //

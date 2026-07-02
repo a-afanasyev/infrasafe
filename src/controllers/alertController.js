@@ -15,12 +15,14 @@ class AlertController {
             if (status && !validStatuses.includes(status)) {
                 return res.status(400).json({ success: false, message: 'Недопустимый статус' });
             }
+            // [R2-23] typeof guard: a duplicated query param (?severity=a&severity=b)
+            // arrives as an array in Express → .toUpperCase() would throw → 500.
             const validSeverities = ['INFO', 'WARNING', 'CRITICAL'];
-            if (severity && !validSeverities.includes(severity.toUpperCase())) {
+            if (severity !== undefined && (typeof severity !== 'string' || !validSeverities.includes(severity.toUpperCase()))) {
                 return res.status(400).json({ success: false, message: 'Недопустимый уровень важности' });
             }
             const validInfraTypes = ['transformer', 'controller', 'water_source', 'heat_source'];
-            if (infrastructure_type && !validInfraTypes.includes(infrastructure_type.toLowerCase())) {
+            if (infrastructure_type !== undefined && (typeof infrastructure_type !== 'string' || !validInfraTypes.includes(infrastructure_type.toLowerCase()))) {
                 return res.status(400).json({ success: false, message: 'Недопустимый тип инфраструктуры' });
             }
 

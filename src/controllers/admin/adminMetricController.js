@@ -42,6 +42,9 @@ async function batchMetricsOperation(req, res, next) {
         if (!action || !Array.isArray(ids) || ids.length === 0) {
             return next(createError('Action and a non-empty ids array are required', 400));
         }
+        if (ids.length > 1000) {
+            return next(createError('Too many ids in one batch (max 1000)', 400));
+        }
         if (!ids.every((id) => Number.isInteger(id))) {
             return next(createError('ids must be an array of integers', 400));
         }

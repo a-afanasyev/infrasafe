@@ -1,7 +1,7 @@
 const express = require('express');
 const buildingController = require('../controllers/buildingController');
 const { applyCrudRateLimit, applyAnalyticsRateLimit } = require('../middleware/rateLimiter');
-const { validateBuildingCreate } = require('../middleware/validators');
+const { validateBuildingCreate, validateIntParam } = require('../middleware/validators');
 const { isAdmin } = require('../middleware/auth');
 const router = express.Router();
 
@@ -186,7 +186,7 @@ router.get('/statistics', applyAnalyticsRateLimit, buildingController.getBuildin
  *       404:
  *         description: Здание не найдено
  */
-router.get('/:id', applyAnalyticsRateLimit, buildingController.getBuildingById);
+router.get('/:id', applyAnalyticsRateLimit, validateIntParam('id'), buildingController.getBuildingById);
 
 /**
  * @swagger
@@ -271,7 +271,7 @@ router.post('/', applyCrudRateLimit, isAdmin, validateBuildingCreate, buildingCo
  *       403:
  *         description: Недействительный токен
  */
-router.put('/:id', applyCrudRateLimit, isAdmin, validateBuildingCreate, buildingController.updateBuilding);
+router.put('/:id', applyCrudRateLimit, isAdmin, validateIntParam('id'), validateBuildingCreate, buildingController.updateBuilding);
 
 /**
  * @swagger
@@ -300,6 +300,6 @@ router.put('/:id', applyCrudRateLimit, isAdmin, validateBuildingCreate, building
  *       403:
  *         description: Недействительный токен
  */
-router.delete('/:id', applyCrudRateLimit, isAdmin, buildingController.deleteBuilding);
+router.delete('/:id', applyCrudRateLimit, isAdmin, validateIntParam('id'), buildingController.deleteBuilding);
 
 module.exports = router;

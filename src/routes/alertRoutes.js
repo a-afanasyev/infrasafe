@@ -3,6 +3,7 @@ const router = express.Router();
 const alertController = require('../controllers/alertController');
 const { isAdmin } = require('../middleware/auth');
 const { applyAnalyticsRateLimit, applyAdminRateLimit, applyCrudRateLimit } = require('../middleware/rateLimiter');
+const { validateIntParam } = require('../middleware/validators');
 
 /**
  * @swagger
@@ -345,7 +346,7 @@ router.post('/', applyCrudRateLimit, isAdmin, alertController.createAlert);
  *                 data:
  *                   $ref: '#/components/schemas/Alert'
  */
-router.patch('/:alertId/acknowledge', applyCrudRateLimit, isAdmin, alertController.acknowledgeAlert);
+router.patch('/:alertId/acknowledge', applyCrudRateLimit, isAdmin, validateIntParam('alertId'), alertController.acknowledgeAlert);
 
 /**
  * @swagger
@@ -377,7 +378,7 @@ router.patch('/:alertId/acknowledge', applyCrudRateLimit, isAdmin, alertControll
  *                 data:
  *                   $ref: '#/components/schemas/Alert'
  */
-router.patch('/:alertId/resolve', applyCrudRateLimit, isAdmin, alertController.resolveAlert);
+router.patch('/:alertId/resolve', applyCrudRateLimit, isAdmin, validateIntParam('alertId'), alertController.resolveAlert);
 
 // ───────────────────────────────────────────────────────────────────────
 // [Sprint 10 PR-4] Suppression endpoints — operator "mute this sensor"
@@ -413,7 +414,7 @@ router.patch('/:alertId/resolve', applyCrudRateLimit, isAdmin, alertController.r
  *       400: { description: Невалидные параметры }
  *       404: { description: Алерт не найден }
  */
-router.post('/:alertId/suppress', applyCrudRateLimit, isAdmin, alertController.suppressAlert);
+router.post('/:alertId/suppress', applyCrudRateLimit, isAdmin, validateIntParam('alertId'), alertController.suppressAlert);
 
 /**
  * @swagger
@@ -459,7 +460,7 @@ router.get('/suppressions', applyCrudRateLimit, isAdmin, alertController.listSup
  *       200: { description: Подавление снято }
  *       404: { description: Не найдено или уже снято }
  */
-router.delete('/suppressions/:id', applyCrudRateLimit, isAdmin, alertController.clearSuppression);
+router.delete('/suppressions/:id', applyCrudRateLimit, isAdmin, validateIntParam('id'), alertController.clearSuppression);
 
 // === НАСТРОЙКИ АЛЕРТОВ ===
 

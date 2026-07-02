@@ -14,7 +14,11 @@ class Building {
     static async findAll(page = 1, limit = 10, sort = 'building_id', order = 'asc') {
         try {
             const offset = (page - 1) * limit;
-            const validOrder = ['asc', 'desc'].includes(order.toLowerCase()) ? order : 'asc';
+            // [R2-23] typeof guard — a duplicated ?order= arrives as an array → .toLowerCase() throws.
+            // Pass the NORMALIZED orderStr through (not the raw `order`), else an array
+            // still reaches validateSortOrder → throws → silently resets the sort column.
+            const orderStr = typeof order === 'string' ? order.toLowerCase() : 'asc';
+            const validOrder = ['asc', 'desc'].includes(orderStr) ? orderStr : 'asc';
 
             // ИСПРАВЛЕНИЕ SQL INJECTION: Валидация параметров сортировки
             const { validateSortOrder } = require('../utils/queryValidation');

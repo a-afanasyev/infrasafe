@@ -2,6 +2,7 @@ const express = require('express');
 const metricController = require('../controllers/metricController');
 const { isAdmin } = require('../middleware/auth');
 const { applyCrudRateLimit } = require('../middleware/rateLimiter');
+const { validateIntParam } = require('../middleware/validators');
 const router = express.Router();
 
 /**
@@ -187,7 +188,7 @@ router.delete('/cleanup', isAdmin, applyCrudRateLimit, metricController.cleanupO
  *       400:
  *         description: Неверные параметры запроса
  */
-router.get('/controller/:controllerId/aggregated', metricController.getAggregatedMetrics);
+router.get('/controller/:controllerId/aggregated', validateIntParam('controllerId'), metricController.getAggregatedMetrics);
 
 /**
  * @swagger
@@ -220,7 +221,7 @@ router.get('/controller/:controllerId/aggregated', metricController.getAggregate
  *       404:
  *         description: Контроллер не найден
  */
-router.get('/controller/:controllerId', metricController.getMetricsByControllerId);
+router.get('/controller/:controllerId', validateIntParam('controllerId'), metricController.getMetricsByControllerId);
 
 /**
  * @swagger
@@ -241,7 +242,7 @@ router.get('/controller/:controllerId', metricController.getMetricsByControllerI
  *       404:
  *         description: Метрика не найдена
  */
-router.get('/:id', metricController.getMetricById);
+router.get('/:id', validateIntParam('id'), metricController.getMetricById);
 
 /**
  * @swagger
@@ -331,6 +332,6 @@ router.post('/', applyCrudRateLimit, isAdmin, metricController.createMetric);
  *       404:
  *         description: Метрика не найдена
  */
-router.delete('/:id', applyCrudRateLimit, isAdmin, metricController.deleteMetric);
+router.delete('/:id', applyCrudRateLimit, isAdmin, validateIntParam('id'), metricController.deleteMetric);
 
 module.exports = router;

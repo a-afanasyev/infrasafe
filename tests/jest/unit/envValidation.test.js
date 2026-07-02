@@ -43,11 +43,12 @@ describe('validateEnv — JWT_2FA_SECRET production requirement (SEC-34h)', () =
         process.env.DB_NAME = 'infrasafe';
         process.env.DB_USER = 'infrasafe_runtime';
         process.env.DB_PASSWORD = 'pw';
-        process.env.JWT_SECRET = 'access-secret';
-        process.env.JWT_REFRESH_SECRET = 'refresh-secret';
-        process.env.TOTP_ENCRYPTION_KEY = 'totp-key';
+        // [R2-26] Secrets must be >=32 chars in production.
+        process.env.JWT_SECRET = 'access-secret-0123456789abcdef-XYZ';
+        process.env.JWT_REFRESH_SECRET = 'refresh-secret-0123456789abcdef-XY';
+        process.env.TOTP_ENCRYPTION_KEY = 'totp-key-0123456789abcdefghij-ZZZZ';
         process.env.CORS_ORIGINS = 'https://infrasafe.uz';
-        process.env.JWT_2FA_SECRET = 'distinct-2fa-secret';
+        process.env.JWT_2FA_SECRET = 'distinct-2fa-secret-0123456789abcd';
     }
 
     afterEach(() => {
@@ -70,6 +71,12 @@ describe('validateEnv — JWT_2FA_SECRET production requirement (SEC-34h)', () =
     it('passes in production when JWT_2FA_SECRET is present and differs from JWT_SECRET', () => {
         setValidProdEnv();
         expect(() => validateEnv()).not.toThrow();
+    });
+
+    it('[R2-26] throws in production when a crypto secret is shorter than 32 chars', () => {
+        setValidProdEnv();
+        process.env.JWT_SECRET = 'short';
+        expect(() => validateEnv()).toThrow(/Weak secrets/);
     });
 
     it('does not require JWT_2FA_SECRET outside production (dev/test fallback)', () => {

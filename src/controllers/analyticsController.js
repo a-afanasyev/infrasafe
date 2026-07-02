@@ -43,14 +43,20 @@ class AnalyticsController {
                 transformers = transformers.filter(t => t.status === status);
             }
 
+            // [R2-16] Skip the filter when the bound is non-numeric — a NaN
+            // comparison is always false and would silently drop EVERY row.
             if (min_load_percent !== undefined) {
                 const minLoad = parseFloat(min_load_percent);
-                transformers = transformers.filter(t => (t.load_percent || 0) >= minLoad);
+                if (!Number.isNaN(minLoad)) {
+                    transformers = transformers.filter(t => (t.load_percent || 0) >= minLoad);
+                }
             }
 
             if (max_load_percent !== undefined) {
                 const maxLoad = parseFloat(max_load_percent);
-                transformers = transformers.filter(t => (t.load_percent || 0) <= maxLoad);
+                if (!Number.isNaN(maxLoad)) {
+                    transformers = transformers.filter(t => (t.load_percent || 0) <= maxLoad);
+                }
             }
 
             if (overloaded_only === 'true') {
@@ -102,12 +108,13 @@ class AnalyticsController {
 
             const lat = parseFloat(latitude);
             const lng = parseFloat(longitude);
-            const radiusMeters = radius ? parseInt(radius) : 5000;
+            const radiusMeters = radius ? parseInt(radius, 10) : 5000;
 
-            if (isNaN(lat) || isNaN(lng)) {
+            // [R2-16] Include radius in the guard — a NaN radius would reach pg (500).
+            if (isNaN(lat) || isNaN(lng) || isNaN(radiusMeters)) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Некорректные координаты'
+                    message: 'Некорректные координаты или радиус'
                 });
             }
 
@@ -135,8 +142,16 @@ class AnalyticsController {
             const { transformerId } = req.params;
             const { max_distance, limit } = req.query;
 
-            const maxDistance = max_distance ? parseInt(max_distance) : 1000;
-            const limitCount = limit ? parseInt(limit) : 50;
+            const maxDistance = max_distance ? parseInt(max_distance, 10) : 1000;
+            const limitCount = limit ? parseInt(limit, 10) : 50;
+
+            // [R2-16] Reject non-numeric query params before they reach pg (500).
+            if (Number.isNaN(maxDistance) || Number.isNaN(limitCount)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'max_distance и limit должны быть числами'
+                });
+            }
 
             const buildings = await analyticsService.findNearestBuildings(
                 transformerId,
@@ -182,9 +197,10 @@ class AnalyticsController {
             const { transformerId } = req.params;
             const { hours } = req.query;
 
-            const forecastHours = hours ? parseInt(hours) : 24;
+            const forecastHours = hours ? parseInt(hours, 10) : 24;
 
-            if (forecastHours < 1 || forecastHours > 168) { // Максимум неделя
+            // [R2-16] isNaN first — a NaN slips through `< 1 || > 168` (both false).
+            if (Number.isNaN(forecastHours) || forecastHours < 1 || forecastHours > 168) { // Максимум неделя
                 return res.status(400).json({
                     success: false,
                     message: 'Количество часов должно быть от 1 до 168'

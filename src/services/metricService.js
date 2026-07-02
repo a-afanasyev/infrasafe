@@ -192,13 +192,11 @@ class MetricService {
                 }
             }
 
-            // Проверяем на аномалии
-            const anomalies = this.detectAnomalies(metricData);
-            if (anomalies.length > 0) {
-                metricData.anomalies = anomalies;
-                logger.warn(`Обнаружены аномалии в метрике для контроллера ${controllerId}: ${anomalies.join(', ')}`);
-            }
-
+            // [R2-06] Removed detectAnomalies: it inspected phantom fields
+            // (voltage/amperage/temperature) that don't exist in the metrics schema,
+            // so it never fired on real telemetry; even if it had, `anomalies` is
+            // neither a column nor read anywhere. The live anomaly path is the
+            // event-bus checkers (checkVoltage/checkLeak/checkHeating).
             const newMetric = await Metric.create(metricData);
 
             // Обновляем статус контроллера на online при получении метрики
@@ -471,60 +469,20 @@ class MetricService {
         }
     }
 
-    // Обнаружение аномалий в метриках
-    detectAnomalies(data) {
-        const anomalies = [];
+    // [R2-06] Removed detectAnomalies — it inspected phantom fields
+    // (voltage/amperage/temperature, absent from the metrics schema), never fired on
+    // real telemetry, and its `anomalies` output was neither persisted nor read.
+    // Live anomaly detection is the event-bus checker path (checkVoltage/checkLeak/…).
 
-        // Проверка напряжения
-        if (data.voltage !== undefined) {
-            const { min, max } = this.thresholds.voltage;
-            if (data.voltage < min || data.voltage > max) {
-                anomalies.push(`voltage_out_of_range:${data.voltage}`);
-            }
-        }
-
-        // Проверка тока
-        if (data.amperage !== undefined) {
-            const { min, max } = this.thresholds.amperage;
-            if (data.amperage < min || data.amperage > max) {
-                anomalies.push(`amperage_out_of_range:${data.amperage}`);
-            }
-        }
-
-        // Проверка температуры
-        if (data.temperature !== undefined) {
-            const { min, max } = this.thresholds.temperature;
-            if (data.temperature < min || data.temperature > max) {
-                anomalies.push(`temperature_out_of_range:${data.temperature}`);
-            }
-        }
-
-        // Проверка влажности
-        if (data.humidity !== undefined) {
-            const { min, max } = this.thresholds.humidity;
-            if (data.humidity < min || data.humidity > max) {
-                anomalies.push(`humidity_out_of_range:${data.humidity}`);
-            }
-        }
-
-        return anomalies;
-    }
-
-    // Агрегация метрик
+    // Агрегация метрик. [R2-06] Fixed to aggregate the REAL numeric fields
+    // (NUMERIC_METRIC_FIELDS) — it previously keyed off phantom voltage/amperage/
+    // power/temperature and returned all-null. Consumed by getAggregatedMetrics
+    // (GET /metrics/controller/:id/aggregated).
     aggregateMetrics(metrics) {
         if (!metrics || metrics.length === 0) {
-            return {
-                count: 0,
-                period: null,
-                voltage: null,
-                amperage: null,
-                power: null,
-                temperature: null,
-                humidity: null
-            };
+            return { count: 0, period: null };
         }
 
-        const numericFields = ['voltage', 'amperage', 'power', 'temperature', 'humidity'];
         const aggregated = {
             count: metrics.length,
             period: {
@@ -533,21 +491,20 @@ class MetricService {
             }
         };
 
-        numericFields.forEach(field => {
+        NUMERIC_METRIC_FIELDS.forEach(field => {
             const values = metrics
                 .map(m => m[field])
-                .filter(v => v !== null && v !== undefined && !isNaN(v));
+                .filter(v => v !== null && v !== undefined && !isNaN(v))
+                .map(Number);
 
-            if (values.length > 0) {
-                aggregated[field] = {
+            aggregated[field] = values.length > 0
+                ? {
                     min: Math.min(...values),
                     max: Math.max(...values),
                     avg: values.reduce((sum, v) => sum + v, 0) / values.length,
                     count: values.length
-                };
-            } else {
-                aggregated[field] = null;
-            }
+                }
+                : null;
         });
 
         return aggregated;
