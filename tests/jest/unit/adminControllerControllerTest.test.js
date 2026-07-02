@@ -101,13 +101,28 @@ describe('AdminControllerController', () => {
         });
     });
 
-    describe('batchControllersOperation', () => {
-        test('returns success with affected count', async () => {
+    describe('batchControllersOperation [R2-03: real batch delete, delete-only]', () => {
+        test('delete → runs batchDelete and returns affected rowCount', async () => {
+            db.query.mockResolvedValue({ rows: [{ controller_id: 1 }, { controller_id: 2 }], rowCount: 2 });
             req.body = { action: 'delete', ids: [1, 2] };
             await batchControllersOperation(req, res, next);
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({ success: true, affected: 2 })
             );
+            expect(db.query.mock.calls[0][0]).toMatch(/DELETE FROM controllers/);
+        });
+
+        test('missing ids → 400 (no longer fakes success)', async () => {
+            req.body = { action: 'delete' };
+            await batchControllersOperation(req, res, next);
+            expect(res.json).not.toHaveBeenCalled();
+            expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
+        });
+
+        test('non-delete action → 501 (controllers has no updated_at → delete-only)', async () => {
+            req.body = { action: 'update', ids: [1] };
+            await batchControllersOperation(req, res, next);
+            expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 501 }));
         });
     });
 });

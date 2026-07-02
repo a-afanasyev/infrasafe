@@ -15,6 +15,84 @@
 > Обновлён 2026-06-07: **SEC-14/15 смержены** (PR #99 / `25c3679`) — immutable app-образ + extracted static (C-extract): убраны dev-watcher/nodemon+devDeps и `.:/app` bind-mount. CI docker-image job + image-composition green, 2313 тестов.
 > Обновлён 2026-06-09: **полный код-аудит (AUD-001..044)** — см. `AUDIT_REPORT.md` (корень) + секцию «Аудит кода 2026-06-09» ниже. Главное: **AUD-001 (P1)** — авто-reopen Sprint 10 мёртв (на `VERIFY_*` нет подписчиков, проверено по всей истории git); **AUD-002 (P1)** — миграции без раннера/чеклиста в деплое. Плюс ревизия бэклога: B-003 описание устарело (rate-limiter/кэш уже гибридные Redis-backed), SEC-34i устарел (`connect.sh` НЕ tracked), SEC-34 b/c/d пересекаются с AUD-031/032/033.
 > Обновлён 2026-06-07: **SEC-14/15 ЗАДЕПЛОЕНЫ на прод** через `update-production.sh` (HEAD `899d533` + guard-фикс симлинка `.env`). Прод-верификация: контейнер без `.env*`/`.git`/`scripts/`/`build/`, mount только `app_logs` (нет `.:/app`); процесс `npm start` (не nodemon), нет nodemon/esbuild; NODE_ENV=production; **qs@6.15.2** (SEC-34k dep-патч доехал с rebuild → закрыт); edge `/`,`/health` 200, `/api/buildings` 401, `/api/buildings-metrics` 200×6. **One-time миграция:** legacy `public/dist` был owned uid1001 → chown 1000:1000 (rename dir требует write на dir для `..`); первый publish сначала упал на этом → rollback сработал штатно (app вернулся, dist verify зелёный) → chown → redeploy ✓. Открыто: SEC-13 (HIGH), SEC-17/19..23/27/31/32 (MED), SEC-34 a–j (LOW).
+> **Обновлён 2026-07-02: повторный полный код-аудит (R2-01..R2-38)** — см. `AUDIT_REPORT.md` (корень) + секцию «Аудит кода 2026-07-02» ниже. **Новый P1 (R2-01, security): интернет-достижимый путь к деструктивной записи через публичный `/auth/register`** (в PUBLIC_ROUTES, без UI-регистрации) → any-auth JWT → мутации инфраструктуры + `POST /api/metrics` → реальные УК-тикеты. **Важно (адверсариальная перепроверка):** any-auth запись — задокументированный дизайн (`API_AUTH_MATRIX.md`, не пропущенный `isAdmin`), прошлый аудит НЕ пропустил его; эксплуатируемым делает публичный register. Дешёвый фикс — убрать register из allowlist (не 9 роутеров). Оба системных пункта июньского аудита (AUD-001 VERIFY_*, AUD-002 runner) подтверждены закрытыми. Остальное — P2/P3 техдолг.
+
+---
+
+## Статус на 2026-07-02 — повторный код-аудит (R2-01..R2-38)
+
+> 6 параллельных субагентов (архитектура/backend/frontend/dead-code/AppSec/практики), все P1-кандидаты
+> перепроверены оркестратором вручную по коду. Полный отчёт + scorecard + roadmap — в `AUDIT_REPORT.md`.
+> Здесь — только actionable-очередь. Скоры: арх 7 / код 7 / простота 6 / security 7 / практики 7.
+
+### ✅ Спринт 1 РЕАЛИЗОВАН (2026-07-02, ветка `fix/audit-2026-07-02-sprint1`)
+Security + честность API. Полный сьют зелёный (**150 suites / 2640 tests**), lint 0 errors.
+- **R2-01 DONE** — `/auth/register` под admin: убран из `PUBLIC_ROUTES` (`index.js`) **И** `isAdmin` на роут
+  (`authRoutes.js`) — обе правки, т.к. одна без другой недостаточна. Тест-fallout закрыт в том же коммите
+  (default-deny + api.test + csrf + security + globalSetup/e2eHelper/auth.e2e → admin-register через
+  `E2E_ADMIN_COOKIE`; dbMock sentinel user_id 999 = admin). Негативы «аноним→401 / user→403» добавлены.
+- **R2-02 DONE** — `isAdmin` на POST/PUT/DELETE(/PATCH) 9 роутеров (buildings/controllers/metrics/transformers/
+  lines/water-lines/water-sources/heat-sources/water-suppliers); GET остаётся any-auth; `/metrics/telemetry`
+  не тронут. `docs/API_AUTH_MATRIX.md` синхронизирован (write→JWT+Admin, register→JWT+Admin, allowlist дополнен).
+  Фронт-регресса нет (карта read-only, админка под admin-cookie — проверено grep'ом).
+- **R2-03 DONE** — batch-заглушки реализованы: `delete`→`adminService.batchDelete`; `metrics`/`controllers` нет
+  `updated_at` → delete-only, прочие actions → `501`; невалидные ids → `400`. Тесты переписаны.
+- **R2-13 DONE** — degraded-mode `logger.warn` (one-shot) в обоих Redis-catch лимитера; `webhookLimiter`
+  namespace `'uk-webhook'`.
+- **R2-21 DONE** — `power_transformers` убран из `adminService.ALLOWED_TABLES`.
+- **R2-17 DONE (edge, config-only)** — `X-Content-Type-Options: nosniff` переэмиттен в 3 static-локациях
+  (`nginx.production.conf`); деплой `nginx -t`+`reload` (проверка `curl -I` на проде).
+
+Остаётся из Спринта 1 плана — ничего (все P1+ближайшие quick-win закрыты). Ниже — Спринты 2-4 (открыто).
+
+### 🔴 P1 — взять первым (security, live)
+- **R2-01** [OWASP A01] — интернет-достижимый путь к деструктивной записи. Цепочка (перепроверена вручную): публичный `POST /auth/register` (`index.js:93` в PUBLIC_ROUTES, rate-limit 5/мин) → `role='user'` (`authController.js:88`, без body-эскалации) → login → any-auth JWT → `POST/PUT/DELETE` на 9 per-entity роутерах + `POST /api/metrics` (`metricRoutes.js:310`) → `LEAK/VOLTAGE/HEATING_CHECK` → авто-алерт → **реальный УК-тикет**. **⚠ Поправка после адверсариальной перепроверки:** any-auth запись — это ЗАДОКУМЕНТИРОВАННЫЙ дизайн (`docs/API_AUTH_MATRIX.md`: эти роуты помечены `JWT`, не `JWT+Admin`; закоммичено с P0 default-deny `ef979e3`), НЕ пропущенный `isAdmin`; `authenticateJWT` роль не проверяет by-design, контроллеры внутри роли не проверяют (grep=0). Прошлый аудит это НЕ пропустил — код соответствует матрице. Эксплуатируемым путь делает **публичный `/auth/register` при полном отсутствии UI-регистрации** (ни вызова во фронте — юзеров создаёт админ). **Fix (основной, S):** убрать `/auth/register` из PUBLIC_ROUTES или закрыть под `isAdmin` — ноль сломанных легитимных потоков, закрывает переход интернет→authenticated; регресс-тест «аноним→401/403 на register». **Trigger to ship: немедленно.**
+
+### 🟠 P2 — спринт-кандидаты
+- **R2-02** — вторичная часть R2-01 (defense-in-depth): даже после закрытия register по документированной модели любой аутентифицированный (в т.ч. low-priv staff) может править/удалять инфраструктуру + триггерить УК через `POST /metrics`. Пересмотр матрицы `JWT`→`JWT+Admin` на инфраструктурную запись — продуктово-архитектурная развилка против `API_AUTH_MATRIX.md`, не bugfix. Брать после R2-01. M.
+- **R2-03** — batch-эндпоинты админки — заглушки, врут `success:true` без действия (`adminBuildingController.js:38-49` + `adminRoutes.js:150,253,365,563,744,944`). → `501` либо реализовать. S.
+- **R2-04** — SQL напрямую в 9 admin-контроллерах мимо моделей. → вынести в `adminService`. M.
+- **R2-05** — три конкурирующих конверта ошибок (auth/errorHandler/`sendError`); AUD-011-канонизация не дошла до 11 контроллеров. M.
+- **R2-06** — `metricService.validateMetricData/detectAnomalies` проверяют несуществующие поля (`voltage/power/temperature` vs реальные `electricity_ph1..3`/`air_temp`) → строка с public telemetry доедет до pg (500); `detectAnomalies` мёртв. *Требует сверки со схемой.* M.
+- **R2-07** — `POST /metrics/telemetry` анонимен (только rate-limit) → спуф в alert→UK путь. Тикет на device-auth. M.
+- **R2-08** — каталог `swagger/` (2930 строк) в git не подключён (`server.js:159` строит из JSDoc роутов). → удалить. S.
+- **R2-09** — CRUD-фабрика полу-внедрена: 284 строки на 2 потребителя, 4 модели дублируют ~900 строк. → домигрировать или удалить фабрику. M.
+- **R2-10** — фронт bulk-операции воды/тепла мертвы (ключ секции `#waterSources` ≠ `water-sources-section` + endpoint `/api/water-sources` не существует). S.
+- **R2-11** — кнопки попапов карты вырезаются DOMPurify + методы-обработчики не существуют + inline-onclick рушит CSP (`map-layers-control.js:832`). → delegated listener или удалить. M.
+- **R2-12** — 2FA-поток продублирован login.js vs script.js (~200 строк). → общий util. M.
+- **R2-13** — Redis-лимитер молча деградирует в per-process Map без лога; `webhookLimiter` без `namespace` → лимит 60/мин не делится между репликами даже с Redis. S.
+- **R2-14** — e2e + `migrate:test` не на PR (только nightly/ручной). → триггер `pull_request`. M.
+- **R2-15** — деплой ручной, образ пересобирается на прод-хосте (→ OPS-001 disk), нет staging. → образ из GHCR pull'ом. L.
+- **R2-16** — `validateIdParam`/isNaN точечно → нечисловой `:id`/NaN из query → pg 22P02 → 500 вместо 400. → общий guard на все `:id`/числовые роуты. M.
+
+### 🟡 P3 — гигиена / хардненинг (батч-кандидаты, см. quick wins в AUDIT_REPORT.md §4)
+- **R2-17** статика на edge теряет `nosniff` (add_header override, `nginx.production.conf:423`). S.
+- **R2-18** просроченный fallback-секрет `INFRASAFE_WEBHOOK_SECRET||UK_WEBHOOK_SECRET` (`webhookVerifier.js:65`) — маскирует мисконфиг. *Требует подтверждения `.env.prod`.* S.
+- **R2-19** `validateUKApiUrl` не резолвит DNS → DNS-rebinding обходит SSRF-guard (admin-only, смягчено). *Требует подтверждения.* M.
+- **R2-20** `GET /uk-requests-metrics` анонимно отдаёт до 10k строк (ARCH-114 accepted). S.
+- **R2-21** `power_transformers` осталась в `adminService.ALLOWED_TABLES:11` (удалена мигр. 037) → 500. S.
+- **R2-22** неохраняемый `await client.query('ROLLBACK')` (`AlertRuleChange.js:83`) — маскирует исходную ошибку. S.
+- **R2-23** `severity.toUpperCase()`/`order.toLowerCase()` до type-check (дубль query-параметра → 500); 404 по тексту сообщения. S.
+- **R2-24** `AccountLockout` SQL везде замокан — прямого теста нет (урок AUD-039). M.
+- **R2-25** `mvRefreshService` без advisory lock (single-replica сейчас). S.
+- **R2-26** секреты валидируются только на присутствие (`JWT_SECRET=1` пройдёт). S.
+- **R2-27** `SET statement_timeout` fire-and-forget → unhandledRejection → рестарт (`database.js:32`). *Требует подтверждения.* S.
+- **R2-28** гонка `loadData()` (дубли маркеров) + `fitBounds` сбрасывает пан/зум оператора. S.
+- **R2-29** admin.js глотает ошибки загрузки → «Нет данных» вместо ошибки; интеграц-вкладка не чекает `response.ok`. S.
+- **R2-30** формы админки без дизейбла submit → двойной клик = дубли. M.
+- **R2-31** `loadLineAlerts` бьёт в несуществующий `/infrastructure-lines/:id/alerts` (`map-layers-control.js:1757`). S.
+- **R2-32** мёртвый код: `loadFiltersContent` (~145) + `createTransformerPopup`/`createWaterLine`/`generateLineCoordinates` (~150, латентный XSS). S.
+- **R2-33** `npm run lint` без `--max-warnings 0` (23 warnings копятся); `tests/` вне линта. S.
+- **R2-34** doc-drift: migrations README до 017 (диск 037); PROJECT_CONTEXT → удалённый `PowerTransformer.js`. S.
+- **R2-35** корень ~58 МБ untracked-мусора (не убыло с июня) + tracked дубли `test_*.sh`. S.
+- **R2-36** мёртвые флаги: `MIGRATE_WIRING_ENABLED` (baseline done), `COOKIE_SIGNING_SECRET` (никто не читает). S.
+- **R2-37** winston пишет ещё и в файлы (отклонение от 12-factor, двойное хранение). S.
+- **R2-38** load-тесты (`tests/load/`) не менялись с 2025-10-20, вероятен bit-rot. *Требует прогона.* M.
+
+### Рекомендованный порядок (см. roadmap в AUDIT_REPORT.md §5)
+Спринт 1 (security+честность, всё S): R2-01 первым (убрать register из allowlist) → R2-03/21/17; R2-02 = продуктовое решение по матрице. Спринт 2 (граница/наблюдаемость):
+R2-16 → R2-06/07 → R2-05 + хардненинг R2-13/22/26/27. Спринт 3 (фронт): R2-10/11/31/32 → 28/29/30 → 12.
+Спринт 4 (техдолг/инфра): R2-04 → R2-09 → R2-14/15/33/34/35/38.
 
 ---
 

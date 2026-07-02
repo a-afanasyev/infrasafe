@@ -75,11 +75,12 @@ describe('E2E: Auth Flow', () => {
     expect(logoutRes.status).toBe(200);
   });
 
-  test('POST /api/auth/register + login — sets the auth cookie', async () => {
+  test('POST /api/auth/register (admin) + login — sets the auth cookie [R2-01]', async () => {
     const username = `e2e_user_${Date.now()}`;
     const regRes = await request(BASE_URL)
       .post('/api/auth/register')
       .set('Origin', ORIGIN)
+      .set('Cookie', process.env.E2E_ADMIN_COOKIE)
       .send({ username, password: 'TestPass123', email: `${username}@test.com` });
 
     expect(regRes.status).toBe(201);
@@ -92,6 +93,16 @@ describe('E2E: Auth Flow', () => {
 
     expect(loginRes.status).toBe(200);
     expect(hasCookie(loginRes, 'access_token')).toBe(true);
+  });
+
+  test('POST /api/auth/register — anonymous is rejected (admin-only) [R2-01]', async () => {
+    const res = await request(BASE_URL)
+      .post('/api/auth/register')
+      .set('Origin', ORIGIN)
+      .send({ username: `e2e_anon_${Date.now()}`, password: 'TestPass123', email: 'a@test.com' });
+
+    // No token → default-deny gate returns 401 before the handler.
+    expect(res.status).toBe(401);
   });
 });
 
@@ -107,6 +118,7 @@ describe('E2E: POST /api/auth/change-password', () => {
     const reg = await request(BASE_URL)
       .post('/api/auth/register')
       .set('Origin', ORIGIN)
+      .set('Cookie', process.env.E2E_ADMIN_COOKIE)  // [R2-01] register is admin-only
       .send({ username, email, password: ORIG_PWD, full_name: 'PW Test' });
     if (reg.status !== 201 && reg.status !== 200) {
       throw new Error(`register failed: ${reg.status} ${JSON.stringify(reg.body)}`);

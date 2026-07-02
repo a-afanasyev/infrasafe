@@ -22,6 +22,7 @@ jest.mock('../../../src/services/cacheService', () => ({
 
 const db = require('../../../src/config/database');
 const { setupQueryMock } = require('../helpers/dbMock');
+const jwt = require('jsonwebtoken');
 
 // Set required env vars
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-for-security-tests';
@@ -45,20 +46,18 @@ describe('Security Tests', () => {
         setupQueryMock(db);
     });
 
-    // Helper: get auth token
-    // [1A-FU2-S-M2] Tokens are no longer in the response body — extract from
-    // Set-Cookie. Tests still use `Authorization: Bearer <token>` because the
-    // auth middleware accepts both delivery paths.
-    const getToken = async () => {
-        const res = await request(app)
-            .post('/api/auth/login')
-            .send({ username: 'testuser', password: 'TestPass123' });
-        const cookies = res.headers['set-cookie'] || [];
-        const accessCookie = (Array.isArray(cookies) ? cookies : [cookies])
-            .find(c => /^access_token=/.test(c));
-        const match = accessCookie && accessCookie.match(/^access_token=([^;]+)/);
-        return match ? decodeURIComponent(match[1]) : null;
-    };
+    // Helper: get auth token.
+    // [R2-02] Infrastructure writes (POST/PUT/DELETE buildings/controllers/…) are
+    // now admin-only. These tests probe input validation / injection on the write
+    // path, so the principal must be admin to REACH the validation layer (a regular
+    // user would be short-circuited by isAdmin → 403). Forge an admin token
+    // (user_id 999 = admin sentinel in dbMock); authenticateJWT accepts Bearer and
+    // resolves role from the DB. Auth-negative tests below forge their own bad tokens.
+    const getToken = async () => jwt.sign(
+        { user_id: 999, username: 'admin', role: 'admin' },
+        process.env.JWT_SECRET,
+        { expiresIn: '1h', issuer: 'infrasafe-api', audience: 'infrasafe-client' }
+    );
 
     describe('JWT Authentication Security', () => {
         test('Защищенные endpoints требуют JWT токен', async () => {

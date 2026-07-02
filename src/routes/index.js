@@ -90,7 +90,11 @@ router.use('/csp-report', cspReportRoutes);
 // Default-deny: все маршруты требуют JWT, кроме явного allowlist
 const PUBLIC_ROUTES = [
     { method: 'POST', path: '/auth/login' },
-    { method: 'POST', path: '/auth/register' },
+    // [R2-01] /auth/register removed from the public allowlist: there is no
+    // self-registration UI (users are admin-created), and a public register
+    // endpoint let anyone cross the internet→authenticated boundary. It now
+    // requires auth (default-deny below) + isAdmin (authRoutes.js) so that
+    // registration is an admin operation ("admin creates users").
     { method: 'POST', path: '/auth/refresh' },
     { method: 'POST', path: '/auth/verify-2fa' },
     { method: 'POST', path: '/auth/setup-2fa' },

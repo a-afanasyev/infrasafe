@@ -1,8 +1,15 @@
 # InfraSafe API — Матрица аутентификации маршрутов
 
-**Дата:** 2026-03-08
+**Дата:** 2026-03-08 (обновлено 2026-07-02 — R2-01/R2-02)
 **Ветка:** fix/p0-p1-security-and-hygiene
 **Статус:** Реализовано (default-deny)
+
+> **Обновление 2026-07-02 (аудит R2-01/R2-02):** `POST /auth/register` больше НЕ публичный —
+> он под `isAdmin` (регистрация = admin-операция «админ создаёт пользователей»; UI самрегистрации
+> нет). Инфраструктурная запись (POST/PUT/DELETE на `buildings`/`controllers`/`metrics`/`transformers`/
+> `lines`/`water-*`/`heat-sources`) переведена с `JWT` на `JWT+Admin`; GET остаётся any-auth. Также
+> синхронизирован allowlist (ниже был неполон: не хватало 2FA-эндпоинтов, `/uk-requests-metrics`,
+> `/map-layer-counts`, `/webhooks/uk/*`).
 
 ## Легенда
 
@@ -32,16 +39,21 @@
 
 **Default deny**: все маршруты требуют JWT, кроме явного allowlist в `src/routes/index.js`.
 
-Allowlist (публичные маршруты):
+Allowlist (публичные маршруты, `PUBLIC_ROUTES` в `src/routes/index.js`):
 - `POST /auth/login` — вход
-- `POST /auth/register` — регистрация
 - `POST /auth/refresh` — обновление токена
+- `POST /auth/verify-2fa`, `POST /auth/setup-2fa`, `POST /auth/confirm-2fa` — 2FA-поток (temp-token)
 - `POST /metrics/telemetry` — приём телеметрии от устройств
 - `GET /buildings-metrics` — данные для карты (optionalAuth, урезанные для анонимов)
+- `GET /uk-requests-metrics` — ARCH-114 reconciliation inventory (read-only)
+- `GET /map-layer-counts` — B-024 публичные агрегатные счётчики (только целые)
 - `GET /` — информация об API
+- `POST /webhooks/uk/building`, `POST /webhooks/uk/request` — входящие вебхуки УК (HMAC-verified, без JWT)
+
+`POST /auth/register` **больше НЕ в allowlist** (R2-01) — требует JWT + `isAdmin`.
 
 Route-level `authenticateJWT` удалён из всех файлов (глобальный middleware обеспечивает защиту).
-`isAdmin` middleware сохранён на всех admin-операциях.
+`isAdmin` middleware — на всех admin-операциях И на инфраструктурной записи (R2-02).
 
 ---
 
@@ -50,23 +62,27 @@ Route-level `authenticateJWT` удалён из всех файлов (глоб�
 | Модуль | Доступ | RL |
 |--------|--------|----|
 | `POST /auth/login` | Public | Au |
-| `POST /auth/register` | Public | R |
+| `POST /auth/register` | **JWT+Admin** (R2-01) | R |
 | `POST /auth/refresh` | Refresh | — |
+| `POST /auth/verify-2fa` / `setup-2fa` / `confirm-2fa` | Public (temp-token) | Au |
 | `GET /auth/profile` | JWT | — |
 | `POST /auth/logout` | JWT | — |
 | `POST /auth/change-password` | JWT | — |
 | `POST /metrics/telemetry` | Public | T |
 | `GET /buildings-metrics` | **Public (optionalAuth, урезанные данные)** | — |
+| `GET /uk-requests-metrics` | Public (read-only, ARCH-114) | — |
+| `GET /map-layer-counts` | Public (агрегаты, B-024) | — |
+| `POST /webhooks/uk/building` / `/request` | Public (HMAC) | — |
 | `GET /` | Public | — |
-| `/buildings` (GET/POST/PUT/DELETE) | JWT | C |
-| `/controllers` (GET/POST/PUT/PATCH/DELETE) | JWT | C |
-| `/metrics` (GET/POST/DELETE) | JWT | C |
-| `/transformers` (GET/POST/PUT/DELETE) | JWT | C |
-| `/lines` (GET/POST/PUT/DELETE) | JWT | C |
-| `/cold-water-sources` (GET/POST/PUT/DELETE) | JWT | C |
-| `/heat-sources` (GET/POST/PUT/DELETE) | JWT | C |
-| `/water-lines` (GET/POST/PUT/DELETE) | JWT | C |
-| `/water-suppliers` (GET/POST/PUT/DELETE) | JWT | C |
+| `/buildings` (GET) | JWT · (POST/PUT/DELETE) **JWT+Admin** | C |
+| `/controllers` (GET) | JWT · (POST/PUT/PATCH/DELETE) **JWT+Admin** | C |
+| `/metrics` (GET) | JWT · (POST/DELETE) **JWT+Admin** | C |
+| `/transformers` (GET) | JWT · (POST/PUT/DELETE) **JWT+Admin** | C |
+| `/lines` (GET) | JWT · (POST/PUT/DELETE) **JWT+Admin** | C |
+| `/cold-water-sources` (GET) | JWT · (POST/PUT/DELETE) **JWT+Admin** | C |
+| `/heat-sources` (GET) | JWT · (POST/PUT/DELETE) **JWT+Admin** | C |
+| `/water-lines` (GET) | JWT · (POST/PUT/DELETE) **JWT+Admin** | C |
+| `/water-suppliers` (GET) | JWT · (POST/PUT/DELETE) **JWT+Admin** | C |
 | `/alerts` (GET) | JWT | A |
 | `/alerts` (POST/PATCH) | JWT | C |
 | `/alerts/thresholds` (PUT) | JWT+Admin | Ad |
@@ -94,7 +110,8 @@ Route-level `authenticateJWT` удалён из всех файлов (глоб�
 
 | Показатель | Значение |
 |------------|----------|
-| Public GET бизнес-данных | 1 (`/buildings-metrics`, урезанный) |
-| Public write endpoints | 1 (`/metrics/telemetry`) |
+| Public GET бизнес-данных | 3 (`/buildings-metrics` урезанный, `/uk-requests-metrics`, `/map-layer-counts`) |
+| Public write endpoints | 3 (`/metrics/telemetry`, `/webhooks/uk/building`, `/webhooks/uk/request` — последние два HMAC) |
 | JWT защищённые эндпоинты | все API, кроме явного allowlist |
+| Инфраструктурная запись | `JWT+Admin` (R2-02); `POST /auth/register` тоже `JWT+Admin` (R2-01) |
 | Риск утечки инфраструктурных данных | низкий |

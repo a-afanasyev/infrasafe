@@ -23,10 +23,20 @@ jest.mock('../../../src/services/cacheService', () => ({
 
 const db = require('../../../src/config/database');
 const { setupQueryMock } = require('../helpers/dbMock');
+const jwt = require('jsonwebtoken');
 
 // Must be set BEFORE requiring server (cors() captures the allowlist at boot).
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-for-csrf-itest';
 process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'test-refresh-secret-for-csrf-itest';
+// [R2-02] POST /api/buildings is now admin-only. Forge an admin access token
+// (user_id 999 = admin sentinel in dbMock) so the mutation reaches the CSRF guard
+// under test instead of being short-circuited by isAdmin. authenticateJWT resolves
+// role from the DB, not the token.
+const forgeAdminAccessToken = () => jwt.sign(
+    { user_id: 999, username: 'admin', role: 'admin' },
+    process.env.JWT_SECRET,
+    { expiresIn: '1h', issuer: 'infrasafe-api', audience: 'infrasafe-client' }
+);
 const ALLOWED = 'https://allowed.test';
 const EVIL = 'https://evil.test';
 process.env.CORS_ORIGINS = ALLOWED;
@@ -52,7 +62,9 @@ describe('SEC-23 CSRF Origin guard — mounted in /api pipeline', () => {
             .post('/api/auth/login')
             .send({ username: 'testuser', password: 'TestPass123' });
         const sc = login.headers['set-cookie'] || [];
-        accessCookie = cookieStr(sc, 'access_token');
+        // [R2-02] Use an admin access cookie so the write reaches the CSRF guard
+        // (isAdmin would otherwise 403 a regular user before the guard runs).
+        accessCookie = `access_token=${forgeAdminAccessToken()}`;
         refreshCookie = cookieStr(sc, 'refresh_token');
         expect(accessCookie).toBeTruthy();
         expect(refreshCookie).toBeTruthy();

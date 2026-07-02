@@ -27,6 +27,17 @@ const { setupQueryMock } = require('../helpers/dbMock');
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-for-api-tests';
 process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'test-refresh-secret-for-api-tests';
 
+// [R2-01/R2-02] Registration and infrastructure writes are now admin-only. Forge a
+// role=admin access token (same claims as authService.generateTokens) so these
+// tests exercise the authorized path without driving the mandatory-2FA admin login.
+const jwt = require('jsonwebtoken');
+// user_id 999 = admin sentinel in dbMock (authenticateJWT resolves role from DB, not token).
+const forgeAdminToken = () => jwt.sign(
+    { user_id: 999, username: 'admin', role: 'admin' },
+    process.env.JWT_SECRET,
+    { expiresIn: '1h', issuer: 'infrasafe-api', audience: 'infrasafe-client' }
+);
+
 let app;
 
 describe('API Integration Tests', () => {
@@ -69,7 +80,7 @@ describe('API Integration Tests', () => {
             expect(response.status).toBe(401);
         });
 
-        test('POST /api/auth/register - регистрация нового пользователя', async () => {
+        test('POST /api/auth/register - admin создаёт пользователя (R2-01)', async () => {
             const testUser = {
                 username: `testuser${testUtils.randomId()}`,
                 password: 'TestPass123',
@@ -78,11 +89,20 @@ describe('API Integration Tests', () => {
 
             const response = await request(app)
                 .post('/api/auth/register')
+                .set('Authorization', `Bearer ${forgeAdminToken()}`)
                 .send(testUser);
 
             expect(response.status).toBe(201);
             expect(response.body).toHaveProperty('user');
             expect(response.body.user.username).toBe(testUser.username);
+        });
+
+        test('POST /api/auth/register - без токена → 401 (R2-01: больше не публичный)', async () => {
+            const response = await request(app)
+                .post('/api/auth/register')
+                .send({ username: 'anon', password: 'TestPass123', email: 'anon@test.com' });
+
+            expect(response.status).toBe(401);
         });
     });
 
@@ -116,16 +136,25 @@ describe('API Integration Tests', () => {
             expect(Array.isArray(response.body.data)).toBe(true);
         });
 
-        test('POST /api/buildings - создание нового здания', async () => {
+        test('POST /api/buildings - создание нового здания (admin)', async () => {
             const buildingData = testHelper.createTestBuilding();
 
             const response = await request(app)
                 .post('/api/buildings')
-                .set('Authorization', `Bearer ${authToken}`)
+                .set('Authorization', `Bearer ${forgeAdminToken()}`)
                 .send(buildingData);
 
             expect(response.status).toBe(201);
             expect(response.body).toHaveProperty('building_id');
+        });
+
+        test('POST /api/buildings - обычный пользователь → 403 (R2-02: writes = admin-only)', async () => {
+            const response = await request(app)
+                .post('/api/buildings')
+                .set('Authorization', `Bearer ${authToken}`)
+                .send(testHelper.createTestBuilding());
+
+            expect(response.status).toBe(403);
         });
 
         test('GET /api/buildings/:id - получение здания по ID', async () => {
@@ -149,7 +178,7 @@ describe('API Integration Tests', () => {
 
             const response = await request(app)
                 .put('/api/buildings/1')
-                .set('Authorization', `Bearer ${authToken}`)
+                .set('Authorization', `Bearer ${forgeAdminToken()}`)
                 .send(updateData);
 
             expect(response.status).toBe(200);
@@ -158,7 +187,7 @@ describe('API Integration Tests', () => {
         test('DELETE /api/buildings/:id - удаление здания', async () => {
             const response = await request(app)
                 .delete('/api/buildings/1')
-                .set('Authorization', `Bearer ${authToken}`);
+                .set('Authorization', `Bearer ${forgeAdminToken()}`);
 
             expect(response.status).toBe(200);
         });

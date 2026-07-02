@@ -49,7 +49,11 @@ const setupQueryMock = (db) => {
         // Find user by ID (JWT middleware verification)
         if (s.includes('FROM users') && s.includes('user_id = $1') && !s.includes('INSERT') && !s.includes('UPDATE')) {
             const hash = await getTestPasswordHash();
-            return { rows: [makeUser({ user_id: params[0], password_hash: hash })], rowCount: 1 };
+            // [R2-01/R2-02] Sentinel: user_id 999 resolves as an admin so tests can
+            // exercise admin-only routes (register, infra writes). authenticateJWT
+            // takes role from the DB, not the token — see src/middleware/auth.js.
+            const role = String(params[0]) === '999' ? 'admin' : 'user';
+            return { rows: [makeUser({ user_id: params[0], role, password_hash: hash })], rowCount: 1 };
         }
 
         // Find user by username OR email (login/register check)

@@ -8,7 +8,9 @@ const logger = require('../utils/logger');
 // VARCHAR(50) column instead.
 const ALLOWED_TABLES = [
     'buildings', 'controllers', 'metrics',
-    'power_transformers', 'transformers', 'cold_water_sources', 'heat_sources',
+    // [R2-21] 'power_transformers' removed — table dropped in migration 037 (AUD-039);
+    // the canonical table is 'transformers'. A batch op on the old name would 500.
+    'transformers', 'cold_water_sources', 'heat_sources',
     'water_lines', 'water_suppliers', 'users', 'lines',
     'integration_config', 'integration_log', 'alert_rules', 'alert_request_map'
 ];

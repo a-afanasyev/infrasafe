@@ -24,6 +24,11 @@ jest.mock('../../../src/middleware/rateLimiter', () => {
         }))
     };
 });
+// [R2-02] Routes now carry isAdmin on writes; these tests cover route→controller
+// delegation, not authz (that's tested in api.test.js), so pass isAdmin through.
+jest.mock('../../../src/middleware/auth', () => ({
+    isAdmin: (req, res, next) => next()
+}));
 
 const request = require('supertest');
 const express = require('express');
