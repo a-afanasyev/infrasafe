@@ -242,7 +242,9 @@ router.get('/status', applyAnalyticsRateLimit, alertController.getSystemStatus);
  *                     - $ref: '#/components/schemas/Alert'
  *                     - type: "null"
  */
-router.post('/check/transformer/:transformerId', applyAdminRateLimit, isAdmin, alertController.checkTransformer);
+// [R2-16 follow-up] validateIntParam mirrors the acknowledge/resolve/suppress
+// routes below — a non-integer :transformerId otherwise reaches pg → 22P02 → 500.
+router.post('/check/transformer/:transformerId', applyAdminRateLimit, isAdmin, validateIntParam('transformerId'), alertController.checkTransformer);
 
 /**
  * @swagger

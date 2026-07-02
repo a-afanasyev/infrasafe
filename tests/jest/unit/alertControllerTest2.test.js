@@ -50,7 +50,8 @@ describe('AlertController', () => {
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
                     success: false,
-                    message: expect.stringContaining('Обязательные поля')
+                    // [R2-05] canonical envelope: message nested under error{}
+                    error: expect.objectContaining({ message: expect.stringContaining('Обязательные поля'), status: 400 })
                 })
             );
         });
@@ -68,9 +69,22 @@ describe('AlertController', () => {
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
                     success: false,
-                    message: expect.stringContaining('severity')
+                    error: expect.objectContaining({ message: expect.stringContaining('severity'), status: 400 })
                 })
             );
+        });
+
+        test('[R2-23 follow-up] returns 400 (not 500) when severity is a non-string (array) body value', async () => {
+            req.body = {
+                type: 'TEST',
+                infrastructure_id: 1,
+                infrastructure_type: 'transformer',
+                severity: ['CRITICAL'], // array is truthy → slips past !severity; .toUpperCase() would throw
+                message: 'Test alert'
+            };
+            await AlertController.createAlert(req, res, next);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(next).not.toHaveBeenCalled(); // guarded, not thrown into errorHandler
         });
 
         test('creates alert successfully with valid data', async () => {
@@ -424,7 +438,7 @@ describe('AlertController', () => {
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
                     success: false,
-                    message: expect.stringContaining('invalid_key')
+                    error: expect.objectContaining({ message: expect.stringContaining('invalid_key'), status: 400 })
                 })
             );
         });

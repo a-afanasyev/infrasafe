@@ -40,14 +40,18 @@ describe('mapLayerCountsController.getMapLayerCounts (B-024)', () => {
         expect(res.json).toHaveBeenCalledWith({ data: counts });
     });
 
-    test('responds 500 on model error without leaking the message', async () => {
+    test('[R2-05] delegates model errors to next() (errorHandler emits the canonical, message-hidden 500)', async () => {
         MapLayerCounts.getCounts.mockRejectedValue(new Error('connection refused'));
         const res = mkRes();
+        const next = jest.fn();
 
-        await getMapLayerCounts({}, res);
+        await getMapLayerCounts({}, res, next);
 
-        expect(res.status).toHaveBeenCalledWith(500);
-        const payload = res.json.mock.calls[0][0];
-        expect(JSON.stringify(payload)).not.toMatch(/connection refused/);
+        // No inline error JSON — the controller hands off to the error middleware,
+        // which produces { success:false, error:{ message, status } } and hides
+        // the 500 detail (covered by errorHandler's own tests).
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(next.mock.calls[0][0]).toBeInstanceOf(Error);
+        expect(res.status).not.toHaveBeenCalledWith(500);
     });
 });

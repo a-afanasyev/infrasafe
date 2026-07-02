@@ -57,13 +57,17 @@ describe('ukRequestsMetricsController.getRequestsInventory (ARCH-114)', () => {
         expect(AlertRequestMap.listInventory).toHaveBeenCalledWith({ limit: '250' });
     });
 
-    test('returns 500 when the model throws', async () => {
+    test('[R2-05] delegates model errors to next() (errorHandler emits the canonical 500)', async () => {
         AlertRequestMap.listInventory.mockRejectedValue(new Error('db down'));
 
         const res = mkRes();
-        await getRequestsInventory({ query: {} }, res);
+        const next = jest.fn();
+        await getRequestsInventory({ query: {} }, res, next);
 
-        expect(res.status).toHaveBeenCalledWith(500);
-        expect(res.json).toHaveBeenCalledWith({ error: 'Failed to load UK requests inventory' });
+        // Hands off to the error middleware → { success:false, error:{ message, status } }
+        // with the 500 detail hidden; no inline error JSON here.
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(next.mock.calls[0][0]).toBeInstanceOf(Error);
+        expect(res.status).not.toHaveBeenCalledWith(500);
     });
 });

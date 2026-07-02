@@ -9,7 +9,7 @@
 const AlertRequestMap = require('../models/AlertRequestMap');
 const logger = require('../utils/logger');
 
-async function getRequestsInventory(req, res) {
+async function getRequestsInventory(req, res, next) {
     try {
         const rawLimit = req.query.limit;
         const { rows, limit } = await AlertRequestMap.listInventory({ limit: rawLimit });
@@ -19,8 +19,10 @@ async function getRequestsInventory(req, res) {
             limit
         });
     } catch (error) {
+        // [R2-05] Route through errorHandler for the canonical envelope
+        // { success:false, error:{ message, status } } + 500-detail hiding.
         logger.error(`getRequestsInventory error: ${error.message}`);
-        res.status(500).json({ error: 'Failed to load UK requests inventory' });
+        next(error);
     }
 }
 

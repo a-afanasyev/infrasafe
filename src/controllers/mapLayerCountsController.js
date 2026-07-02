@@ -8,13 +8,16 @@
 const MapLayerCounts = require('../models/MapLayerCounts');
 const logger = require('../utils/logger');
 
-async function getMapLayerCounts(req, res) {
+async function getMapLayerCounts(req, res, next) {
     try {
         const data = await MapLayerCounts.getCounts();
         res.json({ data });
     } catch (error) {
+        // [R2-05] Route through errorHandler for the canonical envelope
+        // { success:false, error:{ message, status } } — which also hides the
+        // 500 detail from the client (the old inline JSON leaked it).
         logger.error(`getMapLayerCounts error: ${error.message}`);
-        res.status(500).json({ error: 'Failed to load map layer counts' });
+        next(error);
     }
 }
 
