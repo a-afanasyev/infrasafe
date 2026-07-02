@@ -3279,6 +3279,11 @@ document.addEventListener("DOMContentLoaded", function () {
             const response = await fetch(`${backendURL}/integration/config`, {
                 headers: {}
             });
+            // [R2-29] Guard response.ok before .json() so a 4xx/5xx routes into
+            // catch and surfaces to the operator instead of silently no-op'ing.
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
             const data = await response.json();
             if (data.success) {
                 integrationState.config = data.data;
@@ -3286,6 +3291,7 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         } catch (error) {
             console.error('Failed to load integration config:', error);
+            showToast('Ошибка загрузки настроек интеграции', 'error');
         }
     }
 
@@ -3343,6 +3349,10 @@ document.addEventListener("DOMContentLoaded", function () {
             const response = await fetch(`${backendURL}/integration/rules/stats?days=${days}`, {
                 headers: {}
             });
+            // [R2-29] Route non-ok into catch (setRulesStatus surfaces the error).
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
             const data = await response.json();
             if (data.success) {
                 integrationState.rules = data.data;
@@ -3679,6 +3689,10 @@ document.addEventListener("DOMContentLoaded", function () {
             const response = await fetch(`${backendURL}/integration/logs?${params}`, {
                 headers: {}
             });
+            // [R2-29] Guard response.ok before .json() so failures surface.
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
             const data = await response.json();
             if (data.success) {
                 integrationState.logs = data.data;
@@ -3686,6 +3700,7 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         } catch (error) {
             console.error('Failed to load integration logs:', error);
+            showToast('Ошибка загрузки журнала интеграции', 'error');
         }
     }
 
