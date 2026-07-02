@@ -225,7 +225,8 @@ authPassApp.use((err, _req, res, _next) => {
 // ---- App B: deny guard mirrors src/routes/index.js PUBLIC_ROUTES logic ----
 const DENY_PUBLIC_ROUTES = [
     { method: 'POST', path: '/auth/login' },
-    { method: 'POST', path: '/auth/register' },
+    // [R2-01] /auth/register is NO LONGER public — it now requires auth + isAdmin
+    // (registration is an admin operation). It must be caught by the deny guard.
     { method: 'POST', path: '/auth/refresh' },
     { method: 'POST', path: '/metrics/telemetry' },
     { method: 'GET',  path: '/buildings-metrics' },
@@ -404,14 +405,15 @@ describe('Default-deny JWT middleware (src/routes/index.js)', () => {
             expect(res.status).toBe(200);
         });
 
-        test('POST /api/auth/register is not blocked by deny guard (no Authorization header)', async () => {
+        // [R2-01] register is now admin-only: the deny guard MUST block an
+        // unauthenticated request (registration moved out of the public allowlist).
+        test('POST /api/auth/register IS blocked by deny guard without a token (R2-01: admin-only)', async () => {
             const res = await request(denyApp)
                 .post('/api/auth/register')
                 .send({ username: 'newuser', password: 'Pass1234' });
 
-            // Global middleware must not have responded with missing-token 401
-            expect(res.status).not.toBe(401);
-            expect(res.body).not.toHaveProperty('message', 'Access token is missing');
+            expect(res.status).toBe(401);
+            expect(res.body).toHaveProperty('message', 'Access token is missing');
         });
 
     });

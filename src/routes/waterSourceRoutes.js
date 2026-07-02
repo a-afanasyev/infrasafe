@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const coldWaterSourceController = require('../controllers/coldWaterSourceController');
 const { applyCrudRateLimit } = require('../middleware/rateLimiter');
+const { isAdmin } = require('../middleware/auth');
 
 /**
  * @swagger
@@ -122,7 +123,8 @@ router.get('/:id', coldWaterSourceController.getById);
  *       400:
  *         description: Ошибка валидации
  */
-router.post('/', applyCrudRateLimit, coldWaterSourceController.create);
+// [R2-02] Infrastructure writes require admin (API_AUTH_MATRIX.md JWT→JWT+Admin). GET stays any-auth.
+router.post('/', applyCrudRateLimit, isAdmin, coldWaterSourceController.create);
 
 /**
  * @swagger
@@ -148,7 +150,7 @@ router.post('/', applyCrudRateLimit, coldWaterSourceController.create);
  *       404:
  *         description: Источник не найден
  */
-router.put('/:id', applyCrudRateLimit, coldWaterSourceController.update);
+router.put('/:id', applyCrudRateLimit, isAdmin, coldWaterSourceController.update);
 
 /**
  * @swagger
@@ -168,6 +170,6 @@ router.put('/:id', applyCrudRateLimit, coldWaterSourceController.update);
  *       404:
  *         description: Источник не найден
  */
-router.delete('/:id', applyCrudRateLimit, coldWaterSourceController.remove);
+router.delete('/:id', applyCrudRateLimit, isAdmin, coldWaterSourceController.remove);
 
 module.exports = router;

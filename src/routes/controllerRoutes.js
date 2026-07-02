@@ -247,7 +247,8 @@ router.get('/:id/metrics', controllerController.getControllerMetrics);
  *       403:
  *         description: Недействительный токен
  */
-router.post('/', applyCrudRateLimit, validateControllerCreate, controllerController.createController);
+// [R2-02] Infrastructure writes require admin (API_AUTH_MATRIX.md JWT→JWT+Admin). GET stays any-auth.
+router.post('/', applyCrudRateLimit, isAdmin, validateControllerCreate, controllerController.createController);
 
 /**
  * @swagger
@@ -285,7 +286,7 @@ router.post('/', applyCrudRateLimit, validateControllerCreate, controllerControl
  *       400:
  *         description: Ошибка валидации данных
  */
-router.put('/:id', applyCrudRateLimit, validateIdParam, validateControllerCreate, controllerController.updateController);
+router.put('/:id', applyCrudRateLimit, isAdmin, validateIdParam, validateControllerCreate, controllerController.updateController);
 
 /**
  * @swagger
@@ -320,7 +321,7 @@ router.put('/:id', applyCrudRateLimit, validateIdParam, validateControllerCreate
  *       400:
  *         description: Неверное значение статуса
  */
-router.patch('/:id/status', applyCrudRateLimit, validateIdParam, controllerController.updateControllerStatus);
+router.patch('/:id/status', applyCrudRateLimit, isAdmin, validateIdParam, controllerController.updateControllerStatus);
 
 /**
  * @swagger
@@ -343,6 +344,6 @@ router.patch('/:id/status', applyCrudRateLimit, validateIdParam, controllerContr
  *       400:
  *         description: Невозможно удалить контроллер с привязанными метриками
  */
-router.delete('/:id', applyCrudRateLimit, validateIdParam, controllerController.deleteController);
+router.delete('/:id', applyCrudRateLimit, isAdmin, validateIdParam, controllerController.deleteController);
 
 module.exports = router;

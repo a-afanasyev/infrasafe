@@ -1,6 +1,6 @@
 const express = require('express');
 const authController = require('../controllers/authController');
-const { authenticateRefresh, authenticateTempToken } = require('../middleware/auth');
+const { authenticateRefresh, authenticateTempToken, isAdmin } = require('../middleware/auth');
 const { authLimiter, registerLimiter, passwordChangeLimiter } = require('../middleware/rateLimiter');
 const router = express.Router();
 
@@ -138,7 +138,11 @@ router.post('/login', authLimiter.middleware(), authController.login);
  *       409:
  *         description: Пользователь уже существует
  */
-router.post('/register', registerLimiter.middleware(), authController.register);
+// [R2-01] Admin-only: registration is now "admin creates a user". The route is
+// no longer in PUBLIC_ROUTES (src/routes/index.js), so the default-deny gate runs
+// authenticateJWT first (401 without a token); isAdmin then enforces role=admin
+// (403 for a non-admin). The first admin is bootstrapped via src/cli/create-admin.js.
+router.post('/register', registerLimiter.middleware(), isAdmin, authController.register);
 
 /**
  * @swagger

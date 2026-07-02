@@ -12,7 +12,11 @@ const webhookLimiter = new SimpleRateLimiter({
     max: 60,
     message: 'Слишком много запросов к webhook. Попробуйте позже.',
     standardHeaders: true,
-    legacyHeaders: false
+    legacyHeaders: false,
+    // [R2-13] Explicit namespace: without it the constructor assigns a random
+    // per-process default (`g<rand>`), so the 60/min webhook budget would NOT be
+    // shared across replicas/restarts via Redis — each process would key its own.
+    namespace: 'uk-webhook'
 });
 
 /**

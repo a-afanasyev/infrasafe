@@ -307,7 +307,10 @@ router.get('/:id', metricController.getMetricById);
  *       403:
  *         description: Недействительный токен
  */
-router.post('/', applyCrudRateLimit, metricController.createMetric);
+// [R2-02] Admin-only metric writes (authenticated write path). NOTE: anonymous
+// device ingestion goes through the separate public POST /metrics/telemetry
+// (src/routes/index.js) — this admin gate does NOT touch that route.
+router.post('/', applyCrudRateLimit, isAdmin, metricController.createMetric);
 
 /**
  * @swagger
@@ -328,6 +331,6 @@ router.post('/', applyCrudRateLimit, metricController.createMetric);
  *       404:
  *         description: Метрика не найдена
  */
-router.delete('/:id', applyCrudRateLimit, metricController.deleteMetric);
+router.delete('/:id', applyCrudRateLimit, isAdmin, metricController.deleteMetric);
 
 module.exports = router;

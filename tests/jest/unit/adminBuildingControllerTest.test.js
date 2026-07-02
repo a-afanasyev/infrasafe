@@ -149,43 +149,45 @@ describe('AdminBuildingController', () => {
     // CRUD delegation block removed in Phase 5: proxies were dead-path
     // and admin routes now call buildingController directly.
 
-    describe('batchBuildingsOperation', () => {
-        test('returns success with affected count', async () => {
+    describe('batchBuildingsOperation [R2-03: real batch delete]', () => {
+        test('delete → runs batchDelete and returns affected rowCount', async () => {
+            db.query.mockResolvedValue({ rows: [{ building_id: 1 }, { building_id: 2 }, { building_id: 3 }], rowCount: 3 });
             req.body = { action: 'delete', ids: [1, 2, 3] };
 
             await batchBuildingsOperation(req, res, next);
 
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    success: true,
-                    affected: 3
-                })
+                expect.objectContaining({ success: true, affected: 3 })
             );
+            const [sql, params] = db.query.mock.calls[0];
+            expect(sql).toMatch(/DELETE FROM buildings/);
+            expect(params).toEqual([[1, 2, 3]]);
         });
 
-        test('returns affected 0 when ids is undefined', async () => {
+        test('missing ids → 400 (no longer fakes success)', async () => {
             req.body = { action: 'delete' };
 
             await batchBuildingsOperation(req, res, next);
 
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    success: true,
-                    affected: 0
-                })
-            );
+            expect(res.json).not.toHaveBeenCalled();
+            expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
         });
 
-        test('includes action name in message', async () => {
+        test('non-integer ids → 400', async () => {
+            req.body = { action: 'delete', ids: [1, 'evil'] };
+
+            await batchBuildingsOperation(req, res, next);
+
+            expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
+        });
+
+        test('unimplemented action → 501 (not a fake success)', async () => {
             req.body = { action: 'update', ids: [1] };
 
             await batchBuildingsOperation(req, res, next);
 
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: expect.stringContaining('update')
-                })
-            );
+            expect(res.json).not.toHaveBeenCalled();
+            expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 501 }));
         });
     });
 });

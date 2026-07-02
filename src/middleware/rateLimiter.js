@@ -10,6 +10,19 @@ const redisClient = require('../utils/redisClient');
 const REDIS_KEY_PREFIX = 'ratelimit:';
 const REDIS_KEY_PREFIX_SD = 'slowdown:';
 
+// [R2-13] Observability for silent Redis degradation. When a Redis op throws,
+// the limiter falls back to the per-process in-memory store — which in a
+// multi-replica deploy silently makes limits per-replica (e.g. auth 10/15min
+// becomes 10×N). Log the transition ONCE (mirrors redisClient's `healthy` flag)
+// so operators see the degradation instead of it passing unnoticed.
+let _redisDegradedLogged = false;
+function noteRedisDegraded(err) {
+    if (!_redisDegradedLogged) {
+        _redisDegradedLogged = true;
+        logger.warn(`Rate limiter: Redis error — degraded to per-process in-memory store (limits become per-replica): ${err && err.message ? err.message : err}`);
+    }
+}
+
 // [SEC-6] Hard cap on the in-memory fallback store so a high-cardinality
 // IP flood cannot grow memory unboundedly between the 60s cleanup sweeps.
 // Mirrors webhookVerifier's SEEN_SIGNATURE_MAX_ENTRIES pattern: when the
@@ -106,7 +119,8 @@ class SimpleRateLimiter {
                 pttl = this.windowMs;
             }
             return { hits, resetTime: now + Math.max(0, pttl) };
-        } catch {
+        } catch (err) {
+            noteRedisDegraded(err);
             return null;
         }
     }
@@ -296,7 +310,8 @@ class SimpleSlowDown {
                 pttl = this.windowMs;
             }
             return { hits, resetTime: now + Math.max(0, pttl) };
-        } catch {
+        } catch (err) {
+            noteRedisDegraded(err);
             return null;
         }
     }

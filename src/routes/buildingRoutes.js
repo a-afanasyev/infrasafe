@@ -2,6 +2,7 @@ const express = require('express');
 const buildingController = require('../controllers/buildingController');
 const { applyCrudRateLimit, applyAnalyticsRateLimit } = require('../middleware/rateLimiter');
 const { validateBuildingCreate } = require('../middleware/validators');
+const { isAdmin } = require('../middleware/auth');
 const router = express.Router();
 
 /**
@@ -225,7 +226,8 @@ router.get('/:id', applyAnalyticsRateLimit, buildingController.getBuildingById);
  *       403:
  *         description: Недействительный токен
  */
-router.post('/', applyCrudRateLimit, validateBuildingCreate, buildingController.createBuilding);
+// [R2-02] Infrastructure writes require admin (API_AUTH_MATRIX.md JWT→JWT+Admin). GET stays any-auth.
+router.post('/', applyCrudRateLimit, isAdmin, validateBuildingCreate, buildingController.createBuilding);
 
 /**
  * @swagger
@@ -269,7 +271,7 @@ router.post('/', applyCrudRateLimit, validateBuildingCreate, buildingController.
  *       403:
  *         description: Недействительный токен
  */
-router.put('/:id', applyCrudRateLimit, validateBuildingCreate, buildingController.updateBuilding);
+router.put('/:id', applyCrudRateLimit, isAdmin, validateBuildingCreate, buildingController.updateBuilding);
 
 /**
  * @swagger
@@ -298,6 +300,6 @@ router.put('/:id', applyCrudRateLimit, validateBuildingCreate, buildingControlle
  *       403:
  *         description: Недействительный токен
  */
-router.delete('/:id', applyCrudRateLimit, buildingController.deleteBuilding);
+router.delete('/:id', applyCrudRateLimit, isAdmin, buildingController.deleteBuilding);
 
 module.exports = router;

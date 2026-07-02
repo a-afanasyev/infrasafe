@@ -100,13 +100,28 @@ describe('AdminMetricController', () => {
         });
     });
 
-    describe('batchMetricsOperation', () => {
-        test('returns success with affected 0', async () => {
-            req.body = { action: 'delete' };
+    describe('batchMetricsOperation [R2-03: real batch delete, delete-only]', () => {
+        test('delete → runs batchDelete and returns affected rowCount', async () => {
+            db.query.mockResolvedValue({ rows: [{ metric_id: 5 }, { metric_id: 6 }], rowCount: 2 });
+            req.body = { action: 'delete', ids: [5, 6] };
             await batchMetricsOperation(req, res, next);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({ success: true, affected: 0 })
+                expect.objectContaining({ success: true, affected: 2 })
             );
+            expect(db.query.mock.calls[0][0]).toMatch(/DELETE FROM metrics/);
+        });
+
+        test('missing ids → 400 (no longer fakes success)', async () => {
+            req.body = { action: 'delete' };
+            await batchMetricsOperation(req, res, next);
+            expect(res.json).not.toHaveBeenCalled();
+            expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
+        });
+
+        test('non-delete action → 501 (metrics has no updated_at → delete-only)', async () => {
+            req.body = { action: 'update', ids: [5] };
+            await batchMetricsOperation(req, res, next);
+            expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 501 }));
         });
     });
 });

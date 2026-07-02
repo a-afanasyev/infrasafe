@@ -82,11 +82,18 @@ function authed(cookie) {
   };
 }
 
+// [R2-01] Registration is admin-only. globalSetup caches an admin Cookie header in
+// E2E_ADMIN_COOKIE; send it so fresh test users can still be created.
 async function registerUser(username, password = 'TestPass123') {
   const email = `${username}@test.com`;
+  const adminCookie = process.env.E2E_ADMIN_COOKIE;
+  if (!adminCookie) {
+    throw new Error('registerUser: E2E_ADMIN_COOKIE not set (globalSetup must run first)');
+  }
   const res = await request(BASE_URL)
     .post('/api/auth/register')
     .set('Origin', ORIGIN)
+    .set('Cookie', adminCookie)
     .send({ username, password, email });
 
   // 201 = created, 409 = already exists

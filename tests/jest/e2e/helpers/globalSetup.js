@@ -96,10 +96,16 @@ async function adminCookies() {
   return cookies;
 }
 
-async function userCookies() {
+// [R2-01] Registration is now admin-only. The admin cookie (obtained first in
+// globalSetup) must accompany the register call, otherwise it 401/403s.
+async function userCookies(adminCookie) {
   const name = `e2e_testuser_${Date.now()}`;
-  await request(BASE).post('/api/auth/register').set('Origin', ORIGIN)
+  const reg = await request(BASE).post('/api/auth/register')
+    .set('Origin', ORIGIN).set('Cookie', adminCookie)
     .send({ username: name, password: 'TestPass123', email: `${name}@test.com` });
+  if (![201, 409].includes(reg.status)) {
+    throw new Error(`[e2e setup] admin-register of test user failed (${reg.status}): ${JSON.stringify(reg.body)}`);
+  }
   const login = await request(BASE).post('/api/auth/login').set('Origin', ORIGIN)
     .send({ username: name, password: 'TestPass123' });
   if (login.status !== 200) {
@@ -111,8 +117,9 @@ async function userCookies() {
 }
 
 module.exports = async function globalSetup() {
-  process.env.E2E_ADMIN_COOKIE = await adminCookies();
-  const user = await userCookies();
+  const adminCookie = await adminCookies();
+  process.env.E2E_ADMIN_COOKIE = adminCookie;
+  const user = await userCookies(adminCookie);
   process.env.E2E_USER_COOKIE = user.cookies;
   process.env.E2E_USER_NAME = user.name;
 };

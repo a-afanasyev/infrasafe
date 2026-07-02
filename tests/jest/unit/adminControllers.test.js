@@ -157,17 +157,15 @@ describe('adminBuildingController', () => {
         });
     });
 
-    describe('batchBuildingsOperation', () => {
-        test('returns success response', async () => {
+    describe('batchBuildingsOperation [R2-03]', () => {
+        test('delete → returns affected rowCount', async () => {
+            db.query.mockResolvedValue({ rows: [{ building_id: 1 }, { building_id: 2 }, { building_id: 3 }], rowCount: 3 });
             req.body = { action: 'delete', ids: [1, 2, 3] };
 
             await adminIndex.batchBuildingsOperation(req, res, next);
 
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    success: true,
-                    affected: 3
-                })
+                expect.objectContaining({ success: true, affected: 3 })
             );
         });
     });
