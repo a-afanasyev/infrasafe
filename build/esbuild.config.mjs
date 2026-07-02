@@ -40,6 +40,8 @@ const ENTRIES = [
     'public/utils/coordValidation.js',
     // [UK-URGENCY remnant] UK deep-link builder + reopen-meta passthrough
     'public/utils/ukLinkBuilder.js',
+    // [R2-10] section-id normalizer + corrected bulk-delete endpoint map
+    'public/utils/sectionId.js',
 ].map(f => path.join(projectRoot, f));
 
 const sharedOptions = {

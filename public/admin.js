@@ -1,6 +1,17 @@
 document.addEventListener("DOMContentLoaded", function () {
     const backendURL = "/api";
 
+    // [R2-10] Section-id helpers (public/utils/sectionId.js, loaded before this).
+    // State objects use camelCase keys (waterSources); DOM ids + loadSectionData
+    // cases + bulk maps use kebab (water-sources). toDomId bridges the two so
+    // water/heat checkboxes, bulk-delete and pagination buttons wire up. Fallback
+    // regex keeps the panel working even if the util script fails to load.
+    const toDomId = (window.SectionId && window.SectionId.toDomId) ||
+        ((s) => String(s == null ? '' : s).replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase());
+    // Corrected REST base path per section (water-sources → /api/cold-water-sources).
+    const bulkDeleteEndpoint = (window.SectionId && window.SectionId.bulkDeleteEndpoint) ||
+        (() => null);
+
     // Переменные для пагинации всех сущностей
     const pagination = {
         buildings: { page: 1, limit: 10, total: 0 },
@@ -1280,11 +1291,12 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     function updateCheckboxHandlers(section) {
+        const dom = toDomId(section); // [R2-10] DOM ids are kebab; state key stays as-is
         // Обработчик для кнопки "Выбрать все" (button, не checkbox!)
-        const selectAllBtn = document.getElementById(`${section}-select-all`);
+        const selectAllBtn = document.getElementById(`${dom}-select-all`);
         if (selectAllBtn && !selectAllBtn.dataset.handlerSet) {
             selectAllBtn.addEventListener('click', function() {
-                const checkboxes = document.querySelectorAll(`#${section}-section .item-checkbox`);
+                const checkboxes = document.querySelectorAll(`#${dom}-section .item-checkbox`);
                 const allChecked = Array.from(checkboxes).every(cb => cb.checked);
                 
                 // Если все выбраны - снимаем выбор, иначе выбираем все
@@ -1306,10 +1318,10 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         
         // Обработчик для чекбокса "выбрать все" (если есть в заголовке таблицы)
-        const selectAllCheckbox = document.getElementById(`${section}-select-all-checkbox`);
+        const selectAllCheckbox = document.getElementById(`${dom}-select-all-checkbox`);
         if (selectAllCheckbox && !selectAllCheckbox.dataset.handlerSet) {
             selectAllCheckbox.addEventListener('change', function() {
-                const checkboxes = document.querySelectorAll(`#${section}-section .item-checkbox`);
+                const checkboxes = document.querySelectorAll(`#${dom}-section .item-checkbox`);
                 checkboxes.forEach(checkbox => {
                     checkbox.checked = this.checked;
                     const id = checkbox.dataset.id;
@@ -1325,7 +1337,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         // Обработчики для отдельных чекбоксов
-        const itemCheckboxes = document.querySelectorAll(`#${section}-section .item-checkbox`);
+        const itemCheckboxes = document.querySelectorAll(`#${dom}-section .item-checkbox`);
         itemCheckboxes.forEach(checkbox => {
             checkbox.addEventListener('change', function() {
                 const id = this.dataset.id;
@@ -1337,7 +1349,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 updateBatchButtons(section);
 
                 // Обновляем текст кнопки "Выбрать все"
-                const selectAllBtn = document.getElementById(`${section}-select-all`);
+                const selectAllBtn = document.getElementById(`${dom}-select-all`);
                 if (selectAllBtn) {
                     const allChecked = Array.from(itemCheckboxes).every(cb => cb.checked);
                     selectAllBtn.textContent = allChecked ? 'Снять выбор' : 'Выбрать все';
@@ -1353,10 +1365,11 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function updateBatchButtons(section) {
+        const dom = toDomId(section); // [R2-10] kebab DOM ids; state key stays as-is
         const selectedCount = selectedItems[section].size;
-        const bulkDeleteBtn = document.getElementById(`${section}-bulk-delete`);
-        const bulkStatusBtn = document.getElementById(`${section}-bulk-status`);
-        const bulkStatusSelect = document.getElementById(`${section}-bulk-status-select`);
+        const bulkDeleteBtn = document.getElementById(`${dom}-bulk-delete`);
+        const bulkStatusBtn = document.getElementById(`${dom}-bulk-status`);
+        const bulkStatusSelect = document.getElementById(`${dom}-bulk-status-select`);
 
         if (bulkDeleteBtn) {
             bulkDeleteBtn.disabled = selectedCount === 0;
@@ -1387,14 +1400,15 @@ document.addEventListener("DOMContentLoaded", function () {
     
     // Обработчик массового удаления
     async function handleBulkDelete(section) {
+        const dom = toDomId(section); // [R2-10] kebab id for maps/loadSectionData; state key stays
         const selectedCount = selectedItems[section].size;
         const selectedIds = Array.from(selectedItems[section]);
-        
+
         if (selectedCount === 0) {
             showToast('Не выбрано элементов для удаления', 'warning');
             return;
         }
-        
+
         const sectionNames = {
             'buildings': 'зданий',
             'controllers': 'контроллеров',
@@ -1405,8 +1419,8 @@ document.addEventListener("DOMContentLoaded", function () {
             'heat-sources': 'источников тепла',
             'metrics': 'метрик'
         };
-        
-        const sectionName = sectionNames[section] || 'элементов';
+
+        const sectionName = sectionNames[dom] || 'элементов';
         
         if (!confirm(`⚠️ ВНИМАНИЕ!\n\nВы уверены, что хотите удалить ${selectedCount} ${sectionName}?\n\nЭта операция необратима!`)) {
             return;
@@ -1418,20 +1432,10 @@ document.addEventListener("DOMContentLoaded", function () {
         // Показываем прогресс
         showToast(`Удаление ${selectedCount} ${sectionName}...`, 'info');
         
-        // Определяем endpoint для каждой секции
-        const endpoints = {
-            'buildings': '/api/buildings',
-            'controllers': '/api/controllers',
-            'transformers': '/api/transformers',
-            'lines': '/api/lines',
-            'water-lines': '/api/water-lines',
-            'water-sources': '/api/water-sources',
-            'heat-sources': '/api/heat-sources',
-            'metrics': '/api/metrics'
-        };
-        
-        const endpoint = endpoints[section];
-        
+        // [R2-10] Endpoint resolved via the tested section map (water-sources →
+        // /api/cold-water-sources; the old inline map wrongly used /api/water-sources).
+        const endpoint = bulkDeleteEndpoint(section);
+
         if (!endpoint) {
             showToast(`Ошибка: неизвестная секция ${section}`, 'error');
             return;
@@ -1470,17 +1474,18 @@ document.addEventListener("DOMContentLoaded", function () {
         
         // Очищаем выбранные элементы
         selectedItems[section].clear();
-        
-        // Перезагружаем данные
+
+        // Перезагружаем данные (loadSectionData switches on the kebab id)
         dataLoaded[section] = false;
-        loadSectionData(section);
+        loadSectionData(dom);
     }
-    
+
     // Обработчик массового изменения статуса
     async function handleBulkStatusChange(section) {
+        const dom = toDomId(section); // [R2-10] kebab id for DOM/loadSectionData; state key stays
         const selectedCount = selectedItems[section].size;
         const selectedIds = Array.from(selectedItems[section]);
-        const statusSelect = document.getElementById(`${section}-bulk-status-select`);
+        const statusSelect = document.getElementById(`${dom}-bulk-status-select`);
         
         if (selectedCount === 0) {
             showToast('Не выбрано элементов для изменения статуса', 'warning');
@@ -1509,8 +1514,8 @@ document.addEventListener("DOMContentLoaded", function () {
             'controllers': '/api/controllers'
         };
         
-        const endpoint = endpoints[section];
-        
+        const endpoint = endpoints[dom];
+
         if (!endpoint) {
             showToast(`Массовое изменение статуса не поддерживается для ${section}`, 'error');
             return;
@@ -1551,10 +1556,10 @@ document.addEventListener("DOMContentLoaded", function () {
         
         // Очищаем выбранные элементы
         selectedItems[section].clear();
-        
-        // Перезагружаем данные
+
+        // Перезагружаем данные (loadSectionData switches on the kebab id)
         dataLoaded[section] = false;
-        loadSectionData(section);
+        loadSectionData(dom);
     }
 
     // ===============================================
@@ -1562,9 +1567,10 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     function updatePagination(section) {
-        const pageInfo = document.getElementById(`${section}-page-info`);
-        const prevBtn = document.getElementById(`${section}-prev-page`);
-        const nextBtn = document.getElementById(`${section}-next-page`);
+        const dom = toDomId(section); // [R2-10] kebab DOM ids; state key stays as-is
+        const pageInfo = document.getElementById(`${dom}-page-info`);
+        const prevBtn = document.getElementById(`${dom}-prev-page`);
+        const nextBtn = document.getElementById(`${dom}-next-page`);
 
         const currentPage = pagination[section].page;
         const total = pagination[section].total || 0;
@@ -1583,7 +1589,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 if (pagination[section].page > 1) {
                     pagination[section].page--;
                     dataLoaded[section] = false;
-                    loadSectionData(section);
+                    loadSectionData(dom);
                 }
             });
         }
@@ -1597,7 +1603,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 if (pagination[section].page < tp) {
                     pagination[section].page++;
                     dataLoaded[section] = false;
-                    loadSectionData(section);
+                    loadSectionData(dom);
                 }
             });
         }
