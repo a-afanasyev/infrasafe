@@ -186,7 +186,7 @@ router.get('/statistics', applyAnalyticsRateLimit, buildingController.getBuildin
  *       404:
  *         description: Здание не найдено
  */
-router.get('/:id', applyAnalyticsRateLimit, buildingController.getBuildingById);
+router.get('/:id', applyAnalyticsRateLimit, validateIntParam('id'), buildingController.getBuildingById);
 
 /**
  * @swagger

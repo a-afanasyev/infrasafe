@@ -3,6 +3,7 @@ const router = express.Router();
 const analyticsController = require('../controllers/analyticsController');
 const { isAdmin } = require('../middleware/auth');
 const { applyAnalyticsRateLimit, applyAdminRateLimit } = require('../middleware/rateLimiter');
+const { validateIntParam } = require('../middleware/validators');
 
 /**
  * @swagger
@@ -164,7 +165,7 @@ router.get('/transformers', applyAnalyticsRateLimit, analyticsController.getAllT
  *                 data:
  *                   $ref: '#/components/schemas/TransformerAnalytics'
  */
-router.get('/transformers/:transformerId/load', applyAnalyticsRateLimit, analyticsController.getTransformerLoad);
+router.get('/transformers/:transformerId/load', applyAnalyticsRateLimit, validateIntParam('transformerId'), analyticsController.getTransformerLoad);
 
 /**
  * @swagger
@@ -244,7 +245,7 @@ router.get('/transformers/search', applyAnalyticsRateLimit, analyticsController.
  *       200:
  *         description: Ближайшие здания
  */
-router.get('/transformers/:transformerId/buildings', applyAnalyticsRateLimit, analyticsController.findNearestBuildings);
+router.get('/transformers/:transformerId/buildings', applyAnalyticsRateLimit, validateIntParam('transformerId'), analyticsController.findNearestBuildings);
 
 /**
  * @swagger
@@ -270,7 +271,7 @@ router.get('/transformers/:transformerId/buildings', applyAnalyticsRateLimit, an
  *       200:
  *         description: Прогноз нагрузки
  */
-router.get('/transformers/:transformerId/forecast', applyAnalyticsRateLimit, analyticsController.getPeakLoadForecast);
+router.get('/transformers/:transformerId/forecast', applyAnalyticsRateLimit, validateIntParam('transformerId'), analyticsController.getPeakLoadForecast);
 
 /**
  * @swagger

@@ -188,7 +188,7 @@ router.delete('/cleanup', isAdmin, applyCrudRateLimit, metricController.cleanupO
  *       400:
  *         description: Неверные параметры запроса
  */
-router.get('/controller/:controllerId/aggregated', metricController.getAggregatedMetrics);
+router.get('/controller/:controllerId/aggregated', validateIntParam('controllerId'), metricController.getAggregatedMetrics);
 
 /**
  * @swagger
@@ -221,7 +221,7 @@ router.get('/controller/:controllerId/aggregated', metricController.getAggregate
  *       404:
  *         description: Контроллер не найден
  */
-router.get('/controller/:controllerId', metricController.getMetricsByControllerId);
+router.get('/controller/:controllerId', validateIntParam('controllerId'), metricController.getMetricsByControllerId);
 
 /**
  * @swagger
@@ -242,7 +242,7 @@ router.get('/controller/:controllerId', metricController.getMetricsByControllerI
  *       404:
  *         description: Метрика не найдена
  */
-router.get('/:id', metricController.getMetricById);
+router.get('/:id', validateIntParam('id'), metricController.getMetricById);
 
 /**
  * @swagger

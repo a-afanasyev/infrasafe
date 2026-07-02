@@ -199,6 +199,14 @@ describe('API Integration Tests', () => {
 
             expect(response.status).toBe(400);
         });
+
+        test('GET /api/buildings/:id - нечисловой id → 400, не 500 (R2-16, live-QA gap)', async () => {
+            const response = await request(app)
+                .get('/api/buildings/not-a-number')
+                .set('Authorization', `Bearer ${authToken}`);
+
+            expect(response.status).toBe(400);
+        });
     });
 
     describe('Controllers Endpoints', () => {

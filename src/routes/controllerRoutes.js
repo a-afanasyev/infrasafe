@@ -152,7 +152,7 @@ router.get('/statistics', controllerController.getControllersStatistics);
  *       404:
  *         description: Контроллер не найден
  */
-router.get('/:id', controllerController.getControllerById);
+router.get('/:id', validateIdParam, controllerController.getControllerById);
 
 /**
  * @swagger

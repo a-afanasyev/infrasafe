@@ -104,7 +104,7 @@ router.get('/', heatSourceController.getAll);
  *       404:
  *         description: Источник не найден
  */
-router.get('/:id', heatSourceController.getById);
+router.get('/:id', validateIntParam('id'), heatSourceController.getById);
 
 /**
  * @swagger

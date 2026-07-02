@@ -15,8 +15,10 @@ class Building {
         try {
             const offset = (page - 1) * limit;
             // [R2-23] typeof guard — a duplicated ?order= arrives as an array → .toLowerCase() throws.
+            // Pass the NORMALIZED orderStr through (not the raw `order`), else an array
+            // still reaches validateSortOrder → throws → silently resets the sort column.
             const orderStr = typeof order === 'string' ? order.toLowerCase() : 'asc';
-            const validOrder = ['asc', 'desc'].includes(orderStr) ? order : 'asc';
+            const validOrder = ['asc', 'desc'].includes(orderStr) ? orderStr : 'asc';
 
             // ИСПРАВЛЕНИЕ SQL INJECTION: Валидация параметров сортировки
             const { validateSortOrder } = require('../utils/queryValidation');

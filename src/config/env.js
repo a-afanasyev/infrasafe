@@ -71,7 +71,14 @@ function validateEnv() {
     // Enforce a minimum length for crypto secrets in production.
     if (isProduction) {
         const MIN_SECRET_LEN = 32;
-        const secretVars = ['JWT_SECRET', 'JWT_REFRESH_SECRET', 'JWT_2FA_SECRET', 'TOTP_ENCRYPTION_KEY'];
+        // JWT/TOTP secrets are always required; the UK webhook HMAC keys are
+        // optional (integration may be off) so they're only length-checked when set
+        // — a short HMAC key would let an attacker brute-force it and forge inbound
+        // UK webhooks (building.deleted etc.).
+        const secretVars = [
+            'JWT_SECRET', 'JWT_REFRESH_SECRET', 'JWT_2FA_SECRET', 'TOTP_ENCRYPTION_KEY',
+            'INFRASAFE_WEBHOOK_SECRET', 'UK_WEBHOOK_SECRET',
+        ];
         const weak = secretVars.filter(
             name => process.env[name] && process.env[name].length < MIN_SECRET_LEN
         );

@@ -104,7 +104,7 @@ router.get('/', coldWaterSourceController.getAll);
  *       404:
  *         description: Источник не найден
  */
-router.get('/:id', coldWaterSourceController.getById);
+router.get('/:id', validateIntParam('id'), coldWaterSourceController.getById);
 
 /**
  * @swagger
