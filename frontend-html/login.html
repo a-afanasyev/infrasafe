@@ -173,6 +173,8 @@
     
     <!-- Подключение утилит безопасности -->
     <script src="public/dist/utils/domSecurity.js?v=20260527"></script>
+    <!-- [R2-12] shared 2FA/auth layer — must load before login.js -->
+    <script src="public/dist/utils/authFlow.js?v=20260703"></script>
 </head>
 <body>
     <div class="login-container">

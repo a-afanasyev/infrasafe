@@ -2110,12 +2110,8 @@ document.addEventListener('DOMContentLoaded', async function () {
             hideMapErrors();
 
             try {
-                const response = await fetch('/api/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
-                const data = await response.json();
+                // [R2-12] Shared POST-JSON boilerplate; branching unchanged.
+                const { res: response, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.login, { username, password });
 
                 // Order matters: /api/auth/login returns `{success:true, requires2FA:true, tempToken}`
                 // for admin accounts — checking `data.success` first would close the modal
@@ -2129,26 +2125,15 @@ document.addEventListener('DOMContentLoaded', async function () {
                 } else if (response.ok && data.requires2FASetup) {
                     mapTempToken = data.tempToken;
                     // Fetch QR setup
-                    const setupRes = await fetch('/api/auth/setup-2fa', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ tempToken: mapTempToken })
-                    });
-                    const setupData = await setupRes.json();
+                    const { res: setupRes, data: setupData } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.setup2fa, { tempToken: mapTempToken });
                     if (setupRes.ok) {
-                        // [1A-FU-C-M3] Defence-in-depth: validate qrCodeUrl
-                        // scheme + length before assigning to img.src. The
-                        // totpService produces exactly `data:image/png;base64,<...>`;
-                        // anything else is a server regression or injection
-                        // attempt — refuse to render. Mirrors public/login.js.
-                        const qrUrl = String(setupData.qrCodeUrl || '');
-                        const QR_PREFIX = 'data:image/png;base64,';
-                        const QR_MAX_LEN = 8 * 1024; // 8KB — actual QR is ~1-2KB
-                        if (!qrUrl.startsWith(QR_PREFIX) || qrUrl.length > QR_MAX_LEN) {
+                        // [R2-12] QR validation single-sourced in AuthFlow (security
+                        // check gating img.src; must not drift from login.js).
+                        if (!AuthFlow.validateQrCodeUrl(setupData.qrCodeUrl)) {
                             showMapError('map-login-error', 'Сервер вернул некорректный QR-код');
                             return;
                         }
-                        document.getElementById('map-qr-img').src = qrUrl;
+                        document.getElementById('map-qr-img').src = String(setupData.qrCodeUrl);
                         document.getElementById('map-qr-secret').textContent = setupData.secret;
                         document.getElementById('map-recovery-codes').textContent = setupData.recoveryCodes.join('\n');
                         showMapLoginStep('setup');
@@ -2182,12 +2167,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             btn.disabled = true;
             hideMapErrors();
             try {
-                const res = await fetch('/api/auth/verify-2fa', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ tempToken: mapTempToken, code })
-                });
-                const data = await res.json();
+                const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.verify2fa, { tempToken: mapTempToken, code });
                 // [1A-FU2-S-M2] success marker is `data.success` (cookies set).
                 if (res.ok && data.success) {
                     await completeMapLogin(data);
@@ -2220,12 +2200,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             btn.disabled = true;
             hideMapErrors();
             try {
-                const res = await fetch('/api/auth/confirm-2fa', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ tempToken: mapTempToken, code })
-                });
-                const data = await res.json();
+                const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.confirm2fa, { tempToken: mapTempToken, code });
                 // [1A-FU2-S-M2] success marker is `data.success` (cookies set).
                 if (res.ok && data.success) {
                     await completeMapLogin(data);

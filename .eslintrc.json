@@ -28,6 +28,7 @@
         "L": "readonly",
         "Chart": "readonly",
         "DOMPurify": "readonly",
+        "AuthFlow": "readonly",
         "define": "readonly",
         "InfrastructureLineEditor": "readonly",
         "MapLayersControl": "readonly",

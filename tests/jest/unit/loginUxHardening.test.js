@@ -21,21 +21,37 @@ const LOGIN_JS = fs.readFileSync(
     'utf8'
 );
 
-describe('[1A-FU-C-M3] + [1A-FU2-S-M3] login.js validates qrCodeUrl before img.src', () => {
-    test('qrCodeUrl assignment uses tight data:image/png;base64 prefix', () => {
+// [R2-12] The qrCodeUrl validator moved from an inline block in login.js into
+// the shared public/utils/authFlow.js (single-sourced so the login page and the
+// map-login modal can't drift). The security property is preserved; these
+// content contracts now target its new home. Behavioural coverage lives in
+// tests/jest/unit/frontend/authFlow.test.js.
+const AUTHFLOW_JS = fs.readFileSync(
+    path.resolve(__dirname, '../../../public/utils/authFlow.js'),
+    'utf8'
+);
+
+describe('[1A-FU-C-M3] + [1A-FU2-S-M3] login validates qrCodeUrl before img.src', () => {
+    test('QR validator uses tight data:image/png;base64 prefix (in authFlow)', () => {
         // Sprint 2 hardening: narrowed allowlist to ONLY the format that
         // totpService emits. Earlier wider check accepted any https://
         // URL — an attacker-controlled CDN could be rendered through img.src.
-        expect(LOGIN_JS).toMatch(/data:image\/png;base64,/);
+        expect(AUTHFLOW_JS).toMatch(/data:image\/png;base64,/);
         // The previous broader 'https://' allowlist must NOT be present.
-        expect(LOGIN_JS).not.toMatch(/startsWith\(\s*['"]https:\/\/['"]\)/);
+        expect(AUTHFLOW_JS).not.toMatch(/startsWith\(\s*['"]https:\/\/['"]\)/);
     });
 
-    test('qrCodeUrl length is capped to prevent giant data: URLs', () => {
+    test('QR validator caps length to prevent giant data: URLs (in authFlow)', () => {
         // 8KB cap — actual QR is ~1-2KB. Guards against DoS via huge
         // data: URLs in a compromised response.
-        expect(LOGIN_JS).toMatch(/QR_MAX_LEN[\s\S]*?8\s*\*\s*1024/);
-        expect(LOGIN_JS).toMatch(/qrUrl\.length\s*<=\s*QR_MAX_LEN/);
+        expect(AUTHFLOW_JS).toMatch(/QR_MAX_LEN[\s\S]*?8\s*\*\s*1024/);
+        expect(AUTHFLOW_JS).toMatch(/length\s*<=\s*QR_MAX_LEN/);
+    });
+
+    test('login.js delegates QR validation to AuthFlow before assigning img.src', () => {
+        // [R2-12] login.js must call the shared validator (fail-closed) rather
+        // than re-implement (and risk drifting) the check.
+        expect(LOGIN_JS).toMatch(/AuthFlow\.validateQrCodeUrl\(/);
     });
 
     test('no direct img.src assignment of unvalidated data field exists', () => {

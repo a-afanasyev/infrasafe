@@ -90,12 +90,8 @@
                 this.clearAll();
 
                 try {
-                    const res = await fetch('/api/auth/login', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ username, password })
-                    });
-                    const data = await res.json();
+                    // [R2-12] Shared POST-JSON boilerplate; branching unchanged.
+                    const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.login, { username, password });
 
                     if (!res.ok) throw new Error(data.message || data.error || 'Ошибка авторизации');
 
@@ -141,12 +137,7 @@
                 this.clearAll();
 
                 try {
-                    const res = await fetch('/api/auth/verify-2fa', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ tempToken: this.tempToken, code })
-                    });
-                    const data = await res.json();
+                    const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.verify2fa, { tempToken: this.tempToken, code });
                     if (!res.ok) throw new Error(data.message || data.error || 'Неверный код');
                     this.completeLogin(data);
                 } catch (err) {
@@ -162,30 +153,16 @@
         // --- Step 2b: 2FA setup ---
         async loadSetup() {
             try {
-                const res = await fetch('/api/auth/setup-2fa', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ tempToken: this.tempToken })
-                });
-                const data = await res.json();
+                const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.setup2fa, { tempToken: this.tempToken });
                 if (!res.ok) throw new Error(data.message || data.error || 'Ошибка настройки 2FA');
 
-                // [1A-FU-C-M3] + [1A-FU2-S-M3] Defence-in-depth: validate
-                // qrCodeUrl scheme + length before assigning to img.src.
-                // The totpService produces exactly `data:image/png;base64,<...>`
-                // (see src/services/totpService.js QRCode.toDataURL). Anything
-                // else is either a server regression or an injection attempt —
-                // refuse to render. The earlier wider allowlist (any https://)
-                // could route an attacker-controlled CDN URL through img.src;
-                // tightened to PNG data URI only.
-                const qrUrl = String(data.qrCodeUrl || '');
-                const QR_PREFIX = 'data:image/png;base64,';
-                const QR_MAX_LEN = 8 * 1024; // 8KB — actual QR is ~1-2KB
-                const qrOk = qrUrl.startsWith(QR_PREFIX) && qrUrl.length <= QR_MAX_LEN;
-                if (!qrOk) {
+                // [R2-12] QR data-URI validation single-sourced in AuthFlow — a
+                // security check (gates img.src); it must not drift between the
+                // login page and the map-login modal.
+                if (!AuthFlow.validateQrCodeUrl(data.qrCodeUrl)) {
                     throw new Error('Сервер вернул некорректный QR-код');
                 }
-                document.getElementById('qr-code-img').src = qrUrl;
+                document.getElementById('qr-code-img').src = String(data.qrCodeUrl);
                 document.getElementById('totp-secret-display').textContent = data.secret;
                 document.getElementById('recovery-codes-display').textContent = data.recoveryCodes.join('\n');
                 this.showStep('totp-setup');
@@ -207,12 +184,7 @@
                 document.getElementById('confirm-button').disabled = true;
 
                 try {
-                    const res = await fetch('/api/auth/confirm-2fa', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ tempToken: this.tempToken, code })
-                    });
-                    const data = await res.json();
+                    const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.confirm2fa, { tempToken: this.tempToken, code });
                     if (!res.ok) throw new Error(data.message || data.error || 'Неверный код');
                     this.completeLogin(data);
                 } catch (err) {
