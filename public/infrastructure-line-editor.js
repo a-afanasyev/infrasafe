@@ -485,7 +485,7 @@ class InfrastructureLineEditor {
         this.branchPolylines = [];
 
         // Рисуем каждое ответвление
-        this.branches.forEach((branch, index) => {
+        this.branches.forEach((branch) => {
             if (branch.length >= 2) {
                 const latlngs = branch.map(p => [p.lat, p.lng]);
                 const color = this.getLineColor();
@@ -895,9 +895,14 @@ class InfrastructureLineEditor {
 // ГЛОБАЛЬНАЯ ФУНКЦИЯ ДЛЯ ОТКРЫТИЯ РЕДАКТОРА
 // ===============================================
 
+/* exported openInfrastructureLineEditor */
+// ^ Public global entry point (a convenience wrapper over InfrastructureLineEditor,
+//   which is itself exposed as a global). Kept as public API even though the
+//   currently-shipped HTML doesn't call it; ESLint flags it since it sees no
+//   in-file reference.
 /**
  * Открыть редактор линий инфраструктуры
- * 
+ *
  * @param {string} lineType - Тип линии (cold_water, hot_water, electricity)
  * @param {number} lineId - ID линии (null для создания новой)
  * @param {Object} existingData - Существующие данные (для редактирования)

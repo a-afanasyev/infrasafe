@@ -414,7 +414,7 @@ class MapLayersControl {
 
         // Создаем Leaflet control
         const LayersControl = L.Control.extend({
-            onAdd: function(map) {
+            onAdd: function() {
                 return controlDiv;
             }
         });
@@ -1649,9 +1649,6 @@ class MapLayersControl {
     }
 
 }
-
-// Инициализация после загрузки карты
-let mapLayersControl;
 
 // Экспорт для использования в других файлах
 if (typeof module !== 'undefined' && module.exports) {
