@@ -69,6 +69,29 @@ class AdminService {
         logger.info(`Batch update ${column} in ${tableName}: ${result.rowCount} rows updated`);
         return result;
     }
+
+    /**
+     * [R2-04] Dashboard entity counts. Moved out of adminGeneralController so the
+     * controller stays pure HTTP (call service → shape response) instead of running
+     * SQL directly. "Active" alerts = active + acknowledged (an acknowledged alert
+     * is still open — AUD-007); the legacy `alerts` table was dropped in mig 028, so
+     * the live source is `infrastructure_alerts`.
+     * @returns {Promise<{buildings:{total:number}, controllers:{total:number}, metrics:{total:number}, alerts:{active:number}}>}
+     */
+    async getDashboardStats() {
+        const [buildings, controllers, metrics, alerts] = await Promise.all([
+            db.query('SELECT COUNT(*) FROM buildings'),
+            db.query('SELECT COUNT(*) FROM controllers'),
+            db.query('SELECT COUNT(*) FROM metrics'),
+            db.query("SELECT COUNT(*) FROM infrastructure_alerts WHERE status IN ('active', 'acknowledged')"),
+        ]);
+        return {
+            buildings:   { total: parseInt(buildings.rows[0].count, 10) },
+            controllers: { total: parseInt(controllers.rows[0].count, 10) },
+            metrics:     { total: parseInt(metrics.rows[0].count, 10) },
+            alerts:      { active: parseInt(alerts.rows[0].count, 10) },
+        };
+    }
 }
 
 module.exports = new AdminService();

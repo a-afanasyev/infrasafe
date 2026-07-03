@@ -1,5 +1,5 @@
 const { createError } = require('../../utils/helpers');
-const db = require('../../config/database');
+const adminService = require('../../services/adminService');
 const logger = require('../../utils/logger');
 
 // Phase 9.3 (YAGNI-007 / YAGNI-008): globalSearch and exportData were
@@ -10,24 +10,12 @@ const logger = require('../../utils/logger');
 // does not expose a "export" button in production. Re-add when there
 // is a concrete use case.
 
+// [R2-04] Data access lives in adminService.getDashboardStats(); this handler
+// stays pure HTTP — call the service, shape the response, map errors.
 async function getAdminStats(req, res, next) {
     try {
-        const [buildings, controllers, metrics, alerts] = await Promise.all([
-            db.query('SELECT COUNT(*) FROM buildings'),
-            db.query('SELECT COUNT(*) FROM controllers'),
-            db.query('SELECT COUNT(*) FROM metrics'),
-            // AUD-007: the live alert system is infrastructure_alerts; the legacy
-            // `alerts` table was dropped in migration 028. "Active" for the
-            // dashboard = active + acknowledged (an acknowledged alert is still open).
-            db.query("SELECT COUNT(*) FROM infrastructure_alerts WHERE status IN ('active', 'acknowledged')"),
-        ]);
-
-        res.json({
-            buildings: { total: parseInt(buildings.rows[0].count, 10) },
-            controllers: { total: parseInt(controllers.rows[0].count, 10) },
-            metrics: { total: parseInt(metrics.rows[0].count, 10) },
-            alerts: { active: parseInt(alerts.rows[0].count, 10) },
-        });
+        const stats = await adminService.getDashboardStats();
+        res.json(stats);
     } catch (error) {
         // AUD-029: surface the real cause; the client still gets a generic 500.
         logger.error(`Error in getAdminStats: ${error.message}`);
