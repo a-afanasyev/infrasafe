@@ -23,6 +23,16 @@ COMPOSE="$HERE/docker-compose.migrate-test.yml"
 SEED="$HERE/synthetic-baseline-seed.sql"
 PGDB="infrasafe_migrate_test"
 
+# The harness builds synthetic migration targets with `git commit-tree`, which
+# REQUIRES a committer identity. Dev machines have a global one; fresh CI runners
+# do NOT — there, commit-tree fails and returns empty, so the target commit never
+# resolves and every runner subcommand dies at require_target. Provide a scoped
+# identity via env (not `git config`, so the user's/global config is untouched).
+export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-migrate-e2e}"
+export GIT_AUTHOR_EMAIL="${GIT_AUTHOR_EMAIL:-migrate-e2e@infrasafe.local}"
+export GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-migrate-e2e}"
+export GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-migrate-e2e@infrasafe.local}"
+
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; NC='\033[0m'
 PASS=0; FAIL=0
 pass() { echo -e "${GREEN}  ✓ $*${NC}"; PASS=$((PASS + 1)); }
@@ -105,6 +115,11 @@ runtime_grants_on_runner() {
 
 # --- bring up + seed -------------------------------------------------------
 BASELINE_TARGET="$(build_baseline_target)"
+# Fail loudly if the synthetic target didn't build (e.g. no git identity → empty
+# commit-tree): otherwise every runner subcommand dies at require_target with a
+# confusing exit-1 cascade instead of a clear cause.
+git rev-parse --verify --quiet "${BASELINE_TARGET:-}^{commit}" >/dev/null \
+    || { echo "FATAL: could not build BASELINE_TARGET (git commit-tree failed — identity? git plumbing?)"; exit 1; }
 info "baseline target (003-034 only): $(git rev-parse --short "$BASELINE_TARGET") (HEAD $(git rev-parse --short HEAD))"
 
 info "starting ephemeral postgres (project infrasafe-migrate-test)"
