@@ -50,7 +50,7 @@ describe('Database module', () => {
 
     describe('init', () => {
         test('creates pool and verifies connection', async () => {
-            const pool = await db.init();
+            await db.init();
 
             const { Pool } = require('pg');
             expect(Pool).toHaveBeenCalledTimes(1);

@@ -62,11 +62,21 @@
         "no-extra-semi": "warn",
         "getter-return": "warn"
       }
+    },
+    {
+      "files": ["tests/**/*.js"],
+      "env": {
+        "jest": true,
+        "node": true,
+        "browser": true
+      },
+      "rules": {
+        "no-console": "off"
+      }
     }
   ],
   "ignorePatterns": [
     "node_modules/",
-    "tests/",
     "public/dist/",
     "public/libs/",
     "generator/",

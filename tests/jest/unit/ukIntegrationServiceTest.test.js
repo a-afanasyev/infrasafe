@@ -6,8 +6,6 @@
  * getRequestCounts, getBuildingRequests, invalidateRequestCache.
  */
 
-const crypto = require('crypto');
-
 jest.mock('../../../src/config/database', () => ({ query: jest.fn() }));
 jest.mock('../../../src/utils/logger', () => ({
     info: jest.fn(),
@@ -62,7 +60,6 @@ const IntegrationLog = require('../../../src/models/IntegrationLog');
 const AlertRule = require('../../../src/models/AlertRule');
 const AlertRequestMap = require('../../../src/models/AlertRequestMap');
 const UkOutbox = require('../../../src/models/UkOutbox');
-const alertService = require('../../../src/services/alertService');
 const logger = require('../../../src/utils/logger');
 const service = require('../../../src/services/ukIntegrationService');
 

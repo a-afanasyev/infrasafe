@@ -27,14 +27,6 @@ describe('Auth Middleware', () => {
         account_locked_until: null
     };
 
-    const mockAdminUser = {
-        user_id: 2,
-        username: 'admin',
-        role: 'admin',
-        email: 'admin@example.com',
-        account_locked_until: null
-    };
-
     beforeEach(() => {
         jest.clearAllMocks();
         process.env = { ...originalEnv, JWT_SECRET: 'test-secret', JWT_REFRESH_SECRET: 'test-refresh-secret' };

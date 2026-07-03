@@ -16,11 +16,8 @@ const powerAnalyticsService = require('../../../src/services/powerAnalyticsServi
 const {
     getBuildingsPower,
     getBuildingPower,
-    getLinesPower,
-    getLinePower,
     getTransformersPower,
     getTransformerPower,
-    getPhaseImbalanceAnalysis,
     refreshPowerViews
 } = require('../../../src/controllers/powerAnalyticsController');
 

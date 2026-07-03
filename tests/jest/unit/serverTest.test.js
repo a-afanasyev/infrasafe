@@ -43,7 +43,6 @@ jest.mock('swagger-ui-express', () => ({
 }));
 
 const db = require('../../../src/config/database');
-const logger = require('../../../src/utils/logger');
 const app = require('../../../src/server');
 
 describe('server.js', () => {

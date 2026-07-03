@@ -1,5 +1,3 @@
-const { ApiTestHelper, testUtils } = require('../helpers/testHelper');
-
 // Мокаем базу данных
 jest.mock('../../../src/config/database', () => ({
   query: jest.fn(),

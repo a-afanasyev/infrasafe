@@ -51,7 +51,6 @@ const db = require('../../../src/config/database');
 const logger = require('../../../src/utils/logger');
 const alertService = require('../../../src/services/alertService');
 const analyticsService = require('../../../src/services/analyticsService');
-const ukIntegrationService = require('../../../src/services/ukIntegrationService');
 
 describe('AlertService — uncovered branches', () => {
     beforeEach(() => {

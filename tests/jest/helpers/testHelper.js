@@ -80,7 +80,7 @@ class ApiTestHelper {
     expect(response.status).toBe(expectedStatus);
     
     // Проверяем либо success/message формат, либо прямой формат данных
-    if (response.body.hasOwnProperty('success')) {
+    if (Object.prototype.hasOwnProperty.call(response.body,'success')) {
       expect(response.body).toHaveProperty('success');
       expect(response.body).toHaveProperty('message');
       
@@ -99,7 +99,7 @@ class ApiTestHelper {
   expectDataResponse(response, expectedStatus = 200) {
     this.expectStandardResponse(response, expectedStatus);
     // API возвращает данные напрямую, а не в data wrapper
-    if (response.body.hasOwnProperty('data')) {
+    if (Object.prototype.hasOwnProperty.call(response.body,'data')) {
       expect(response.body).toHaveProperty('data');
     } else {
       // Прямой ответ без data wrapper
@@ -178,16 +178,16 @@ const testUtils = {
   expectErrorResponse: (response, expectedStatus = 400) => {
     expect(response.status).toBe(expectedStatus);
     // Проверяем разные форматы ошибок API
-    if (response.body.hasOwnProperty('success')) {
+    if (Object.prototype.hasOwnProperty.call(response.body,'success')) {
       expect(response.body.success).toBe(false);
       // Может быть message или error
       expect(response.body).toHaveProperty('message');
-    } else if (response.body.hasOwnProperty('errors')) {
+    } else if (Object.prototype.hasOwnProperty.call(response.body,'errors')) {
       // Формат валидации express-validator: { errors: [...] }
       expect(response.body).toHaveProperty('errors');
       expect(Array.isArray(response.body.errors)).toBe(true);
       expect(response.body.errors.length).toBeGreaterThan(0);
-    } else if (response.body.hasOwnProperty('error')) {
+    } else if (Object.prototype.hasOwnProperty.call(response.body,'error')) {
       expect(response.body).toHaveProperty('error');
     } else {
       // Прямой формат с message

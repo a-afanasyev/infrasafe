@@ -865,7 +865,7 @@ describe('AuthService', () => {
         test('throws INVALID_REFRESH_TOKEN when token type is not refresh', async () => {
             // Generate an access token (type is NOT 'refresh') and try to use it as refresh
             const user = { user_id: 1, username: 'admin', email: 'admin@test.com', role: 'admin' };
-            const tokens = authService.generateTokens(user);
+            authService.generateTokens(user);
 
             // Try to use the access token as a refresh token - it will fail jwt.verify with wrong secret
             // Instead, sign a token with the refresh secret but without type: 'refresh'

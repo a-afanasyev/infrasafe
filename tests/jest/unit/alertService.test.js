@@ -105,7 +105,7 @@ describe('AlertService', () => {
 
       await alertService.getActiveAlerts();
 
-      const [countQuery, countParams] = db.query.mock.calls[0];
+      const [, countParams] = db.query.mock.calls[0];
       expect(countParams[0]).toBe('active');
     });
 
@@ -129,7 +129,7 @@ describe('AlertService', () => {
 
       await alertService.getActiveAlerts({}, { page: 3, limit: 10 });
 
-      const [dataQuery, dataParams] = db.query.mock.calls[1];
+      const [, dataParams] = db.query.mock.calls[1];
       // limit=10, offset=(3-1)*10=20
       expect(dataParams).toContain(10);
       expect(dataParams).toContain(20);
