@@ -13,7 +13,9 @@ function signPayload(payload, secret) {
 }
 
 describe('E2E: UK Webhooks', () => {
-  const WEBHOOK_SECRET = process.env.UK_WEBHOOK_SECRET || '';
+  // [R2-18] Inbound webhooks are verified with INFRASAFE_WEBHOOK_SECRET (the
+  // UK_WEBHOOK_SECRET fallback was removed), so the e2e must sign with the same.
+  const WEBHOOK_SECRET = process.env.INFRASAFE_WEBHOOK_SECRET || '';
   const ENABLE_FULL_WEBHOOK_E2E = process.env.E2E_ENABLE_UK_INTEGRATION === 'true';
   let adminToken;
 
