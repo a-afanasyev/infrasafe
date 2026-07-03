@@ -17,6 +17,17 @@
  * MUST be hardcoded strings from the caller — never from req. An
  * identifier regex + the whitelist in dynamicUpdateBuilder protect
  * against misconfiguration.
+ *
+ * SCOPE (intentional — [R2-09]): this factory covers ONLY the plain-CRUD case
+ * — flat columns, `SELECT *`, no request-driven filters, no jsonb serialization,
+ * no PostGIS geometry, no joins/analytics. Its two consumers (ColdWaterSource,
+ * HeatSource) fit that shape exactly. The other infra models are NOT candidates
+ * and are deliberately hand-rolled: Line/WaterLine/WaterSupplier take a `filters`
+ * object in findAll and serialize jsonb columns; Transformer adds geometry +
+ * load analytics + nearest-building queries. Forcing those onto the factory would
+ * turn it into a configurable ORM-lite, against the project's "models execute SQL
+ * directly (no ORM)" architecture. So: use this factory for a new flat-column
+ * lookup table; hand-roll anything with filters, jsonb, geometry, or joins.
  */
 
 const db = require('../../config/database');

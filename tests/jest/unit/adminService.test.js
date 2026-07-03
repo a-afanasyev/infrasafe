@@ -84,4 +84,43 @@ describe('AdminService', () => {
                 .rejects.toMatchObject({ message: expect.stringContaining('not allowed') });
         });
     });
+
+    // [R2-04] Dashboard stats moved out of adminGeneralController into the service.
+    describe('getDashboardStats', () => {
+        test('aggregates the four entity counts into the dashboard shape', async () => {
+            db.query
+                .mockResolvedValueOnce({ rows: [{ count: '17' }] })   // buildings
+                .mockResolvedValueOnce({ rows: [{ count: '15' }] })   // controllers
+                .mockResolvedValueOnce({ rows: [{ count: '1000' }] }) // metrics
+                .mockResolvedValueOnce({ rows: [{ count: '5' }] });   // alerts
+
+            const stats = await adminService.getDashboardStats();
+
+            expect(stats).toEqual({
+                buildings:   { total: 17 },
+                controllers: { total: 15 },
+                metrics:     { total: 1000 },
+                alerts:      { active: 5 },
+            });
+            expect(db.query).toHaveBeenCalledTimes(4);
+        });
+
+        // AUD-007: active count must come from infrastructure_alerts (active +
+        // acknowledged), not the legacy `alerts` table dropped in migration 028.
+        test('counts active alerts from infrastructure_alerts (active + acknowledged)', async () => {
+            db.query.mockResolvedValue({ rows: [{ count: '0' }] });
+            await adminService.getDashboardStats();
+
+            const alertSql = db.query.mock.calls.map((c) => c[0]).find((sql) => /alert/i.test(sql));
+            expect(alertSql).toMatch(/infrastructure_alerts/);
+            expect(alertSql).not.toMatch(/FROM\s+alerts\b/);
+            expect(alertSql).toMatch(/'active'/);
+            expect(alertSql).toMatch(/'acknowledged'/);
+        });
+
+        test('propagates a DB error to the caller (controller maps it to 500)', async () => {
+            db.query.mockRejectedValueOnce(new Error('DB down'));
+            await expect(adminService.getDashboardStats()).rejects.toThrow('DB down');
+        });
+    });
 });
