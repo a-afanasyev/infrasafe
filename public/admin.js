@@ -2921,7 +2921,6 @@ document.addEventListener("DOMContentLoaded", function () {
     // ===============================================
 
     function openUniversalModal(type, data, config) {
-        const modal = document.getElementById('universal-modal');
         const title = document.getElementById('universal-modal-title');
         const formFields = document.getElementById('universal-form-fields');
         const form = document.getElementById('universal-form');
@@ -3013,7 +3012,6 @@ document.addEventListener("DOMContentLoaded", function () {
         newForm.addEventListener('submit', withSubmitGuard(async (e) => {
             e.preventDefault();
 
-            const formData = new FormData(newForm);
             const submitData = {};
 
             config.fields.forEach(field => {

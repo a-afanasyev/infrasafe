@@ -205,7 +205,7 @@
         // Storing the token in localStorage was the XSS hole that P1-2
         // was supposed to close — Phase 1 left it in for transitional
         // backward-compat; this PR finishes the job.
-        completeLogin(data) {
+        completeLogin(_data) {
             // [1A-FU2-C-H2] Cookie-first invariant: by the time this body has
             // arrived, the server has already issued Set-Cookie. The presence
             // of `accessToken`/`token` in the body is a transitional artefact

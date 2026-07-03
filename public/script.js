@@ -1042,26 +1042,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         return skeleton;
     }
 
-    // Создаём skeleton loader для таблиц
-    function createTableSkeleton(rows = 5, columns = 4) {
-        const table = document.createElement('table');
-        table.className = 'skeleton-table';
-        
-        for (let i = 0; i < rows; i++) {
-            const row = document.createElement('tr');
-            for (let j = 0; j < columns; j++) {
-                const cell = document.createElement('td');
-                const skeletonDiv = document.createElement('div');
-                skeletonDiv.className = `skeleton skeleton-row ${j === 0 ? 'wide' : j === 1 ? 'medium' : 'narrow'}`;
-                cell.appendChild(skeletonDiv);
-                row.appendChild(cell);
-            }
-            table.appendChild(row);
-        }
-        
-        return table;
-    }
-
     // Функции для управления skeleton loaders
     function showMapSkeleton() {
         const mapContainer = document.getElementById('map');
@@ -1073,20 +1053,6 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     function hideMapSkeleton() {
         const skeleton = document.getElementById('map-skeleton');
-        if (skeleton) {
-            skeleton.remove();
-        }
-    }
-
-    function showTableSkeleton(container, rows = 5, columns = 4) {
-        if (container && !container.querySelector('.skeleton-table')) {
-            const skeleton = createTableSkeleton(rows, columns);
-            container.appendChild(skeleton);
-        }
-    }
-
-    function hideTableSkeleton(container) {
-        const skeleton = container?.querySelector('.skeleton-table');
         if (skeleton) {
             skeleton.remove();
         }
@@ -1169,7 +1135,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     // Создаем кнопку переключения панели как Leaflet control внутри карты (сверху слева)
     if (map) {
         const panelToggleControl = L.control({ position: 'topleft' });
-        panelToggleControl.onAdd = function(map) {
+        panelToggleControl.onAdd = function() {
             const container = L.DomUtil.create('div', 'push-panel-toggle-container');
             const button = L.DomUtil.create('button', 'push-panel-toggle');
             button.id = 'push-panel-toggle';
@@ -1243,7 +1209,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     // Создаем элемент для отображения УК
     const ukControl = L.control({ position: 'topright' });
-    ukControl.onAdd = function(map) {
+    ukControl.onAdd = function() {
         const container = L.DomUtil.create('div', 'uk-control');
         container.style.background = 'rgba(255, 255, 255, 0.9)';
         container.style.padding = '8px 12px';
@@ -1348,7 +1314,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     // Создаем элемент управления обновлением (единый модуль справа сверху)
     const updateControl = L.control({ position: 'topright' });
-    updateControl.onAdd = function(map) {
+    updateControl.onAdd = function() {
         const container = L.DomUtil.create('div', 'update-control');
 
         // Создаем кнопку-заголовок с информацией об обновлении (всегда видимая)
@@ -1573,8 +1539,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                 }
             }
 
-            // Счетчик зданий с протечкой
-            let leakBuildingsCount = 0;
 
             // [R2-28] Response is valid — now safe to swap in fresh markers/storage.
             markers.clearLayers();
@@ -1600,7 +1564,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                 let isElectricityOK = false, isColdWaterOK = false, isHotWaterOK = true;
                 let hasLeak = false;
                 let electricityImage = 'data/images/Electricity_Red.png';
-                let electricityImage1 = electricityImage, electricityImage2 = electricityImage, electricityImage3 = electricityImage;
                 let coldWaterImage = 'data/images/Water_No_Blue.png';
                 let hotWaterImage = 'data/images/Water_Red.png';
                 let leakSensorImage = 'data/images/Leak_Green.png';
@@ -1610,11 +1573,8 @@ document.addEventListener('DOMContentLoaded', async function () {
                     // Авторизованный пользователь — полные данные
                     // Determine electricity status
                     isPhase1Ok = item.electricity_ph1 > 200 && item.electricity_ph1 < 240;
-                    electricityImage1 = isPhase1Ok ? 'data/images/Electricity_Green.png' : 'data/images/Electricity_Red.png';
                     isPhase2Ok = item.electricity_ph2 > 200 && item.electricity_ph2 < 240;
-                    electricityImage2 = isPhase2Ok ? 'data/images/Electricity_Green.png' : 'data/images/Electricity_Red.png';
                     isPhase3Ok = item.electricity_ph3 > 200 && item.electricity_ph3 < 240;
-                    electricityImage3 = isPhase3Ok ? 'data/images/Electricity_Green.png' : 'data/images/Electricity_Red.png';
                     isElectricityOK = isPhase1Ok && isPhase2Ok && isPhase3Ok;
                     electricityImage = isElectricityOK ? 'data/images/Electricity_Green.png' : 'data/images/Electricity_Red.png';
 
@@ -1634,11 +1594,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                     // Определяем статус датчика протечки
                     hasLeak = item.leak_sensor === true;
                     leakSensorImage = hasLeak ? 'data/images/leak1.png' : 'data/images/Leak_Green.png';
-
-                    // Увеличиваем счетчик зданий с протечкой
-                    if (hasLeak) {
-                        leakBuildingsCount++;
-                    }
 
                     // Determine marker color based on status
                     if (hasLeak) {
@@ -1819,7 +1774,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 </table>
             </div>
         `;
-                };
+                }
 
                 // ИСПРАВЛЕНИЕ XSS: Санитизируем popup контент перед использованием
                 if (window.DOMSecurity && window.DOMSecurity.sanitizePopupContent) {
@@ -2074,7 +2029,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         });
     }
 
-    async function completeMapLogin(data) {
+    async function completeMapLogin(_data) {
         // [1A-FU2-S-M2] Tokens no longer in response body — cookies are
         // source of truth. apiClient.setToken() is kept as a no-op-with-
         // side-effect (flips isAuthenticated boolean) for legacy code.

@@ -3,6 +3,10 @@
  * Страница с графиками истории метрик
  */
 
+/* exported onBuildingChange, onPeriodChange, refreshData, switchTab */
+// ^ These are global handlers invoked from analytics/index.html via inline
+//   onchange/onclick (ESLint can't see HTML, so it flags them as unused).
+
 // Глобальные переменные
 let currentBuilding = null;
 let currentPeriod = '6h';
