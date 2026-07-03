@@ -222,6 +222,20 @@ describe('urlValidation', () => {
             process.env.UK_API_ALLOWED_HOSTS = ' allowed.example.com , other.example.com ';
             expect(() => validateUKApiUrl('http://allowed.example.com/api')).not.toThrow();
         });
+
+        // [R2-19] Allowlist entries are normalized (bracket-stripped + lowercased)
+        // like the URL host, so a bracketed IPv6 entry matches the URL's IPv6 host.
+        it('normalizes bracketed IPv6 allowlist entries to match the URL host', () => {
+            process.env.NODE_ENV = 'production';
+            process.env.UK_API_ALLOWED_HOSTS = '[2001:4860:4860::8888]';
+            expect(() => validateUKApiUrl('https://[2001:4860:4860::8888]/uk')).not.toThrow();
+        });
+
+        it('matches allowlist entries case-insensitively', () => {
+            process.env.NODE_ENV = 'production';
+            process.env.UK_API_ALLOWED_HOSTS = 'InfraSafe.UZ';
+            expect(() => validateUKApiUrl('https://infrasafe.uz/uk')).not.toThrow();
+        });
     });
 
     describe('basic validation', () => {
