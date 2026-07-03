@@ -1,0 +1,54 @@
+name: Migrate Runner E2E
+
+# [R2-14] The migration runner (scripts/migrate.sh) is the most dangerous part of
+# a deploy: a broken discover / baseline / up / drift contract currently only
+# surfaces at prod deploy time (update-production.sh runs `status`+`up` before the
+# app switch). This job runs the runner's own e2e harness (tests/migrate/) — an
+# ephemeral postgres + the 13-scenario contract suite — on any PR that touches
+# migrations, the runner, its discover lib, or the init baseline, so a contract
+# break fails the PR instead of a day later at deploy.
+#
+# Path-filtered on purpose: the harness spins up Docker, so we only pay that cost
+# when migration-related files change. Not in ci.yml (which runs on every PR) for
+# the same reason e2e-nightly is separate — Docker-heavy, scoped triggers.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'database/migrations/**'
+      - 'database/init/**'
+      - 'scripts/migrate.sh'
+      - 'scripts/lib/**'
+      - 'tests/migrate/**'
+      - '.github/workflows/migrate-test.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'database/migrations/**'
+      - 'database/init/**'
+      - 'scripts/migrate.sh'
+      - 'scripts/lib/**'
+      - 'tests/migrate/**'
+      - '.github/workflows/migrate-test.yml'
+  workflow_dispatch: {}
+
+jobs:
+  migrate-test:
+    name: Migrate Runner E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The harness builds a baseline target and dangling commits from git
+          # plumbing (read-tree/commit-tree) off HEAD; full history keeps that
+          # robust regardless of how deep the referenced objects sit.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # No `npm ci`: the harness only needs host `node` for the stdlib-only
+      # scripts/lib/migrate-discover.js. Docker Compose v2 is preinstalled on
+      # ubuntu-latest, which the harness uses for the throwaway postgres.
+      - name: Run migration-runner e2e harness
+        run: npm run migrate:test
