@@ -109,10 +109,25 @@ info "baseline target (003-034 only): $(git rev-parse --short "$BASELINE_TARGET"
 
 info "starting ephemeral postgres (project infrasafe-migrate-test)"
 docker compose -f "$COMPOSE" up -d >/dev/null
-for i in $(seq 1 30); do
-    if docker compose -f "$COMPOSE" exec -T postgres pg_isready -U postgres -d "$PGDB" >/dev/null 2>&1; then break; fi
+# Robust readiness gate. The postgres image runs a TEMPORARY bootstrap server
+# during initdb (to create POSTGRES_DB + run init scripts), then shuts it down
+# and restarts the real server. A single pg_isready/one-shot query can catch
+# that transient server, after which the seed load hits "server closed the
+# connection unexpectedly" — seen on CI, not locally, purely from timing. So we
+# require a REAL query (`SELECT 1`) to succeed on TWO consecutive attempts a
+# second apart: the bootstrap→restart window cannot yield two in a row, so this
+# is provably past init.
+ready=0
+for i in $(seq 1 60); do
+    if docker compose -f "$COMPOSE" exec -T postgres psql -U postgres -d "$PGDB" -tAc 'SELECT 1' >/dev/null 2>&1; then
+        ready=$((ready + 1))
+        [ "$ready" -ge 2 ] && break
+    else
+        ready=0
+    fi
     sleep 1
 done
+[ "$ready" -ge 2 ] || { echo "postgres did not become ready in time"; exit 1; }
 docker compose -f "$COMPOSE" exec -T postgres psql -v ON_ERROR_STOP=1 -U postgres -d "$PGDB" -q < "$SEED"
 info "synthetic baseline seed loaded"
 
