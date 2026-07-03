@@ -13,8 +13,6 @@
  *   - Body bytes are POSTed verbatim (no re-stringify)
  */
 
-const crypto = require('crypto');
-
 jest.mock('axios', () => ({ post: jest.fn() }));
 jest.mock('../../../src/utils/logger', () => ({
     info: jest.fn(),

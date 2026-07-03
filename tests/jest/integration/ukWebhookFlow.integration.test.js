@@ -36,10 +36,7 @@ jest.mock('../../../src/utils/logger', () => ({
 const axios = require('axios');
 const db = require('../../../src/config/database');
 
-const UkOutbox = require('../../../src/models/UkOutbox');
 const ukOutboxService = require('../../../src/services/uk/ukOutboxService');
-const ukWebhookClient = require('../../../src/clients/ukWebhookClient');
-const AlertRequestMap = require('../../../src/models/AlertRequestMap');
 const { UKWebhookClient } = require('../../../src/clients/ukWebhookClient');
 
 describe('Sprint 9 / FIX-007 — end-to-end outbound flow', () => {
@@ -96,7 +93,7 @@ describe('Sprint 9 / FIX-007 — end-to-end outbound flow', () => {
         //   4. AlertRequestMap.findByIdempotencyKey
         //   5. AlertRequestMap.markSent UPDATE
         //   6. advisory_unlock
-        db.query.mockImplementation((sql, params) => {
+        db.query.mockImplementation((sql, _params) => {
             if (/pg_try_advisory_lock/.test(sql)) return Promise.resolve({ rows: [{ locked: true }] });
             if (/pg_advisory_unlock/.test(sql))  return Promise.resolve({ rows: [{}] });
             if (/FOR UPDATE SKIP LOCKED/.test(sql)) return Promise.resolve({ rows: [queuedRow] });
@@ -169,7 +166,7 @@ describe('Sprint 9 / FIX-007 — end-to-end outbound flow', () => {
         const payloadBody = '{"event_id":"aaaaaaaa-3333-4333-8333-333333333333"}';
         const queuedRow = { id: 3, event_id: 'aaaaaaaa-3333-4333-8333-333333333333', payload_body: payloadBody, attempt_count: 0 };
 
-        db.query.mockImplementation((sql, params) => {
+        db.query.mockImplementation((sql, _params) => {
             if (/pg_try_advisory_lock/.test(sql)) return Promise.resolve({ rows: [{ locked: true }] });
             if (/pg_advisory_unlock/.test(sql))  return Promise.resolve({ rows: [{}] });
             if (/FOR UPDATE SKIP LOCKED/.test(sql)) return Promise.resolve({ rows: [queuedRow] });
