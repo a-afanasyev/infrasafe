@@ -102,6 +102,26 @@ backward-compatible (expand-only).
 | 015 | `015_alert_dedup_constraint.sql` | 2026-04-17 | Phase 4.1 / ARCH-106 — partial UNIQUE index для дедупликации активных alerts |
 | 016 | `016_password_changed_at.sql` | 2026-05-03 | Phase 13 — `users.password_changed_at` column (fixes latent service bug + enables JWT-cutoff for bulk session invalidation) |
 | 017 | `017_runtime_role.sql` | 2026-05-21 | [P0-5] Least-privilege `infrasafe_runtime` role + SECURITY DEFINER on `refresh_transformer_analytics()`. Operator runbook: [`../../docs/p0-5-runtime-role-2026-05-21.md`](../../docs/p0-5-runtime-role-2026-05-21.md). |
+| 018 | `018_alert_request_map_fk.sql` | 2026-05-21 | Sprint 5 — FK `alert_request_map.infrasafe_alert_id → infrastructure_alerts` |
+| 019 | `019_buildings_fk_indexes.sql` | 2026-05-21 | Sprint 5 — FK-индексы на `buildings` (transformer/controller/water/heat refs) |
+| 020 | `020_mv_refresh_definer_wrapper.sql` | 2026-05-22 | Sprint 6 / P0-6 — SECURITY DEFINER wrapper `refresh_mv_transformer_load()` для планировщика MV-refresh |
+| 021 | `021_alerts_metric_id_fk.sql` | 2026-05-22 | Sprint 7 — FK `infrastructure_alerts.metric_id → metrics` |
+| 022 | `022_uk_outbox.sql` | 2026-05-22 | Sprint 9 / FIX-007 — таблица `uk_outbox` (персистентный outbox для HMAC-webhook отправки в УК) |
+| 023 | `023_alert_request_map_counter_idx.sql` | 2026-05-22 | Sprint 9 — partial index на `alert_request_map` для агрегации счётчиков заявок |
+| 024 | `024_alert_rules_extensions.sql` | 2026-05-23 | Sprint 10 PR-1 — колонки политики эскалации на `alert_rules` (persistence/reopen policy) |
+| 025 | `025_alert_verifications.sql` | 2026-05-23 | Sprint 10 PR-2 — очередь верификации `alert_verifications` |
+| 026 | `026_alert_suppressions.sql` | 2026-05-23 | Sprint 10 PR-4 — таблица `alert_suppressions` (operator escape hatch) |
+| 027 | `027_alert_lifecycle_v2.sql` | 2026-05-23 | Sprint 10 PR-2 — lifecycle v2: status enum (`resolved_verifying`/`engineer_required`) + `reopen_chain_id` |
+| 028 | `028_drop_alert_types_catalog.sql` | 2026-05-23 | Sprint 10 PR-1.5 — удаление каталога `alert_types` (тип теперь CHECK на `alert_rules.alert_type`) |
+| 029 | `029_alert_rule_changes.sql` | 2026-05-23 | Sprint 10 PR-5 — аудит-лог `alert_rule_changes` (по строке на изменённое поле) |
+| 030 | `030_uk_request_url_template.sql` | 2026-05-27 | Sprint 11 B-001 — seed `uk_request_url_template` в `integration_config` |
+| 031 | `031_b020_backfill_orphaned_verifying.sql` | 2026-05-29 | Sprint 11 B-020 — backfill осиротевших `resolved_verifying` alerts (застрявших до finalize-fix) |
+| 032 | `032_uk_urgency_canonical_keys.sql` | 2026-06-06 | Sprint 11 — канонические ключи `uk_urgency` |
+| 033 | `033_alert_verifications_last_checked.sql` | 2026-06-10 | Sprint 11 AUD-001 PR-B — `alert_verifications.last_checked_at` (checked-ack для verify-режима) |
+| 034 | `034_alert_verifications_dispatch.sql` | 2026-06-11 | Sprint 11 AUD-001 PR-C — dispatch/lease/sweep колонки + partial index (durable-доставка + crash-recovery) |
+| 035 | `035_voltage_critical_rule.sql` | 2026-06-11 | AUD-006 — CRITICAL `VOLTAGE_ANOMALY` rule (voltage escalate-in-place). **Первая миграция, накатанная раннером** (не baseline). |
+| 036 | `036_canonicalize_transformers.sql` | 2026-06-13 | AUD-039 Phase 1 EXPAND — канонизация на `transformers` (порт 4 реальных строк, drop test-строки `'1111'`, building 5 → Олмазор-1, INTEGER-перегрузка `find_nearest_buildings_to_transformer`). Expand-only. |
+| 037 | `037_drop_power_transformers.sql` | 2026-06-13 | AUD-039 Phase 2 CONTRACT — DROP `power_transformers` + `buildings.power_transformer_id` + VARCHAR-перегрузки `find_nearest`; фикс arity-регрессии Phase 1 (правильная 3-арг INTEGER функция). Rollback target = Phase-1 образ. |
 
 ## Примечание про `003_*` и `012_*`
 
