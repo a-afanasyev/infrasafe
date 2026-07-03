@@ -103,8 +103,12 @@ function validateEnv() {
     //                              (the HMAC-webhook channel). NOT used for inbound.
     //   UK_API_URL               — base host for the outbound webhook POST.
     //
-    // UK_SERVICE_USER / UK_SERVICE_PASSWORD / UK_API_ALLOWED_HOSTS were
-    // required by the deleted ukApiClient JWT path — no longer needed.
+    // UK_SERVICE_USER / UK_SERVICE_PASSWORD were required by the deleted
+    // ukApiClient JWT path — no longer needed.
+    // [R2-19] UK_API_ALLOWED_HOSTS is the allowlist-only SSRF mitigation:
+    // optional, but RECOMMENDED in prod (set to the outbound host, e.g.
+    // infrasafe.uz). validateUKApiUrl enforces it when set; the block below
+    // warns if it's missing while an outbound target exists.
     if (isProduction) {
         // [R2-18] Inbound verifier requires INFRASAFE_WEBHOOK_SECRET specifically —
         // the UK_WEBHOOK_SECRET fallback was removed, so having only the outbound
@@ -132,6 +136,20 @@ function validateEnv() {
                     'Drain worker will skip events until configured (ukOutboxService).'
                 );
             }
+        }
+
+        // [R2-19] SSRF defense-in-depth nudge. When an outbound UK target exists
+        // (UK_API_URL set) but no host allowlist is configured, the outbound URL
+        // is constrained only by the private-IP string checks — which can't catch
+        // a public host that RESOLVES to an internal IP. Recommend the allowlist
+        // (validateUKApiUrl enforces it when set). Kept a warn, not a hard fail,
+        // so the canonical unconfigured path still works (SEC-5).
+        if (process.env.UK_API_URL && !process.env.UK_API_ALLOWED_HOSTS) {
+            logger.warn(
+                'UK_API_ALLOWED_HOSTS is not set — the outbound UK API host is not ' +
+                'allowlisted (SSRF defense-in-depth). Recommended: set ' +
+                'UK_API_ALLOWED_HOSTS to the target host (e.g. infrasafe.uz).'
+            );
         }
     }
 }

@@ -289,6 +289,11 @@ UK_API_URL                 # Bare host — client appends /api/v2/webhooks/infra
 UK_USE_WEBHOOK_SENDER=false # Master gate for the new HMAC-webhook outbound channel.
                            # Default false until UK Phase 2 + secret rotation completes.
 UK_OUTBOX_DRAIN_INTERVAL_MS=2000  # Drain tick (clamped [500, 60000]). Default ≈30/мин rate.
+UK_API_ALLOWED_HOSTS       # [R2-19] Allowlist-only SSRF mitigation for the outbound UK
+                           # target. Optional but RECOMMENDED in prod: set to the host of
+                           # UK_API_URL (e.g. `infrasafe.uz`). validateUKApiUrl enforces it
+                           # when set (rejects any other host); comma-separated for multiple.
+                           # env.js warns in prod if UK_API_URL is set but this is not.
 
 # AUD-006 — voltage escalate-in-place UK notification (deployed 2026-06-12)
 UK_ESCALATION_NOTIFY=false # Master gate for the alert.escalated UK event (a WARNING

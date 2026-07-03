@@ -102,14 +102,22 @@ function validateUKApiUrl(url) {
         }
     }
 
-    // Host allowlist is OPTIONAL defense-in-depth. The core SSRF guards above
-    // (private/RFC1918 IPs, link-local/metadata, localhost, https-in-prod) always
-    // apply. The allowlist is enforced ONLY when UK_API_ALLOWED_HOSTS is set; when
-    // unset we do not throw, so the canonical prod target (https://infrasafe.uz/uk)
-    // is accepted (env.js declares this var "no longer needed").
+    // [R2-19] Host allowlist — the chosen SSRF mitigation (allowlist-only; we do
+    // NOT resolve DNS here, which would be async + TOCTOU). The string-based
+    // private-IP guards above cannot catch a public hostname that RESOLVES to an
+    // internal IP (DNS-rebinding); constraining the host to an operator-set
+    // allowlist does. Enforced ONLY when UK_API_ALLOWED_HOSTS is set — kept
+    // OPTIONAL so the canonical prod target (https://infrasafe.uz/uk) still works
+    // unconfigured (SEC-5 regression: hard-requiring it broke that path). Prod is
+    // NUDGED to set it via env.js. Recommended prod value: UK_API_ALLOWED_HOSTS=infrasafe.uz.
     const allowedHosts = process.env.UK_API_ALLOWED_HOSTS;
     if (allowedHosts) {
-        const hostList = allowedHosts.split(',').map(h => h.trim().toLowerCase());
+        // normalizeHostname (not just trim/lowercase) so IPv6 entries with
+        // brackets match the already-normalized `hostname` (e.g. "[::1]" → "::1").
+        const hostList = allowedHosts
+            .split(',')
+            .map(h => normalizeHostname(h.trim()))
+            .filter(Boolean);
         if (!hostList.includes(hostname)) {
             throw new Error(`Host "${hostname}" not in allowlist (UK_API_ALLOWED_HOSTS)`);
         }
