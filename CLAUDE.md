@@ -263,6 +263,10 @@ PORT=3000
 CORS_ORIGINS=http://localhost:8088,http://localhost:3000
 LOG_LEVEL=info|debug|warn|error
 LOG_FILE=logs/app.log
+LOG_CONSOLE_ONLY=false   # [R2-37] true|1 → stdout only (drop the 2 DailyRotateFile
+                         # transports). For 12-factor deploys where an aggregator
+                         # already collects the container's stdout. Default false
+                         # keeps console + rotating files (single-host prod).
 
 # Materialized view scheduler (Sprint 6 / P0-6)
 MV_REFRESH_ENABLED=true                  # set to false in tests; otherwise leave on

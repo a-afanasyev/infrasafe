@@ -12,21 +12,30 @@ const formats = winston.format.combine(
 
 const logsDir = path.join(__dirname, '../../logs');
 
-// Создание логгера
-const logger = winston.createLogger({
-    level: process.env.LOG_LEVEL || 'info',
-    format: formats,
-    defaultMeta: { service: 'infrasafe-api' },
-    transports: [
-        // Запись в консоль
-        new winston.transports.Console({
-            format: winston.format.combine(
-                winston.format.colorize(),
-                winston.format.printf(
-                    info => `${info.timestamp} ${info.level}: ${info.message}`
-                )
+// [R2-37] 12-factor: the container's stdout is already captured by docker's
+// json-log (and can be shipped to an aggregator). The two DailyRotateFile
+// transports below are then redundant double-storage inside a named volume. Set
+// LOG_CONSOLE_ONLY=true (or 1) to emit to stdout only. Default (unset/anything
+// else) keeps the console + 2 rotating files, so existing single-host prod
+// behaviour is unchanged.
+const consoleOnly = ['true', '1'].includes(
+    String(process.env.LOG_CONSOLE_ONLY ?? '').toLowerCase()
+);
+
+// Запись в консоль
+const transports = [
+    new winston.transports.Console({
+        format: winston.format.combine(
+            winston.format.colorize(),
+            winston.format.printf(
+                info => `${info.timestamp} ${info.level}: ${info.message}`
             )
-        }),
+        )
+    })
+];
+
+if (!consoleOnly) {
+    transports.push(
         // Запись всех логов в файл с ротацией
         new winston.transports.DailyRotateFile({
             filename: path.join(logsDir, 'combined-%DATE%.log'),
@@ -42,7 +51,15 @@ const logger = winston.createLogger({
             maxSize: '20m',
             maxFiles: '14d'
         })
-    ]
+    );
+}
+
+// Создание логгера
+const logger = winston.createLogger({
+    level: process.env.LOG_LEVEL || 'info',
+    format: formats,
+    defaultMeta: { service: 'infrasafe-api' },
+    transports
 });
 
 module.exports = logger;
