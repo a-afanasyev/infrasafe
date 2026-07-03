@@ -19,7 +19,8 @@ jest.mock('../../../src/utils/logger', () => ({
 }));
 
 jest.mock('../../../src/config/database', () => ({
-    query: jest.fn()
+    query: jest.fn(),
+    getPool: jest.fn()
 }));
 
 const db = require('../../../src/config/database');
@@ -28,14 +29,33 @@ const { MvRefreshScheduler } = require('../../../src/services/mvRefreshService')
 
 const ORIG_ENV = { ...process.env };
 
+// [R2-25] The advisory lock runs on a checked-out client. This fake models a
+// pool client whose pg_try_advisory_lock returns `lockAcquired`; all other
+// client.query calls (the unlock) resolve empty. `client.release` is tracked
+// so tests can assert the connection is always returned to the pool.
+function makeClientMock(lockAcquired = true) {
+    const release = jest.fn();
+    const query = jest.fn((sql) => {
+        if (typeof sql === 'string' && sql.includes('pg_try_advisory_lock')) {
+            return Promise.resolve({ rows: [{ locked: lockAcquired }] });
+        }
+        return Promise.resolve({ rows: [] });
+    });
+    return { query, release, connect: jest.fn() };
+}
+
 describe('MvRefreshScheduler', () => {
     let scheduler;
+    let clientMock;
 
     beforeEach(() => {
         jest.clearAllMocks();
         process.env = { ...ORIG_ENV };
         delete process.env.MV_REFRESH_ENABLED;
         delete process.env.MV_REFRESH_INTERVAL_SECONDS;
+        // Default: lock is acquired, pool hands out our client mock.
+        clientMock = makeClientMock(true);
+        db.getPool.mockReturnValue({ connect: jest.fn().mockResolvedValue(clientMock) });
         scheduler = new MvRefreshScheduler();
     });
 
@@ -114,28 +134,97 @@ describe('MvRefreshScheduler', () => {
         );
     });
 
-    test('_tick skips when a previous run is still in progress', async () => {
-        // First tick hangs on the DB call. We start it, then call _tick again
-        // synchronously while _running is still true.
-        let release;
-        db.query.mockImplementationOnce(
-            () => new Promise(resolve => { release = resolve; })
+    test('_tick acquires the advisory lock, refreshes, then unlocks and releases the client', async () => {
+        db.query.mockResolvedValue({ rows: [] });
+
+        await scheduler._tick();
+
+        // Lock acquired then released on the SAME checked-out client.
+        expect(clientMock.query).toHaveBeenCalledWith(
+            'SELECT pg_try_advisory_lock($1) AS locked',
+            [3095635313]
         );
+        expect(clientMock.query).toHaveBeenCalledWith(
+            'SELECT pg_advisory_unlock($1)',
+            [3095635313]
+        );
+        // Client always returned to the pool.
+        expect(clientMock.release).toHaveBeenCalledTimes(1);
+    });
+
+    test('_tick skips the refresh when another replica holds the advisory lock', async () => {
+        clientMock = makeClientMock(false); // lock NOT acquired
+        db.getPool.mockReturnValue({ connect: jest.fn().mockResolvedValue(clientMock) });
+        db.query.mockResolvedValue({ rows: [] });
+
+        await scheduler._tick();
+
+        // Refresh never ran; no unlock (we never held the lock); client released.
+        expect(db.query).not.toHaveBeenCalled();
+        expect(clientMock.query).not.toHaveBeenCalledWith(
+            'SELECT pg_advisory_unlock($1)',
+            [3095635313]
+        );
+        expect(clientMock.release).toHaveBeenCalledTimes(1);
+        expect(logger.debug).toHaveBeenCalledWith(
+            expect.stringContaining('advisory lock held by another replica')
+        );
+        // The quiet-skip path must still reset the in-process mutex — else the
+        // scheduler self-deadlocks after the first skipped tick.
+        expect(scheduler._running).toBe(false);
+    });
+
+    test('a lost advisory lock is NOT counted as a failure', async () => {
+        clientMock = makeClientMock(false);
+        db.getPool.mockReturnValue({ connect: jest.fn().mockResolvedValue(clientMock) });
+
+        await scheduler._tick();
+
+        expect(scheduler._consecutiveFailures).toBe(0);
+    });
+
+    test('_tick releases the client even when the refresh throws', async () => {
+        db.query.mockRejectedValueOnce(new Error('connection refused'));
+
+        await expect(scheduler._tick()).resolves.toBeUndefined();
+
+        // Lock was held → unlock attempted, and the client is released.
+        expect(clientMock.query).toHaveBeenCalledWith(
+            'SELECT pg_advisory_unlock($1)',
+            [3095635313]
+        );
+        expect(clientMock.release).toHaveBeenCalledTimes(1);
+        expect(scheduler._consecutiveFailures).toBe(1);
+    });
+
+    test('_tick skips when a previous run is still in progress', async () => {
+        // First tick hangs on the advisory-lock acquisition (the first await
+        // inside the critical section). _running is set true synchronously at
+        // the top of _tick — before any await — so the second, synchronous
+        // call sees it and no-ops.
+        let releaseLock;
+        clientMock.query.mockImplementation((sql) => {
+            if (typeof sql === 'string' && sql.includes('pg_try_advisory_lock')) {
+                return new Promise(resolve => { releaseLock = () => resolve({ rows: [{ locked: true }] }); });
+            }
+            return Promise.resolve({ rows: [] });
+        });
+        db.query.mockResolvedValue({ rows: [] });
 
         const firstTick = scheduler._tick();
-        // _running flips to true synchronously inside _tick BEFORE awaiting
-        // db.query, so the next synchronous call sees it.
         const secondTick = scheduler._tick();
 
         await secondTick;
-        // Only the first call to db.query has happened — second tick was a no-op.
-        expect(db.query).toHaveBeenCalledTimes(1);
+        // Second tick was a no-op — it never reached the pool for a refresh.
+        expect(db.query).not.toHaveBeenCalled();
         expect(logger.debug).toHaveBeenCalledWith(
             expect.stringContaining('previous run still in progress')
         );
 
-        release({ rows: [] });
+        // Unblock the first tick and let it complete a single refresh.
+        releaseLock();
         await firstTick;
+        expect(db.query).toHaveBeenCalledTimes(1);
     });
 
     test('_tick swallows DB errors and logs', async () => {

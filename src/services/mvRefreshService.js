@@ -28,9 +28,12 @@
  * extend the wrapper function with additional REFRESH statements.
  *
  * Design:
- * - Singleton — one timer per process. Multi-replica safety is delegated
- *   to a future advisory-lock guard (tracked as a follow-up); on a single
- *   replica the singleton is sufficient.
+ * - Singleton — one timer per process. Multi-replica safety is provided by a
+ *   cross-replica Postgres advisory lock ([R2-25], mirrors ukOutboxService /
+ *   alertVerificationService): each tick tries `pg_try_advisory_lock` on one
+ *   checked-out client; if another replica already holds it, the tick is a
+ *   quiet no-op. The in-process `_running` mutex still guards intra-process
+ *   overlap.
  * - `REFRESH MATERIALIZED VIEW CONCURRENTLY` is non-blocking for readers,
  *   so we can run on a tight interval without freezing queries.
  * - In-flight mutex (`_running`) prevents overlap when a refresh takes
@@ -48,6 +51,14 @@ const DEFAULT_INTERVAL_SECONDS = 60;
 const MIN_INTERVAL_SECONDS = 10;
 const MAX_INTERVAL_SECONDS = 3600;
 const WARMUP_DELAY_MS = 5000;
+
+// [R2-25] Cross-replica advisory lock key. Deterministic so every replica
+// contends on the same lock; the exact value only needs to be stable and
+// distinct from the other schedulers' keys (ukOutbox=1187807153,
+// alertVerification=849608648).
+//   crypto.createHash('sha256').update('infrasafe.mv_transformer_load_refresh')
+//     .digest().readUInt32BE(0)  → 0xb883a571 → 3095635313
+const ADVISORY_LOCK_KEY = 3095635313;
 
 // [Sprint 7 / H2] Failure-log throttling. The first failure logs in full;
 // while failures persist, repeat the log at most once per window so a
@@ -123,11 +134,42 @@ class MvRefreshScheduler {
         this._running = true;
         const startedAt = Date.now();
         try {
-            await db.query('SELECT public.refresh_mv_transformer_load()');
-            const durationMs = Date.now() - startedAt;
-            this._consecutiveFailures = 0;
-            this._lastFailureLogAt = 0;
-            logger.info(`MV refresh succeeded in ${durationMs}ms`);
+            // [R2-25] Acquire + release the cross-replica advisory lock on ONE
+            // checked-out client. Session-scoped advisory locks are bound to the
+            // physical connection, so lock and unlock must run on the same
+            // client (going through the pool wrapper would land them on
+            // arbitrary connections and leak the lock). The refresh itself stays
+            // on the pool (db.query) — it only needs the lock to be HELD, which
+            // it is for the whole tick via this client's session. Auto-releases
+            // if the process dies (the backend session closes).
+            const client = await db.getPool().connect();
+            let locked = false;
+            try {
+                const lockResult = await client.query(
+                    'SELECT pg_try_advisory_lock($1) AS locked',
+                    [ADVISORY_LOCK_KEY]
+                );
+                locked = lockResult.rows[0] && lockResult.rows[0].locked === true;
+                if (!locked) {
+                    // Another replica is refreshing; quiet skip. Not a failure —
+                    // leave the consecutive-failure counter untouched.
+                    logger.debug('MV refresh skipped — advisory lock held by another replica');
+                    return;
+                }
+
+                await db.query('SELECT public.refresh_mv_transformer_load()');
+                const durationMs = Date.now() - startedAt;
+                this._consecutiveFailures = 0;
+                this._lastFailureLogAt = 0;
+                logger.info(`MV refresh succeeded in ${durationMs}ms`);
+            } finally {
+                if (locked) {
+                    await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]).catch((err) => {
+                        logger.warn(`MV refresh: advisory_unlock failed: ${err.message}`);
+                    });
+                }
+                client.release();
+            }
         } catch (err) {
             const durationMs = Date.now() - startedAt;
             // Never rethrow — the scheduler must keep ticking. A failed
