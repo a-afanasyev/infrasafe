@@ -34,6 +34,17 @@ COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.unified.yml}"
 IMAGE_TAG="${IMAGE_TAG:-infrasafe-app:latest}"
 VERIFY_URL_BASE="${VERIFY_URL_BASE:-https://infrasafe.uz}"
 
+# [deploy-reliability] verify runs right after update-production.sh recreates the
+# app container. The node-startup CPU spike briefly slows the edge's TLS
+# handshakes, so a single `curl -m 10` per bundle can time out (rc=28) and
+# false-fail a CORRECT deploy → the ERR trap auto-rolls-back (observed twice on
+# 2026-07-03). Settle once, then retry each bundle a few times before declaring
+# failure. All knobs are env-overridable (set *_SECONDS/ATTEMPTS=0/1 to disable).
+VERIFY_SETTLE_SECONDS="${VERIFY_SETTLE_SECONDS:-20}"
+VERIFY_ATTEMPTS="${VERIFY_ATTEMPTS:-6}"
+VERIFY_RETRY_SLEEP="${VERIFY_RETRY_SLEEP:-5}"
+VERIFY_CURL_TIMEOUT="${VERIFY_CURL_TIMEOUT:-20}"
+
 PUBLIC_DIST="public/dist"
 STAGING=".deploy"
 NEXT="$STAGING/frontend-dist-next"
@@ -131,32 +142,54 @@ cmd_restore() {
 # ---------------------------------------------------------------------------
 # verify — served bundle (HTTPS) == CURRENT public/dist (valid after publish OR restore)
 # ---------------------------------------------------------------------------
+# Verify one served bundle against its built sha256, with bounded retries so a
+# transient (TLS timeout / momentary stale-cache right after the near-atomic
+# publish swap) self-heals instead of false-failing the deploy. Echoes ✓/…/✗
+# lines. Returns 0 on success, 1 after exhausting VERIFY_ATTEMPTS. Success
+# criteria are UNCHANGED: HTTP 200 + non-empty body + served sha == built sha.
+_verify_one() {
+  local f="$1" tmp="$2" rel built code crc size served attempt
+  rel="${f#public/}"                         # public/dist/script.js → dist/script.js (served at /public/…)
+  built="$(sha256sum "$f" | awk '{print $1}')"
+  for attempt in $(seq 1 "$VERIFY_ATTEMPTS"); do
+    set +e
+    code="$(curl -sk -m "$VERIFY_CURL_TIMEOUT" -o "$tmp" -w '%{http_code}' "$VERIFY_URL_BASE/public/$rel")"; crc=$?
+    set -e
+    size="$(wc -c <"$tmp" 2>/dev/null | tr -d ' ')"
+    served="$(sha256sum "$tmp" 2>/dev/null | awk '{print $1}')"
+    if [ "$crc" -eq 0 ] && [ "$code" = "200" ] && [ "${size:-0}" -gt 0 ] && [ "$built" = "$served" ]; then
+      printf '  ✓ %s (%s bytes, attempt %s/%s)\n' "$rel" "$size" "$attempt" "$VERIFY_ATTEMPTS"
+      return 0
+    fi
+    if [ "$attempt" -lt "$VERIFY_ATTEMPTS" ]; then
+      printf '  … %s: not ready (rc=%s HTTP=%s) — retry %s/%s in %ss\n' \
+        "$rel" "$crc" "${code:-?}" "$attempt" "$VERIFY_ATTEMPTS" "$VERIFY_RETRY_SLEEP"
+      sleep "$VERIFY_RETRY_SLEEP"
+    fi
+  done
+  printf '  ✗ %s: HTTP=%s size=%s rc=%s after %s attempts\n      built=%s\n      served=%s\n' \
+    "$rel" "${code:-?}" "${size:-0}" "${crc:-?}" "$VERIFY_ATTEMPTS" "$built" "$served"
+  return 1
+}
+
 cmd_verify() {
   [ -d "$PUBLIC_DIST" ] || die_exit1 "$PUBLIC_DIST does not exist — nothing to verify"
   log "verify: served sha256 == $PUBLIC_DIST sha256 ($VERIFY_URL_BASE)"
 
-  local bundles fail=0 tmp rel built code crc size served
+  local bundles fail=0 tmp
   bundles="$(find "$PUBLIC_DIST" -type f -name '*.js' | sort)"
   [ -n "$bundles" ] || die_exit1 "no bundles under $PUBLIC_DIST"
 
+  # Settle once before probing: let the just-recreated app's startup CPU spike
+  # quiesce so the ~14 rapid TLS handshakes below don't hit the transient.
+  if [ "${VERIFY_SETTLE_SECONDS:-0}" -gt 0 ]; then
+    log "verify: settling ${VERIFY_SETTLE_SECONDS}s for the recreated app to quiesce"
+    sleep "$VERIFY_SETTLE_SECONDS"
+  fi
+
   tmp="$(mktemp)"
   for f in $bundles; do
-    rel="${f#public/}"                       # public/dist/script.js → dist/script.js (served at /public/…)
-    built="$(sha256sum "$f" | awk '{print $1}')"
-    set +e
-    code="$(curl -sk -m 10 -o "$tmp" -w '%{http_code}' "$VERIFY_URL_BASE/public/$rel")"; crc=$?
-    set -e
-    if [ "$crc" -ne 0 ]; then
-      printf '  ✗ %s: curl error (rc=%s)\n' "$rel" "$crc"; fail=1; continue
-    fi
-    size="$(wc -c <"$tmp" | tr -d ' ')"
-    served="$(sha256sum "$tmp" | awk '{print $1}')"
-    if [ "$code" = "200" ] && [ "${size:-0}" -gt 0 ] && [ "$built" = "$served" ]; then
-      printf '  ✓ %s (%s bytes)\n' "$rel" "$size"
-    else
-      printf '  ✗ %s: HTTP=%s size=%s\n      built=%s\n      served=%s\n' \
-        "$rel" "$code" "${size:-0}" "$built" "$served"; fail=1
-    fi
+    _verify_one "$f" "$tmp" || fail=1
   done
   rm -f "$tmp"
 
