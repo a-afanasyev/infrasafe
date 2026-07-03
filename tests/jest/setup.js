@@ -1,6 +1,15 @@
 // Jest setup файл для глобальной конфигурации тестов
 require('dotenv').config({ path: '.env.test' });
 
+// Keep test output clean and cheap: winston writes info/debug to stdout, and the
+// per-test rate-limiter reset below logs one line each time. Default the level to
+// `error` in tests (set before any module requires the logger, which reads
+// LOG_LEVEL once at creation). This only gates transport OUTPUT — logger.info()
+// is still invoked, so suites that spy on logger methods keep working.
+if (!process.env.LOG_LEVEL) {
+  process.env.LOG_LEVEL = 'error';
+}
+
 // Ensure JWT secrets are always set for tests
 if (!process.env.JWT_SECRET) {
   process.env.JWT_SECRET = 'test-secret-key';
@@ -21,6 +30,29 @@ global.TEST_CONFIG = {
   JWT_SECRET: process.env.JWT_SECRET || 'test-secret-key',
   TIMEOUT: 10000
 };
+
+// [CI flake fix] The HTTP rate-limiter singletons (auth/register/crud/admin/
+// analytics/telemetry/password-change) are module-level state shared by every
+// test in a jest worker. supertest sends all requests from the same loopback IP,
+// so counters accumulate ACROSS test files — a later test that expects 401/403
+// can instead get a 429 once an earlier file exhausts the window. This heisenbug
+// has broken CI at least twice (security.test.js, csrfOriginGuard). Reset the
+// shared limiters before every test so counters always start clean.
+//
+// Guarded require: several suites jest.mock() the whole rateLimiter module (e.g.
+// default-deny), in which case resetAllRateLimits is absent — skip silently.
+// Dedicated limiter suites use their OWN `new SimpleRateLimiter()` instances,
+// which this reset does not touch.
+beforeEach(() => {
+  try {
+    const { resetAllRateLimits } = require('../../src/middleware/rateLimiter');
+    if (typeof resetAllRateLimits === 'function') {
+      resetAllRateLimits();
+    }
+  } catch {
+    // Module mocked/unavailable in this suite — nothing shared to reset.
+  }
+});
 
 // Настройка API перед всеми тестами
 beforeAll(async () => {
