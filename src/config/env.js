@@ -96,24 +96,22 @@ function validateEnv() {
     //
     // [Sprint 9 / FIX-007 O5] Two-direction secret split:
     //   INFRASAFE_WEBHOOK_SECRET — verifier secret for UK → InfraSafe inbound.
-    //                              Falls back to UK_WEBHOOK_SECRET during the
-    //                              rename migration (see webhookVerifier.js).
+    //                              [R2-18] No fallback: this is THE inbound secret
+    //                              (the UK_WEBHOOK_SECRET rename-window fallback was
+    //                              removed in webhookVerifier.js).
     //   UK_WEBHOOK_SECRET        — sender secret for InfraSafe → UK outbound
-    //                              (the new HMAC-webhook channel).
+    //                              (the HMAC-webhook channel). NOT used for inbound.
     //   UK_API_URL               — base host for the outbound webhook POST.
     //
     // UK_SERVICE_USER / UK_SERVICE_PASSWORD / UK_API_ALLOWED_HOSTS were
     // required by the deleted ukApiClient JWT path — no longer needed.
     if (isProduction) {
-        // Inbound verifier needs at least one of the two secret names
-        // (rename migration window).
-        const hasInboundSecret =
-            !!process.env.INFRASAFE_WEBHOOK_SECRET ||
-            !!process.env.UK_WEBHOOK_SECRET;
-        if (!hasInboundSecret) {
+        // [R2-18] Inbound verifier requires INFRASAFE_WEBHOOK_SECRET specifically —
+        // the UK_WEBHOOK_SECRET fallback was removed, so having only the outbound
+        // secret no longer makes inbound verification work.
+        if (!process.env.INFRASAFE_WEBHOOK_SECRET) {
             logger.warn(
-                'UK integration inbound verifier secret not configured ' +
-                '(INFRASAFE_WEBHOOK_SECRET or UK_WEBHOOK_SECRET). ' +
+                'UK integration inbound verifier secret INFRASAFE_WEBHOOK_SECRET not configured. ' +
                 'Incoming UK webhooks will be rejected (401) if integration is enabled.'
             );
         }

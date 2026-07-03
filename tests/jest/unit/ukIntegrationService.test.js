@@ -165,7 +165,7 @@ describe('UKIntegrationService', () => {
         let originalSecret;
 
         beforeEach(() => {
-            originalSecret = process.env.UK_WEBHOOK_SECRET;
+            originalSecret = process.env.INFRASAFE_WEBHOOK_SECRET;
             // [P0-2] Clear nonce-dedup state between tests so deterministic
             // payloads with the same timestamp don't get rejected as replays.
             service._resetSeenSignatures();
@@ -173,48 +173,63 @@ describe('UKIntegrationService', () => {
 
         afterEach(() => {
             if (originalSecret === undefined) {
-                delete process.env.UK_WEBHOOK_SECRET;
+                delete process.env.INFRASAFE_WEBHOOK_SECRET;
             } else {
-                process.env.UK_WEBHOOK_SECRET = originalSecret;
+                process.env.INFRASAFE_WEBHOOK_SECRET = originalSecret;
             }
         });
 
         // [Sprint 4] verifyWebhookSignature is async.
         it('returns true for a valid signature', async () => {
-            process.env.UK_WEBHOOK_SECRET = SECRET;
+            process.env.INFRASAFE_WEBHOOK_SECRET = SECRET;
             const header = buildHeader(BODY, SECRET);
             await expect(service.verifyWebhookSignature(BODY, header)).resolves.toBe(true);
         });
 
         it('returns false for an invalid (tampered) signature', async () => {
-            process.env.UK_WEBHOOK_SECRET = SECRET;
+            process.env.INFRASAFE_WEBHOOK_SECRET = SECRET;
             const header = buildHeader(BODY, 'wrong-secret');
             await expect(service.verifyWebhookSignature(BODY, header)).resolves.toBe(false);
         });
 
         it('returns false when timestamp is older than 5 minutes', async () => {
-            process.env.UK_WEBHOOK_SECRET = SECRET;
+            process.env.INFRASAFE_WEBHOOK_SECRET = SECRET;
             const expiredTimestamp = Math.floor(Date.now() / 1000) - 301;
             const header = buildHeader(BODY, SECRET, expiredTimestamp);
             await expect(service.verifyWebhookSignature(BODY, header)).resolves.toBe(false);
         });
 
-        it('returns false when UK_WEBHOOK_SECRET is not configured', async () => {
-            delete process.env.UK_WEBHOOK_SECRET;
+        it('returns false when INFRASAFE_WEBHOOK_SECRET is not configured', async () => {
+            delete process.env.INFRASAFE_WEBHOOK_SECRET;
             const header = buildHeader(BODY, SECRET);
             await expect(service.verifyWebhookSignature(BODY, header)).resolves.toBe(false);
             expect(logger.error).toHaveBeenCalled();
         });
 
-        it('returns false when header is missing t field', async () => {
+        // [R2-18] The UK_WEBHOOK_SECRET (outbound sender) fallback was removed:
+        // a webhook correctly signed with UK_WEBHOOK_SECRET must NOT verify when
+        // INFRASAFE_WEBHOOK_SECRET is absent — it fails closed instead.
+        it('does NOT fall back to UK_WEBHOOK_SECRET for inbound verification', async () => {
+            delete process.env.INFRASAFE_WEBHOOK_SECRET;
             process.env.UK_WEBHOOK_SECRET = SECRET;
+            try {
+                const header = buildHeader(BODY, SECRET);
+                await expect(service.verifyWebhookSignature(BODY, header)).resolves.toBe(false);
+                expect(logger.error).toHaveBeenCalled();
+            } finally {
+                delete process.env.UK_WEBHOOK_SECRET;
+            }
+        });
+
+        it('returns false when header is missing t field', async () => {
+            process.env.INFRASAFE_WEBHOOK_SECRET = SECRET;
             const timestamp = Math.floor(Date.now() / 1000);
             const sig = crypto.createHmac('sha256', SECRET).update(`${timestamp}.${BODY}`).digest('hex');
             await expect(service.verifyWebhookSignature(BODY, `v1=${sig}`)).resolves.toBe(false);
         });
 
         it('returns false when header is missing v1 field', async () => {
-            process.env.UK_WEBHOOK_SECRET = SECRET;
+            process.env.INFRASAFE_WEBHOOK_SECRET = SECRET;
             const timestamp = Math.floor(Date.now() / 1000);
             await expect(service.verifyWebhookSignature(BODY, `t=${timestamp}`)).resolves.toBe(false);
         });
@@ -223,7 +238,7 @@ describe('UKIntegrationService', () => {
         // (Redis not configured in test env → falls through to Map).
         describe('[P0-2] replay protection within timestamp window', () => {
             it('rejects a second submission of the same valid signature', async () => {
-                process.env.UK_WEBHOOK_SECRET = SECRET;
+                process.env.INFRASAFE_WEBHOOK_SECRET = SECRET;
                 const header = buildHeader(BODY, SECRET);
 
                 await expect(service.verifyWebhookSignature(BODY, header)).resolves.toBe(true);
@@ -231,7 +246,7 @@ describe('UKIntegrationService', () => {
             });
 
             it('logs a warn on replay attempt', async () => {
-                process.env.UK_WEBHOOK_SECRET = SECRET;
+                process.env.INFRASAFE_WEBHOOK_SECRET = SECRET;
                 const header = buildHeader(BODY, SECRET);
 
                 await service.verifyWebhookSignature(BODY, header);
@@ -244,7 +259,7 @@ describe('UKIntegrationService', () => {
             });
 
             it('accepts a different signature with the same timestamp', async () => {
-                process.env.UK_WEBHOOK_SECRET = SECRET;
+                process.env.INFRASAFE_WEBHOOK_SECRET = SECRET;
                 const ts = Math.floor(Date.now() / 1000);
                 const body1 = JSON.stringify({ event: 'a' });
                 const body2 = JSON.stringify({ event: 'b' });
@@ -256,7 +271,7 @@ describe('UKIntegrationService', () => {
             });
 
             it('accepts a replay once the recorded entry has expired', async () => {
-                process.env.UK_WEBHOOK_SECRET = SECRET;
+                process.env.INFRASAFE_WEBHOOK_SECRET = SECRET;
                 const header = buildHeader(BODY, SECRET);
 
                 await expect(service.verifyWebhookSignature(BODY, header)).resolves.toBe(true);
@@ -270,7 +285,7 @@ describe('UKIntegrationService', () => {
             });
 
             it('does not record a signature when timestamp window check fails', async () => {
-                process.env.UK_WEBHOOK_SECRET = SECRET;
+                process.env.INFRASAFE_WEBHOOK_SECRET = SECRET;
                 const sizeBefore = service._seenSignatures.size;
                 const expired = Math.floor(Date.now() / 1000) - 600;
                 const header = buildHeader(BODY, SECRET, expired);
@@ -280,7 +295,7 @@ describe('UKIntegrationService', () => {
             });
 
             it('does not record a signature when HMAC verification fails', async () => {
-                process.env.UK_WEBHOOK_SECRET = SECRET;
+                process.env.INFRASAFE_WEBHOOK_SECRET = SECRET;
                 const sizeBefore = service._seenSignatures.size;
                 const header = buildHeader(BODY, 'wrong-secret');
 

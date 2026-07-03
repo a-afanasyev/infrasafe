@@ -161,7 +161,7 @@ Defense-in-depth: nginx TLS + HMAC-SHA256 webhook signatures (both directions, s
 **Backend files:**
 - `src/services/ukIntegrationService.js` — Facade re-exporting the 5 modules below (Sprint 8 split for P1-14). Bound-method API surface + property proxies for backward compat.
 - `src/services/uk/configProxy.js` — `isEnabled` / `getConfig` / `updateConfig` + counter cache (`getRequestCounts`, `getBuildingRequests`, 60s TTL, `invalidateRequestCache`). **Sprint 9**: counters now built from `alert_request_map` SQL aggregation (UK won't implement `/requests/counts-by-building` per O4).
-- `src/services/uk/webhookVerifier.js` — HMAC-SHA256 verification + nonce replay protection (Redis-backed when configured, Map fallback). Also `logEvent` / `isDuplicateEvent` helpers. **Sprint 9**: reads `INFRASAFE_WEBHOOK_SECRET ?? UK_WEBHOOK_SECRET` for the rename migration window.
+- `src/services/uk/webhookVerifier.js` — HMAC-SHA256 verification + nonce replay protection (Redis-backed when configured, Map fallback). Also `logEvent` / `isDuplicateEvent` helpers. **R2-18 (2026-07-03)**: reads `INFRASAFE_WEBHOOK_SECRET` **only** — the `UK_WEBHOOK_SECRET` rename-window fallback was removed (prod `INFRASAFE_WEBHOOK_SECRET` confirmed live). A missing secret now fails closed (rejects every webhook) instead of silently using the outbound-direction secret.
 - `src/services/uk/buildingSync.js` — `handleBuildingWebhook` (created/updated/deleted) + deterministic `_generateExternalId`.
 - `src/services/uk/alertForwarder.js` — `sendAlertToUK` + `resolveBuildingIds`. Owns the `alertEvents.ALERT_CREATED` listener. **Sprint 9**: enqueues to `uk_outbox` (gated by `UK_USE_WEBHOOK_SENDER`) instead of synchronous JWT call.
 - `src/services/uk/requestProcessor.js` — `handleRequestWebhook` (request status feedback from UK). Emits `alertEvents.UK_REQUEST_RESOLVED` for the auto-resolve flow.
@@ -192,7 +192,7 @@ Defense-in-depth: nginx TLS + HMAC-SHA256 webhook signatures (both directions, s
 - Methods: `findByExternalId()`, `createFromUK()`, `syncFromUK()`, `softDeleteFromUK()`
 
 **Security:** HMAC-SHA256 webhook signatures both directions, replay protection, insert-first UNIQUE guard (TOCTOU-safe), idempotent alert→request mapping via outbox `ON CONFLICT`, rate limiting (60 req/min inbound + 30/мин outbound drain), timing-safe comparison. Secrets stored in ENV only:
-- `INFRASAFE_WEBHOOK_SECRET` — UK signs, InfraSafe verifies (inbound). Fallback `UK_WEBHOOK_SECRET` during migration.
+- `INFRASAFE_WEBHOOK_SECRET` — UK signs, InfraSafe verifies (inbound). **Required** for inbound; the `UK_WEBHOOK_SECRET` fallback was removed (R2-18) — missing → fail-close.
 - `UK_WEBHOOK_SECRET` — InfraSafe signs, UK verifies (outbound). **Sprint 9**.
 - `UK_WEBHOOK_SECRET_NEXT` + `UK_USE_NEXT_SECRET` — dual-secret rotation support.
 
@@ -269,9 +269,11 @@ MV_REFRESH_ENABLED=true                  # set to false in tests; otherwise leav
 MV_REFRESH_INTERVAL_SECONDS=60           # default 60, clamped to [10, 3600]
 
 # UK Integration — ENV-only secrets (Sprint 9 / FIX-007 split per O5):
-INFRASAFE_WEBHOOK_SECRET   # UK→InfraSafe verifier (UK signs, we verify).
-                           # Falls back to UK_WEBHOOK_SECRET during rename window.
+INFRASAFE_WEBHOOK_SECRET   # UK→InfraSafe verifier (UK signs, we verify). REQUIRED
+                           # for inbound; R2-18 removed the UK_WEBHOOK_SECRET
+                           # fallback → missing secret fails closed (rejects webhooks).
 UK_WEBHOOK_SECRET          # InfraSafe→UK sender (we sign, UK verifies). Sprint 9.
+                           # NOT used for inbound verification anymore.
 UK_WEBHOOK_SECRET_NEXT     # Optional: NEW value during rotation window. Sprint 9.
 UK_USE_NEXT_SECRET=false   # Set to 'true' to switch sender to UK_WEBHOOK_SECRET_NEXT.
 UK_API_URL                 # Bare host — client appends /api/v2/webhooks/infrasafe/alert.

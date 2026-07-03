@@ -56,15 +56,16 @@ class UKWebhookVerifier {
     async verifyWebhookSignature(rawBody, signatureHeader) {
         try {
             // [Sprint 9 / FIX-007 O5] Secret split: this verifier handles the
-            // UK → InfraSafe direction, which UK signs with
-            // INFRASAFE_WEBHOOK_SECRET. Backward-compat fallback to
-            // UK_WEBHOOK_SECRET supports the rename window — old prod .env
-            // still has UK_WEBHOOK_SECRET as the single shared secret.
-            // After ≥1 week of stable INFRASAFE_WEBHOOK_SECRET deployment,
-            // a follow-up PR drops the fallback.
-            const secret = process.env.INFRASAFE_WEBHOOK_SECRET || process.env.UK_WEBHOOK_SECRET;
+            // UK → InfraSafe direction, which UK signs with INFRASAFE_WEBHOOK_SECRET.
+            // [R2-18] The backward-compat fallback to UK_WEBHOOK_SECRET (the
+            // OUTBOUND sender secret) was removed once the rename+rotation completed
+            // and prod INFRASAFE_WEBHOOK_SECRET was confirmed live. Keeping it would
+            // mask a misconfig: if INFRASAFE_WEBHOOK_SECRET went missing, verification
+            // would silently fall back to a different-direction secret instead of
+            // failing closed. No fallback → a missing secret rejects every webhook.
+            const secret = process.env.INFRASAFE_WEBHOOK_SECRET;
             if (!secret) {
-                logger.error('ukWebhookVerifier.verifyWebhookSignature: neither INFRASAFE_WEBHOOK_SECRET nor UK_WEBHOOK_SECRET configured');
+                logger.error('ukWebhookVerifier.verifyWebhookSignature: INFRASAFE_WEBHOOK_SECRET not configured — rejecting webhook (fail-close)');
                 return false;
             }
 
