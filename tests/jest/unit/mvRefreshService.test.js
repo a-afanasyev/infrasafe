@@ -169,6 +169,9 @@ describe('MvRefreshScheduler', () => {
         expect(logger.debug).toHaveBeenCalledWith(
             expect.stringContaining('advisory lock held by another replica')
         );
+        // The quiet-skip path must still reset the in-process mutex — else the
+        // scheduler self-deadlocks after the first skipped tick.
+        expect(scheduler._running).toBe(false);
     });
 
     test('a lost advisory lock is NOT counted as a failure', async () => {
