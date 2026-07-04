@@ -26,8 +26,6 @@ tests/
 │   └── unified-config.sh
 ├── utils/                  # 🔧 Утилиты
 │   └── health-checker.sh
-├── load/                   # ⚡ Нагрузочные тесты
-│   └── enhanced-load-tests.sh
 ├── smoke/                  # 🚬 Smoke тесты
 │   └── smart-smoke-tests.sh
 ├── jest/                   # 🧪 Jest тесты (существующие)
@@ -93,7 +91,6 @@ tests/
 # Отдельные модули
 ./tests/orchestrator/unified-test-runner.sh jest
 ./tests/orchestrator/unified-test-runner.sh smoke
-./tests/orchestrator/unified-test-runner.sh load
 
 # Утилиты
 ./tests/orchestrator/unified-test-runner.sh quick    # Быстрая проверка
@@ -112,9 +109,6 @@ tests/
 
 # Smart Smoke Tests
 ./tests/smoke/smart-smoke-tests.sh
-
-# Enhanced Load Tests
-./tests/load/enhanced-load-tests.sh
 
 # Существующие Jest тесты
 npm test
@@ -191,7 +185,6 @@ TEST_CONFIG_TEST_PASSWORD="TestPass123"
    chmod +x tests/orchestrator/unified-test-runner.sh
    chmod +x tests/utils/health-checker.sh
    chmod +x tests/smoke/smart-smoke-tests.sh
-   chmod +x tests/load/enhanced-load-tests.sh
    ```
 
 ### Диагностика:
@@ -225,13 +218,12 @@ source tests/config/unified-config.sh && echo $TEST_CONFIG_API_URL
 ## 🚀 Следующие шаги
 
 ### Приоритет 1 (критично):
-1. Исправить jq парсинг в load tests
-2. Настроить корректные endpoint'ы (/api-docs/ redirect)
-3. Исправить валидацию данных для building creation
+1. Настроить корректные endpoint'ы (/api-docs/ redirect)
+2. Исправить валидацию данных для building creation
 
 ### Приоритет 2 (улучшения):
 1. Добавить больше smoke тестов
-2. Расширить load testing scenarios
+2. [R2-38] Нагрузочное тестирование заведено заново на k6/autocannon (отдельный тикет) — старые bash-скрипты сняты
 3. Добавить performance benchmarks
 
 ### Приоритет 3 (опционально):

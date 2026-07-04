@@ -42,19 +42,8 @@ run_jest_tests() {
     fi
 }
 
-# Функция для запуска нагрузочных тестов
-run_load_tests() {
-    echo -e "${BLUE}🧪 Запуск нагрузочных тестов...${NC}"
-    cd "$(dirname "$0")/load"
-    
-    if ./run-load-tests.sh; then
-        echo -e "${GREEN}✅ Нагрузочные тесты прошли успешно${NC}"
-        return 0
-    else
-        echo -e "${RED}❌ Нагрузочные тесты провалились${NC}"
-        return 1
-    fi
-}
+# [R2-38] Нагрузочные тесты (tests/load/*.sh) удалены — bit-rot против cookie+2FA
+# auth, без CI-обвязки. Порт на k6/autocannon — отдельный тикет при необходимости.
 
 # Функция для запуска smoke тестов
 run_smoke_tests() {
@@ -80,7 +69,6 @@ show_help() {
     echo -e "${YELLOW}Доступные типы тестов:${NC}"
     echo "  bash     - Bash тесты (alerts, api, jwt)"
     echo "  jest     - Jest тесты (unit, integration, security)"
-    echo "  load     - Нагрузочные тесты"
     echo "  smoke    - Smoke тесты"
     echo "  all      - Все типы тестов (по умолчанию)"
     echo "  help     - Показать эту справку"
@@ -89,7 +77,6 @@ show_help() {
     echo "  $0          # Запустить все тесты"
     echo "  $0 bash     # Запустить только bash тесты"
     echo "  $0 jest     # Запустить только Jest тесты"
-    echo "  $0 load     # Запустить только нагрузочные тесты"
     echo "  $0 smoke    # Запустить только smoke тесты"
     echo ""
     echo -e "${BLUE}📋 Используется порт: $API_PORT${NC}"
@@ -132,9 +119,6 @@ main() {
         "jest")
             run_jest_tests
             ;;
-        "load")
-            run_load_tests
-            ;;
         "smoke")
             run_smoke_tests
             ;;
@@ -164,16 +148,7 @@ main() {
                 total_exit_code=1
             fi
             ((total_tests++))
-            
-            # Нагрузочные тесты
-            if run_load_tests; then
-                ((passed_tests++))
-            else
-                ((failed_tests++))
-                total_exit_code=1
-            fi
-            ((total_tests++))
-            
+
             # Smoke тесты
             if run_smoke_tests; then
                 ((passed_tests++))

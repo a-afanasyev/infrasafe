@@ -680,7 +680,7 @@ Express → metricController.receiveTelemetry → DB insert + trigger update_hea
 | **Итого `npm test`** | **89 suites** | **1804** (Apr 2026) | |
 | E2E | 10 | ~57 | `tests/jest/e2e/` (отдельно, `npm run test:e2e`) |
 | Smoke | - | - | `tests/smoke/` (bash) |
-| Load | - | - | `tests/load/` (bash) |
+| ~~Load~~ | - | - | retired [R2-38] — bash scripts bit-rotted vs cookie+2FA; re-do on k6/autocannon if needed |
 
 **Порог покрытия:** 80% (branches, functions, lines, statements) — настроен в `package.json`.
 
