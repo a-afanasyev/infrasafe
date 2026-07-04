@@ -11,7 +11,6 @@
     "test:unit": "jest tests/jest/unit",
     "test:integration": "jest tests/jest/integration",
     "test:security": "jest tests/jest/security",
-    "test:load": "bash tests/load/run-load-tests.sh",
     "test:smoke": "bash tests/smoke/run-smoke-tests.sh",
     "test:all": "npm run test:unit && npm run test:integration && npm run test:security && npm run test:smoke",
     "test:coverage": "jest --coverage",

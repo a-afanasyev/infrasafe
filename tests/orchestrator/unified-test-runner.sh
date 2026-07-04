@@ -29,11 +29,8 @@ get_available_test_modules() {
         modules+=("jest")
     fi
     
-    # Enhanced Load Tests
-    if [ -f "tests/load/enhanced-load-tests.sh" ]; then
-        modules+=("load")
-    fi
-    
+    # [R2-38] Enhanced Load Tests удалены (bit-rot против cookie+2FA auth).
+
     # Smart Smoke Tests
     if [ -f "tests/smoke/smart-smoke-tests.sh" ]; then
         modules+=("smoke")
@@ -100,63 +97,8 @@ EOF
     return $jest_exit_code
 }
 
-# Выполнение Load тестов
-run_load_tests() {
-    echo -e "${CYAN}⚡ Выполнение Enhanced Load тестов...${NC}"
-    
-    local start_time=$(date +%s)
-    local load_script="$SCRIPT_DIR/../load/enhanced-load-tests.sh"
-    
-    if [ ! -f "$load_script" ]; then
-        echo -e "${RED}❌ Enhanced Load Tests не найдены${NC}"
-        return 1
-    fi
-    
-    # Запускаем load тесты
-    "$load_script" >/dev/null 2>&1
-    local load_exit_code=$?
-    
-    local end_time=$(date +%s)
-    local duration=$((end_time - start_time))
-    
-    # Ищем последний load test отчет
-    local latest_load_report=$(ls -t "$TEST_CONFIG_REPORTS_DIR"/load-test-report-*.json 2>/dev/null | head -1)
-    
-    local total_requests=0
-    local total_success=0
-    local total_errors=0
-    local overall_success_rate=0
-    
-    if [ -f "$latest_load_report" ]; then
-        total_requests=$(jq -r '.summary.total_requests // 0' "$latest_load_report" 2>/dev/null)
-        total_success=$(jq -r '.summary.total_success // 0' "$latest_load_report" 2>/dev/null)
-        total_errors=$(jq -r '.summary.total_errors // 0' "$latest_load_report" 2>/dev/null)
-        overall_success_rate=$(jq -r '.summary.overall_success_rate // 0' "$latest_load_report" 2>/dev/null)
-    fi
-    
-    echo -e "${BLUE}   Всего запросов: $total_requests${NC}"
-    echo -e "${GREEN}   Успешно: $total_success${NC}"
-    echo -e "${RED}   Ошибки: $total_errors${NC}"
-    echo -e "${BLUE}   Успешность: ${overall_success_rate}%${NC}"
-    echo -e "${BLUE}   Время: $(format_duration $duration)${NC}"
-    
-    # Возвращаем результат в JSON формате
-    cat << EOF
-{
-    "module": "load",
-    "total_requests": $total_requests,
-    "successful_requests": $total_success,
-    "failed_requests": $total_errors,
-    "success_rate": $overall_success_rate,
-    "duration": $duration,
-    "exit_code": $load_exit_code,
-    "status": "$([ $load_exit_code -eq 0 ] && echo "PASS" || echo "FAIL")",
-    "report_file": "$latest_load_report"
-}
-EOF
-    
-    return $load_exit_code
-}
+# [R2-38] run_load_tests удалён вместе с tests/load/*.sh (bit-rot против
+# cookie+2FA auth, без CI-обвязки). Порт на k6/autocannon — отдельный тикет.
 
 # Выполнение Smoke тестов
 run_smoke_tests() {
@@ -257,10 +199,6 @@ run_all_tests() {
         case "$module" in
             "jest")
                 module_result=$(run_jest_tests)
-                module_exit_code=$?
-                ;;
-            "load")
-                module_result=$(run_load_tests)
                 module_exit_code=$?
                 ;;
             "smoke")
@@ -401,7 +339,6 @@ show_help() {
 КОМАНДЫ:
     all             Запустить все доступные тесты
     jest            Запустить только Jest тесты
-    load            Запустить только нагрузочные тесты
     smoke           Запустить только smoke тесты
     quick           Быстрая проверка системы
     health          Проверка готовности системы
@@ -472,7 +409,7 @@ main() {
                 run_quick_test
                 exit $?
                 ;;
-            all|jest|load|smoke)
+            all|jest|smoke)
                 commands+=("$1")
                 shift
                 ;;
@@ -508,7 +445,7 @@ main() {
             "all")
                 run_all_tests
                 ;;
-            "jest"|"load"|"smoke")
+            "jest"|"smoke")
                 run_all_tests "$command"
                 ;;
         esac
