@@ -210,16 +210,14 @@ class SimpleRateLimiter {
         };
     }
 
-    // Очистка всех данных
+    // Очистка всех данных. Без лога: reset() вызывается только из
+    // resetAllRateLimits() (тесты + graceful shutdown), который уже пишет одну
+    // сводную строку — пер-лимитерный лог не давал сигнала в проде, гонялся тысячи
+    // раз в jest-прогоне (глобальный beforeEach) и триггерил CodeQL
+    // js/clear-text-logging (FP: логировался store.size — счётчик, не ключи — но
+    // sink сидел в методе «password»-лимитера). Просто чистим store.
     reset() {
-        const oldSize = this.store.size;
         this.store.clear();
-        // Skip the log on a no-op clear: the jest global beforeEach resets all
-        // limiters before every test, so an unconditional log fires thousands of
-        // times against already-empty stores. Only report when we cleared entries.
-        if (oldSize > 0) {
-            logger.info(`Rate limiter сброшен: очищено ${oldSize} записей`);
-        }
     }
 
     // Остановка интервала очистки для предотвращения утечки таймеров
