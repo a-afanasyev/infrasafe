@@ -214,7 +214,12 @@ class SimpleRateLimiter {
     reset() {
         const oldSize = this.store.size;
         this.store.clear();
-        logger.info(`Rate limiter сброшен: очищено ${oldSize} записей`);
+        // Skip the log on a no-op clear: the jest global beforeEach resets all
+        // limiters before every test, so an unconditional log fires thousands of
+        // times against already-empty stores. Only report when we cleared entries.
+        if (oldSize > 0) {
+            logger.info(`Rate limiter сброшен: очищено ${oldSize} записей`);
+        }
     }
 
     // Остановка интервала очистки для предотвращения утечки таймеров
