@@ -1,0 +1,71 @@
+# docker-compose.staging.yml — [R2-15 Phase 2] dedicated staging VM override.
+#
+# Apply LAYERED on top of the prod base (never alone):
+#   docker compose -f docker-compose.unified.yml -f docker-compose.staging.yml ...
+# The deploy script does this automatically when DEPLOY_ENV=staging.
+#
+# Merge semantics below are EMPIRICALLY VERIFIED (docker compose config, 2026-07-05):
+#   - top-level `networks: {external: false}` REPLACES the base `external: true`
+#     → a fresh staging VM creates its OWN local bridges (no `docker network create`
+#     prereq). uk-network becomes an empty local bridge; nginx still joins it and
+#     `/uk/*` just 502s — acceptable on staging (UK integration is OFF here).
+#   - service `command` + `healthcheck.test` REPLACE on override → staging nginx conf.
+#   - a service volume with the SAME container target REPLACES the base source
+#     (staging TLS certs + the neutralized database.sql); a DIFFERENT target APPENDS
+#     (the database/init dir + .env.staging).
+#
+# Staging runs NODE_ENV=production (strict posture) with its own secrets in
+# .env.staging (CORS_ORIGINS=https://staging.infrasafe.uz, distinct JWT/2FA/DB
+# creds, UK_USE_WEBHOOK_SENDER=false). The deploy script also fail-closes if a
+# stray .env.prod is present on the staging host (it would otherwise override
+# .env.staging via the base env_file precedence).
+
+services:
+  app:
+    # Appended AFTER .env / .env.prod in the base list → later file wins, so
+    # .env.staging takes precedence. Belt-and-suspenders alongside the deploy-time
+    # `.env.prod`-absent fail-close.
+    env_file:
+      - path: .env.staging
+        required: false
+
+  postgres:
+    env_file:
+      - path: .env.staging
+        required: false
+    volumes:
+      # Fresh-init seed (§2.5 decision): run database/init/ — includes
+      # 99_schema_migrations_baseline.sql, so the migrate runner finds a
+      # schema_migrations manifest (the base database.sql carries none and would
+      # fail-close). DIFFERENT target from the base file mount → this APPENDS.
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+      # Neutralize the base `./database.sql:/docker-entrypoint-initdb.d/database.sql`
+      # mount: SAME target → the override REPLACES its source with an empty no-op,
+      # so the legacy snapshot never runs and can't collide with the init scripts.
+      - ./database/staging-initdb-noop.sql:/docker-entrypoint-initdb.d/database.sql:ro
+
+  nginx:
+    # REPLACE (not append) → point the edge at the staging server config.
+    command: ["nginx", "-c", "/etc/nginx/custom/nginx.staging.conf", "-g", "daemon off;"]
+    healthcheck:
+      # Must validate the staging conf, not the prod one (base healthcheck pins
+      # nginx.production.conf).
+      test: ["CMD", "nginx", "-t", "-c", "/etc/nginx/custom/nginx.staging.conf"]
+    volumes:
+      # SAME targets as the base cert mounts → REPLACE the prod cert sources with
+      # the staging VM's own certbot cert (staging.infrasafe.uz). Provision on the
+      # VM: certbot certonly --webroot -w ./certbot-webroot -d staging.infrasafe.uz
+      - /etc/letsencrypt/live/staging.infrasafe.uz/fullchain.pem:/etc/nginx/ssl/fullchain.pem:ro
+      - /etc/letsencrypt/live/staging.infrasafe.uz/privkey.pem:/etc/nginx/ssl/privkey.pem:ro
+      - /etc/letsencrypt/live/staging.infrasafe.uz/chain.pem:/etc/nginx/ssl/chain.pem:ro
+
+networks:
+  # external:false REPLACES the base external:true declarations → a fresh staging
+  # VM creates these as local bridges instead of requiring the prod-only external
+  # networks to pre-exist. The base `name:` carries through the merge.
+  infrasafe-network:
+    external: false
+    driver: bridge
+  uk-network:
+    external: false
+    driver: bridge
