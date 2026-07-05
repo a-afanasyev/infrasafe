@@ -1,0 +1,6 @@
+-- [R2-15 Phase 2] Intentional no-op. docker-compose.staging.yml mounts this over
+-- the base `database.sql` entry (same /docker-entrypoint-initdb.d/database.sql
+-- target → the override REPLACES the source) so the incomplete legacy snapshot
+-- does NOT run on staging. Staging bootstraps from database/init/ instead (fresh
+-- init + 99_schema_migrations_baseline.sql), giving the migrate runner a real
+-- schema_migrations manifest. Keep this file empty (comments only).
