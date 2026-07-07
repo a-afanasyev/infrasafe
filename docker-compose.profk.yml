@@ -1,0 +1,20 @@
+# docker-compose.profk.yml — profk.uz prod-from-scratch override.
+# Layer:  docker compose -f docker-compose.unified.yml -f docker-compose.profk.yml ...
+services:
+  postgres:
+    # Fresh DB: replace legacy database.sql with the concatenated canonical init
+    # (database/init 01-09 bake migrations 003-017; 99 self-declares them). Single
+    # file = same target as base → replaces source. migrate up applies 018+.
+    volumes:
+      - ./.deploy/profk-initdb.sql:/docker-entrypoint-initdb.d/database.sql:ro
+
+  nginx:
+    # profk.uz edge: staging-style override — point command + healthcheck at the
+    # profk config fork, and swap the cert SOURCES (same /etc/nginx/ssl targets).
+    command: ["nginx", "-c", "/etc/nginx/custom/nginx.profk.conf", "-g", "daemon off;"]
+    healthcheck:
+      test: ["CMD", "nginx", "-t", "-c", "/etc/nginx/custom/nginx.profk.conf"]
+    volumes:
+      - /etc/letsencrypt/live/profk.uz/fullchain.pem:/etc/nginx/ssl/fullchain.pem:ro
+      - /etc/letsencrypt/live/profk.uz/privkey.pem:/etc/nginx/ssl/privkey.pem:ro
+      - /etc/letsencrypt/live/profk.uz/chain.pem:/etc/nginx/ssl/chain.pem:ro
