@@ -7,17 +7,40 @@
 # (scripts/rebuild-frontend.sh prepare|publish), then byte-verified. Phased rollback
 # restores app image + tracked static + dist on any failure.
 #
-# NOTE: unified-only. docker-compose.prod.yml is DEPRECATED (kept for a local Mac
-# instance) — this script no longer auto-selects it.
+# [R2-15] DEPLOY_ENV selects the compose -f set, env file, edge health URL and
+# verify base. 'prod' (default, = an unset call) = the profk production box
+# (docker-compose.unified.yml + docker-compose.profk.yml, profk.uz). 'staging' =
+# the .105 VM (+ docker-compose.staging.yml, staging.infrasafe.uz). docker-compose.prod.yml
+# is DEPRECATED. This is an UPDATE tool — it does NOT bootstrap an empty host (no
+# `up -d postgres`; migrate needs a live postgres). Fresh staging VM →
+# scripts/bootstrap-staging.sh first, then this script for subsequent updates.
 #
 set -Eeuo pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 
-COMPOSE_FILE="docker-compose.unified.yml"   # explicit (do NOT fall back to prod.yml)
+DEPLOY_ENV="${DEPLOY_ENV:-prod}"
+case "$DEPLOY_ENV" in
+    prod)
+        COMPOSE_FILES=(docker-compose.unified.yml docker-compose.profk.yml)
+        ENV_FILE=".env.prod"
+        EDGE_HEALTH_URL="${EDGE_HEALTH_URL:-https://profk.uz/health}"
+        VERIFY_URL_BASE="${VERIFY_URL_BASE:-https://profk.uz}"
+        ;;
+    staging)
+        COMPOSE_FILES=(docker-compose.unified.yml docker-compose.staging.yml)
+        ENV_FILE=".env.staging"
+        EDGE_HEALTH_URL="${EDGE_HEALTH_URL:-https://staging.infrasafe.uz/health}"
+        VERIFY_URL_BASE="${VERIFY_URL_BASE:-https://staging.infrasafe.uz}"
+        ;;
+    *) echo "❌ bad DEPLOY_ENV=$DEPLOY_ENV (want prod|staging)" >&2; exit 1 ;;
+esac
+# Filenames-only list → migrate.sh; -f-prefixed array → local docker compose calls.
+COMPOSE_ARGS=(); for _cf in "${COMPOSE_FILES[@]}"; do COMPOSE_ARGS+=(-f "$_cf"); done
+# rebuild-frontend.sh byte-verifies THIS domain (its default is https://infrasafe.uz).
+export VERIFY_URL_BASE
 APP_CONTAINER="infrasafe-app-1"
 ROLLBACK_TAG="infrasafe-app:rollback"
-EDGE_HEALTH_URL="https://infrasafe.uz/health"
 
 # [R2-15] Image source. Default 'registry': pull the CI-built, CI-verified image
 # from GHCR instead of building on the host (OPS-001: host build cache filled the
@@ -37,7 +60,7 @@ DEPLOY_TARGET_COMMIT="${DEPLOY_TARGET_COMMIT:-}"
 # migrations from the fetched target BEFORE the app switch. Override to "false" to
 # fall back to the legacy `git pull --ff-only` with no schema step (escape hatch).
 MIGRATE_WIRING_ENABLED="${MIGRATE_WIRING_ENABLED:-true}"
-export MIGRATE_COMPOSE_FILE="$COMPOSE_FILE"
+export MIGRATE_COMPOSE_FILE="${COMPOSE_FILES[*]}"   # whitespace-joined; migrate.sh splits into -f args
 export MIGRATE_PG_SERVICE="${MIGRATE_PG_SERVICE:-postgres}"
 export MIGRATE_PG_USER="${MIGRATE_PG_USER:-infrasafe_app}"
 export MIGRATE_PG_DB="${MIGRATE_PG_DB:-infrasafe}"
@@ -85,7 +108,7 @@ rollback() {
     [ "$DIST_PUBLISHED" = 1 ] && { bash scripts/rebuild-frontend.sh restore || rollback_failed=1; }
     if [ "$APP_SWITCHED" = 1 ] && [ -n "$OLD_IMG" ]; then
         docker tag "$OLD_IMG" infrasafe-app:latest || rollback_failed=1
-        docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate --no-build app || rollback_failed=1
+        docker compose "${COMPOSE_ARGS[@]}" up -d --no-deps --force-recreate --no-build app || rollback_failed=1
         app_health_wait || rollback_failed=1
     fi
     bash scripts/rebuild-frontend.sh verify || rollback_failed=1
@@ -100,17 +123,25 @@ rollback() {
 trap rollback ERR
 
 # ---------------------------------------------------------------------------
-say "🔄 InfraSafe production deploy (immutable app + extracted static)"
-say "Compose: $COMPOSE_FILE"
+say "🔄 InfraSafe deploy (env=$DEPLOY_ENV, immutable app + extracted static)"
+say "Compose: ${COMPOSE_FILES[*]}"
 
-[ -f "$COMPOSE_FILE" ] || { err "❌ $COMPOSE_FILE not found — run from repo root"; exit 1; }
+for _cf in "${COMPOSE_FILES[@]}"; do
+    [ -f "$_cf" ] || { err "❌ $_cf not found — run from repo root"; exit 1; }
+done
 
-# [SEC-15] prod must not carry a SEPARATE dev .env (would risk booting with dev
-# config: NODE_ENV, weak secrets). A `.env` that's just a symlink to .env.prod is
-# fine (identical content). Hard-fail, not just runbook.
-test -f .env.prod || { err "❌ .env.prod missing"; exit 1; }
-if [ -e .env ] && [ "$(readlink -f .env)" != "$(readlink -f .env.prod)" ]; then
-    err "❌ separate dev .env present on prod (not a symlink to .env.prod) — remove it before deploying"
+# [SEC-15] the deploy must not boot with the wrong env file (dev config: NODE_ENV,
+# weak secrets — or, on staging, prod secrets via compose env_file precedence). A
+# `.env` that's just a symlink to $ENV_FILE is fine (identical content). Hard-fail.
+test -f "$ENV_FILE" || { err "❌ $ENV_FILE missing"; exit 1; }
+if [ -e .env ] && [ "$(readlink -f .env)" != "$(readlink -f "$ENV_FILE")" ]; then
+    err "❌ .env is not a symlink to $ENV_FILE — remove/fix it before deploying (env=$DEPLOY_ENV)"
+    exit 1
+fi
+# compose lists env_file [.env, .env.prod] (later wins), so a stray .env.prod on
+# staging would silently override .env.staging with prod secrets — fail closed.
+if [ "$DEPLOY_ENV" = "staging" ] && [ -e .env.prod ]; then
+    err "❌ .env.prod present on staging — compose env_file would override .env.staging; remove it"
     exit 1
 fi
 
@@ -125,7 +156,11 @@ say "Image source: $APP_IMAGE_SOURCE"
 # Step 1 — resolve target, acquire the image (preflight), then (optional) schema
 # migrations — all BEFORE the app switch.
 PREV_COMMIT="$(git rev-parse HEAD)"
-BRANCH="$(git branch --show-current)"
+# DEPLOY_BRANCH pins the branch to fetch/resolve against — required for cron /
+# detached-HEAD auto-deploy (staging), where `git branch --show-current` is empty
+# or wrong. Defaults to the checked-out branch (current interactive-prod behaviour).
+BRANCH="${DEPLOY_BRANCH:-$(git branch --show-current)}"
+[ -n "$BRANCH" ] || { err "❌ no branch (detached HEAD?) — set DEPLOY_BRANCH=main"; exit 1; }
 
 say "📥 Step 1: fetch + resolve deploy target"
 git fetch origin "$BRANCH"
@@ -198,7 +233,7 @@ elif [ "$APP_IMAGE_SOURCE" = "build" ]; then
     warn "⚠ APP_IMAGE_SOURCE=build: legacy host build of the merged worktree (OPS-001"
     warn "  disk risk; schema already applied → a build failure here needs manual"
     warn "  recovery). Break-glass only."
-    docker compose -f "$COMPOSE_FILE" build app
+    docker compose "${COMPOSE_ARGS[@]}" build app
 fi
 [ -n "$OLD_IMG" ] && docker tag "$OLD_IMG" "$ROLLBACK_TAG"
 ok "✅ image ready (rollback tagged: ${OLD_IMG:-none})"
@@ -210,7 +245,7 @@ bash scripts/rebuild-frontend.sh prepare
 # Step 4 — switch app (flag BEFORE the command: `up` may recreate then error)
 say "🚀 Step 4: switch app to new image"
 APP_SWITCHED=1
-docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate --no-build app
+docker compose "${COMPOSE_ARGS[@]}" up -d --no-deps --force-recreate --no-build app
 
 # Step 5 — wait for the app's own health
 say "🏥 Step 5: app health-wait"
@@ -222,6 +257,22 @@ ok "✅ app healthy"
 say "📦 Step 6: publish frontend dist"
 bash scripts/rebuild-frontend.sh publish
 DIST_PUBLISHED=1
+
+# Step 6b — the app switch (Step 4) recreates ONLY app; edge nginx keeps its running
+# config. nginx-config/ is a directory bind-mount, so if this release changed it,
+# `nginx -s reload` picks up the new file content live. (compose-level command /
+# mount changes still need a manual `up -d --force-recreate nginx` — see the runbook.)
+# Done before verify/smoke so they test the live config; a bad config fails 'nginx -t'
+# → abort (edge keeps the old, working config; ERR trap rolls the app back).
+if [ -n "$(git diff --name-only "$PREV_COMMIT" HEAD -- nginx-config/)" ]; then
+    say "🔁 Step 6b: nginx config changed this release — test + reload edge"
+    if docker compose "${COMPOSE_ARGS[@]}" exec -T nginx nginx -t; then
+        docker compose "${COMPOSE_ARGS[@]}" exec -T nginx nginx -s reload
+        ok "✅ edge nginx reloaded"
+    else
+        err "❌ new nginx config failed 'nginx -t' — NOT reloading (edge keeps old config)"; exit 1
+    fi
+fi
 
 # Step 7 — verify served bundles == published dist
 say "🔎 Step 7: verify served bundles"
@@ -243,6 +294,6 @@ docker images "$GHCR_IMAGE" --format '{{.Repository}}:{{.Tag}} {{.CreatedAt}}' \
     | sort -rk2 | awk 'NR>3{print $1}' | xargs -r docker rmi >/dev/null 2>&1 || true
 
 echo ""
-ok "✨ Deploy complete."
-echo "  logs:   docker compose -f $COMPOSE_FILE logs -f app"
-echo "  status: docker compose -f $COMPOSE_FILE ps"
+ok "✨ Deploy complete (env=$DEPLOY_ENV)."
+echo "  logs:   docker compose ${COMPOSE_ARGS[*]} logs -f app"
+echo "  status: docker compose ${COMPOSE_ARGS[*]} ps"

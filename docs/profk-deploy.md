@@ -5,7 +5,9 @@
 captures the profk-specific config committed here plus the operator steps that are NOT in git
 (secrets stay on the host).
 
-Deployed 2026-07-07 from `main` (host-build; GHCR pull-mode is OFF for this box).
+Deployed 2026-07-07 from `main`. Initial bring-up was host-build; **GHCR pull-mode via
+`update-production.sh` (`DEPLOY_ENV=prod`) is the target flow** — see "Future updates to profk"
+below for the one-time cutover (host-build remains the break-glass path).
 
 ## In-git artifacts (this repo)
 - **`docker-compose.profk.yml`** — override layered on the prod base:
@@ -94,14 +96,38 @@ edge contract (`uk-management-api:8080`, `uk-access-api:8080`, `uk-frontend:80`)
 match our `INFRASAFE_WEBHOOK_SECRET` / `UK_WEBHOOK_SECRET`.
 
 ## Future updates to profk
-GHCR is off here, so updates are **host-build**:
+
+### Target flow — `update-production.sh` (GHCR pull, R2-15)
+`update-production.sh` is now env-parameterized: `DEPLOY_ENV` defaults to `prod` = **profk**
+(it selects `-f docker-compose.unified.yml -f docker-compose.profk.yml`, `.env.prod`, the
+`profk.uz` edge/verify URLs, and the migrate `-f` set automatically). One command does the whole
+safe deploy — pull-preflight (before any schema change) → `migrate status/up` → retag → `--no-build`
+switch → dist-extract → health → verify → edge smoke → bounded image retention, with the ERR-trap
+rollback:
 ```
-git pull --ff-only          # see the pull gotcha below
-docker compose -f docker-compose.unified.yml -f docker-compose.profk.yml build app
-scripts/rebuild-frontend.sh prepare
-docker compose -f docker-compose.unified.yml -f docker-compose.profk.yml up -d --force-recreate --no-build app
-scripts/rebuild-frontend.sh publish && VERIFY_URL_BASE=https://profk.uz scripts/rebuild-frontend.sh verify
-docker exec infrasafe-nginx-1 nginx -s reload   # if nginx.profk.conf changed
+cd /opt/infrasafe
+./update-production.sh                 # DEPLOY_ENV=prod is the default (profk)
+# promotion (ship exactly the SHA validated on staging):
+DEPLOY_TARGET_COMMIT=<qa'd-sha> ./update-production.sh
+```
+It reloads the edge automatically when `nginx-config/` changed this release (Step 6b: `nginx -t`
+then `-s reload`); a compose-level nginx `command`/mount change still needs a manual
+`docker compose -f docker-compose.unified.yml -f docker-compose.profk.yml up -d --force-recreate nginx`.
+
+**One-time cutover to pull-mode** (until done, profk still host-builds):
+1. Land the R2-15 Phase-A change on `main`; wait for the CI merge run to push
+   `ghcr.io/a-afanasyev/infrasafe-app:sha-<merge>` + `:main`; confirm the package exists.
+2. On profk, one-time GHCR login (token OUTSIDE the repo tree):
+   `docker login ghcr.io -u a-afanasyev --password-stdin < ~/.infrasafe/ghcr-token` (PAT with
+   `read:packages`, chmod 600). Dry-run `docker pull ghcr.io/a-afanasyev/infrasafe-app:main`.
+3. **Deploy #1** — one last host-build via the break-glass below (it also `git pull`s the new script);
+   run `docker builder prune -af` + check `df -h` first.
+4. **Deploy #2** — `./update-production.sh` (registry mode) is the first real pull deploy.
+
+### Break-glass — legacy host build (GHCR/CI down)
+```
+APP_IMAGE_SOURCE=build ./update-production.sh   # host-builds the merged worktree (OPS-001 disk risk;
+                                                # NOT pre-migrate-safe — schema is already applied)
 ```
 **Pull gotcha:** `docker-compose.profk.yml` + `nginx-config/nginx.profk.conf` existed on the host as
 UNTRACKED before this commit. After merging this, on profk run once
