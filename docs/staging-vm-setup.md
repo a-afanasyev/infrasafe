@@ -44,31 +44,54 @@ Dedicated staging environment (`staging.infrasafe.uz`) that runs the **same GHCR
    - the CORS `map` + CSP `connect-src`/allowed origins set to `https://staging.infrasafe.uz`;
    - cert paths unchanged (`/etc/nginx/ssl/*.pem` — the override already points those at the staging cert).
    Not generated in-repo because it can only be validated against the running VM (`nginx -t`).
-6. **First bring-up** (fresh init runs automatically from `database/init/`):
+6. **First-run bootstrap** — `update-production.sh` is an UPDATE tool, NOT a bootstrap: it never
+   does `up -d postgres`, and its `migrate status/up` step talks to an **already-running** postgres via
+   `docker compose exec`. So an empty VM must be brought up manually first (fresh init runs
+   automatically from `database/init/`; the base `database.sql` is neutralized by the noop):
    ```
-   COMPOSE_PROJECT_NAME=infrasafe \
-     docker compose -f docker-compose.unified.yml -f docker-compose.staging.yml up -d
+   export COMPOSE_PROJECT_NAME=infrasafe
+   CF="-f docker-compose.unified.yml -f docker-compose.staging.yml"
+   docker compose $CF up -d postgres                       # fresh DB: init 01-09 + 99 baseline (003-017)
+   docker pull ghcr.io/a-afanasyev/infrasafe-app:sha-<target>   # target = origin/main tip you deploy
+   docker tag  ghcr.io/a-afanasyev/infrasafe-app:sha-<target> infrasafe-app:latest
+   # apply 018+ with the SAME -f set as the deploy (both files, not base-only), node from the pulled image:
+   MIGRATE_COMPOSE_FILE="docker-compose.unified.yml docker-compose.staging.yml" \
+     MIGRATE_PG_USER=infrasafe_app MIGRATE_NODE_IMAGE=infrasafe-app:latest MIGRATE_NODE_MODE=image \
+     MIGRATE_TARGET_COMMIT=<target> bash scripts/migrate.sh up
+   # runtime role LOGIN password (infrasafe_runtime is created NOLOGIN by 017):
+   PW=$(grep '^DB_PASSWORD=' .env.staging | cut -d= -f2-)
+   docker exec infrasafe-postgres-1 psql -U infrasafe_app -d infrasafe \
+     -c "ALTER ROLE infrasafe_runtime LOGIN PASSWORD '$PW'"; unset PW
+   docker compose $CF up -d redis app                      # then the edge after the cert is in place:
+   VERIFY_URL_BASE=https://staging.infrasafe.uz bash scripts/rebuild-frontend.sh prepare
+   VERIFY_URL_BASE=https://staging.infrasafe.uz bash scripts/rebuild-frontend.sh publish
+   docker compose $CF up -d nginx
+   docker exec -it infrasafe-app-1 node src/cli/create-admin.js <user> <email>   # real admin
    ```
-7. **Migrations** — apply pending (018+) after the baseline seed. Until the deploy-script wiring
-   below lands, run the runner against the **same `-f` set**:
+   *(A `scripts/bootstrap-staging.sh` wrapping these steps is the tracked follow-up below.)*
+7. **Subsequent updates** — once bootstrapped, every deploy is one command:
    ```
-   MIGRATE_COMPOSE_FILE=... # see the follow-up — migrate.sh must see both -f files on staging,
-                            # not base-only (the base external-network model won't match the VM).
+   DEPLOY_ENV=staging DEPLOY_BRANCH=main ./update-production.sh
    ```
+   It pulls `sha-<origin/main>`, retags, migrates (same `-f` set), `--no-build` switches, extracts +
+   byte-verifies dist against `staging.infrasafe.uz`, reloads the edge if `nginx-config/` changed.
 
-## Follow-up (not yet implemented — tracked)
+## Done (R2-15 Phase A — landed)
 
-- **Deploy-script `DEPLOY_ENV=prod|staging`** in `update-production.sh`: select `.env.<env>`, a
-  `COMPOSE_ARGS` array (base [+ staging override]), `EDGE_HEALTH_URL`, exported `VERIFY_URL_BASE`
-  (else staging `verify` byte-checks the prod domain — `scripts/rebuild-frontend.sh:35`),
-  `COMPOSE_PROJECT_NAME`, and the SEC-15 `.env` check per env. Prod path must stay byte-identical
-  (DEPLOY_ENV defaults to prod).
-- **`migrate.sh` compose-file set** on staging: the runner must `exec`/`psql` with the same `-f` set as
-  the deploy, or base-only will validate against the prod external-network model that the override
-  removes. Needs a small runner enhancement (accept a file set) — has its own `npm run migrate:test`
-  harness; verify there + on the VM.
-- **Auto-deploy on merge** (chosen cadence): a cron/webhook that resolves `origin/main` → full
-  `sha-<...>` and runs the staging deploy (`DEPLOY_TARGET_COMMIT`-style), never the moving `:main` tag.
-  Prod stays manual/promoted.
+- **Deploy-script `DEPLOY_ENV=prod|staging`** in `update-production.sh`: `DEPLOY_ENV` defaults to
+  `prod` (= profk), `staging` selects the staging `-f` set / `.env.staging` / `staging.infrasafe.uz`
+  edge+verify URLs, `DEPLOY_BRANCH` for cron, exported `VERIFY_URL_BASE`, per-env SEC-15 (staging
+  fails closed on a stray `.env.prod`), and an edge-reload step. Guard: `deployWiring.test.js`.
+- **`migrate.sh` compose-file set**: `MIGRATE_COMPOSE_FILE` accepts a whitespace-separated LIST →
+  split into `-f a -f b` (backward-compatible with a single file). Guard: `migrateComposeFiles.test.js`
+  + `npm run migrate:test`.
+
+## Follow-up (Phase B — needs the VM)
+
+- **`scripts/bootstrap-staging.sh`** wrapping step 6 (idempotent first-run).
+- **`nginx.staging.conf`** (step 5) — only validatable on the VM (`nginx -t`).
+- **Auto-deploy on merge**: cron/webhook that `git fetch`es, checks out `main`, resolves `origin/main`
+  → full `sha-<...>`, and runs `DEPLOY_TARGET_COMMIT=<sha> DEPLOY_ENV=staging DEPLOY_BRANCH=main
+  ./update-production.sh` (never the moving `:main` tag). Prod stays manual/promoted.
 
 See the `r2-15-ghcr-deploy-by-pull` memory for the verified merge findings and the Phase-1 pull model.

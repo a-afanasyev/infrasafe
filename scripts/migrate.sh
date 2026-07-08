@@ -20,7 +20,13 @@
 #   repair-acl    Re-REVOKE runtime DML on the runner tables (recovery path).
 #
 # Required env:
-#   MIGRATE_COMPOSE_FILE   compose file (prod: docker-compose.unified.yml)
+#   MIGRATE_COMPOSE_FILE   compose file(s). ONE filename (prod: docker-compose.unified.yml)
+#                          OR a whitespace-separated LIST that the runner splits into
+#                          multiple `-f` args (staging: "docker-compose.unified.yml
+#                          docker-compose.staging.yml") so `compose exec/images` validate
+#                          against the SAME network/volume model as the deploy — a
+#                          base-only file mis-validates an override that removes/changes
+#                          external networks.
 #   MIGRATE_PG_USER        psql role (prod: infrasafe_app, dev: postgres)
 #   MIGRATE_TARGET_COMMIT  commit-ish the migrations are read from (status/up/baseline)
 # Optional env:
@@ -57,6 +63,12 @@ cd "$REPO_ROOT"   # git show / ls-tree resolve against the repo
 MIGRATE_PG_SERVICE="${MIGRATE_PG_SERVICE:-postgres}"
 MIGRATE_PG_DB="${MIGRATE_PG_DB:-infrasafe}"
 
+# MIGRATE_COMPOSE_FILE may name ONE file (backward-compatible) or a whitespace-
+# separated LIST → build `-f a -f b`. Word-splitting is intentional here.
+read -r -a _MIGRATE_COMPOSE_FILES <<< "$MIGRATE_COMPOSE_FILE"
+COMPOSE_F_ARGS=()
+for _cf in "${_MIGRATE_COMPOSE_FILES[@]}"; do COMPOSE_F_ARGS+=(-f "$_cf"); done
+
 RUN_ID="$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)"
 LOCK_ACQUIRED=0
 
@@ -66,7 +78,7 @@ psql_base() {
     # captured output — critical for the ON CONFLICT … RETURNING lock probe, whose
     # emptiness (0 rows) is the "lock already held" signal. Query results, NOTICEs,
     # and errors are unaffected.
-    docker compose -f "$MIGRATE_COMPOSE_FILE" exec -T "$MIGRATE_PG_SERVICE" \
+    docker compose "${COMPOSE_F_ARGS[@]}" exec -T "$MIGRATE_PG_SERVICE" \
         psql -q -v ON_ERROR_STOP=1 -U "$MIGRATE_PG_USER" -d "$MIGRATE_PG_DB" "$@"
 }
 db_scalar() { psql_base -tA "$@"; }
@@ -109,7 +121,7 @@ else
     # wrong one — exactly the bug this avoids.
     _NODE_IMAGE="${MIGRATE_NODE_IMAGE:-}"
     if [ -z "$_NODE_IMAGE" ]; then
-        _NODE_IMAGE="$(docker compose -f "$MIGRATE_COMPOSE_FILE" images -q "$MIGRATE_NODE_SERVICE" 2>/dev/null | head -n1 || true)"
+        _NODE_IMAGE="$(docker compose "${COMPOSE_F_ARGS[@]}" images -q "$MIGRATE_NODE_SERVICE" 2>/dev/null | head -n1 || true)"
     fi
     [ -n "${_NODE_IMAGE:-}" ] || {
         err "no host node and could not resolve an image for compose service '$MIGRATE_NODE_SERVICE'"
