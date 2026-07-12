@@ -248,5 +248,34 @@ describe('Phase 1: 2FA Security Hardening', () => {
                 expect(next).not.toHaveBeenCalled();
             });
         });
+
+        // H-5: a blacklist-DB outage in production must surface as 503, not
+        // be misreported as an invalid/used temp token.
+        test('returns 503 when the blacklist check is unavailable (H-5)', async () => {
+            jest.isolateModules(async () => {
+                const authService = require('../../../src/services/authService');
+                const unavailable = new Error('Blacklist check unavailable');
+                unavailable.code = 'BLACKLIST_UNAVAILABLE';
+                jest.spyOn(authService, 'isTokenBlacklisted').mockRejectedValue(unavailable);
+
+                const { authenticateTempToken } = require('../../../src/middleware/auth');
+                const req = { body: { tempToken: 'some-token' } };
+                const res = {
+                    status: jest.fn().mockReturnThis(),
+                    json: jest.fn(),
+                    set: jest.fn().mockReturnThis()
+                };
+                const next = jest.fn();
+
+                await authenticateTempToken(req, res, next);
+
+                expect(res.set).toHaveBeenCalledWith('Retry-After', '30');
+                expect(res.status).toHaveBeenCalledWith(503);
+                expect(res.json).toHaveBeenCalledWith(
+                    expect.objectContaining({ message: 'Service temporarily unavailable' })
+                );
+                expect(next).not.toHaveBeenCalled();
+            });
+        });
     });
 });

@@ -42,7 +42,8 @@ describe('Auth Middleware', () => {
         };
         res = {
             status: jest.fn().mockReturnThis(),
-            json: jest.fn().mockReturnThis()
+            json: jest.fn().mockReturnThis(),
+            set: jest.fn().mockReturnThis()
         };
         next = jest.fn();
     });
@@ -94,6 +95,24 @@ describe('Auth Middleware', () => {
                     message: 'Token has been revoked'
                 })
             );
+        });
+
+        // H-5: a blacklist-DB outage (production, no fail-open override) must
+        // surface as 503 with Retry-After, distinct from an actual 401.
+        test('returns 503 with Retry-After when the blacklist check is unavailable', async () => {
+            req.headers.authorization = 'Bearer valid-token';
+            const unavailable = new Error('Blacklist check unavailable');
+            unavailable.code = 'BLACKLIST_UNAVAILABLE';
+            authService.isTokenBlacklisted.mockRejectedValue(unavailable);
+
+            await authenticateJWT(req, res, next);
+
+            expect(res.set).toHaveBeenCalledWith('Retry-After', '30');
+            expect(res.status).toHaveBeenCalledWith(503);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({ message: 'Service temporarily unavailable' })
+            );
+            expect(next).not.toHaveBeenCalled();
         });
 
         test('returns 500 when JWT_SECRET is not defined', async () => {
@@ -343,6 +362,23 @@ describe('Auth Middleware', () => {
             );
         });
 
+        // H-5: same 503 contract as authenticateJWT.
+        test('returns 503 with Retry-After when the blacklist check is unavailable', async () => {
+            req.body = { refreshToken: 'some-token' };
+            const unavailable = new Error('Blacklist check unavailable');
+            unavailable.code = 'BLACKLIST_UNAVAILABLE';
+            authService.isTokenBlacklisted.mockRejectedValue(unavailable);
+
+            await authenticateRefresh(req, res, next);
+
+            expect(res.set).toHaveBeenCalledWith('Retry-After', '30');
+            expect(res.status).toHaveBeenCalledWith(503);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({ message: 'Service temporarily unavailable' })
+            );
+            expect(next).not.toHaveBeenCalled();
+        });
+
         test('returns 500 when JWT_REFRESH_SECRET is not defined', async () => {
             req.body = { refreshToken: 'some-token' };
             authService.isTokenBlacklisted.mockResolvedValue(false);
@@ -516,6 +552,22 @@ describe('Auth Middleware', () => {
 
             expect(req.user).toBeNull();
             expect(next).toHaveBeenCalled();
+        });
+
+        // H-5: optionalAuth degrades to anonymous (not 503) on a blacklist-DB
+        // outage — it only ever enriches public routes, so denying nothing
+        // privileged is a safe fallback that keeps public endpoints up.
+        test('degrades to anonymous (not 503) when the blacklist check is unavailable', async () => {
+            req.headers.authorization = 'Bearer some-token';
+            const unavailable = new Error('Blacklist check unavailable');
+            unavailable.code = 'BLACKLIST_UNAVAILABLE';
+            authService.isTokenBlacklisted.mockRejectedValue(unavailable);
+
+            await optionalAuth(req, res, next);
+
+            expect(req.user).toBeNull();
+            expect(next).toHaveBeenCalled();
+            expect(res.status).not.toHaveBeenCalled();
         });
 
         test('sets req.user to null when JWT_SECRET is missing', async () => {

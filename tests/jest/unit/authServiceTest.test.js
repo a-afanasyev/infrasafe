@@ -1284,4 +1284,49 @@ describe('AuthService', () => {
             await expect(authService.isTokenBlacklisted('blacklisted-token')).resolves.toBe(true);
         });
     });
+
+    // H-5: in production, the same outage must fail CLOSED unless the
+    // operator has explicitly set the escape hatch.
+    describe('isTokenBlacklisted — fail-CLOSED in production (H-5)', () => {
+        const originalNodeEnv = process.env.NODE_ENV;
+        const originalOverride = process.env.AUTH_BLACKLIST_FAIL_OPEN;
+
+        afterEach(() => {
+            process.env.NODE_ENV = originalNodeEnv;
+            if (originalOverride === undefined) {
+                delete process.env.AUTH_BLACKLIST_FAIL_OPEN;
+            } else {
+                process.env.AUTH_BLACKLIST_FAIL_OPEN = originalOverride;
+            }
+        });
+
+        test('throws BLACKLIST_UNAVAILABLE when NODE_ENV=production and no override', async () => {
+            process.env.NODE_ENV = 'production';
+            delete process.env.AUTH_BLACKLIST_FAIL_OPEN;
+            cacheService.get.mockResolvedValue(null);
+            db.query.mockRejectedValue(new Error('connection refused'));
+
+            await expect(authService.isTokenBlacklisted('some-token')).rejects.toMatchObject({
+                code: 'BLACKLIST_UNAVAILABLE'
+            });
+        });
+
+        test('still fails open in production when AUTH_BLACKLIST_FAIL_OPEN=true', async () => {
+            process.env.NODE_ENV = 'production';
+            process.env.AUTH_BLACKLIST_FAIL_OPEN = 'true';
+            cacheService.get.mockResolvedValue(null);
+            db.query.mockRejectedValue(new Error('connection refused'));
+
+            await expect(authService.isTokenBlacklisted('some-token')).resolves.toBe(false);
+        });
+
+        test('a real blacklist hit still returns true in production (not masked by the outage path)', async () => {
+            process.env.NODE_ENV = 'production';
+            delete process.env.AUTH_BLACKLIST_FAIL_OPEN;
+            cacheService.get.mockResolvedValue(null);
+            db.query.mockResolvedValue({ rows: [{ exists: 1 }] });
+
+            await expect(authService.isTokenBlacklisted('blacklisted-token')).resolves.toBe(true);
+        });
+    });
 });

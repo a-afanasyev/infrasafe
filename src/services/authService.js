@@ -708,13 +708,20 @@ class AuthService {
     }
 
     // Проверка, находится ли токен в черном списке
-    // ARCH-102: circuit breaker wraps DB lookup — fail-OPEN on outage. This
-    // is an intentional availability-over-strict-security trade-off: a DB
-    // outage must not lock every user out. Pinned by
+    // ARCH-102 / H-5: circuit breaker wraps DB lookup. In dev/test (or with the
+    // AUTH_BLACKLIST_FAIL_OPEN=true operator override) a DB/breaker outage
+    // still fails OPEN — availability-over-strict-security, matching the
+    // original ARCH-102 trade-off and pinned by
     // tests/jest/unit/authServiceTest.test.js ("fail-OPEN on DB outage").
-    // [SEC-31] Confirmed BY-DESIGN (not a defect). The in-memory L1 cache is
-    // single-replica only; multi-replica correctness (shared L1 in Redis) is
-    // tracked under B-003. No change in single-replica prod.
+    // In production (the default), the same outage now fails CLOSED: it
+    // throws BLACKLIST_UNAVAILABLE, which auth middleware maps to 503. Why
+    // this changed: the 5-min L1 user-object cache (findUserById) can keep
+    // serving a since-revoked user's data while the blacklist silently
+    // fails open underneath it — that combined window is the actual exploit
+    // surface, not the blacklist lookup in isolation.
+    // [SEC-31] The in-memory L1 blacklist-hit cache remains single-replica
+    // only; multi-replica correctness (shared L1 in Redis) is tracked under
+    // B-003 — unaffected by this change.
     async isTokenBlacklisted(token) {
         try {
             const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
@@ -726,7 +733,7 @@ class AuthService {
                 return true;
             }
 
-            // L2: Database with circuit breaker — fail-open when breaker is open
+            // L2: Database with circuit breaker
             try {
                 const isBlacklisted = await this.blacklistBreaker.execute(async () => {
                     const result = await db.query(
@@ -748,15 +755,35 @@ class AuthService {
                     return true;
                 }
             } catch (breakerError) {
-                // Circuit breaker open or DB error — fail-open: assume not blacklisted
-                logger.warn(`Blacklist DB check unavailable (circuit breaker): ${breakerError.message}`);
+                return this._handleBlacklistUnavailable(breakerError);
             }
 
             return false;
         } catch (error) {
-            logger.error(`Ошибка проверки черного списка токенов: ${error.message}`);
-            return false;
+            // _handleBlacklistUnavailable may have already thrown
+            // BLACKLIST_UNAVAILABLE from the inner catch above and propagated
+            // here — don't re-wrap, just let it continue up to the middleware.
+            if (error.code === 'BLACKLIST_UNAVAILABLE') {
+                throw error;
+            }
+            return this._handleBlacklistUnavailable(error);
         }
+    }
+
+    // H-5: shared decision point for both isTokenBlacklisted catch blocks —
+    // fail-open (return false) unless we are in production AND the operator
+    // hasn't set the AUTH_BLACKLIST_FAIL_OPEN escape hatch, in which case
+    // fail closed by throwing a typed error for the middleware to map to 503.
+    _handleBlacklistUnavailable(error) {
+        const failOpenOverride = process.env.AUTH_BLACKLIST_FAIL_OPEN === 'true';
+        if (process.env.NODE_ENV === 'production' && !failOpenOverride) {
+            logger.error(`Blacklist DB check unavailable in production — failing CLOSED: ${error.message}`);
+            const unavailableError = new Error('Blacklist check unavailable');
+            unavailableError.code = 'BLACKLIST_UNAVAILABLE';
+            throw unavailableError;
+        }
+        logger.warn(`Blacklist DB check unavailable (fail-open): ${error.message}`);
+        return false;
     }
 
     // SEC-105: verify password without affecting lockout counters

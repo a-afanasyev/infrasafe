@@ -19,6 +19,17 @@ function mapUserToReqUser(user) {
     };
 }
 
+// H-5: the blacklist DB is unavailable (production, no fail-open override) —
+// distinct from an invalid/expired token. 503 (not 401/500) so clients know
+// to retry rather than treat this as an auth failure or a bug.
+function sendBlacklistUnavailable(res) {
+    res.set('Retry-After', '30');
+    return res.status(503).json({
+        success: false,
+        message: 'Service temporarily unavailable'
+    });
+}
+
 // Проверка JWT токена с проверкой черного списка
 const authenticateJWT = async (req, res, next) => {
     try {
@@ -110,6 +121,9 @@ const authenticateJWT = async (req, res, next) => {
         req.token = token;
         next();
     } catch (error) {
+        if (error.code === 'BLACKLIST_UNAVAILABLE') {
+            return sendBlacklistUnavailable(res);
+        }
         if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
             logger.warn(`Неудачная попытка аутентификации: ${error.message}`);
             return res.status(401).json({
@@ -220,6 +234,9 @@ const authenticateRefresh = async (req, res, next) => {
         req.refreshToken = refreshToken;
         next();
     } catch (error) {
+        if (error.code === 'BLACKLIST_UNAVAILABLE') {
+            return sendBlacklistUnavailable(res);
+        }
         if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
             logger.warn(`Неудачная попытка обновления токена: ${error.message}`);
             return res.status(401).json({
@@ -284,8 +301,12 @@ const optionalAuth = async (req, res, next) => {
         }
         next();
     } catch (error) {
+        // H-5: on a blacklist-DB outage, degrade to anonymous rather than
+        // 503 — optionalAuth only ever enriches public routes, so denying
+        // nothing privileged is a strictly safe fallback and keeps public
+        // endpoints (e.g. the map) up during a DB blip.
         // Optional auth — log unexpected (non-JWT) errors for observability
-        if (error.name !== 'JsonWebTokenError' && error.name !== 'TokenExpiredError') {
+        if (error.code !== 'BLACKLIST_UNAVAILABLE' && error.name !== 'JsonWebTokenError' && error.name !== 'TokenExpiredError') {
             logger.warn(`optionalAuth unexpected error: ${error.message}`);
         }
         req.user = null;
@@ -320,6 +341,9 @@ const authenticateTempToken = async (req, res, next) => {
         req.tempToken = tempToken; // Pass to controller for blacklisting after use
         next();
     } catch (error) {
+        if (error.code === 'BLACKLIST_UNAVAILABLE') {
+            return sendBlacklistUnavailable(res);
+        }
         logger.warn(`Invalid temp token: ${error.message}`);
         return res.status(401).json({
             success: false,
