@@ -66,6 +66,18 @@ describe('Transformer Model', () => {
             expect(countCall[1][0]).toBe('%TP%');
         });
 
+        // M-8: a name containing ILIKE wildcards must be matched literally.
+        test('escapes ILIKE wildcards in the name filter', async () => {
+            db.query
+                .mockResolvedValueOnce({ rows: [{ count: '1' }] })
+                .mockResolvedValueOnce({ rows: [mockRow] });
+
+            await Transformer.findAll(1, 10, { name: 'a%b_c' });
+
+            const countCall = db.query.mock.calls[0];
+            expect(countCall[1][0]).toBe('%a\\%b\\_c%');
+        });
+
         test('applies power_kva filter', async () => {
             db.query
                 .mockResolvedValueOnce({ rows: [{ count: '1' }] })

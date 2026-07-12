@@ -1776,11 +1776,21 @@ document.addEventListener('DOMContentLoaded', async function () {
         `;
                 }
 
-                // ИСПРАВЛЕНИЕ XSS: Санитизируем popup контент перед использованием
+                // ИСПРАВЛЕНИЕ XSS: Санитизируем popup контент перед использованием.
+                // [M-9] Fail-close: если DOMSecurity недоступен (например, bundling
+                // сломался или скрипт заблокирован), popupContent НЕ должен уйти в
+                // Leaflet как сырой HTML — вместо этого он схлопывается в
+                // экранированный текст тем же textContent-приёмом, что и внутренний
+                // fallback sanitizePopupContent на случай отсутствия DOMPurify.
                 if (window.DOMSecurity && window.DOMSecurity.sanitizePopupContent) {
                     popupContent = window.DOMSecurity.sanitizePopupContent(popupContent);
+                } else {
+                    console.error('DOMSecurity недоступен — popup контент экранируется как обычный текст (fail-closed).');
+                    const fallbackDiv = document.createElement('div');
+                    fallbackDiv.textContent = String(popupContent);
+                    popupContent = fallbackDiv.innerHTML;
                 }
-                
+
                 marker.bindPopup(popupContent).addTo(markers);
                 markers.addLayer(marker);
 

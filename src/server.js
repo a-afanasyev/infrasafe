@@ -113,12 +113,16 @@ morgan.token('correlationId', (req) => req.correlationId || '-');
 app.use(morgan(':method :safepath :status :response-time ms :correlationId', { stream: { write: message => logger.info(message.trim()) } })); // Логирование HTTP запросов
 
 // Health check endpoint для Docker
+// [M-15] Body carries only `status` — the prior `db: connected|disconnected`
+// field leaked internal DB connectivity state to any unauthenticated caller.
+// Status code alone (200/503) is all every consumer (Docker healthcheck,
+// update-production.sh app_health_wait, edge curl -fsS) actually checks.
 app.get('/health', async (req, res) => {
     try {
         await db.query('SELECT 1');
-        res.status(200).json({ status: 'healthy', db: 'connected' });
+        res.status(200).json({ status: 'healthy' });
     } catch {
-        res.status(503).json({ status: 'unhealthy', db: 'disconnected' });
+        res.status(503).json({ status: 'unhealthy' });
     }
 });
 

@@ -2,6 +2,7 @@ const db = require('../config/database');
 const logger = require('../utils/logger');
 const { createError } = require('../utils/helpers');
 const { buildUpdateQuery } = require('../utils/dynamicUpdateBuilder');
+const { validateSearchString } = require('../utils/queryValidation');
 
 // [AUD-009] Columns writable on update (matches the prior hand-rolled set —
 // installation_date is create-only, kept that way).
@@ -48,9 +49,11 @@ class Transformer {
             const conditions = [];
 
             if (filters.name) {
+                // M-8: escape ILIKE wildcards (%, _) so a name containing them
+                // is matched literally instead of acting as a pattern.
                 paramCount++;
                 conditions.push(`t.name ILIKE $${paramCount}`);
-                values.push(`%${filters.name}%`);
+                values.push(`%${validateSearchString(filters.name)}%`);
             }
 
             if (filters.power_kva) {

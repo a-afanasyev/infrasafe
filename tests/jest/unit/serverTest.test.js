@@ -76,7 +76,6 @@ describe('server.js', () => {
 
             expect(res.status).toBe(200);
             expect(res.body.status).toBe('healthy');
-            expect(res.body.db).toBe('connected');
         });
 
         it('returns 503 unhealthy status when DB query fails', async () => {
@@ -86,7 +85,16 @@ describe('server.js', () => {
 
             expect(res.status).toBe(503);
             expect(res.body.status).toBe('unhealthy');
-            expect(res.body.db).toBe('disconnected');
+        });
+
+        // [M-15] The response no longer discloses internal DB connectivity
+        // state to an unauthenticated caller.
+        it('does not disclose DB connectivity state in the response body', async () => {
+            db.query.mockResolvedValue({ rows: [{ '?column?': 1 }] });
+
+            const res = await request(app).get('/health');
+
+            expect(res.body).not.toHaveProperty('db');
         });
     });
 

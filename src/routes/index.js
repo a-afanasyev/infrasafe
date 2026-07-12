@@ -145,7 +145,7 @@ router.use(csrfOriginGuard);
  * /:
  *   get:
  *     summary: Информация об API
- *     description: Возвращает основную информацию о версии API и доступных эндпоинтах
+ *     description: Возвращает базовую информацию о версии API
  *     responses:
  *       200:
  *         description: Информация об API
@@ -158,35 +158,16 @@ router.use(csrfOriginGuard);
  *                   type: string
  *                 version:
  *                   type: string
- *                 description:
+ *                 status:
  *                   type: string
- *                 endpoints:
- *                   type: array
- *                   items:
- *                     type: string
  */
-// Корневой маршрут API
+// [M-16] Корневой маршрут API — публичный, без auth (PUBLIC_ROUTES). Больше не
+// перечисляет все эндпоинты (включая /api/admin и /api-docs): это была карта
+// поверхности API, отдаваемая любому анонимному вызывающему без надобности.
 router.get('/', (req, res) => {
     res.json({
         name: 'InfraSafe Habitat IQ API',
         version: '1.0.1',
-        description: 'API для системы мониторинга зданий',
-        endpoints: [
-            '/api/auth - Авторизация и управление пользователями',
-            '/api/buildings - Управление зданиями',
-            '/api/controllers - Управление контроллерами',
-            '/api/transformers - Управление трансформаторами',
-            '/api/lines - Управление линиями электропередач',
-            '/api/cold-water-sources - Управление источниками воды',
-            '/api/heat-sources - Управление источниками тепла',
-            '/api/water-lines - Управление водными линиями',
-            '/api/water-suppliers - Управление поставщиками воды',
-            '/api/metrics - Получение метрик',
-            '/api/analytics - Аналитика и инфраструктурные объекты',
-            '/api/alerts - Система алертов и уведомлений',
-            '/api/admin - Оптимизированные админские API',
-            '/api-docs - Документация API'
-        ],
         status: 'healthy'
     });
 });

@@ -2,6 +2,7 @@ const db = require('../config/database');
 const logger = require('../utils/logger');
 const { createError } = require('../utils/helpers');
 const { buildUpdateQuery } = require('../utils/dynamicUpdateBuilder');
+const { validateSearchString } = require('../utils/queryValidation');
 
 // [AUD-009] Columns writable on create/update and which of them are jsonb.
 const LINE_JSON_COLUMNS = new Set(['main_path', 'branches']);
@@ -38,9 +39,11 @@ class Line {
             const conditions = [];
 
             if (filters.name) {
+                // M-8: escape ILIKE wildcards (%, _) so a name containing them
+                // is matched literally instead of acting as a pattern.
                 paramCount++;
                 conditions.push(`name ILIKE $${paramCount}`);
-                values.push(`%${filters.name}%`);
+                values.push(`%${validateSearchString(filters.name)}%`);
             }
 
             if (filters.voltage_kv) {

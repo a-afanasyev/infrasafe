@@ -298,7 +298,8 @@ describe('API Integration Tests', () => {
 
             expect(response.status).toBe(200);
             expect(response.body).toHaveProperty('status', 'healthy');
-            expect(response.body).toHaveProperty('db', 'connected');
+            // [M-15] db connectivity state no longer disclosed in the body.
+            expect(response.body).not.toHaveProperty('db');
         });
     });
 });

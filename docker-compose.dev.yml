@@ -11,7 +11,9 @@ services:
     # edits are picked up on reload without a container recreate.
     command: ["nginx", "-c", "/etc/nginx/custom/nginx.dev.conf", "-g", "daemon off;"]
     ports:
-      - "8088:8080"
+      # [SEC-34f / H-6] loopback-only — keep the dev frontend off the public
+      # interface, consistent with app/redis/postgres below.
+      - "127.0.0.1:8088:8080"
     volumes:
       # [B-002] HTML pages live in ./frontend-html/. The directory is
       # bind-mounted to a SEPARATE target (/srv/frontend-html), not
