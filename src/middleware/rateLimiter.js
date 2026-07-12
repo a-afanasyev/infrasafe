@@ -463,6 +463,20 @@ const crudLimiter = new SimpleRateLimiter({
     namespace: 'crud'
 });
 
+// [H-4] GET /uk-requests-metrics is public (no app-level limiter existed
+// before — only the nginx-edge general zone). It can return up to 10k rows
+// per call, so a modest per-IP cap is warranted independent of the new
+// service-token gate.
+const ukInventoryLimiter = new SimpleRateLimiter({
+    windowMs: 60 * 1000,
+    max: 30,
+    message: 'Слишком много запросов инвентаря UK. Попробуйте позже.',
+    keyGenerator: (req) => `uk-inventory:${req.ip || req.connection.remoteAddress}`,
+    standardHeaders: true,
+    legacyHeaders: false,
+    namespace: 'uk-inventory'
+});
+
 // Middleware для применения к конкретным роутам
 const applyAnalyticsRateLimit = [
     analyticsSlowDown.middleware(),
@@ -481,6 +495,10 @@ const applyTelemetryRateLimit = [
     telemetryLimiter.middleware()
 ];
 
+const applyUkInventoryRateLimit = [
+    ukInventoryLimiter.middleware()
+];
+
 // Функция для получения статистики всех rate limiter'ов
 function getAllRateLimitStats() {
     return {
@@ -493,6 +511,7 @@ function getAllRateLimitStats() {
         admin: adminLimiter.getStats(),
         crud: crudLimiter.getStats(),
         telemetry: telemetryLimiter.getStats(),
+        uk_inventory: ukInventoryLimiter.getStats(),
         auth: authLimiter.getStats(),
         register: registerLimiter.getStats(),
         password_change: passwordChangeLimiter.getStats()
@@ -506,6 +525,7 @@ function resetAllRateLimits() {
     adminLimiter.reset();
     crudLimiter.reset();
     telemetryLimiter.reset();
+    ukInventoryLimiter.reset();
     authLimiter.reset();
     registerLimiter.reset();
     passwordChangeLimiter.reset();
@@ -519,6 +539,7 @@ function destroyAllLimiters() {
     adminLimiter.destroy();
     crudLimiter.destroy();
     telemetryLimiter.destroy();
+    ukInventoryLimiter.destroy();
     authLimiter.destroy();
     registerLimiter.destroy();
     passwordChangeLimiter.destroy();
@@ -532,6 +553,7 @@ module.exports = {
     applyAdminRateLimit,
     applyCrudRateLimit,
     applyTelemetryRateLimit,
+    applyUkInventoryRateLimit,
     getAllRateLimitStats,
     resetAllRateLimits,
     destroyAllLimiters,

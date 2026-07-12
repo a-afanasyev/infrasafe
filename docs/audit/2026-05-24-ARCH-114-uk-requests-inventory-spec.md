@@ -60,6 +60,13 @@ Reasoning:
 
 If/when SEC-115 lands on your side and you want service-token auth for both inventory endpoints, we'll add it to **both** in one go — keeping them symmetric is more valuable than rolling per-endpoint auth.
 
+> **Updated 2026-07 (H-4, security audit 2026-07-11):** the auth gate anticipated above is now implemented and **dormant** — `src/middleware/serviceToken.js` (`requireServiceToken`), wired in front of `getRequestsInventory`. Contract, once activated:
+> - Header: `x-service-token: <shared secret>` (constant-time compare, `crypto.timingSafeEqual`).
+> - Env var: `UK_INVENTORY_TOKEN` on the InfraSafe side. Presence of the var IS the flag — unset means the endpoint stays exactly as documented above (no auth); set means every request without a matching header gets `401`.
+> - **Rollout order matters**: we will NOT set `UK_INVENTORY_TOKEN` until UK confirms their reconciliation worker sends the header. Coordinate out-of-band (the token value itself, not over this doc) before the flip.
+> - A per-IP rate limit (30 req/min) was also added at the app layer (`applyUkInventoryRateLimit`) — independent of the token gate, active immediately regardless of whether the token is set.
+> - This does not (yet) extend to `/buildings-metrics` — the "keep them symmetric" plan above still stands as a follow-up if UK wants the same gate there.
+
 ### Q4 — Pagination
 
 ✅ **`?limit=N`** (default 5000, cap 10 000). No cursor in v1.

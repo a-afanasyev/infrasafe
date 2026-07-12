@@ -81,6 +81,9 @@ function validateEnv() {
             // [H-3] Telemetry HMAC — optional/dormant until set (see
             // src/middleware/telemetryHmac.js), but length-checked when present.
             'TELEMETRY_HMAC_SECRET',
+            // [H-4] UK inventory service-token — same dormant-until-set posture
+            // (see src/middleware/serviceToken.js).
+            'UK_INVENTORY_TOKEN',
         ];
         const weak = secretVars.filter(
             name => process.env[name] && process.env[name].length < MIN_SECRET_LEN
@@ -165,6 +168,18 @@ function validateEnv() {
                 'TELEMETRY_HMAC_SECRET is not set — POST /metrics/telemetry accepts ' +
                 'unsigned requests. Set it once a telemetry bridge/device client exists ' +
                 '(see docs/architecture telemetry ADR).'
+            );
+        }
+
+        // [H-4] Dormant-until-set: GET /uk-requests-metrics accepts unauthenticated
+        // requests while this is unset. Do NOT set this until UK has confirmed
+        // their reconciliation worker sends the x-service-token header — setting
+        // it early would break their integration (docs/audit ARCH-114 spec).
+        if (!process.env.UK_INVENTORY_TOKEN) {
+            logger.warn(
+                'UK_INVENTORY_TOKEN is not set — GET /uk-requests-metrics accepts ' +
+                'unauthenticated requests. Coordinate with UK before setting this ' +
+                '(see docs/audit/2026-05-24-ARCH-114-uk-requests-inventory-spec.md).'
             );
         }
     }

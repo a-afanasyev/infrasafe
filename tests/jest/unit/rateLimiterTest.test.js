@@ -432,6 +432,7 @@ describe('Module-level functions', () => {
         expect(stats).toHaveProperty('admin');
         expect(stats).toHaveProperty('crud');
         expect(stats).toHaveProperty('telemetry');
+        expect(stats).toHaveProperty('uk_inventory');
         expect(stats).toHaveProperty('auth');
         expect(stats).toHaveProperty('register');
     });

@@ -6,8 +6,18 @@
 
 const express = require('express');
 const { getRequestsInventory } = require('../controllers/ukRequestsMetricsController');
+const { applyUkInventoryRateLimit } = require('../middleware/rateLimiter');
+const { requireServiceToken } = require('../middleware/serviceToken');
 
 const router = express.Router();
+
+// [H-4] requireServiceToken is dormant until UK_INVENTORY_TOKEN is set — see
+// src/middleware/serviceToken.js for the rollout contract (UK must confirm
+// the header BEFORE the operator sets the env var).
+const requireUkInventoryToken = requireServiceToken({
+    envVar: 'UK_INVENTORY_TOKEN',
+    header: 'x-service-token'
+});
 
 /**
  * @swagger
@@ -47,6 +57,6 @@ const router = express.Router();
  *                 total: { type: integer }
  *                 limit: { type: integer }
  */
-router.get('/', getRequestsInventory);
+router.get('/', applyUkInventoryRateLimit, requireUkInventoryToken, getRequestsInventory);
 
 module.exports = router;
