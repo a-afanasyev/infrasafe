@@ -148,3 +148,52 @@ describe('validateEnv — R2-19 UK_API_ALLOWED_HOSTS SSRF nudge', () => {
         expect(nudged()).toBe(false);
     });
 });
+
+describe('validateEnv — H-3 TELEMETRY_HMAC_SECRET (dormant-until-set)', () => {
+    const ORIGINAL_ENV = { ...process.env };
+    const logger = require('../../../src/utils/logger');
+
+    function setValidProdEnv() {
+        process.env.NODE_ENV = 'production';
+        process.env.DB_HOST = 'db';
+        process.env.DB_PORT = '5432';
+        process.env.DB_NAME = 'infrasafe';
+        process.env.DB_USER = 'infrasafe_runtime';
+        process.env.DB_PASSWORD = 'pw';
+        process.env.JWT_SECRET = 'access-secret-0123456789abcdef-XYZ';
+        process.env.JWT_REFRESH_SECRET = 'refresh-secret-0123456789abcdef-XY';
+        process.env.TOTP_ENCRYPTION_KEY = 'totp-key-0123456789abcdefghij-ZZZZ';
+        process.env.CORS_ORIGINS = 'https://infrasafe.uz';
+        process.env.JWT_2FA_SECRET = 'distinct-2fa-secret-0123456789abcd';
+    }
+
+    const warnedUnset = () =>
+        logger.warn.mock.calls.some(
+            (c) => typeof c[0] === 'string' && c[0].includes('TELEMETRY_HMAC_SECRET is not set')
+        );
+
+    afterEach(() => {
+        process.env = { ...ORIGINAL_ENV };
+        jest.clearAllMocks();
+    });
+
+    it('warns (does not throw) in production when unset', () => {
+        setValidProdEnv();
+        delete process.env.TELEMETRY_HMAC_SECRET;
+        expect(() => validateEnv()).not.toThrow();
+        expect(warnedUnset()).toBe(true);
+    });
+
+    it('does not warn when set', () => {
+        setValidProdEnv();
+        process.env.TELEMETRY_HMAC_SECRET = 'telemetry-secret-0123456789abcdef-XY';
+        validateEnv();
+        expect(warnedUnset()).toBe(false);
+    });
+
+    it('throws when set but shorter than 32 chars (R2-26 weak-secret check applies)', () => {
+        setValidProdEnv();
+        process.env.TELEMETRY_HMAC_SECRET = 'too-short';
+        expect(() => validateEnv()).toThrow(/Weak secrets/);
+    });
+});

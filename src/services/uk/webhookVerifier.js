@@ -93,9 +93,26 @@ class UKWebhookVerifier {
                 return false;
             }
 
+            // [Hardening] Validate the timestamp is a plain non-negative integer
+            // BEFORE any arithmetic. parseInt('abc', 10) is NaN, and
+            // `Math.abs(now - NaN) > TOLERANCE` is always false — a malformed
+            // timestamp would silently pass the freshness gate instead of being
+            // rejected. Not independently exploitable today (the HMAC binds
+            // this exact timestamp string into the signature, so a forged
+            // non-numeric `t` still requires the secret to produce a matching
+            // `v1`), but the freshness check must reject malformed input on its
+            // own merits rather than relying on that binding forever.
+            if (!/^\d{1,15}$/.test(timestamp)) {
+                return false;
+            }
+            const timestampInt = parseInt(timestamp, 10);
+            if (!Number.isSafeInteger(timestampInt)) {
+                return false;
+            }
+
             // Replay protection
             const now = Math.floor(Date.now() / 1000);
-            if (Math.abs(now - parseInt(timestamp, 10)) > WEBHOOK_TIMESTAMP_TOLERANCE_SEC) {
+            if (Math.abs(now - timestampInt) > WEBHOOK_TIMESTAMP_TOLERANCE_SEC) {
                 return false;
             }
 

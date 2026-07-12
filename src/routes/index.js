@@ -24,6 +24,7 @@ const metricController = require('../controllers/metricController');
 const { authenticateJWT } = require('../middleware/auth');
 const csrfOriginGuard = require('../middleware/csrfOriginGuard');
 const { applyTelemetryRateLimit } = require('../middleware/rateLimiter');
+const { verifyTelemetryHmac } = require('../middleware/telemetryHmac');
 const { createError } = require('../utils/helpers');
 
 const router = express.Router();
@@ -80,7 +81,9 @@ const router = express.Router();
  */
 // Специальные маршруты, для которых не требуется аутентификация
 // Маршрут телеметрии должен быть доступен без аутентификации
-router.post('/metrics/telemetry', applyTelemetryRateLimit, metricController.receiveTelemetry);
+// [H-3] verifyTelemetryHmac is dormant until TELEMETRY_HMAC_SECRET is set —
+// see src/middleware/telemetryHmac.js for the rollout contract.
+router.post('/metrics/telemetry', applyTelemetryRateLimit, verifyTelemetryHmac, metricController.receiveTelemetry);
 
 // [1A-FU-S-M2] CSP violation sink. MUST be mounted BEFORE the
 // default-deny authenticateJWT middleware below — the browser cannot

@@ -78,6 +78,9 @@ function validateEnv() {
         const secretVars = [
             'JWT_SECRET', 'JWT_REFRESH_SECRET', 'JWT_2FA_SECRET', 'TOTP_ENCRYPTION_KEY',
             'INFRASAFE_WEBHOOK_SECRET', 'UK_WEBHOOK_SECRET',
+            // [H-3] Telemetry HMAC — optional/dormant until set (see
+            // src/middleware/telemetryHmac.js), but length-checked when present.
+            'TELEMETRY_HMAC_SECRET',
         ];
         const weak = secretVars.filter(
             name => process.env[name] && process.env[name].length < MIN_SECRET_LEN
@@ -149,6 +152,19 @@ function validateEnv() {
                 'UK_API_ALLOWED_HOSTS is not set — the outbound UK API host is not ' +
                 'allowlisted (SSRF defense-in-depth). Recommended: set ' +
                 'UK_API_ALLOWED_HOSTS to the target host (e.g. infrasafe.uz).'
+            );
+        }
+
+        // [H-3] Dormant-until-set: POST /metrics/telemetry accepts unsigned
+        // requests while this is unset. Not yet a hard requirement (no
+        // production telemetry clients exist today) — a future PR promotes
+        // this to PRODUCTION_REQUIRED_VARS once the MQTT bridge is live and
+        // has been flipped to send signed requests.
+        if (!process.env.TELEMETRY_HMAC_SECRET) {
+            logger.warn(
+                'TELEMETRY_HMAC_SECRET is not set — POST /metrics/telemetry accepts ' +
+                'unsigned requests. Set it once a telemetry bridge/device client exists ' +
+                '(see docs/architecture telemetry ADR).'
             );
         }
     }
