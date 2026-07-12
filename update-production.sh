@@ -203,6 +203,32 @@ if [ "$APP_IMAGE_SOURCE" = "registry" ]; then
     # -q app`, which is EMPTY on a fresh host with no app container. Pin the runner
     # to the just-pulled image so migrate status/up works (harmless on prod).
     export MIGRATE_NODE_IMAGE="$PULL_REF"
+
+    # [PR-6 / security audit 2026-07-11] Production-required env preflight —
+    # runs the TARGET commit's OWN `validateEnv()` (src/config/env.js) against
+    # $ENV_FILE inside the just-pulled image, before touching schema or the
+    # running container. Deliberately not shell-sourcing the env file (values may
+    # contain shell-special characters) and NOT a hand-rolled bash/grep parser
+    # (naively matching `^NAME=.+` accepts `NAME=''`/`NAME=""` as "set" —
+    # exactly the bug this avoids). `--env-file` is the same env-loading
+    # mechanism Compose's `env_file:` directive uses for the real deploy, so
+    # this check cannot disagree with what the app will actually boot with.
+    # LOG_CONSOLE_ONLY=true avoids any log-file write attempt in this
+    # throwaway container. Prints only the validator's own message on
+    # failure — never the secret values themselves.
+    # NOTE: this preflight runs the code as of THIS invocation's target image —
+    # it protects deploys AFTER a change to required-vars lands, not the one
+    # that introduces it (this script is already running from the pre-change
+    # checkout by the time it reaches this line). See the operator runbook for
+    # the manual pre-deploy checklist that covers that gap.
+    say "  → env preflight ($ENV_FILE against target image's validateEnv())"
+    if ! docker run --rm --env-file "$ENV_FILE" -e NODE_ENV=production -e LOG_CONSOLE_ONLY=true \
+        --entrypoint node "$PULL_REF" -e "try { require('./src/config/env').validateEnv(); } catch (e) { console.error(e.message); process.exit(1); }"
+    then
+        err "❌ env preflight failed against $ENV_FILE (see message above) — fix before deploying"
+        exit 1
+    fi
+    ok "  ✅ env preflight passed"
 fi
 
 if [ "$MIGRATE_WIRING_ENABLED" = "true" ]; then

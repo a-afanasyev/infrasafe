@@ -294,10 +294,11 @@ UK_USE_WEBHOOK_SENDER=false # Master gate for the new HMAC-webhook outbound chan
                            # Default false until UK Phase 2 + secret rotation completes.
 UK_OUTBOX_DRAIN_INTERVAL_MS=2000  # Drain tick (clamped [500, 60000]). Default ≈30/мин rate.
 UK_API_ALLOWED_HOSTS       # [R2-19] Allowlist-only SSRF mitigation for the outbound UK
-                           # target. Optional but RECOMMENDED in prod: set to the host of
-                           # UK_API_URL (e.g. `infrasafe.uz`). validateUKApiUrl enforces it
-                           # when set (rejects any other host); comma-separated for multiple.
-                           # env.js warns in prod if UK_API_URL is set but this is not.
+                           # target. RECOMMENDED whenever UK_API_URL is set (env.js warns);
+                           # [PR-6] REQUIRED (hard-fail) once UK_USE_WEBHOOK_SENDER=true —
+                           # set to the host of UK_API_URL (e.g. `infrasafe.uz`).
+                           # validateUKApiUrl enforces it when set (rejects any other host);
+                           # comma-separated for multiple.
 
 # AUD-006 — voltage escalate-in-place UK notification (deployed 2026-06-12)
 UK_ESCALATION_NOTIFY=false # Master gate for the alert.escalated UK event (a WARNING
@@ -306,6 +307,39 @@ UK_ESCALATION_NOTIFY=false # Master gate for the alert.escalated UK event (a WAR
                            # upgrade on the existing request (by alert_id). When true,
                            # also ensure UK_USE_WEBHOOK_SENDER=true so the drain delivers.
                            # The escalate-in-place ALERT logic is live regardless of this flag.
+
+# Security-audit remediation (2026-07-11, docs/audit/2026-07-11-security-audit.md)
+AUTH_BLACKLIST_FAIL_OPEN=false  # [H-5] Operator escape hatch: in prod, a token-blacklist
+                           # DB/circuit-breaker outage now fails CLOSED (503 + Retry-After)
+                           # instead of silently failing open. Set to 'true' during an
+                           # incident to restore the old fail-open behavior. Dev/test are
+                           # unaffected (always fail-open regardless of this var).
+TELEMETRY_HMAC_SECRET      # [H-3] HMAC service-key for POST /metrics/telemetry (header
+                           # x-telemetry-signature, scheme t=<unix>,v1=<hex> — same as the
+                           # UK webhook signatures above). [PR-6] now REQUIRED in production
+                           # (src/config/env.js PRODUCTION_REQUIRED_VARS) — the H-3 rollout
+                           # flip must already be done before deploying that change (see the
+                           # pre-deploy checklist below). src/middleware/telemetryHmac.js.
+UK_INVENTORY_TOKEN         # [H-4] Shared secret UK sends in the `x-service-token` header
+                           # calling GET /uk-requests-metrics (src/middleware/serviceToken.js).
+                           # [PR-6] now REQUIRED in production — do NOT set/deploy until UK
+                           # has confirmed they send the header (coordinate out-of-band; see
+                           # docs/audit/2026-05-24-ARCH-114-uk-requests-inventory-spec.md).
+
+# [PR-6] Manual pre-deploy checklist — required on the prod host BEFORE deploying
+# the commit that promotes TELEMETRY_HMAC_SECRET/UK_INVENTORY_TOKEN/
+# INFRASAFE_WEBHOOK_SECRET to PRODUCTION_REQUIRED_VARS in src/config/env.js. The
+# update-production.sh env preflight (added in the same PR) only protects
+# deploys AFTER this one — it runs the OLD script text for this deploy itself
+# (fetch/merge happens mid-script), so it cannot catch its own gap:
+#   1. TELEMETRY_HMAC_SECRET is set in .env.prod (H-3 flip already done).
+#   2. UK_INVENTORY_TOKEN is set in .env.prod (H-4 flip already done AND UK
+#      has confirmed their reconciliation worker sends x-service-token).
+#   3. INFRASAFE_WEBHOOK_SECRET is set (should already be true per R2-18).
+#   4. If UK_USE_WEBHOOK_SENDER=true, UK_API_ALLOWED_HOSTS is set (now a hard
+#      requirement, not just a warn).
+#   5. Same check for .env.staging before deploying to staging.
+# Skipping this checklist turns a normal deploy into a boot crash-loop.
 
 # Migration runner (AUD-002, LIVE 2026-06-12) — operator/deploy env, NOT app runtime:
 # MIGRATE_WIRING_ENABLED=true (update-production.sh runs status+up before app switch),

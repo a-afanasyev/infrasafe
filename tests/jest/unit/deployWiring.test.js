@@ -196,3 +196,46 @@ describe('update-production.sh DEPLOY_ENV parameterization (R2-15 Phase A)', () 
         expect(step).toMatch(/nginx -s reload/);
     });
 });
+
+// [PR-6 / security audit 2026-07-11] Production-required env preflight — runs
+// the TARGET image's own validateEnv() against $ENV_FILE before schema/switch.
+describe('update-production.sh env preflight (PR-6)', () => {
+    function registryBranch() {
+        const startIdx = SCRIPT.indexOf('if [ "$APP_IMAGE_SOURCE" = "registry" ]');
+        expect(startIdx).toBeGreaterThan(-1);
+        const fiIdx = SCRIPT.indexOf('\nfi', startIdx);
+        return SCRIPT.slice(startIdx, fiIdx);
+    }
+
+    test('preflight runs inside the registry-pull branch, after the image pull', () => {
+        const branch = registryBranch();
+        const pullIdx = branch.indexOf('docker pull "$PULL_REF"');
+        const preflightIdx = branch.indexOf('env preflight');
+        expect(pullIdx).toBeGreaterThan(-1);
+        expect(preflightIdx).toBeGreaterThan(pullIdx);
+    });
+
+    test('preflight does NOT source the env file and does NOT use a naive grep parser', () => {
+        // The [Hardening]-documented failure mode this guards against: neither
+        // `source "$ENV_FILE"` (shell-special chars in secret values) nor a bare
+        // `grep -E '^NAME=.+'` (which wrongly treats NAME='' / NAME="" as set).
+        expect(SCRIPT).not.toMatch(/source\s+"\$ENV_FILE"/);
+        expect(SCRIPT).not.toMatch(/grep\s+-E\s+'\^NAME=/);
+    });
+
+    test('preflight uses --env-file (the same env-loading mechanism Compose uses) and calls the real validateEnv()', () => {
+        const branch = registryBranch();
+        expect(branch).toMatch(/docker run --rm --env-file "\$ENV_FILE"/);
+        expect(branch).toMatch(/require\('\.\/src\/config\/env'\)\.validateEnv\(\)/);
+        // Runs against the just-pulled target image, not some other/stale image.
+        expect(branch).toMatch(/--entrypoint node "\$PULL_REF"/);
+    });
+
+    test('preflight is fail-closed: a non-zero exit from the check aborts the deploy', () => {
+        const branch = registryBranch();
+        const dockerRunIdx = branch.indexOf('docker run --rm --env-file "$ENV_FILE"');
+        expect(dockerRunIdx).toBeGreaterThan(-1);
+        const nearby = branch.slice(dockerRunIdx, dockerRunIdx + 400);
+        expect(nearby).toMatch(/exit 1/);
+    });
+});

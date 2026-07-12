@@ -7,6 +7,29 @@ jest.mock('../../../src/utils/logger', () => ({
 
 const { validateEnv } = require('../../../src/config/env');
 
+// Shared valid-production fixture. PR-6 (security audit 2026-07-11) promoted
+// INFRASAFE_WEBHOOK_SECRET / TELEMETRY_HMAC_SECRET / UK_INVENTORY_TOKEN from
+// warn-only to PRODUCTION_REQUIRED_VARS, so every "valid prod env" fixture
+// across this file must set them or unrelated tests fail on the new
+// missing-vars check rather than exercising what they mean to test.
+function setValidProdEnv() {
+    process.env.NODE_ENV = 'production';
+    process.env.DB_HOST = 'db';
+    process.env.DB_PORT = '5432';
+    process.env.DB_NAME = 'infrasafe';
+    process.env.DB_USER = 'infrasafe_runtime';
+    process.env.DB_PASSWORD = 'pw';
+    // [R2-26] Secrets must be >=32 chars in production.
+    process.env.JWT_SECRET = 'access-secret-0123456789abcdef-XYZ';
+    process.env.JWT_REFRESH_SECRET = 'refresh-secret-0123456789abcdef-XY';
+    process.env.TOTP_ENCRYPTION_KEY = 'totp-key-0123456789abcdefghij-ZZZZ';
+    process.env.CORS_ORIGINS = 'https://infrasafe.uz';
+    process.env.JWT_2FA_SECRET = 'distinct-2fa-secret-0123456789abcd';
+    process.env.INFRASAFE_WEBHOOK_SECRET = 'infrasafe-webhook-secret-0123456789';
+    process.env.TELEMETRY_HMAC_SECRET = 'telemetry-secret-0123456789abcdef-XY';
+    process.env.UK_INVENTORY_TOKEN = 'uk-inventory-token-0123456789abcdef';
+}
+
 describe('validateEnv — NODE_ENV assertion (SEC-12)', () => {
     const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
 
@@ -33,23 +56,6 @@ describe('validateEnv — NODE_ENV assertion (SEC-12)', () => {
 
 describe('validateEnv — JWT_2FA_SECRET production requirement (SEC-34h)', () => {
     const ORIGINAL_ENV = { ...process.env };
-
-    // A complete, valid production env. Individual tests mutate only the
-    // JWT_2FA_SECRET pieces under test.
-    function setValidProdEnv() {
-        process.env.NODE_ENV = 'production';
-        process.env.DB_HOST = 'db';
-        process.env.DB_PORT = '5432';
-        process.env.DB_NAME = 'infrasafe';
-        process.env.DB_USER = 'infrasafe_runtime';
-        process.env.DB_PASSWORD = 'pw';
-        // [R2-26] Secrets must be >=32 chars in production.
-        process.env.JWT_SECRET = 'access-secret-0123456789abcdef-XYZ';
-        process.env.JWT_REFRESH_SECRET = 'refresh-secret-0123456789abcdef-XY';
-        process.env.TOTP_ENCRYPTION_KEY = 'totp-key-0123456789abcdefghij-ZZZZ';
-        process.env.CORS_ORIGINS = 'https://infrasafe.uz';
-        process.env.JWT_2FA_SECRET = 'distinct-2fa-secret-0123456789abcd';
-    }
 
     afterEach(() => {
         process.env = { ...ORIGINAL_ENV };
@@ -100,20 +106,6 @@ describe('validateEnv — R2-19 UK_API_ALLOWED_HOSTS SSRF nudge', () => {
     const ORIGINAL_ENV = { ...process.env };
     const logger = require('../../../src/utils/logger');
 
-    function setValidProdEnv() {
-        process.env.NODE_ENV = 'production';
-        process.env.DB_HOST = 'db';
-        process.env.DB_PORT = '5432';
-        process.env.DB_NAME = 'infrasafe';
-        process.env.DB_USER = 'infrasafe_runtime';
-        process.env.DB_PASSWORD = 'pw';
-        process.env.JWT_SECRET = 'access-secret-0123456789abcdef-XYZ';
-        process.env.JWT_REFRESH_SECRET = 'refresh-secret-0123456789abcdef-XY';
-        process.env.TOTP_ENCRYPTION_KEY = 'totp-key-0123456789abcdefghij-ZZZZ';
-        process.env.CORS_ORIGINS = 'https://infrasafe.uz';
-        process.env.JWT_2FA_SECRET = 'distinct-2fa-secret-0123456789abcd';
-    }
-
     const nudged = () =>
         logger.warn.mock.calls.some(
             (c) => typeof c[0] === 'string' && c[0].includes('UK_API_ALLOWED_HOSTS is not set')
@@ -124,7 +116,7 @@ describe('validateEnv — R2-19 UK_API_ALLOWED_HOSTS SSRF nudge', () => {
         jest.clearAllMocks();
     });
 
-    it('warns when UK_API_URL is set but UK_API_ALLOWED_HOSTS is not', () => {
+    it('warns when UK_API_URL is set but UK_API_ALLOWED_HOSTS is not (sender off)', () => {
         setValidProdEnv();
         process.env.UK_API_URL = 'https://infrasafe.uz/uk';
         delete process.env.UK_API_ALLOWED_HOSTS;
@@ -149,51 +141,118 @@ describe('validateEnv — R2-19 UK_API_ALLOWED_HOSTS SSRF nudge', () => {
     });
 });
 
-describe('validateEnv — H-3 TELEMETRY_HMAC_SECRET (dormant-until-set)', () => {
+// [PR-6] UK_API_ALLOWED_HOSTS becomes a HARD requirement once the outbound
+// webhook sender is actually enabled (UK_USE_WEBHOOK_SENDER=true) — an SSRF
+// mitigation that matters more once the outbound path is live.
+describe('validateEnv — PR-6 UK_API_ALLOWED_HOSTS hard-fail when sender enabled', () => {
     const ORIGINAL_ENV = { ...process.env };
-    const logger = require('../../../src/utils/logger');
-
-    function setValidProdEnv() {
-        process.env.NODE_ENV = 'production';
-        process.env.DB_HOST = 'db';
-        process.env.DB_PORT = '5432';
-        process.env.DB_NAME = 'infrasafe';
-        process.env.DB_USER = 'infrasafe_runtime';
-        process.env.DB_PASSWORD = 'pw';
-        process.env.JWT_SECRET = 'access-secret-0123456789abcdef-XYZ';
-        process.env.JWT_REFRESH_SECRET = 'refresh-secret-0123456789abcdef-XY';
-        process.env.TOTP_ENCRYPTION_KEY = 'totp-key-0123456789abcdefghij-ZZZZ';
-        process.env.CORS_ORIGINS = 'https://infrasafe.uz';
-        process.env.JWT_2FA_SECRET = 'distinct-2fa-secret-0123456789abcd';
-    }
-
-    const warnedUnset = () =>
-        logger.warn.mock.calls.some(
-            (c) => typeof c[0] === 'string' && c[0].includes('TELEMETRY_HMAC_SECRET is not set')
-        );
 
     afterEach(() => {
         process.env = { ...ORIGINAL_ENV };
         jest.clearAllMocks();
     });
 
-    it('warns (does not throw) in production when unset', () => {
+    it('throws when UK_USE_WEBHOOK_SENDER=true and UK_API_ALLOWED_HOSTS is unset', () => {
+        setValidProdEnv();
+        process.env.UK_USE_WEBHOOK_SENDER = 'true';
+        process.env.UK_WEBHOOK_SECRET = 'uk-outbound-webhook-secret-0123456';
+        process.env.UK_API_URL = 'https://infrasafe.uz/uk';
+        delete process.env.UK_API_ALLOWED_HOSTS;
+        expect(() => validateEnv()).toThrow(/UK_API_ALLOWED_HOSTS is required/);
+    });
+
+    it('does not throw when UK_USE_WEBHOOK_SENDER=true and UK_API_ALLOWED_HOSTS is set', () => {
+        setValidProdEnv();
+        process.env.UK_USE_WEBHOOK_SENDER = 'true';
+        process.env.UK_WEBHOOK_SECRET = 'uk-outbound-webhook-secret-0123456';
+        process.env.UK_API_URL = 'https://infrasafe.uz/uk';
+        process.env.UK_API_ALLOWED_HOSTS = 'infrasafe.uz';
+        expect(() => validateEnv()).not.toThrow();
+    });
+
+    it('does not throw when the sender is off, even without UK_API_ALLOWED_HOSTS', () => {
+        setValidProdEnv();
+        delete process.env.UK_USE_WEBHOOK_SENDER;
+        delete process.env.UK_API_URL;
+        delete process.env.UK_API_ALLOWED_HOSTS;
+        expect(() => validateEnv()).not.toThrow();
+    });
+});
+
+// [PR-6] Enforce phase: TELEMETRY_HMAC_SECRET (H-3) is now a hard production
+// requirement (PRODUCTION_REQUIRED_VARS), not a dormant warn.
+describe('validateEnv — PR-6 TELEMETRY_HMAC_SECRET hard requirement (H-3 enforce)', () => {
+    const ORIGINAL_ENV = { ...process.env };
+
+    afterEach(() => {
+        process.env = { ...ORIGINAL_ENV };
+        jest.clearAllMocks();
+    });
+
+    it('throws in production when TELEMETRY_HMAC_SECRET is missing', () => {
         setValidProdEnv();
         delete process.env.TELEMETRY_HMAC_SECRET;
-        expect(() => validateEnv()).not.toThrow();
-        expect(warnedUnset()).toBe(true);
+        expect(() => validateEnv()).toThrow(/TELEMETRY_HMAC_SECRET/);
     });
 
-    it('does not warn when set', () => {
+    it('passes when TELEMETRY_HMAC_SECRET is present and long enough', () => {
         setValidProdEnv();
-        process.env.TELEMETRY_HMAC_SECRET = 'telemetry-secret-0123456789abcdef-XY';
-        validateEnv();
-        expect(warnedUnset()).toBe(false);
+        expect(() => validateEnv()).not.toThrow();
     });
 
-    it('throws when set but shorter than 32 chars (R2-26 weak-secret check applies)', () => {
+    it('throws when TELEMETRY_HMAC_SECRET is shorter than 32 chars (R2-26)', () => {
         setValidProdEnv();
         process.env.TELEMETRY_HMAC_SECRET = 'too-short';
         expect(() => validateEnv()).toThrow(/Weak secrets/);
+    });
+});
+
+// [PR-6] Enforce phase: UK_INVENTORY_TOKEN (H-4) is now a hard production
+// requirement, not a dormant warn.
+describe('validateEnv — PR-6 UK_INVENTORY_TOKEN hard requirement (H-4 enforce)', () => {
+    const ORIGINAL_ENV = { ...process.env };
+
+    afterEach(() => {
+        process.env = { ...ORIGINAL_ENV };
+        jest.clearAllMocks();
+    });
+
+    it('throws in production when UK_INVENTORY_TOKEN is missing', () => {
+        setValidProdEnv();
+        delete process.env.UK_INVENTORY_TOKEN;
+        expect(() => validateEnv()).toThrow(/UK_INVENTORY_TOKEN/);
+    });
+
+    it('passes when UK_INVENTORY_TOKEN is present and long enough', () => {
+        setValidProdEnv();
+        expect(() => validateEnv()).not.toThrow();
+    });
+
+    it('throws when UK_INVENTORY_TOKEN is shorter than 32 chars (R2-26)', () => {
+        setValidProdEnv();
+        process.env.UK_INVENTORY_TOKEN = 'too-short';
+        expect(() => validateEnv()).toThrow(/Weak secrets/);
+    });
+});
+
+// [PR-6] Enforce phase: INFRASAFE_WEBHOOK_SECRET (previously warn-only per
+// R2-18) is now a hard production requirement too.
+describe('validateEnv — PR-6 INFRASAFE_WEBHOOK_SECRET hard requirement', () => {
+    const ORIGINAL_ENV = { ...process.env };
+
+    afterEach(() => {
+        process.env = { ...ORIGINAL_ENV };
+        jest.clearAllMocks();
+    });
+
+    it('throws in production when INFRASAFE_WEBHOOK_SECRET is missing', () => {
+        setValidProdEnv();
+        delete process.env.INFRASAFE_WEBHOOK_SECRET;
+        expect(() => validateEnv()).toThrow(/INFRASAFE_WEBHOOK_SECRET/);
+    });
+
+    it('passes when INFRASAFE_WEBHOOK_SECRET is present and long enough', () => {
+        setValidProdEnv();
+        expect(() => validateEnv()).not.toThrow();
     });
 });

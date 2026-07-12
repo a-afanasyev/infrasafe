@@ -17,6 +17,19 @@ const PRODUCTION_REQUIRED_VARS = [
     'CORS_ORIGINS',
     // [SEC-34h] 2FA temp-tokens are signed with a dedicated secret in prod.
     'JWT_2FA_SECRET',
+    // [PR-6 / security audit 2026-07-11] Enforce-phase promotions from
+    // warn-only to hard-required. Each promotion requires the operator
+    // pre-deploy checklist below to have already been satisfied on the prod
+    // host BEFORE this code is deployed — see the runbook note at the bottom
+    // of this file. A missing value here is now a boot-time crash, not a
+    // silent degradation.
+    //   - INFRASAFE_WEBHOOK_SECRET: prod confirmed live since R2-18.
+    //   - TELEMETRY_HMAC_SECRET: requires the H-3 rollout flip already done.
+    //   - UK_INVENTORY_TOKEN: requires the H-4 rollout flip AND UK
+    //     confirmation already done.
+    'INFRASAFE_WEBHOOK_SECRET',
+    'TELEMETRY_HMAC_SECRET',
+    'UK_INVENTORY_TOKEN',
 ];
 
 // [SEC-12] NODE_ENV gates the security posture (Helmet CSP, Swagger exposure).
@@ -76,14 +89,15 @@ function validateEnv() {
         // — a short HMAC key would let an attacker brute-force it and forge inbound
         // UK webhooks (building.deleted etc.).
         const secretVars = [
+            // Always required in production (PRODUCTION_REQUIRED_VARS above):
+            // JWT_SECRET, JWT_REFRESH_SECRET, JWT_2FA_SECRET, TOTP_ENCRYPTION_KEY,
+            // INFRASAFE_WEBHOOK_SECRET, TELEMETRY_HMAC_SECRET, UK_INVENTORY_TOKEN.
             'JWT_SECRET', 'JWT_REFRESH_SECRET', 'JWT_2FA_SECRET', 'TOTP_ENCRYPTION_KEY',
-            'INFRASAFE_WEBHOOK_SECRET', 'UK_WEBHOOK_SECRET',
-            // [H-3] Telemetry HMAC — optional/dormant until set (see
-            // src/middleware/telemetryHmac.js), but length-checked when present.
-            'TELEMETRY_HMAC_SECRET',
-            // [H-4] UK inventory service-token — same dormant-until-set posture
-            // (see src/middleware/serviceToken.js).
-            'UK_INVENTORY_TOKEN',
+            'INFRASAFE_WEBHOOK_SECRET', 'TELEMETRY_HMAC_SECRET', 'UK_INVENTORY_TOKEN',
+            // UK_WEBHOOK_SECRET (outbound sender) remains optional — only
+            // required when UK_USE_WEBHOOK_SENDER=true (checked separately
+            // below) — but length-checked here whenever it's set.
+            'UK_WEBHOOK_SECRET',
         ];
         const weak = secretVars.filter(
             name => process.env[name] && process.env[name].length < MIN_SECRET_LEN
@@ -116,15 +130,9 @@ function validateEnv() {
     // infrasafe.uz). validateUKApiUrl enforces it when set; the block below
     // warns if it's missing while an outbound target exists.
     if (isProduction) {
-        // [R2-18] Inbound verifier requires INFRASAFE_WEBHOOK_SECRET specifically —
-        // the UK_WEBHOOK_SECRET fallback was removed, so having only the outbound
-        // secret no longer makes inbound verification work.
-        if (!process.env.INFRASAFE_WEBHOOK_SECRET) {
-            logger.warn(
-                'UK integration inbound verifier secret INFRASAFE_WEBHOOK_SECRET not configured. ' +
-                'Incoming UK webhooks will be rejected (401) if integration is enabled.'
-            );
-        }
+        // [PR-6] INFRASAFE_WEBHOOK_SECRET is now in PRODUCTION_REQUIRED_VARS —
+        // presence is already guaranteed by the missing-vars check above, so the
+        // warn that used to live here is unreachable dead code. Removed.
 
         // Outbound sender needs UK_WEBHOOK_SECRET + UK_API_URL only when the
         // sender is actually turned on (UK_USE_WEBHOOK_SENDER=true). Default
@@ -158,30 +166,23 @@ function validateEnv() {
             );
         }
 
-        // [H-3] Dormant-until-set: POST /metrics/telemetry accepts unsigned
-        // requests while this is unset. Not yet a hard requirement (no
-        // production telemetry clients exist today) — a future PR promotes
-        // this to PRODUCTION_REQUIRED_VARS once the MQTT bridge is live and
-        // has been flipped to send signed requests.
-        if (!process.env.TELEMETRY_HMAC_SECRET) {
-            logger.warn(
-                'TELEMETRY_HMAC_SECRET is not set — POST /metrics/telemetry accepts ' +
-                'unsigned requests. Set it once a telemetry bridge/device client exists ' +
-                '(see docs/architecture telemetry ADR).'
-            );
+        // [PR-6] UK_API_ALLOWED_HOSTS: conditional HARD FAIL when the outbound
+        // webhook sender is actually enabled — an SSRF mitigation that matters
+        // is worth more than a warn once we know the outbound path is live.
+        // Sender-off keeps the softer nudge above (UK_API_URL set but sender
+        // off is a "getting ready" state, not an active SSRF exposure).
+        if (senderEnabled && !process.env.UK_API_ALLOWED_HOSTS) {
+            const message =
+                'UK_API_ALLOWED_HOSTS is required when UK_USE_WEBHOOK_SENDER=true ' +
+                '(SSRF mitigation for the outbound UK API target).';
+            logger.error(message);
+            throw new Error(message);
         }
 
-        // [H-4] Dormant-until-set: GET /uk-requests-metrics accepts unauthenticated
-        // requests while this is unset. Do NOT set this until UK has confirmed
-        // their reconciliation worker sends the x-service-token header — setting
-        // it early would break their integration (docs/audit ARCH-114 spec).
-        if (!process.env.UK_INVENTORY_TOKEN) {
-            logger.warn(
-                'UK_INVENTORY_TOKEN is not set — GET /uk-requests-metrics accepts ' +
-                'unauthenticated requests. Coordinate with UK before setting this ' +
-                '(see docs/audit/2026-05-24-ARCH-114-uk-requests-inventory-spec.md).'
-            );
-        }
+        // [PR-6] TELEMETRY_HMAC_SECRET and UK_INVENTORY_TOKEN are now in
+        // PRODUCTION_REQUIRED_VARS — presence is already guaranteed by the
+        // missing-vars check above, so the dormant-until-set warns that used
+        // to live here are unreachable dead code. Removed.
     }
 }
 
