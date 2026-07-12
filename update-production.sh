@@ -10,7 +10,11 @@
 # [R2-15] DEPLOY_ENV selects the compose -f set, env file, edge health URL and
 # verify base. 'prod' (default, = an unset call) = the profk production box
 # (docker-compose.unified.yml + docker-compose.profk.yml, profk.uz). 'staging' =
-# the .105 VM (+ docker-compose.staging.yml, staging.infrasafe.uz). docker-compose.prod.yml
+# the future staging VM (+ docker-compose.staging.yml, staging.infrasafe.uz).
+# 'infrasafe' = the ORIGINAL infrasafe.uz production box (.105) — a second live
+# prod, kept on the plain docker-compose.unified.yml (no override) since it
+# predates the profk-specific overlay; this is the exact byte-identical
+# behavior the pre-R2-15-Phase-A script always had for this host. docker-compose.prod.yml
 # is DEPRECATED. This is an UPDATE tool — it does NOT bootstrap an empty host (no
 # `up -d postgres`; migrate needs a live postgres). Fresh staging VM →
 # scripts/bootstrap-staging.sh first, then this script for subsequent updates.
@@ -33,7 +37,13 @@ case "$DEPLOY_ENV" in
         EDGE_HEALTH_URL="${EDGE_HEALTH_URL:-https://staging.infrasafe.uz/health}"
         VERIFY_URL_BASE="${VERIFY_URL_BASE:-https://staging.infrasafe.uz}"
         ;;
-    *) echo "❌ bad DEPLOY_ENV=$DEPLOY_ENV (want prod|staging)" >&2; exit 1 ;;
+    infrasafe)
+        COMPOSE_FILES=(docker-compose.unified.yml)
+        ENV_FILE=".env.prod"
+        EDGE_HEALTH_URL="${EDGE_HEALTH_URL:-https://infrasafe.uz/health}"
+        VERIFY_URL_BASE="${VERIFY_URL_BASE:-https://infrasafe.uz}"
+        ;;
+    *) echo "❌ bad DEPLOY_ENV=$DEPLOY_ENV (want prod|staging|infrasafe)" >&2; exit 1 ;;
 esac
 # Filenames-only list → migrate.sh; -f-prefixed array → local docker compose calls.
 COMPOSE_ARGS=(); for _cf in "${COMPOSE_FILES[@]}"; do COMPOSE_ARGS+=(-f "$_cf"); done

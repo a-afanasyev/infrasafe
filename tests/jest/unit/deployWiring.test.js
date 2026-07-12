@@ -110,10 +110,11 @@ describe('update-production.sh image-source wiring (R2-15)', () => {
     });
 });
 
-// R2-15 Phase A: DEPLOY_ENV parameterization (prod=profk | staging). Real prod is
-// now the profk box, so `prod` MUST select the profk compose override + profk.uz
-// URLs — this is NOT byte-compatible with the old infrasafe.uz prod. `staging`
-// selects the staging override + staging.infrasafe.uz.
+// R2-15 Phase A: DEPLOY_ENV parameterization (prod=profk | staging | infrasafe).
+// `prod` selects the profk compose override + profk.uz URLs. `staging` selects
+// the future staging override + staging.infrasafe.uz. `infrasafe` is the SECOND
+// live prod host (.105, the original infrasafe.uz) — plain docker-compose.unified.yml,
+// no overlay, exactly the pre-R2-15-Phase-A behavior for that host.
 describe('update-production.sh DEPLOY_ENV parameterization (R2-15 Phase A)', () => {
     test('DEPLOY_ENV defaults to prod (an unset call == DEPLOY_ENV=prod == profk)', () => {
         expect(SCRIPT).toMatch(/DEPLOY_ENV="\$\{DEPLOY_ENV:-prod\}"/);
@@ -133,15 +134,27 @@ describe('update-production.sh DEPLOY_ENV parameterization (R2-15 Phase A)', () 
 
     test('staging selects the staging compose set + staging.infrasafe.uz URLs', () => {
         const stagingIdx = SCRIPT.indexOf('    staging)');
-        const escIdx = SCRIPT.indexOf('bad DEPLOY_ENV', stagingIdx);
-        const stagingBranch = SCRIPT.slice(stagingIdx, escIdx);
+        const infrasafeIdx = SCRIPT.indexOf('    infrasafe)');
+        expect(infrasafeIdx).toBeGreaterThan(stagingIdx);
+        const stagingBranch = SCRIPT.slice(stagingIdx, infrasafeIdx);
         expect(stagingBranch).toMatch(/COMPOSE_FILES=\(docker-compose\.unified\.yml docker-compose\.staging\.yml\)/);
         expect(stagingBranch).toMatch(/ENV_FILE="\.env\.staging"/);
         expect(stagingBranch).toMatch(/staging\.infrasafe\.uz/);
     });
 
+    test('infrasafe selects the plain unified compose set (no overlay) + infrasafe.uz URLs', () => {
+        const infrasafeIdx = SCRIPT.indexOf('    infrasafe)');
+        const escIdx = SCRIPT.indexOf('bad DEPLOY_ENV', infrasafeIdx);
+        expect(infrasafeIdx).toBeGreaterThan(-1);
+        const infrasafeBranch = SCRIPT.slice(infrasafeIdx, escIdx);
+        expect(infrasafeBranch).toMatch(/COMPOSE_FILES=\(docker-compose\.unified\.yml\)/);
+        expect(infrasafeBranch).toMatch(/ENV_FILE="\.env\.prod"/);
+        expect(infrasafeBranch).toMatch(/https:\/\/infrasafe\.uz\/health/);
+        expect(infrasafeBranch).toMatch(/VERIFY_URL_BASE:-https:\/\/infrasafe\.uz/);
+    });
+
     test('an unknown DEPLOY_ENV fails closed (no default host/compose fallthrough)', () => {
-        expect(SCRIPT).toMatch(/\*\)\s*echo "❌ bad DEPLOY_ENV=\$DEPLOY_ENV \(want prod\|staging\)"[^\n]*exit 1/);
+        expect(SCRIPT).toMatch(/\*\)\s*echo "❌ bad DEPLOY_ENV=\$DEPLOY_ENV \(want prod\|staging\|infrasafe\)"[^\n]*exit 1/);
     });
 
     test('every docker compose call uses the ${COMPOSE_ARGS[@]} set — incl. rollback + switch', () => {
