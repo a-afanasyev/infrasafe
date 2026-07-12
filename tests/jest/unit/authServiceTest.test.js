@@ -307,6 +307,116 @@ describe('AuthService', () => {
                 authService.authenticateUser('locked', 'pass')
             ).rejects.toMatchObject({ code: 'ACCOUNT_LOCKED' });
         });
+
+        // H-1 username↔email bypass: account_lockout is keyed by the exact
+        // string submitted, so checkAccountLockout('username') never sees a
+        // lock recorded under the same account's email (or vice versa).
+        // users.account_locked_until (mirrored by recordFailedAttempt) is the
+        // identity-keyed source of truth and must be checked authoritatively
+        // once the user row is resolved.
+        test('throws ACCOUNT_LOCKED when locked by username but logging in with email', async () => {
+            cacheService.get.mockResolvedValue(null);
+            AccountLockout.get.mockResolvedValueOnce(null); // no lockout row keyed by 'admin@test.com'
+            db.query.mockResolvedValueOnce({
+                rows: [{
+                    user_id: 1,
+                    username: 'admin',
+                    email: 'admin@test.com',
+                    password_hash: hashedPassword,
+                    is_active: true,
+                    account_locked_until: new Date(Date.now() + 900000).toISOString()
+                }]
+            });
+
+            await expect(
+                authService.authenticateUser('admin@test.com', 'StrongPass1')
+            ).rejects.toMatchObject({ code: 'ACCOUNT_LOCKED' });
+        });
+
+        test('throws ACCOUNT_LOCKED when locked by email but logging in with username', async () => {
+            cacheService.get.mockResolvedValue(null);
+            AccountLockout.get.mockResolvedValueOnce(null); // no lockout row keyed by 'admin'
+            db.query.mockResolvedValueOnce({
+                rows: [{
+                    user_id: 1,
+                    username: 'admin',
+                    email: 'admin@test.com',
+                    password_hash: hashedPassword,
+                    is_active: true,
+                    account_locked_until: new Date(Date.now() + 900000).toISOString()
+                }]
+            });
+
+            await expect(
+                authService.authenticateUser('admin', 'StrongPass1')
+            ).rejects.toMatchObject({ code: 'ACCOUNT_LOCKED' });
+        });
+
+        test('an EXPIRED users.account_locked_until does not block login', async () => {
+            cacheService.get.mockResolvedValue(null);
+            AccountLockout.get.mockResolvedValueOnce(null);
+            db.query
+                .mockResolvedValueOnce({
+                    rows: [{
+                        user_id: 1,
+                        username: 'admin',
+                        email: 'admin@test.com',
+                        role: 'admin',
+                        password_hash: hashedPassword,
+                        is_active: true,
+                        account_locked_until: new Date(Date.now() - 900000).toISOString() // in the past
+                    }]
+                })
+                .mockResolvedValueOnce({ rows: [] }); // updateLastLogin
+
+            const result = await authService.authenticateUser('admin', 'StrongPass1');
+            expect(result.user_id).toBe(1);
+        });
+
+        // H-1: wrong-password branch resolved a user — recordFailedAttempt
+        // must be called with that user_id so the lockout mirrors onto users.
+        test('passes the resolved user_id to recordFailedAttempt on wrong password', async () => {
+            cacheService.get.mockResolvedValue(null);
+            db.query.mockResolvedValueOnce({
+                rows: [{
+                    user_id: 7,
+                    username: 'admin',
+                    email: 'admin@test.com',
+                    password_hash: hashedPassword,
+                    is_active: true
+                }]
+            });
+
+            await expect(
+                authService.authenticateUser('admin', 'WrongPassword1')
+            ).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
+
+            expect(AccountLockout.recordFailedAttempt).toHaveBeenCalledWith(
+                'admin', 5, expect.any(Number), 7
+            );
+        });
+
+        // H-1: successful login must clear the lockout counter AND pass the
+        // user_id through so users.account_locked_until is cleared too.
+        test('passes the resolved user_id to clearFailedAttempts on success', async () => {
+            cacheService.get.mockResolvedValue(null);
+            db.query
+                .mockResolvedValueOnce({
+                    rows: [{
+                        user_id: 9,
+                        username: 'admin',
+                        email: 'admin@test.com',
+                        role: 'admin',
+                        password_hash: hashedPassword,
+                        is_active: true
+                    }]
+                })
+                .mockResolvedValueOnce({ rows: [] }); // updateLastLogin
+
+            await authService.authenticateUser('admin', 'StrongPass1');
+
+            expect(AccountLockout.clearAttempts).toHaveBeenCalledWith('admin', 9);
+        });
     });
 
     describe('findUserById', () => {
@@ -370,6 +480,67 @@ describe('AuthService', () => {
             await authService.findUserById(999);
             const sql = db.query.mock.calls[0][0];
             expect(sql).toMatch(/password_changed_at/);
+        });
+    });
+
+    // H-1/H-2: getUserForAuth is the uncached read every auth-decision path
+    // (middleware + verifyTempToken) uses instead of findUserById, so a
+    // lockout/deactivation takes effect on the very next request.
+    describe('getUserForAuth', () => {
+        test('never consults cacheService (bypasses the 5-min cache)', async () => {
+            db.query.mockResolvedValueOnce({ rows: [{
+                user_id: 1, username: 'u', email: 'u@b.com', role: 'admin',
+                password_hash: 'should-not-leak', is_active: true, account_locked_until: null
+            }] });
+
+            const user = await authService.getUserForAuth(1);
+
+            expect(cacheService.get).not.toHaveBeenCalled();
+            expect(cacheService.set).not.toHaveBeenCalled();
+            expect(user).not.toHaveProperty('password_hash');
+            expect(user.user_id).toBe(1);
+        });
+
+        test('returns null when the user does not exist', async () => {
+            db.query.mockResolvedValueOnce({ rows: [] });
+
+            const user = await authService.getUserForAuth(999);
+            expect(user).toBeNull();
+        });
+    });
+
+    describe('verifyTempToken', () => {
+        const jwtSign = (payload) => jwt.sign(payload, authService.jwt2faSecret, {
+            algorithm: 'HS256', issuer: 'infrasafe-api', audience: 'infrasafe-client', expiresIn: '5m'
+        });
+
+        test('rejects when the user is deactivated', async () => {
+            const token = jwtSign({ user_id: 1, scope: '2fa' });
+            jest.spyOn(authService, 'getUserForAuth').mockResolvedValueOnce({
+                user_id: 1, is_active: false, account_locked_until: null
+            });
+
+            await expect(authService.verifyTempToken(token)).rejects.toThrow();
+        });
+
+        test('rejects when the account is locked', async () => {
+            const token = jwtSign({ user_id: 1, scope: '2fa' });
+            jest.spyOn(authService, 'getUserForAuth').mockResolvedValueOnce({
+                user_id: 1, is_active: true,
+                account_locked_until: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+            });
+
+            await expect(authService.verifyTempToken(token)).rejects.toThrow(/locked/i);
+        });
+
+        test('accepts when the user is active and not locked', async () => {
+            const token = jwtSign({ user_id: 1, scope: '2fa' });
+            jest.spyOn(authService, 'getUserForAuth').mockResolvedValueOnce({
+                user_id: 1, is_active: true, account_locked_until: null, password_changed_at: null
+            });
+
+            const decoded = await authService.verifyTempToken(token);
+            expect(decoded.user_id).toBe(1);
         });
     });
 
@@ -666,7 +837,7 @@ describe('AuthService', () => {
     });
 
     describe('recordFailedAttempt', () => {
-        test('delegates to AccountLockout.recordFailedAttempt with config', async () => {
+        test('delegates to AccountLockout.recordFailedAttempt with config, userId defaults to null', async () => {
             // SEC-11: pin jitter to 0 so the base lockout window is asserted
             const crypto = require('crypto');
             const randomIntSpy = jest.spyOn(crypto, 'randomInt').mockReturnValue(0);
@@ -677,9 +848,23 @@ describe('AuthService', () => {
             expect(AccountLockout.recordFailedAttempt).toHaveBeenCalledWith(
                 'user1',
                 5,               // maxLoginAttempts
-                15 * 60 * 1000   // lockoutDuration (base, jitter pinned to 0)
+                15 * 60 * 1000,  // lockoutDuration (base, jitter pinned to 0)
+                null             // no resolved user (e.g. unknown login)
             );
             randomIntSpy.mockRestore();
+        });
+
+        // H-1: when the login resolved to a real user (wrong-password branch),
+        // the userId must be threaded through so the model's CTE can mirror
+        // the lock onto users.account_locked_until.
+        test('passes userId through when the caller resolved a user', async () => {
+            AccountLockout.recordFailedAttempt.mockResolvedValueOnce({ failed_attempts: 1, locked_until: null });
+
+            await authService.recordFailedAttempt('user1', 42);
+
+            expect(AccountLockout.recordFailedAttempt).toHaveBeenCalledWith(
+                'user1', 5, expect.any(Number), 42
+            );
         });
 
         test('logs lockout warning when max attempts reached', async () => {
@@ -694,6 +879,31 @@ describe('AuthService', () => {
             expect(logger.warn).toHaveBeenCalledWith(
                 expect.stringContaining('заблокирован')
             );
+        });
+
+        // H-1: once the threshold is reached, the cached findUserById entry
+        // for that user must be dropped too — otherwise a non-auth caller
+        // could keep reading a stale (unlocked) copy for up to 5 min.
+        test('invalidates the cached user entry when the threshold is reached and userId is known', async () => {
+            AccountLockout.recordFailedAttempt.mockResolvedValueOnce({
+                failed_attempts: 5,
+                locked_until: new Date(Date.now() + 900000),
+            });
+
+            await authService.recordFailedAttempt('user1', 42);
+
+            expect(cacheService.invalidate).toHaveBeenCalledWith('auth:user:42');
+        });
+
+        test('does not invalidate cache when userId is unknown', async () => {
+            AccountLockout.recordFailedAttempt.mockResolvedValueOnce({
+                failed_attempts: 5,
+                locked_until: new Date(Date.now() + 900000),
+            });
+
+            await authService.recordFailedAttempt('user1');
+
+            expect(cacheService.invalidate).not.toHaveBeenCalled();
         });
 
         // SEC-11: the 15-min lockout window must carry cryptographic jitter so
@@ -724,10 +934,18 @@ describe('AuthService', () => {
     });
 
     describe('clearFailedAttempts', () => {
-        test('calls AccountLockout.clearAttempts with login', async () => {
+        test('calls AccountLockout.clearAttempts with login, userId defaults to null', async () => {
             await authService.clearFailedAttempts('user1');
 
-            expect(AccountLockout.clearAttempts).toHaveBeenCalledWith('user1');
+            expect(AccountLockout.clearAttempts).toHaveBeenCalledWith('user1', null);
+            expect(cacheService.invalidate).not.toHaveBeenCalled();
+        });
+
+        test('passes userId through and invalidates the cached user entry', async () => {
+            await authService.clearFailedAttempts('user1', 42);
+
+            expect(AccountLockout.clearAttempts).toHaveBeenCalledWith('user1', 42);
+            expect(cacheService.invalidate).toHaveBeenCalledWith('auth:user:42');
         });
     });
 

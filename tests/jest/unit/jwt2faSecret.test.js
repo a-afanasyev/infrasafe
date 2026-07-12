@@ -70,8 +70,8 @@ describe('[SEC-34h] temp-token uses JWT_2FA_SECRET, not JWT_SECRET', () => {
         );
 
         jest
-            .spyOn(authService, 'findUserById')
-            .mockResolvedValue({ user_id: 7, username: 'u', role: 'admin', password_changed_at: null });
+            .spyOn(authService, 'getUserForAuth')
+            .mockResolvedValue({ user_id: 7, username: 'u', role: 'admin', is_active: true, password_changed_at: null });
 
         const decoded = await authService.verifyTempToken(token);
         expect(decoded.scope).toBe('2fa');

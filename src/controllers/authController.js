@@ -258,7 +258,10 @@ const refreshToken = async (req, res, next) => {
         });
 
     } catch (error) {
-        if (error.code === 'INVALID_REFRESH_TOKEN' || error.code === 'USER_NOT_FOUND') {
+        // M-6: TOKEN_REUSE (a refresh token replayed after rotation) is a
+        // client-error condition, not a server fault — was previously falling
+        // through to next(error) and surfacing as a 500.
+        if (error.code === 'INVALID_REFRESH_TOKEN' || error.code === 'USER_NOT_FOUND' || error.code === 'TOKEN_REUSE') {
             return res.status(401).json({ error: error.message });
         }
 

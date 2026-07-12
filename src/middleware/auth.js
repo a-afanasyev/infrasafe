@@ -71,11 +71,22 @@ const authenticateJWT = async (req, res, next) => {
             });
         }
 
-        const user = await authService.findUserById(decoded.user_id);
+        // H-1/H-2: uncached PK read — a lockout or deactivation must be
+        // enforced on the very next request, not masked by findUserById's
+        // 5-min cache.
+        const user = await authService.getUserForAuth(decoded.user_id);
         if (!user) {
             return res.status(401).json({
                 success: false,
                 message: 'User not found'
+            });
+        }
+
+        // H-2: deactivated user — generic message, do not leak account state.
+        if (user.is_active === false) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid or expired token'
             });
         }
 
@@ -162,11 +173,30 @@ const authenticateRefresh = async (req, res, next) => {
             audience: 'infrasafe-client'
         });
 
-        const user = await authService.findUserById(decoded.user_id);
+        // Defense-in-depth: refresh tokens (generateTokens) always carry
+        // type:'refresh'; reject anything else verified with this secret.
+        if (decoded.type !== 'refresh') {
+            logger.warn(`Refresh token missing type:'refresh' claim rejected`);
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid or expired refresh token'
+            });
+        }
+
+        // H-1/H-2: uncached PK read — see authenticateJWT.
+        const user = await authService.getUserForAuth(decoded.user_id);
         if (!user) {
             return res.status(401).json({
                 success: false,
                 message: 'User not found'
+            });
+        }
+
+        // H-2: deactivated user — generic message, do not leak account state.
+        if (user.is_active === false) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid or expired refresh token'
             });
         }
 
@@ -242,8 +272,12 @@ const optionalAuth = async (req, res, next) => {
             return next();
         }
 
-        const user = await authService.findUserById(decoded.user_id);
-        if (user && !(user.account_locked_until && new Date(user.account_locked_until) > new Date())) {
+        // H-1/H-2/M-1: uncached PK read + is_active + password-cutoff check —
+        // previously optionalAuth only checked lockout, unlike authenticateJWT.
+        const user = await authService.getUserForAuth(decoded.user_id);
+        const isLocked = !!(user && user.account_locked_until && new Date(user.account_locked_until) > new Date());
+        const isStale = !!(user && authService._isIssuedBeforeCutoff(decoded, user));
+        if (user && user.is_active !== false && !isLocked && !isStale) {
             req.user = mapUserToReqUser(user);
         } else {
             req.user = null;

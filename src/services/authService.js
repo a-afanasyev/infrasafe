@@ -140,7 +140,7 @@ class AuthService {
                 throw error;
             }
 
-            // Проверяем блокировку аккаунта
+            // Проверяем блокировку аккаунта (по введённой строке login)
             await this.checkAccountLockout(login);
 
             // Находим пользователя
@@ -149,6 +149,21 @@ class AuthService {
                 await this.recordFailedAttempt(login);
                 const error = new Error('Неверное имя пользователя или пароль');
                 error.code = 'INVALID_CREDENTIALS';
+                throw error;
+            }
+
+            // [Lockout username↔email bypass] `account_lockout` is keyed by the
+            // exact string the caller typed. A lock recorded against the
+            // username can otherwise be bypassed by logging in with the same
+            // account's email (or vice versa) — checkAccountLockout(login)
+            // above only sees the string actually submitted. Once the user
+            // row is resolved, `users.account_locked_until` is the
+            // authoritative, identity-keyed lock and must be checked too.
+            if (user.account_locked_until && new Date(user.account_locked_until).getTime() > Date.now()) {
+                logger.warn(`Account lockout active (authoritative check) for user_id=${user.user_id}`);
+                await this._timingEqualizerDelay();
+                const error = new Error('Аккаунт временно заблокирован. Попробуйте позже.');
+                error.code = 'ACCOUNT_LOCKED';
                 throw error;
             }
 
@@ -161,14 +176,14 @@ class AuthService {
             // Проверяем пароль
             const isPasswordValid = await this.verifyPassword(password, user.password_hash);
             if (!isPasswordValid) {
-                await this.recordFailedAttempt(login);
+                await this.recordFailedAttempt(login, user.user_id);
                 const error = new Error('Неверное имя пользователя или пароль');
                 error.code = 'INVALID_CREDENTIALS';
                 throw error;
             }
 
             // Сбрасываем счетчик неудачных попыток
-            await this.clearFailedAttempts(login);
+            await this.clearFailedAttempts(login, user.user_id);
 
             // Обновляем время последнего входа
             await this.updateLastLogin(user.user_id);
@@ -204,6 +219,9 @@ class AuthService {
     // SEC-4: also reject temp tokens issued before the user's most recent
     // password change so a mid-session password change invalidates any
     // outstanding 2FA temp token (mirrors the access/refresh cutoff check).
+    // H-1/H-2: uses getUserForAuth (uncached) + rejects inactive/locked users —
+    // previously a deactivated or locked-out user could still complete 2FA
+    // with a still-valid temp token issued before the lockout/deactivation.
     async verifyTempToken(token) {
         const decoded = jwt.verify(token, this.jwt2faSecret, {
             algorithms: ['HS256'],
@@ -214,9 +232,15 @@ class AuthService {
             throw new Error('Invalid token scope');
         }
 
-        const user = await this.findUserById(decoded.user_id);
+        const user = await this.getUserForAuth(decoded.user_id);
         if (!user) {
             throw new Error('User not found');
+        }
+        if (user.is_active === false) {
+            throw new Error('User not found');
+        }
+        if (user.account_locked_until && new Date(user.account_locked_until) > new Date()) {
+            throw new Error('Account is locked');
         }
         if (this._isIssuedBeforeCutoff(decoded, user)) {
             throw new Error('Temp token issued before password change');
@@ -461,13 +485,10 @@ class AuthService {
         try {
             const cacheKey = `${this.cachePrefix}:user:${userId}`;
 
-            // [SEC-27 / LATENT] 5-min cache means a role change / deactivation can
-            // take up to 5 min to take effect on auth. Accepted as latent: there
-            // is currently NO API that mutates users.role / users.is_active at
-            // runtime (only seed/manual DB). When such a user-management mutation
-            // endpoint is added, it MUST invalidate this key
-            // (`${this.cachePrefix}:user:<id>`) — see the existing invalidation
-            // pattern at password-change (`cacheService.invalidate` above).
+            // [SEC-27] 5-min cache. NOT used for auth-decision reads (middleware
+            // calls getUserForAuth instead — H-1/H-2 fix) since a lockout or
+            // deactivation must take effect immediately, not after up to 5 min.
+            // Kept here for lower-criticality callers (e.g. getProfile).
             const cached = await cacheService.get(cacheKey, { ttl: 300 }); // 5 минут
             if (cached) {
                 return cached;
@@ -489,6 +510,20 @@ class AuthService {
             logger.error(`Ошибка поиска пользователя по ID: ${error.message}`);
             throw error;
         }
+    }
+
+    // H-1/H-2: uncached PK read used by every auth-decision path (JWT/refresh/
+    // temp-token middleware). A lockout or deactivation must be enforced on
+    // the very next request, not masked for up to 5 min by findUserById's
+    // cache. One extra PK SELECT per authenticated request — comparable cost
+    // to the existing per-request token_blacklist SELECT.
+    async getUserForAuth(userId) {
+        const query = 'SELECT user_id, username, email, role, is_active, account_locked_until, created_at, updated_at, password_changed_at FROM users WHERE user_id = $1';
+        const result = await db.query(query, [userId]);
+        if (result.rows.length === 0) return null;
+        // eslint-disable-next-line no-unused-vars
+        const { password_hash, ...user } = result.rows[0];
+        return user;
     }
 
     // Поиск пользователя по имени или email
@@ -550,6 +585,19 @@ class AuthService {
         }
     }
 
+    // SEC-11: equalize response latency with the unlocked wrong-password path
+    // by paying the same bcrypt cost before throwing ACCOUNT_LOCKED. Result is
+    // intentionally discarded — it never affects control flow. Shared by
+    // checkAccountLockout (string-keyed check) and authenticateUser's
+    // authoritative users.account_locked_until check.
+    async _timingEqualizerDelay() {
+        try {
+            await bcrypt.compare('infrasafe-timing-equalizer', DUMMY_BCRYPT_HASH);
+        } catch (_) {
+            // A failure in the dummy compare must not change the lockout outcome.
+        }
+    }
+
     // Проверка блокировки аккаунта (SEC-NEW-004: persistent via PostgreSQL)
     async checkAccountLockout(login) {
         const record = await AccountLockout.get(login);
@@ -564,14 +612,7 @@ class AuthService {
             // already strips it from the HTML response, but raw API consumers
             // bypassed that. Now the timestamp is only logged server-side.
             logger.warn(`Account lockout active for login=${login} until=${new Date(lockedUntilMs).toISOString()}`);
-            // SEC-11: equalize response latency with the unlocked wrong-password
-            // path by paying the same bcrypt cost before throwing. Result is
-            // intentionally discarded — it never affects control flow.
-            try {
-                await bcrypt.compare('infrasafe-timing-equalizer', DUMMY_BCRYPT_HASH);
-            } catch (_) {
-                // A failure in the dummy compare must not change the lockout outcome.
-            }
+            await this._timingEqualizerDelay();
             const error = new Error('Аккаунт временно заблокирован. Попробуйте позже.');
             error.code = 'ACCOUNT_LOCKED';
             throw error;
@@ -582,7 +623,12 @@ class AuthService {
     }
 
     // Запись неудачной попытки входа (atomic UPSERT, survives restart / scale-out)
-    async recordFailedAttempt(login) {
+    // H-1: when `userId` is known, the model mirrors a fresh lock onto
+    // `users.account_locked_until` in the SAME statement — that column (not
+    // the `account_lockout` table) is what auth middleware actually enforces
+    // on already-issued access tokens. Without this, a brute-force lockout
+    // never revoked a still-valid JWT.
+    async recordFailedAttempt(login, userId = null) {
         // SEC-11: add cryptographically-random jitter to the base lockout
         // window so the unlock time is not a fixed, predictable interval.
         const jitterMs = crypto.randomInt(LOCKOUT_JITTER_MAX_MS);
@@ -591,18 +637,27 @@ class AuthService {
         const result = await AccountLockout.recordFailedAttempt(
             login,
             this.maxLoginAttempts,
-            lockoutDuration
+            lockoutDuration,
+            userId
         );
         const failedAttempts = result?.failed_attempts ?? 0;
         const lockedUntil = result?.locked_until ?? null;
         if (lockedUntil && failedAttempts >= this.maxLoginAttempts) {
             logger.warn(`Аккаунт ${login} заблокирован из-за превышения лимита попыток входа`);
+            if (userId != null) {
+                // Invalidate findUserById's cache too, for any non-auth-decision
+                // caller still reading through it (getUserForAuth is uncached).
+                await cacheService.invalidate(`${this.cachePrefix}:user:${userId}`);
+            }
         }
     }
 
     // Очистка неудачных попыток (после успешной аутентификации)
-    async clearFailedAttempts(login) {
-        await AccountLockout.clearAttempts(login);
+    async clearFailedAttempts(login, userId = null) {
+        await AccountLockout.clearAttempts(login, userId);
+        if (userId != null) {
+            await cacheService.invalidate(`${this.cachePrefix}:user:${userId}`);
+        }
     }
 
     // Обновление времени последнего входа

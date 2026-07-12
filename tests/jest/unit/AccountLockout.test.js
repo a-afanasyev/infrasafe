@@ -71,8 +71,14 @@ describe('AccountLockout model', () => {
             expect(sql).toMatch(/ON CONFLICT \(login\) DO UPDATE/i);
             // The lock is only set once the incremented counter reaches the max.
             expect(sql).toMatch(/failed_attempts \+ 1 >= \$2/i);
-            // lockoutMs is bound as a string for the interval cast (not a number).
-            expect(params).toEqual(['alice', 5, '900000']);
+            // H-1: the lockout write and the users.account_locked_until mirror
+            // are a single atomic CTE statement — never two sequential queries.
+            expect(sql).toMatch(/WITH lock_state AS/i);
+            expect(sql).toMatch(/UPDATE users/i);
+            expect(sql).toMatch(/SET account_locked_until = lock_state\.locked_until/i);
+            // lockoutMs is bound as a string for the interval cast (not a number);
+            // userId defaults to null when the caller doesn't resolve a user.
+            expect(params).toEqual(['alice', 5, '900000', null]);
             expect(typeof params[2]).toBe('string');
         });
 
@@ -83,6 +89,17 @@ describe('AccountLockout model', () => {
 
             const [, params] = db.query.mock.calls[0];
             expect(params[2]).toBe('86400000');
+        });
+
+        test('passes userId through as the 4th param so the CTE can mirror the lock onto users', async () => {
+            db.query.mockResolvedValueOnce({
+                rows: [{ failed_attempts: 5, locked_until: new Date('2026-01-01T01:00:00Z') }]
+            });
+
+            await AccountLockout.recordFailedAttempt('alice', 5, 900000, 42);
+
+            const [, params] = db.query.mock.calls[0];
+            expect(params).toEqual(['alice', 5, '900000', 42]);
         });
     });
 
@@ -95,7 +112,20 @@ describe('AccountLockout model', () => {
             const [sql, params] = db.query.mock.calls[0];
             expect(sql).toMatch(/DELETE FROM account_lockout/i);
             expect(sql).toMatch(/WHERE login = \$1/i);
-            expect(params).toEqual(['alice']);
+            // Single atomic statement (CTE) that also clears users.account_locked_until
+            // when a userId is given; userId defaults to null (no-op on users).
+            expect(sql).toMatch(/UPDATE users/i);
+            expect(sql).toMatch(/SET account_locked_until = NULL/i);
+            expect(params).toEqual(['alice', null]);
+        });
+
+        test('passes userId through as the 2nd param to clear users.account_locked_until', async () => {
+            db.query.mockResolvedValueOnce({ rowCount: 1 });
+
+            await AccountLockout.clearAttempts('alice', 42);
+
+            const [, params] = db.query.mock.calls[0];
+            expect(params).toEqual(['alice', 42]);
         });
     });
 

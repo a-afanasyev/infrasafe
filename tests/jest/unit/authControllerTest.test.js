@@ -530,6 +530,21 @@ describe('AuthController', () => {
             expect(res.status).toHaveBeenCalledWith(401);
         });
 
+        // M-6: a replayed refresh token (already consumed) is a client-error
+        // condition — previously fell through to next(error) and surfaced as
+        // a 500.
+        test('returns 401 for TOKEN_REUSE error', async () => {
+            req.body = { refreshToken: 'already-used' };
+            const error = new Error('Refresh token already used');
+            error.code = 'TOKEN_REUSE';
+            authService.refreshToken.mockRejectedValue(error);
+
+            await authController.refreshToken(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(401);
+            expect(next).not.toHaveBeenCalled();
+        });
+
         test('calls next for unexpected errors', async () => {
             req.body = { refreshToken: 'token' };
             authService.refreshToken.mockRejectedValue(new Error('Unexpected'));

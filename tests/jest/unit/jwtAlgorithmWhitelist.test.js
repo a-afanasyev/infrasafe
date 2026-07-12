@@ -127,7 +127,7 @@ describe('[P1-V3] JWT algorithms whitelist — RS256→HS256 confusion blocked',
 
             // SEC-4: verifyTempToken now looks up the user for the cutoff check.
             const findUserSpy = jest
-                .spyOn(authService, 'findUserById')
+                .spyOn(authService, 'getUserForAuth')
                 .mockResolvedValue({ user_id: 7, username: 'u', role: 'admin', password_changed_at: null });
 
             const decoded = await authService.verifyTempToken(okTemp);
@@ -149,7 +149,7 @@ describe('[P1-V3] JWT algorithms whitelist — RS256→HS256 confusion blocked',
             // Password changed an hour in the future relative to the token's iat
             // → _isIssuedBeforeCutoff returns true.
             const findUserSpy = jest
-                .spyOn(authService, 'findUserById')
+                .spyOn(authService, 'getUserForAuth')
                 .mockResolvedValue({
                     user_id: 7,
                     username: 'u',

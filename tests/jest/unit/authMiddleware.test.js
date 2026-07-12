@@ -8,6 +8,7 @@ jest.mock('../../../src/utils/logger', () => ({
 jest.mock('../../../src/services/authService', () => ({
     isTokenBlacklisted: jest.fn(),
     findUserById: jest.fn(),
+    getUserForAuth: jest.fn(),
     _isIssuedBeforeCutoff: jest.fn()
 }));
 
@@ -135,7 +136,7 @@ describe('Auth Middleware', () => {
             jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 999 });
             });
-            authService.findUserById.mockResolvedValue(null);
+            authService.getUserForAuth.mockResolvedValue(null);
 
             await authenticateJWT(req, res, next);
 
@@ -157,7 +158,7 @@ describe('Auth Middleware', () => {
                 ...mockUser,
                 account_locked_until: new Date(Date.now() + 60 * 60 * 1000).toISOString()
             };
-            authService.findUserById.mockResolvedValue(lockedUser);
+            authService.getUserForAuth.mockResolvedValue(lockedUser);
 
             await authenticateJWT(req, res, next);
 
@@ -169,13 +170,34 @@ describe('Auth Middleware', () => {
             );
         });
 
+        // H-2: a deactivated user with a still-valid (not-yet-expired) access
+        // token must be rejected — previously only checked at login/refresh.
+        test('returns 401 when user is deactivated', async () => {
+            req.headers.authorization = 'Bearer valid-token';
+            authService.isTokenBlacklisted.mockResolvedValue(false);
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
+                cb(null, { user_id: 1 });
+            });
+            authService.getUserForAuth.mockResolvedValue({ ...mockUser, is_active: false });
+
+            await authenticateJWT(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(401);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    message: 'Invalid or expired token'
+                })
+            );
+            expect(next).not.toHaveBeenCalled();
+        });
+
         test('sets req.user and calls next on valid token', async () => {
             req.headers.authorization = 'Bearer valid-token';
             authService.isTokenBlacklisted.mockResolvedValue(false);
             jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 1 });
             });
-            authService.findUserById.mockResolvedValue(mockUser);
+            authService.getUserForAuth.mockResolvedValue(mockUser);
 
             await authenticateJWT(req, res, next);
 
@@ -194,7 +216,7 @@ describe('Auth Middleware', () => {
             jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 1 });
             });
-            authService.findUserById.mockRejectedValue(new Error('DB error'));
+            authService.getUserForAuth.mockRejectedValue(new Error('DB error'));
 
             await authenticateJWT(req, res, next);
 
@@ -226,7 +248,7 @@ describe('Auth Middleware', () => {
             );
             expect(next).not.toHaveBeenCalled();
             // The scope guard must short-circuit before user lookup
-            expect(authService.findUserById).not.toHaveBeenCalled();
+            expect(authService.getUserForAuth).not.toHaveBeenCalled();
             expect(req.user).toBeUndefined();
         });
 
@@ -240,7 +262,7 @@ describe('Auth Middleware', () => {
             await authenticateJWT(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(401);
-            expect(authService.findUserById).not.toHaveBeenCalled();
+            expect(authService.getUserForAuth).not.toHaveBeenCalled();
             expect(next).not.toHaveBeenCalled();
         });
 
@@ -250,7 +272,7 @@ describe('Auth Middleware', () => {
             jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 1, username: 'testuser', role: 'user', email: 'test@example.com' });
             });
-            authService.findUserById.mockResolvedValue(mockUser);
+            authService.getUserForAuth.mockResolvedValue(mockUser);
             authService._isIssuedBeforeCutoff.mockReturnValue(false);
 
             await authenticateJWT(req, res, next);
@@ -355,13 +377,31 @@ describe('Auth Middleware', () => {
             );
         });
 
+        test('returns 401 when refresh token is missing the type:"refresh" claim', async () => {
+            req.body = { refreshToken: 'valid-refresh' };
+            authService.isTokenBlacklisted.mockResolvedValue(false);
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
+                cb(null, { user_id: 1 }); // no type claim
+            });
+
+            await authenticateRefresh(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(401);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    message: 'Invalid or expired refresh token'
+                })
+            );
+            expect(authService.getUserForAuth).not.toHaveBeenCalled();
+        });
+
         test('returns 401 when user is not found', async () => {
             req.body = { refreshToken: 'valid-refresh' };
             authService.isTokenBlacklisted.mockResolvedValue(false);
             jwt.verify.mockImplementation((token, secret, opts, cb) => {
-                cb(null, { user_id: 999 });
+                cb(null, { user_id: 999, type: 'refresh' });
             });
-            authService.findUserById.mockResolvedValue(null);
+            authService.getUserForAuth.mockResolvedValue(null);
 
             await authenticateRefresh(req, res, next);
 
@@ -377,13 +417,13 @@ describe('Auth Middleware', () => {
             req.body = { refreshToken: 'valid-refresh' };
             authService.isTokenBlacklisted.mockResolvedValue(false);
             jwt.verify.mockImplementation((token, secret, opts, cb) => {
-                cb(null, { user_id: 1 });
+                cb(null, { user_id: 1, type: 'refresh' });
             });
             const lockedUser = {
                 ...mockUser,
                 account_locked_until: new Date(Date.now() + 60 * 60 * 1000).toISOString()
             };
-            authService.findUserById.mockResolvedValue(lockedUser);
+            authService.getUserForAuth.mockResolvedValue(lockedUser);
 
             await authenticateRefresh(req, res, next);
 
@@ -395,13 +435,31 @@ describe('Auth Middleware', () => {
             );
         });
 
+        test('returns 401 when user is deactivated', async () => {
+            req.body = { refreshToken: 'valid-refresh' };
+            authService.isTokenBlacklisted.mockResolvedValue(false);
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
+                cb(null, { user_id: 1, type: 'refresh' });
+            });
+            authService.getUserForAuth.mockResolvedValue({ ...mockUser, is_active: false });
+
+            await authenticateRefresh(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(401);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    message: 'Invalid or expired refresh token'
+                })
+            );
+        });
+
         test('sets req.user and calls next on valid refresh token', async () => {
             req.body = { refreshToken: 'valid-refresh' };
             authService.isTokenBlacklisted.mockResolvedValue(false);
             jwt.verify.mockImplementation((token, secret, opts, cb) => {
-                cb(null, { user_id: 1 });
+                cb(null, { user_id: 1, type: 'refresh' });
             });
-            authService.findUserById.mockResolvedValue(mockUser);
+            authService.getUserForAuth.mockResolvedValue(mockUser);
 
             await authenticateRefresh(req, res, next);
 
@@ -418,9 +476,9 @@ describe('Auth Middleware', () => {
             req.body = { refreshToken: 'valid-refresh' };
             authService.isTokenBlacklisted.mockResolvedValue(false);
             jwt.verify.mockImplementation((token, secret, opts, cb) => {
-                cb(null, { user_id: 1 });
+                cb(null, { user_id: 1, type: 'refresh' });
             });
-            authService.findUserById.mockRejectedValue(new Error('DB error'));
+            authService.getUserForAuth.mockRejectedValue(new Error('DB error'));
 
             await authenticateRefresh(req, res, next);
 
@@ -490,7 +548,7 @@ describe('Auth Middleware', () => {
             jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 1 });
             });
-            authService.findUserById.mockResolvedValue(mockUser);
+            authService.getUserForAuth.mockResolvedValue(mockUser);
 
             await optionalAuth(req, res, next);
 
@@ -508,7 +566,7 @@ describe('Auth Middleware', () => {
             jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 999 });
             });
-            authService.findUserById.mockResolvedValue(null);
+            authService.getUserForAuth.mockResolvedValue(null);
 
             await optionalAuth(req, res, next);
 
@@ -526,7 +584,40 @@ describe('Auth Middleware', () => {
                 ...mockUser,
                 account_locked_until: new Date(Date.now() + 60 * 60 * 1000).toISOString()
             };
-            authService.findUserById.mockResolvedValue(lockedUser);
+            authService.getUserForAuth.mockResolvedValue(lockedUser);
+
+            await optionalAuth(req, res, next);
+
+            expect(req.user).toBeNull();
+            expect(next).toHaveBeenCalled();
+        });
+
+        // M-1: previously optionalAuth granted req.user to a deactivated user
+        // (it only checked lockout, unlike authenticateJWT).
+        test('sets req.user to null when user is deactivated', async () => {
+            req.headers.authorization = 'Bearer valid-token';
+            authService.isTokenBlacklisted.mockResolvedValue(false);
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
+                cb(null, { user_id: 1 });
+            });
+            authService.getUserForAuth.mockResolvedValue({ ...mockUser, is_active: false });
+
+            await optionalAuth(req, res, next);
+
+            expect(req.user).toBeNull();
+            expect(next).toHaveBeenCalled();
+        });
+
+        // M-1: previously optionalAuth did not consult the password-change
+        // cutoff at all, unlike authenticateJWT.
+        test('sets req.user to null when token is stale (issued before password change)', async () => {
+            req.headers.authorization = 'Bearer valid-token';
+            authService.isTokenBlacklisted.mockResolvedValue(false);
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
+                cb(null, { user_id: 1, iat: 1000 });
+            });
+            authService.getUserForAuth.mockResolvedValue(mockUser);
+            authService._isIssuedBeforeCutoff.mockReturnValue(true);
 
             await optionalAuth(req, res, next);
 
@@ -540,7 +631,7 @@ describe('Auth Middleware', () => {
             jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 1 });
             });
-            authService.findUserById.mockRejectedValue(new Error('DB error'));
+            authService.getUserForAuth.mockRejectedValue(new Error('DB error'));
 
             await optionalAuth(req, res, next);
 
@@ -562,7 +653,7 @@ describe('Auth Middleware', () => {
             expect(req.user).toBeNull();
             expect(next).toHaveBeenCalled();
             // Must short-circuit before user lookup — never resolve the scoped token to a user
-            expect(authService.findUserById).not.toHaveBeenCalled();
+            expect(authService.getUserForAuth).not.toHaveBeenCalled();
         });
 
         test('treats any non-empty scope claim as anonymous', async () => {
@@ -576,7 +667,7 @@ describe('Auth Middleware', () => {
 
             expect(req.user).toBeNull();
             expect(next).toHaveBeenCalled();
-            expect(authService.findUserById).not.toHaveBeenCalled();
+            expect(authService.getUserForAuth).not.toHaveBeenCalled();
         });
 
         test('still sets req.user for a normal token with NO scope claim', async () => {
@@ -585,7 +676,11 @@ describe('Auth Middleware', () => {
             jwt.verify.mockImplementation((token, secret, opts, cb) => {
                 cb(null, { user_id: 1 });
             });
-            authService.findUserById.mockResolvedValue(mockUser);
+            authService.getUserForAuth.mockResolvedValue(mockUser);
+            // mockReturnValue (unlike clearAllMocks in beforeEach) persists
+            // across tests — reset explicitly since an earlier test in this
+            // describe block pins this mock to `true`.
+            authService._isIssuedBeforeCutoff.mockReturnValue(false);
 
             await optionalAuth(req, res, next);
 
@@ -616,7 +711,7 @@ describe('Auth Middleware', () => {
             const userPca = new Date().toISOString();
             const decoded = { user_id: 1, iat: NOW - 3600 };  // 1h ago
             jwt.verify.mockImplementation((tok, sec, opts, cb) => cb(null, decoded));
-            authService.findUserById.mockResolvedValue({
+            authService.getUserForAuth.mockResolvedValue({
                 user_id: 1, username: 'admin', role: 'admin',
                 email: 'a@b.com', is_active: true, password_changed_at: userPca
             });
@@ -635,7 +730,7 @@ describe('Auth Middleware', () => {
         test('passes when password_changed_at is null (legacy user)', async () => {
             const decoded = { user_id: 1, iat: NOW };
             jwt.verify.mockImplementation((tok, sec, opts, cb) => cb(null, decoded));
-            authService.findUserById.mockResolvedValue({
+            authService.getUserForAuth.mockResolvedValue({
                 user_id: 1, username: 'admin', role: 'admin',
                 email: 'a@b.com', is_active: true, password_changed_at: null
             });
@@ -655,9 +750,9 @@ describe('Auth Middleware', () => {
             authService.isTokenBlacklisted.mockResolvedValue(false);
             process.env.JWT_REFRESH_SECRET = 'test-refresh-secret';
 
-            const decoded = { user_id: 1, iat: Math.floor(Date.now() / 1000) - 3600 };
+            const decoded = { user_id: 1, type: 'refresh', iat: Math.floor(Date.now() / 1000) - 3600 };
             jwt.verify.mockImplementation((tok, sec, opts, cb) => cb(null, decoded));
-            authService.findUserById.mockResolvedValue({
+            authService.getUserForAuth.mockResolvedValue({
                 user_id: 1, username: 'admin', role: 'admin', email: 'a@b.com',
                 is_active: true, password_changed_at: new Date().toISOString()
             });
