@@ -17,7 +17,8 @@ jest.mock('../../../src/models/IntegrationConfig', () => ({
 jest.mock('../../../src/models/IntegrationLog', () => ({
     create: jest.fn(),
     findByEventId: jest.fn(),
-    updateStatus: jest.fn()
+    updateStatus: jest.fn(),
+    reclaimErrorByEventId: jest.fn()
 }));
 
 jest.mock('../../../src/models/Building', () => ({
@@ -337,6 +338,29 @@ describe('UKIntegrationService', () => {
             const result = await service.isDuplicateEvent('new-456');
             expect(result).toBe(false);
         });
+
+        // [Variant A — UK deterministic event_id contract, 2026-07-22]
+        // A row whose processing FAILED must not swallow the redelivery:
+        // with deterministic event_ids the sender's retry carries the SAME
+        // id, so treating an 'error' row as a duplicate would drop the
+        // event permanently.
+        it("returns false when the logged event has status 'error' (retry must reprocess)", async () => {
+            IntegrationLog.findByEventId.mockResolvedValue({ id: 1, event_id: 'err-789', status: 'error' });
+            const result = await service.isDuplicateEvent('err-789');
+            expect(result).toBe(false);
+        });
+
+        it("returns true when the logged event has status 'pending' (still being processed)", async () => {
+            IntegrationLog.findByEventId.mockResolvedValue({ id: 1, event_id: 'pen-789', status: 'pending' });
+            const result = await service.isDuplicateEvent('pen-789');
+            expect(result).toBe(true);
+        });
+
+        it("returns true when the logged event has status 'success'", async () => {
+            IntegrationLog.findByEventId.mockResolvedValue({ id: 1, event_id: 'suc-789', status: 'success' });
+            const result = await service.isDuplicateEvent('suc-789');
+            expect(result).toBe(true);
+        });
     });
 
     describe('handleBuildingWebhook()', () => {
@@ -508,10 +532,32 @@ describe('UKIntegrationService', () => {
             const uniqueError = new Error('duplicate key');
             uniqueError.code = '23505';
             IntegrationLog.create.mockRejectedValue(uniqueError);
+            IntegrationLog.reclaimErrorByEventId.mockResolvedValue(null);
 
             await service.handleBuildingWebhook(basePayload);
 
+            expect(IntegrationLog.reclaimErrorByEventId).toHaveBeenCalledWith(basePayload.event_id);
             expect(Building.findByExternalId).not.toHaveBeenCalled();
+        });
+
+        // [Variant A — UK deterministic event_id contract, 2026-07-22]
+        // 23505 on the insert-first row no longer always means "concurrent
+        // duplicate": it can be a redelivery of an event whose earlier
+        // processing failed (row left with status='error'). The handler must
+        // atomically reclaim that row and reprocess.
+        it("reclaims an 'error' row on UNIQUE violation and reprocesses the event", async () => {
+            const uniqueError = new Error('duplicate key');
+            uniqueError.code = '23505';
+            IntegrationLog.create.mockRejectedValue(uniqueError);
+            IntegrationLog.reclaimErrorByEventId.mockResolvedValue({ id: 7, status: 'pending' });
+            Building.findByExternalId.mockResolvedValue(null);
+            Building.createFromUK.mockResolvedValue({ building_id: 5 });
+
+            await service.handleBuildingWebhook(basePayload);
+
+            expect(IntegrationLog.reclaimErrorByEventId).toHaveBeenCalledWith(basePayload.event_id);
+            expect(Building.createFromUK).toHaveBeenCalled();
+            expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(7, 'success');
         });
 
         it('throws on invalid event type', async () => {

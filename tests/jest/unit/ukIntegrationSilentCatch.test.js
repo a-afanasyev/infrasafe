@@ -30,7 +30,8 @@ jest.mock('../../../src/models/IntegrationConfig', () => ({
 jest.mock('../../../src/models/IntegrationLog', () => ({
     create: jest.fn(),
     findByEventId: jest.fn(),
-    updateStatus: jest.fn()
+    updateStatus: jest.fn(),
+    reclaimErrorByEventId: jest.fn()
 }));
 jest.mock('../../../src/models/AlertRequestMap', () => ({
     findByRequestNumber: jest.fn(),

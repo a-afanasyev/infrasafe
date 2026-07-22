@@ -123,6 +123,38 @@ class IntegrationLog {
     }
 
     /**
+     * [Variant A — UK deterministic event_id contract, 2026-07-22]
+     * Atomically reclaim a failed inbound event row for reprocessing.
+     * With deterministic event_ids a sender retry carries the SAME id, so a
+     * leftover status='error' row must not permanently swallow the redelivery.
+     * The `AND status = 'error'` guard makes the claim race-safe: of N
+     * concurrent redeliveries exactly one wins the UPDATE (row → pending),
+     * the rest match nothing and skip — same TOCTOU property the insert-first
+     * UNIQUE constraint gives fresh events.
+     * @param {string} eventId - The event_id of the failed row
+     * @returns {Promise<Object|null>} - Reclaimed row, or null if no error row matched
+     */
+    static async reclaimErrorByEventId(eventId) {
+        try {
+            const { rows } = await db.query(
+                `UPDATE integration_log
+                SET status = 'pending', error_message = NULL, retry_count = retry_count + 1
+                WHERE event_id = $1 AND status = 'error'
+                RETURNING *`,
+                [eventId]
+            );
+            if (rows.length) {
+                logger.info(`Reclaimed error integration log entry for retry, ID: ${rows[0].id}`);
+                return rows[0];
+            }
+            return null;
+        } catch (error) {
+            logger.error(`Error in IntegrationLog.reclaimErrorByEventId: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
      * Increment the retry count for a log entry
      * @param {number} id - The log entry ID
      * @returns {Promise<Object>} - Updated log entry

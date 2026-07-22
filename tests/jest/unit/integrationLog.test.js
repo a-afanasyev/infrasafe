@@ -152,6 +152,31 @@ describe('IntegrationLog Model', () => {
         });
     });
 
+    describe('reclaimErrorByEventId [variant A: UK deterministic event_id]', () => {
+        test("atomically reclaims an 'error' row: pending status, cleared error, bumped retry_count", async () => {
+            const reclaimedRow = { ...mockRow, status: 'pending', retry_count: 1 };
+            db.query.mockResolvedValue({ rows: [reclaimedRow] });
+
+            const result = await IntegrationLog.reclaimErrorByEventId('evt-abc-123');
+
+            expect(result).toEqual(reclaimedRow);
+            const [sql, params] = db.query.mock.calls[0];
+            expect(sql).toContain("SET status = 'pending'");
+            expect(sql).toContain('error_message = NULL');
+            expect(sql).toContain('retry_count = retry_count + 1');
+            expect(sql).toContain("WHERE event_id = $1 AND status = 'error'");
+            expect(params).toEqual(['evt-abc-123']);
+        });
+
+        test("returns null when no 'error' row matches (fresh, pending, or already-reclaimed event)", async () => {
+            db.query.mockResolvedValue({ rows: [] });
+
+            const result = await IntegrationLog.reclaimErrorByEventId('evt-abc-123');
+
+            expect(result).toBeNull();
+        });
+    });
+
     describe('incrementRetry', () => {
         test('SQL contains retry_count + 1', async () => {
             const updatedRow = { ...mockRow, retry_count: 1 };

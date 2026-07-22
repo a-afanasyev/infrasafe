@@ -57,11 +57,21 @@ class UKRequestProcessor {
                 status: 'pending'
             });
         } catch (logError) {
+            // UNIQUE violation: either a concurrent delivery of this event, or
+            // [Variant A, 2026-07-22] a UK redelivery after our earlier
+            // processing failed (status='error' row — deterministic event_ids
+            // retry with the SAME id). Atomic reclaim disambiguates: exactly
+            // one caller flips error→pending and reprocesses.
             if (logError.code === '23505') {
-                logger.info(`handleRequestWebhook: concurrent duplicate event_id ${safeLogValue(event_id)}, skipping`);
-                return;
+                logEntry = await IntegrationLog.reclaimErrorByEventId(event_id);
+                if (!logEntry) {
+                    logger.info(`handleRequestWebhook: concurrent duplicate event_id ${safeLogValue(event_id)}, skipping`);
+                    return;
+                }
+                logger.info(`handleRequestWebhook: reclaimed error row for event_id ${safeLogValue(event_id)}, reprocessing`);
+            } else {
+                throw logError;
             }
-            throw logError;
         }
 
         try {

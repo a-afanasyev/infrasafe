@@ -21,7 +21,8 @@ jest.mock('../../../src/models/IntegrationConfig', () => ({
 jest.mock('../../../src/models/IntegrationLog', () => ({
     create: jest.fn(),
     findByEventId: jest.fn(),
-    updateStatus: jest.fn()
+    updateStatus: jest.fn(),
+    reclaimErrorByEventId: jest.fn()
 }));
 jest.mock('../../../src/models/Building', () => ({
     findByExternalId: jest.fn(),
@@ -577,10 +578,30 @@ describe('UKIntegrationService — Phase 3-5', () => {
             const uniqueError = new Error('duplicate key');
             uniqueError.code = '23505';
             IntegrationLog.create.mockRejectedValue(uniqueError);
+            IntegrationLog.reclaimErrorByEventId.mockResolvedValue(null);
 
             await service.handleRequestWebhook(basePayload);
 
+            expect(IntegrationLog.reclaimErrorByEventId).toHaveBeenCalledWith(basePayload.event_id);
             expect(AlertRequestMap.findByRequestNumber).not.toHaveBeenCalled();
+        });
+
+        // [Variant A — UK deterministic event_id contract, 2026-07-22]
+        // A redelivery of an event whose earlier processing failed hits the
+        // UNIQUE constraint on the leftover 'error' row. The handler must
+        // atomically reclaim that row and reprocess instead of skipping.
+        it("reclaims an 'error' row on UNIQUE violation and reprocesses the event", async () => {
+            const uniqueError = new Error('duplicate key');
+            uniqueError.code = '23505';
+            IntegrationLog.create.mockRejectedValue(uniqueError);
+            IntegrationLog.reclaimErrorByEventId.mockResolvedValue({ id: 11, status: 'pending' });
+            AlertRequestMap.findByRequestNumber.mockResolvedValue(null);
+
+            await service.handleRequestWebhook(basePayload);
+
+            expect(IntegrationLog.reclaimErrorByEventId).toHaveBeenCalledWith(basePayload.event_id);
+            expect(AlertRequestMap.findByRequestNumber).toHaveBeenCalledWith('REQ-100');
+            expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(11, 'success');
         });
 
         it('re-throws non-UNIQUE log creation errors', async () => {

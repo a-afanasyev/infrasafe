@@ -215,10 +215,19 @@ class UKWebhookVerifier {
         return IntegrationLog.create(data);
     }
 
-    /** Check if an event ID already exists in the log (duplicate detection). */
+    /**
+     * Check if an event ID already exists in the log (duplicate detection).
+     * [Variant A — UK deterministic event_id contract, 2026-07-22] A row with
+     * status='error' is NOT a duplicate: UK's deterministic event_ids mean a
+     * retry after our 5xx carries the SAME id, and treating the failed row as
+     * "already processed" would drop the event permanently. The handlers'
+     * insert-first path pairs with IntegrationLog.reclaimErrorByEventId so
+     * the retry re-claims the error row race-safely.
+     */
     async isDuplicateEvent(eventId) {
         const entry = await IntegrationLog.findByEventId(eventId);
-        return entry !== null;
+        if (entry === null) return false;
+        return entry.status !== 'error';
     }
 }
 

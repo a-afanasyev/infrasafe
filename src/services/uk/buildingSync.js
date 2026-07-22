@@ -90,12 +90,22 @@ class UKBuildingSync {
                 status: 'pending'
             });
         } catch (logError) {
-            // UNIQUE violation means another request is already processing this event
+            // UNIQUE violation: either another request is processing this
+            // event concurrently, or [Variant A, 2026-07-22] this is a UK
+            // redelivery of an event whose earlier processing failed (row
+            // left with status='error' — deterministic event_ids retry with
+            // the SAME id). Atomic reclaim disambiguates: exactly one caller
+            // flips error→pending and reprocesses; everyone else skips.
             if (logError.code === '23505') {
-                logger.info(`Concurrent duplicate event_id ${safeLogValue(event_id)}, skipping`);
-                return;
+                logEntry = await IntegrationLog.reclaimErrorByEventId(event_id);
+                if (!logEntry) {
+                    logger.info(`Concurrent duplicate event_id ${safeLogValue(event_id)}, skipping`);
+                    return;
+                }
+                logger.info(`handleBuildingWebhook: reclaimed error row for event_id ${safeLogValue(event_id)}, reprocessing`);
+            } else {
+                throw logError;
             }
-            throw logError;
         }
 
         try {
