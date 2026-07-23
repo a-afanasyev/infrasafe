@@ -48,6 +48,9 @@ jest.mock('../../../src/models/AlertRequestMap', () => ({
 jest.mock('../../../src/models/UkOutbox', () => ({
     enqueue: jest.fn()
 }));
+jest.mock('../../../src/models/UkRequest', () => ({
+    reconcile: jest.fn()
+}));
 jest.mock('../../../src/services/alertService', () => ({
     resolveAlert: jest.fn()
 }));
@@ -61,6 +64,7 @@ const IntegrationLog = require('../../../src/models/IntegrationLog');
 const AlertRule = require('../../../src/models/AlertRule');
 const AlertRequestMap = require('../../../src/models/AlertRequestMap');
 const UkOutbox = require('../../../src/models/UkOutbox');
+const UkRequest = require('../../../src/models/UkRequest');
 const logger = require('../../../src/utils/logger');
 const service = require('../../../src/services/ukIntegrationService');
 
@@ -685,6 +689,93 @@ describe('UKIntegrationService — Phase 3-5', () => {
             );
             // Still marks log success — webhook processed without errors
             expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(10, 'success');
+        });
+
+        // [request.reconcile — UK contract 2026-07-23] UK's reconcile loop
+        // re-sends requests our inventory doesn't know. UK-originated requests
+        // have no ARM row (infrasafe_alert_id NOT NULL forbids one) → upsert
+        // into uk_requests instead. Requests that DO have an ARM row follow
+        // the status_changed path (criterion c — update, don't duplicate).
+        describe('request.reconcile', () => {
+            const reconcilePayload = {
+                event_id: 'ccddeeff-3344-5566-7788-990011223344',
+                event: 'request.reconcile',
+                request: {
+                    request_number: '260723-014',
+                    status: 'Принято',
+                    building_external_id: '3f2a9c1e-1111-2222-3333-b6c4d5e6f7a8'
+                }
+            };
+
+            it('no ARM mapping → upserts into uk_requests and marks log success', async () => {
+                AlertRequestMap.findByRequestNumber.mockResolvedValue(null);
+                UkRequest.reconcile.mockResolvedValue({ id: 1 });
+
+                await service.handleRequestWebhook(reconcilePayload);
+
+                expect(UkRequest.reconcile).toHaveBeenCalledWith({
+                    requestNumber: '260723-014',
+                    status: 'Принято',
+                    buildingExternalId: '3f2a9c1e-1111-2222-3333-b6c4d5e6f7a8'
+                });
+                expect(AlertRequestMap.updateStatus).not.toHaveBeenCalled();
+                expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(10, 'success');
+            });
+
+            it('null building_external_id passes through as null (yard/legacy)', async () => {
+                AlertRequestMap.findByRequestNumber.mockResolvedValue(null);
+                UkRequest.reconcile.mockResolvedValue({ id: 2 });
+
+                await service.handleRequestWebhook({
+                    ...reconcilePayload,
+                    request: { ...reconcilePayload.request, building_external_id: null }
+                });
+
+                expect(UkRequest.reconcile).toHaveBeenCalledWith(
+                    expect.objectContaining({ buildingExternalId: null })
+                );
+            });
+
+            it('existing ARM row → updates it via the status_changed path, no uk_requests row (criterion c)', async () => {
+                AlertRequestMap.findByRequestNumber.mockResolvedValue({
+                    id: 30,
+                    infrasafe_alert_id: 300
+                });
+                AlertRequestMap.updateStatus.mockResolvedValue({});
+                AlertRequestMap.areAllTerminal.mockResolvedValue(false);
+
+                await service.handleRequestWebhook(reconcilePayload);
+
+                expect(AlertRequestMap.updateStatus).toHaveBeenCalledWith(30, 'resolved');
+                expect(UkRequest.reconcile).not.toHaveBeenCalled();
+            });
+
+            it('terminal reconcile over ARM row with all mappings terminal → emits UK_REQUEST_RESOLVED (heals missed status_changed)', async () => {
+                const alertEvents = require('../../../src/events/alertEvents');
+                AlertRequestMap.findByRequestNumber.mockResolvedValue({
+                    id: 31,
+                    infrasafe_alert_id: 301
+                });
+                AlertRequestMap.updateStatus.mockResolvedValue({});
+                AlertRequestMap.areAllTerminal.mockResolvedValue(true);
+
+                const listener = jest.fn();
+                alertEvents.once(alertEvents.EVENTS.UK_REQUEST_RESOLVED, listener);
+
+                await service.handleRequestWebhook(reconcilePayload);
+
+                expect(listener).toHaveBeenCalledWith({ alertId: 301 });
+            });
+
+            it('upsert failure → marks integration_log error and rethrows (variant A retry path)', async () => {
+                AlertRequestMap.findByRequestNumber.mockResolvedValue(null);
+                UkRequest.reconcile.mockRejectedValue(new Error('DB down'));
+
+                await expect(service.handleRequestWebhook(reconcilePayload))
+                    .rejects.toThrow('DB down');
+
+                expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(10, 'error', 'DB down');
+            });
         });
 
         it('updates mapping to resolved on terminal status (Принято)', async () => {

@@ -22,6 +22,7 @@
 
 const IntegrationLog = require('../../models/IntegrationLog');
 const AlertRequestMap = require('../../models/AlertRequestMap');
+const UkRequest = require('../../models/UkRequest');
 const logger = require('../../utils/logger');
 const alertEvents = require('../../events/alertEvents');
 
@@ -133,7 +134,12 @@ class UKRequestProcessor {
             // present. Empty/missing both → skip the status-changed branch
             // (validator at webhookRoutes.js:140 already 400s on this).
             const ukStatus = ukRequest.new_status ?? ukRequest.status;
-            if (event === 'request.status_changed' && ukStatus) {
+
+            // [request.reconcile — UK contract 2026-07-23] Reconcile shares the
+            // status_changed flow: an existing ARM row is updated in place
+            // (criterion c — a terminal status heals a missed auto-resolve),
+            // while a number with no ARM row diverges per event below.
+            if ((event === 'request.status_changed' || event === 'request.reconcile') && ukStatus) {
                 // Find mapping by request number
                 const mapping = await AlertRequestMap.findByRequestNumber(ukRequest.request_number);
                 // [Sprint 9.2.1 / FIX-007] No mapping is an expected case
@@ -142,7 +148,25 @@ class UKRequestProcessor {
                 // "successful no-op" is the correct status — anything else
                 // leaves pending rows in operator's audit trail.
                 if (!mapping) {
-                    logger.debug(`handleRequestWebhook: no mapping for request ${safeLogValue(ukRequest.request_number)} (manual UK request or stale ARM)`);
+                    if (event === 'request.reconcile') {
+                        // UK-originated request (infrasafe_alert_id NOT NULL
+                        // forbids an ARM row) → atomic upsert into uk_requests
+                        // so the inventory union reports it and UK's set-diff
+                        // converges. Fresh event_id per cycle is by design;
+                        // convergence comes from the uk_request_number upsert
+                        // key, not event dedup.
+                        await UkRequest.reconcile({
+                            requestNumber: ukRequest.request_number,
+                            status: ukStatus,
+                            buildingExternalId: ukRequest.building_external_id ?? null
+                        });
+                        logger.info(
+                            `handleRequestWebhook: reconciled UK-originated request ` +
+                            `${safeLogValue(ukRequest.request_number)} into uk_requests`
+                        );
+                    } else {
+                        logger.debug(`handleRequestWebhook: no mapping for request ${safeLogValue(ukRequest.request_number)} (manual UK request or stale ARM)`);
+                    }
                 } else {
                     // Update mapping status
                     const newStatus = TERMINAL_STATUSES.includes(ukStatus) ? 'resolved' : 'active';

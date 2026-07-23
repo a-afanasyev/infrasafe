@@ -219,8 +219,9 @@ describe('webhookRoutes — POST /request', () => {
             .send(body);
 
         expect(res.status).toBe(400);
-        // [Sprint 9.2] Message now mentions both status and new_status
-        expect(res.body.message).toMatch(/request\.status.*request\.new_status.*status_changed event/);
+        // [Sprint 9.2] Message mentions both status and new_status;
+        // [2026-07-23] wording covers status_changed AND reconcile.
+        expect(res.body.message).toMatch(/request\.status.*request\.new_status.*status_changed\/reconcile event/);
     });
 
     it('returns 400 when status exceeds 100 characters', async () => {
@@ -369,6 +370,81 @@ describe('webhookRoutes — POST /request', () => {
 
         expect(res.status).toBe(400);
         expect(res.body.message).toBe('Missing required field: request');
+    });
+
+    // -------------------------------------------------------------------------
+    // [request.reconcile — UK contract 2026-07-23] Route-level validation:
+    // same envelope/endpoint as the rest of request.*; status is required
+    // (terminality is derived from it); building_external_id is optional but
+    // must be a valid UUID when present and non-null.
+    // -------------------------------------------------------------------------
+    describe('POST /request — request.reconcile validation', () => {
+        const reconcileBody = {
+            event_id: '550e8400-e29b-41d4-a716-446655440000',
+            event: 'request.reconcile',
+            request: {
+                request_number: '260723-014',
+                status: 'Принято',
+                building_external_id: '3f2a9c1e-1111-2222-3333-b6c4d5e6f7a8'
+            }
+        };
+
+        beforeEach(() => {
+            ukIntegrationService.isDuplicateEvent.mockResolvedValue(false);
+            ukIntegrationService.handleRequestWebhook.mockResolvedValue();
+        });
+
+        it('accepts a reconcile with building_external_id', async () => {
+            const res = await request(app)
+                .post('/request')
+                .set('x-webhook-signature', 't=1234567890,v1=abc123')
+                .send(reconcileBody);
+
+            expect(res.status).toBe(200);
+            expect(ukIntegrationService.handleRequestWebhook).toHaveBeenCalled();
+        });
+
+        it('accepts a reconcile with building_external_id: null (yard/legacy)', async () => {
+            const res = await request(app)
+                .post('/request')
+                .set('x-webhook-signature', 't=1234567890,v1=abc123')
+                .send({
+                    ...reconcileBody,
+                    request: { ...reconcileBody.request, building_external_id: null }
+                });
+
+            expect(res.status).toBe(200);
+        });
+
+        it('rejects a reconcile without status (400)', async () => {
+            const res = await request(app)
+                .post('/request')
+                .set('x-webhook-signature', 't=1234567890,v1=abc123')
+                .send({
+                    ...reconcileBody,
+                    request: { request_number: '260723-014' }
+                });
+
+            expect(res.status).toBe(400);
+            expect(ukIntegrationService.handleRequestWebhook).not.toHaveBeenCalled();
+        });
+
+        it('rejects a non-UUID building_external_id (400)', async () => {
+            // event_id must validate, the building id must not.
+            isValidUUID.mockImplementation(v => v === reconcileBody.event_id);
+
+            const res = await request(app)
+                .post('/request')
+                .set('x-webhook-signature', 't=1234567890,v1=abc123')
+                .send({
+                    ...reconcileBody,
+                    request: { ...reconcileBody.request, building_external_id: 'not-a-uuid' }
+                });
+
+            expect(res.status).toBe(400);
+            expect(res.body.message).toContain('building_external_id');
+            expect(ukIntegrationService.handleRequestWebhook).not.toHaveBeenCalled();
+        });
     });
 
     // -------------------------------------------------------------------------

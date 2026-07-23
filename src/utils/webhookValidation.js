@@ -5,7 +5,10 @@ const VALID_DIRECTIONS = ['from_uk', 'to_uk'];
 const VALID_STATUSES = ['pending', 'success', 'error', 'failed'];
 const VALID_ENTITY_TYPES = ['building', 'alert', 'request'];
 const VALID_BUILDING_EVENTS = ['building.created', 'building.updated', 'building.deleted'];
-const VALID_REQUEST_EVENTS = ['request.created', 'request.status_changed'];
+// [request.reconcile — UK contract 2026-07-23] Reconciliation replay for
+// UK-originated requests our inventory doesn't know; same envelope/endpoint
+// as the other request.* events.
+const VALID_REQUEST_EVENTS = ['request.created', 'request.status_changed', 'request.reconcile'];
 
 function isValidUUID(value) {
     if (!value || typeof value !== 'string') return false;
