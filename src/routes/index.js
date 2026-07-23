@@ -5,6 +5,7 @@ const metricRoutes = require('./metricRoutes');
 const authRoutes = require('./authRoutes');
 const buildingMetricsRoutes = require('./buildingMetricsRoutes');
 const ukRequestsMetricsRoutes = require('./ukRequestsMetricsRoutes');
+const ukBuildingsMetricsRoutes = require('./ukBuildingsMetricsRoutes');
 const mapLayerCountsRoutes = require('./mapLayerCountsRoutes');
 const analyticsRoutes = require('./analyticsRoutes');
 const alertRoutes = require('./alertRoutes');
@@ -110,6 +111,10 @@ const PUBLIC_ROUTES = [
     // UK already owns. Spec: docs/audit/2026-05-24-ARCH-114-uk-requests-
     // inventory-spec.md
     { method: 'GET',  path: '/uk-requests-metrics' },
+    // [2026-07-23] Buildings sibling of the ARCH-114 inventory: external_id
+    // list for UK's building set-diff (anonymous /buildings-metrics strips
+    // external_id per P-PENTEST-3). Same x-service-token gate + rate limit.
+    { method: 'GET',  path: '/uk-buildings-metrics' },
     // [B-024] Public aggregate layer counts (integers only, no row detail) so
     // anonymous map visitors see honest counts instead of (0) for auth-gated
     // layers. Mounted at /map-layer-counts below.
@@ -188,6 +193,7 @@ router.use('/water-suppliers', waterSupplierRoutes);
 router.use('/metrics', metricRoutes);
 router.use('/buildings-metrics', buildingMetricsRoutes);
 router.use('/uk-requests-metrics', ukRequestsMetricsRoutes);
+router.use('/uk-buildings-metrics', ukBuildingsMetricsRoutes);
 router.use('/map-layer-counts', mapLayerCountsRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/alerts', alertRoutes);

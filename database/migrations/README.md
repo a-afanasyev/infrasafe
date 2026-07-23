@@ -122,6 +122,7 @@ backward-compatible (expand-only).
 | 035 | `035_voltage_critical_rule.sql` | 2026-06-11 | AUD-006 — CRITICAL `VOLTAGE_ANOMALY` rule (voltage escalate-in-place). **Первая миграция, накатанная раннером** (не baseline). |
 | 036 | `036_canonicalize_transformers.sql` | 2026-06-13 | AUD-039 Phase 1 EXPAND — канонизация на `transformers` (порт 4 реальных строк, drop test-строки `'1111'`, building 5 → Олмазор-1, INTEGER-перегрузка `find_nearest_buildings_to_transformer`). Expand-only. |
 | 037 | `037_drop_power_transformers.sql` | 2026-06-13 | AUD-039 Phase 2 CONTRACT — DROP `power_transformers` + `buildings.power_transformer_id` + VARCHAR-перегрузки `find_nearest`; фикс arity-регрессии Phase 1 (правильная 3-арг INTEGER функция). Rollback target = Phase-1 образ. |
+| 038 | `038_uk_requests.sql` | 2026-07-23 | request.reconcile (контракт УК 2026-07-23) — таблица `uk_requests` для заявок, заведённых на стороне УК (в `alert_request_map` им нельзя: `infrasafe_alert_id NOT NULL`); upsert-ключ `uk_request_number`; инвентаризация и счётчики карты — ARM ∪ uk_requests. Плюс индекс `idx_arm_building_status` под ARM-ветку счётчиков (закрыт pre-existing gap Sprint 9). Expand-only. |
 
 ## Примечание про `003_*` и `012_*`
 

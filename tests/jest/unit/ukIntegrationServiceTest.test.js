@@ -48,6 +48,9 @@ jest.mock('../../../src/models/AlertRequestMap', () => ({
 jest.mock('../../../src/models/UkOutbox', () => ({
     enqueue: jest.fn()
 }));
+jest.mock('../../../src/models/UkRequest', () => ({
+    reconcile: jest.fn()
+}));
 jest.mock('../../../src/services/alertService', () => ({
     resolveAlert: jest.fn()
 }));
@@ -61,6 +64,7 @@ const IntegrationLog = require('../../../src/models/IntegrationLog');
 const AlertRule = require('../../../src/models/AlertRule');
 const AlertRequestMap = require('../../../src/models/AlertRequestMap');
 const UkOutbox = require('../../../src/models/UkOutbox');
+const UkRequest = require('../../../src/models/UkRequest');
 const logger = require('../../../src/utils/logger');
 const service = require('../../../src/services/ukIntegrationService');
 
@@ -687,6 +691,150 @@ describe('UKIntegrationService — Phase 3-5', () => {
             expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(10, 'success');
         });
 
+        // [request.reconcile — UK contract 2026-07-23] UK's reconcile loop
+        // re-sends requests our inventory doesn't know. UK-originated requests
+        // have no ARM row (infrasafe_alert_id NOT NULL forbids one) → upsert
+        // into uk_requests instead. Requests that DO have an ARM row follow
+        // the status_changed path (criterion c — update, don't duplicate).
+        describe('request.reconcile', () => {
+            const reconcilePayload = {
+                event_id: 'ccddeeff-3344-5566-7788-990011223344',
+                event: 'request.reconcile',
+                request: {
+                    request_number: '260723-014',
+                    status: 'Принято',
+                    building_external_id: '3f2a9c1e-1111-2222-3333-b6c4d5e6f7a8'
+                }
+            };
+
+            it('no ARM mapping → upserts into uk_requests and marks log success', async () => {
+                AlertRequestMap.findByRequestNumber.mockResolvedValue(null);
+                UkRequest.reconcile.mockResolvedValue({ id: 1 });
+
+                await service.handleRequestWebhook(reconcilePayload);
+
+                expect(UkRequest.reconcile).toHaveBeenCalledWith({
+                    requestNumber: '260723-014',
+                    status: 'Принято',
+                    buildingExternalId: '3f2a9c1e-1111-2222-3333-b6c4d5e6f7a8'
+                });
+                expect(AlertRequestMap.updateStatus).not.toHaveBeenCalled();
+                expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(10, 'success');
+            });
+
+            it('null building_external_id passes through as null (yard/legacy)', async () => {
+                AlertRequestMap.findByRequestNumber.mockResolvedValue(null);
+                UkRequest.reconcile.mockResolvedValue({ id: 2 });
+
+                await service.handleRequestWebhook({
+                    ...reconcilePayload,
+                    request: { ...reconcilePayload.request, building_external_id: null }
+                });
+
+                expect(UkRequest.reconcile).toHaveBeenCalledWith(
+                    expect.objectContaining({ buildingExternalId: null })
+                );
+            });
+
+            it('existing ARM row → updates it via the status_changed path, no uk_requests row (criterion c)', async () => {
+                AlertRequestMap.findByRequestNumber.mockResolvedValue({
+                    id: 30,
+                    infrasafe_alert_id: 300
+                });
+                AlertRequestMap.updateStatus.mockResolvedValue({});
+                AlertRequestMap.areAllTerminal.mockResolvedValue(false);
+
+                await service.handleRequestWebhook(reconcilePayload);
+
+                expect(AlertRequestMap.updateStatus).toHaveBeenCalledWith(30, 'resolved');
+                expect(UkRequest.reconcile).not.toHaveBeenCalled();
+            });
+
+            it('terminal reconcile over ARM row with all mappings terminal → emits UK_REQUEST_RESOLVED (heals missed status_changed)', async () => {
+                const alertEvents = require('../../../src/events/alertEvents');
+                AlertRequestMap.findByRequestNumber.mockResolvedValue({
+                    id: 31,
+                    infrasafe_alert_id: 301
+                });
+                AlertRequestMap.updateStatus.mockResolvedValue({});
+                AlertRequestMap.areAllTerminal.mockResolvedValue(true);
+
+                const listener = jest.fn();
+                alertEvents.once(alertEvents.EVENTS.UK_REQUEST_RESOLVED, listener);
+
+                await service.handleRequestWebhook(reconcilePayload);
+
+                expect(listener).toHaveBeenCalledWith({ alertId: 301 });
+            });
+
+            // [review fix] Reconcile is a periodic full-state replay: a stale
+            // non-terminal snapshot must not regress a terminal ARM mapping,
+            // and an unchanged status must not re-run the resolve flow.
+            it('stale non-terminal reconcile over a terminal ARM row → no downgrade, no emit', async () => {
+                AlertRequestMap.findByRequestNumber.mockResolvedValue({
+                    id: 32,
+                    infrasafe_alert_id: 302,
+                    status: 'resolved'
+                });
+
+                await service.handleRequestWebhook({
+                    ...reconcilePayload,
+                    request: { ...reconcilePayload.request, status: 'В работе' }
+                });
+
+                expect(AlertRequestMap.updateStatus).not.toHaveBeenCalled();
+                expect(AlertRequestMap.areAllTerminal).not.toHaveBeenCalled();
+                expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(10, 'success');
+            });
+
+            it('no-op reconcile (mapping already at the same status) → no update, no resolve re-emit', async () => {
+                const alertEvents = require('../../../src/events/alertEvents');
+                AlertRequestMap.findByRequestNumber.mockResolvedValue({
+                    id: 33,
+                    infrasafe_alert_id: 303,
+                    status: 'resolved'
+                });
+                const listener = jest.fn();
+                alertEvents.on(alertEvents.EVENTS.UK_REQUEST_RESOLVED, listener);
+
+                // 'Принято' maps to 'resolved' — same as the mapping's status.
+                await service.handleRequestWebhook(reconcilePayload);
+                alertEvents.off(alertEvents.EVENTS.UK_REQUEST_RESOLVED, listener);
+
+                expect(AlertRequestMap.updateStatus).not.toHaveBeenCalled();
+                expect(listener).not.toHaveBeenCalled();
+                expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(10, 'success');
+            });
+
+            it('status_changed still updates a terminal mapping (guard is reconcile-scoped)', async () => {
+                AlertRequestMap.findByRequestNumber.mockResolvedValue({
+                    id: 34,
+                    infrasafe_alert_id: 304,
+                    status: 'resolved'
+                });
+                AlertRequestMap.updateStatus.mockResolvedValue({});
+                AlertRequestMap.areAllTerminal.mockResolvedValue(false);
+
+                await service.handleRequestWebhook({
+                    event_id: 'ddeeff00-4455-6677-8899-001122334455',
+                    event: 'request.status_changed',
+                    request: { request_number: '260723-014', status: 'В работе' }
+                });
+
+                expect(AlertRequestMap.updateStatus).toHaveBeenCalledWith(34, 'active');
+            });
+
+            it('upsert failure → marks integration_log error and rethrows (variant A retry path)', async () => {
+                AlertRequestMap.findByRequestNumber.mockResolvedValue(null);
+                UkRequest.reconcile.mockRejectedValue(new Error('DB down'));
+
+                await expect(service.handleRequestWebhook(reconcilePayload))
+                    .rejects.toThrow('DB down');
+
+                expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(10, 'error', 'DB down');
+            });
+        });
+
         it('updates mapping to resolved on terminal status (Принято)', async () => {
             AlertRequestMap.findByRequestNumber.mockResolvedValue({
                 id: 20,
@@ -929,6 +1077,21 @@ describe('UKIntegrationService — Phase 3-5', () => {
             expect(sql).toMatch(/status IN \('pending', 'sent', 'active'\)/);
         });
 
+        // [request.reconcile — 2026-07-23] Counters union uk_requests with a
+        // parameterized UK terminal-status list (single shared constant, no
+        // vocabulary triplication in SQL literals).
+        it('unions uk_requests (non-terminal, deduped by number) with parameterized terminal list', async () => {
+            IntegrationConfig.isEnabled.mockResolvedValue(true);
+            db.query.mockResolvedValue({ rows: [] });
+
+            await service.getRequestCounts();
+
+            const [sql, params] = db.query.mock.calls[0];
+            expect(sql).toMatch(/FROM uk_requests/);
+            expect(sql).toMatch(/NOT EXISTS/i);
+            expect(params).toEqual([['Принято', 'Отменена']]);
+        });
+
         it('returns cached result within TTL window', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
             db.query.mockResolvedValue({
@@ -974,6 +1137,22 @@ describe('UKIntegrationService — Phase 3-5', () => {
     describe('getBuildingRequests()', () => {
         const validUUID = '550e8400-e29b-41d4-a716-446655440000';
 
+        // [review fix] ARM and uk_requests both use SERIAL ids — the union
+        // must carry a source discriminator so numerically colliding ids
+        // can't be mistaken for the same record by a consumer.
+        it('unions uk_requests with a source discriminator and parameterized terminal list', async () => {
+            IntegrationConfig.isEnabled.mockResolvedValue(true);
+            db.query.mockResolvedValue({ rows: [] });
+
+            await service.getBuildingRequests(validUUID);
+
+            const [sql, params] = db.query.mock.calls[0];
+            expect(sql).toMatch(/'arm' AS source/);
+            expect(sql).toMatch(/'uk' AS source/);
+            expect(sql).toMatch(/FROM uk_requests/);
+            expect(params).toEqual([validUUID, 3, ['Принято', 'Отменена']]);
+        });
+
         it('returns empty when externalId is null', async () => {
             const result = await service.getBuildingRequests(null);
             expect(result).toEqual({ requests: [] });
@@ -1006,7 +1185,9 @@ describe('UKIntegrationService — Phase 3-5', () => {
             const [sql, params] = db.query.mock.calls[0];
             expect(sql).toMatch(/FROM alert_request_map/);
             expect(sql).toMatch(/building_external_id = \$1/);
-            expect(params).toEqual([validUUID, 3]);
+            // [2026-07-23] third param = shared UK terminal-status list for
+            // the uk_requests union branch.
+            expect(params).toEqual([validUUID, 3, ['Принято', 'Отменена']]);
         });
 
         it('respects custom limit', async () => {

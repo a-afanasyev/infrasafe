@@ -317,6 +317,34 @@ class Building {
             client.release();
         }
     }
+
+    /**
+     * [UK building reconcile — 2026-07-23] Inventory for UK's building
+     * set-diff: every external_id we have on file, soft-deleted included
+     * (uk_deleted_at lets UK diff deletions too). Serves
+     * GET /api/uk-buildings-metrics — the anonymous /buildings-metrics
+     * projection deliberately strips external_id (P-PENTEST-3), which left
+     * UK's reconcile blind and repairing every building forever.
+     * Bounds mirror AlertRequestMap.listInventory.
+     */
+    static async listUkInventory({ limit = 5000 } = {}) {
+        const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 5000, 1), 10000);
+        try {
+            const { rows } = await db.query(
+                `SELECT external_id, uk_deleted_at
+                 FROM buildings
+                 WHERE external_id IS NOT NULL
+                 ORDER BY building_id
+                 LIMIT $1`,
+                [safeLimit]
+            );
+            return { rows, limit: safeLimit };
+        } catch (error) {
+            logger.error(`Error in Building.listUkInventory: ${error.message}`);
+            throw error;
+        }
+    }
+
     static async findByExternalId(externalId) {
         try {
             const { rows } = await db.query(

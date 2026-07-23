@@ -145,9 +145,22 @@ router.post('/request', verifyWebhook, async (req, res) => {
         // or `new_status` (UK Phase 2 contract — `{old_status, new_status}` is
         // semantically richer and matches UK request lifecycle events).
         // Either field satisfies the required-status check.
+        // [request.reconcile 2026-07-23] Reconcile carries the full current
+        // status (terminality is derived from it), so it is required there too.
         const effectiveStatus = ukRequest.new_status ?? ukRequest.status;
-        if (event === 'request.status_changed' && (!effectiveStatus || typeof effectiveStatus !== 'string')) {
-            return res.status(400).json({ success: false, message: 'Missing required field: request.status or request.new_status for status_changed event' });
+        if ((event === 'request.status_changed' || event === 'request.reconcile')
+            && (!effectiveStatus || typeof effectiveStatus !== 'string')) {
+            return res.status(400).json({ success: false, message: 'Missing required field: request.status or request.new_status for status_changed/reconcile event' });
+        }
+
+        // [request.reconcile 2026-07-23] building_external_id is optional
+        // (null for yard/legacy requests) but must be a valid UUID when set —
+        // it lands in a UUID column and feeds the per-building map counters.
+        const reconcileBuilding = ukRequest.building_external_id;
+        if (event === 'request.reconcile'
+            && reconcileBuilding !== undefined && reconcileBuilding !== null
+            && !isValidUUID(reconcileBuilding)) {
+            return res.status(400).json({ success: false, message: 'Invalid request.building_external_id: must be a UUID or null' });
         }
 
         if (effectiveStatus && effectiveStatus.length > 100) {

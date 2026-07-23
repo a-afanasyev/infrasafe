@@ -85,7 +85,10 @@ psql postgresql://postgres:postgres@localhost:5435/infrasafe
 #                    037 drop power_transformers — Phase 2 CONTRACT (AUD-039: DROP power_transformers + buildings.
 #                        power_transformer_id + FK + the VARCHAR find_nearest overloads; ALSO fixes a Phase-1 arity
 #                        regression — creates the correct 3-arg INTEGER find_nearest(id,radius,limit) the model calls,
-#                        drops 036's mistaken 2-arg one. Deliberate CONTRACT migration; rollback target = Phase-1 image)
+#                        drops 036's mistaken 2-arg one. Deliberate CONTRACT migration; rollback target = Phase-1 image),
+#                    038 uk_requests table (request.reconcile — UK contract 2026-07-23: registry of UK-originated
+#                        bot/dashboard requests that can't live in alert_request_map (alert_id NOT NULL); upsert key
+#                        uk_request_number; inventory + map counters serve ARM ∪ uk_requests)
 ```
 
 ### Migration runner (AUD-002, PR-1a)
@@ -147,7 +150,8 @@ All mounted under `/api`:
 - `/power-analytics` - Power grid analysis
 - `/webhooks/uk` - Incoming webhooks from UK bot (HMAC-verified, rate-limited 60/min, no JWT)
 - `/integration` - UK integration: config/logs/rules (admin-only), request-counts/building-requests (any auth user)
-- `/uk-requests-metrics` - ARCH-114 reconciliation inventory for UK side (no auth, mirror of `/buildings-metrics`)
+- `/uk-requests-metrics` - ARCH-114 reconciliation inventory for UK side (x-service-token via H-4; ARM ∪ uk_requests since request.reconcile 2026-07-23)
+- `/uk-buildings-metrics` - buildings inventory sibling (2026-07-23): every buildings.external_id + uk_deleted_at for UK's building set-diff — the anonymous `/buildings-metrics` projection strips external_id (P-PENTEST-3), which had UK's reconcile "repairing" every building hourly; same token + rate limit as the requests inventory
 
 ### UK Integration Module
 Bidirectional integration with UK Management Bot (Управляющая Компания). All 5 phases complete + Sprint 9 sender (FIX-007) + Sprint 10 ARCH-114 reconcile (2026-05-24).
@@ -180,7 +184,8 @@ Defense-in-depth: nginx TLS + HMAC-SHA256 webhook signatures (both directions, s
 - `alertForwarder.sendAlertToUK(alertData)` — matches alert rules, resolves buildings, **Sprint 9**: builds canonical event body and `UkOutbox.enqueue` per building (drain worker handles UK POST)
 - `requestProcessor.handleRequestWebhook(payload)` — terminal status detection (Принято/Отменена), auto-resolves alert when all mappings terminal
 - `alertForwarder.resolveBuildingIds(id, type)` — resolves via primary/backup_transformer_id, controller_id, cold_water_source_id, heat_source_id
-- `configProxy.getRequestCounts()` / `configProxy.getBuildingRequests()` — **Sprint 9**: local SQL aggregation against `alert_request_map`, 60s cache, graceful degradation. ⚠️ Under-count caveat: bot-originated requests not included until UK ARCH-113.
+- `configProxy.getRequestCounts()` / `configProxy.getBuildingRequests()` — **Sprint 9**: local SQL aggregation, 60s cache, graceful degradation. **2026-07-23**: aggregates ARM ∪ `uk_requests` (NOT EXISTS dedup by number; uk_requests terminal = 'Принято'/'Отменена') — closes the old ARCH-113 under-count for bot-originated requests that carry a building.
+- `requestProcessor` `request.reconcile` (UK contract 2026-07-23): ARM row exists → status_changed path (update + terminal heals missed auto-resolve); no ARM row → `UkRequest.reconcile` atomic upsert on `uk_request_number` (fresh event_id per UK cycle is by design — convergence via upsert key, not event dedup). `src/models/UkRequest.js`, migration 038.
 - `webhookVerifier.verifyWebhookSignature(rawBody, sigHeader)` — HMAC + replay protection
 - `buildingSync.handleBuildingWebhook(payload)` — building.created / .updated / .deleted
 - `ukWebhookClient.send(payloadBody)` — **Sprint 9** HMAC-signs at send-time, POSTs to UK `/api/v2/webhooks/infrasafe/alert`, returns `{outcome: success|dead|retry|skip, code, error}`.

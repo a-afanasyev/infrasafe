@@ -131,4 +131,30 @@ describe('AlertRequestMap.listInventory (ARCH-114)', () => {
 
         await expect(AlertRequestMap.listInventory()).rejects.toThrow('connection lost');
     });
+
+    // [request.reconcile — UK contract 2026-07-23] The inventory must cover
+    // UK-originated requests (uk_requests table) too, or UK's set-diff keeps
+    // "repairing" them forever — the exact eternal-repair loop this feature
+    // exists to close.
+    describe('uk_requests UNION (request.reconcile)', () => {
+        test('SQL unions alert_request_map with uk_requests', async () => {
+            db.query.mockResolvedValue({ rows: [] });
+
+            await AlertRequestMap.listInventory();
+
+            const sql = db.query.mock.calls[0][0];
+            expect(sql).toMatch(/UNION ALL/i);
+            expect(sql).toContain('FROM uk_requests');
+        });
+
+        test('a number present in ARM is not duplicated from uk_requests (ARM row wins)', async () => {
+            db.query.mockResolvedValue({ rows: [] });
+
+            await AlertRequestMap.listInventory();
+
+            const sql = db.query.mock.calls[0][0];
+            expect(sql).toMatch(/NOT EXISTS/i);
+            expect(sql).toMatch(/arm\.uk_request_number\s*=\s*ur\.uk_request_number/);
+        });
+    });
 });

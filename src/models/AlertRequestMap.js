@@ -140,6 +140,11 @@ class AlertRequestMap {
     static async listInventory({ limit = 5000 } = {}) {
         const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 5000, 1), 10000);
         try {
+            // [request.reconcile — UK contract 2026-07-23] Union ARM
+            // (alert-originated requests) with uk_requests (UK-originated,
+            // learned via request.reconcile). Without the union, UK's set-diff
+            // never sees reconciled requests and repairs them every cycle.
+            // A number present in both surfaces once, from ARM (richer row).
             const result = await db.query(
                 `SELECT uk_request_number,
                         status,
@@ -147,6 +152,16 @@ class AlertRequestMap {
                         updated_at
                  FROM alert_request_map
                  WHERE uk_request_number IS NOT NULL
+                 UNION ALL
+                 SELECT ur.uk_request_number,
+                        ur.status,
+                        ur.building_external_id,
+                        ur.last_reconciled_at AS updated_at
+                 FROM uk_requests ur
+                 WHERE NOT EXISTS (
+                     SELECT 1 FROM alert_request_map arm
+                     WHERE arm.uk_request_number = ur.uk_request_number
+                 )
                  ORDER BY updated_at DESC
                  LIMIT $1`,
                 [safeLimit]
