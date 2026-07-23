@@ -70,6 +70,22 @@ jobs:
           docker compose -f "$COMPOSE" logs app | tail -80
           exit 1
 
+      - name: Apply pending migrations (init schema stops at 017 — 018+ are the runner's job)
+        # database/init/ bakes the schema only up to migration 017 and
+        # 99_schema_migrations_baseline self-declares 003-017; everything later
+        # (Sprint 10 alert lifecycle v2 incl. reopen_chain_id, transformers
+        # canonicalization, …) is applied by scripts/migrate.sh — same flow as
+        # a fresh prod bootstrap. Without this the alert-lifecycle E2E hits
+        # 500 "column reopen_chain_id does not exist".
+        env:
+          MIGRATE_COMPOSE_FILE: docker-compose.dev.yml
+          MIGRATE_PG_USER: postgres
+          MIGRATE_NODE_MODE: host
+        run: |
+          export MIGRATE_TARGET_COMMIT="$(git rev-parse HEAD)"
+          bash scripts/migrate.sh status
+          bash scripts/migrate.sh up
+
       - name: Run E2E suite
         run: npm run test:e2e
 
