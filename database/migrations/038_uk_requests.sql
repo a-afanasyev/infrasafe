@@ -50,8 +50,19 @@ CREATE INDEX IF NOT EXISTS idx_uk_requests_building
     ON uk_requests (building_external_id)
     WHERE building_external_id IS NOT NULL;
 
--- Grants for runtime role (per migration 022 pattern): 017's bulk grants are
--- a point-in-time snapshot and do not cover tables created after it.
+-- [review fix 2026-07-23] The ARM side of the counters union
+-- (configProxy.getRequestCounts / getBuildingRequests) filters on
+-- (building_external_id, status) — alert_request_map had no index for either
+-- (pre-existing Sprint 9 gap; this PR doubles the query surface, so close it
+-- here). Partial: rows without a building never appear in per-building counts.
+CREATE INDEX IF NOT EXISTS idx_arm_building_status
+    ON alert_request_map (building_external_id, status)
+    WHERE building_external_id IS NOT NULL;
+
+-- Grants for runtime role (per migration 022 pattern). Note: 017's
+-- ALTER DEFAULT PRIVILEGES already auto-grants DML on tables created by
+-- infrasafe_app, so this block is belt-and-braces for bootstrap paths where
+-- the default-privilege owner differs (e.g. dev, POSTGRES_USER=postgres).
 DO $grant_runtime$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'infrasafe_runtime') THEN

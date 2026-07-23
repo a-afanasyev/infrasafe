@@ -11,6 +11,11 @@
 const Building = require('../models/Building');
 const logger = require('../utils/logger');
 
+/**
+ * GET /api/uk-buildings-metrics — building external_id inventory for UK's
+ * reconciliation set-diff. Same envelope as the requests inventory:
+ * { data: [{ external_id, uk_deleted_at }], total, limit }.
+ */
 async function getBuildingsInventory(req, res, next) {
     try {
         const rawLimit = req.query.limit;

@@ -28,7 +28,8 @@ const alertEvents = require('../../events/alertEvents');
 
 const configProxy = require('./configProxy');
 
-const TERMINAL_STATUSES = ['Принято', 'Отменена'];
+const { UK_TERMINAL_STATUSES, ARM_TERMINAL_STATUSES } = require('./ukStatusConstants');
+const TERMINAL_STATUSES = UK_TERMINAL_STATUSES;
 
 // [CodeQL js/log-injection] Strip CR/LF/TAB and cap length so attacker-shaped
 // values from the webhook payload (event_id, request_number, status) cannot
@@ -167,6 +168,25 @@ class UKRequestProcessor {
                     } else {
                         logger.debug(`handleRequestWebhook: no mapping for request ${safeLogValue(ukRequest.request_number)} (manual UK request or stale ARM)`);
                     }
+                } else if (event === 'request.reconcile'
+                    && (mapping.status === (TERMINAL_STATUSES.includes(ukStatus) ? 'resolved' : 'active')
+                        || (ARM_TERMINAL_STATUSES.includes(mapping.status) && !TERMINAL_STATUSES.includes(ukStatus)))) {
+                    // [review fix 2026-07-23] Reconcile is a periodic
+                    // full-state replay, so unlike an event-driven
+                    // status_changed it must be defensive about state it
+                    // replays ONTO:
+                    //   - no-op when the mapping is already at the target
+                    //     status (else every cycle re-runs areAllTerminal and
+                    //     re-emits UK_REQUEST_RESOLVED for long-closed alerts
+                    //     → resolveAlert "уже закрыт" error-log noise);
+                    //   - never downgrade a terminal mapping on a stale
+                    //     non-terminal snapshot (else a closed request pops
+                    //     back into the map counters as "active").
+                    logger.debug(
+                        `handleRequestWebhook: reconcile no-op for request ` +
+                        `${safeLogValue(ukRequest.request_number)} (mapping ${mapping.id} ` +
+                        `status=${safeLogValue(mapping.status)}, uk_status=${safeLogValue(ukStatus)})`
+                    );
                 } else {
                     // Update mapping status
                     const newStatus = TERMINAL_STATUSES.includes(ukStatus) ? 'resolved' : 'active';

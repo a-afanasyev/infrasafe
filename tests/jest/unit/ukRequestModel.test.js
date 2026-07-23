@@ -74,6 +74,21 @@ describe('UkRequest Model (request.reconcile)', () => {
             expect(db.query.mock.calls[0][0]).toContain('last_reconciled_at = NOW()');
         });
 
+        // [review fix, defense-in-depth] status is persisted and later served
+        // by a public JSON endpoint — strip control characters at write time,
+        // mirroring the safeLogValue convention.
+        test('strips control characters from status before persisting', async () => {
+            db.query.mockResolvedValue({ rows: [mockRow] });
+
+            await UkRequest.reconcile({
+                requestNumber: '260723-016',
+                status: 'Принято\r\n\x00есть',
+                buildingExternalId: null
+            });
+
+            expect(db.query.mock.calls[0][1][1]).toBe('Принято есть');
+        });
+
         test('propagates db errors to caller (handler marks integration_log error → variant A retry)', async () => {
             db.query.mockRejectedValue(new Error('DB down'));
 

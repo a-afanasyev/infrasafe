@@ -317,6 +317,7 @@ class Building {
             client.release();
         }
     }
+
     /**
      * [UK building reconcile — 2026-07-23] Inventory for UK's building
      * set-diff: every external_id we have on file, soft-deleted included

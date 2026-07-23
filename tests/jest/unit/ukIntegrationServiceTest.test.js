@@ -767,6 +767,63 @@ describe('UKIntegrationService — Phase 3-5', () => {
                 expect(listener).toHaveBeenCalledWith({ alertId: 301 });
             });
 
+            // [review fix] Reconcile is a periodic full-state replay: a stale
+            // non-terminal snapshot must not regress a terminal ARM mapping,
+            // and an unchanged status must not re-run the resolve flow.
+            it('stale non-terminal reconcile over a terminal ARM row → no downgrade, no emit', async () => {
+                AlertRequestMap.findByRequestNumber.mockResolvedValue({
+                    id: 32,
+                    infrasafe_alert_id: 302,
+                    status: 'resolved'
+                });
+
+                await service.handleRequestWebhook({
+                    ...reconcilePayload,
+                    request: { ...reconcilePayload.request, status: 'В работе' }
+                });
+
+                expect(AlertRequestMap.updateStatus).not.toHaveBeenCalled();
+                expect(AlertRequestMap.areAllTerminal).not.toHaveBeenCalled();
+                expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(10, 'success');
+            });
+
+            it('no-op reconcile (mapping already at the same status) → no update, no resolve re-emit', async () => {
+                const alertEvents = require('../../../src/events/alertEvents');
+                AlertRequestMap.findByRequestNumber.mockResolvedValue({
+                    id: 33,
+                    infrasafe_alert_id: 303,
+                    status: 'resolved'
+                });
+                const listener = jest.fn();
+                alertEvents.on(alertEvents.EVENTS.UK_REQUEST_RESOLVED, listener);
+
+                // 'Принято' maps to 'resolved' — same as the mapping's status.
+                await service.handleRequestWebhook(reconcilePayload);
+                alertEvents.off(alertEvents.EVENTS.UK_REQUEST_RESOLVED, listener);
+
+                expect(AlertRequestMap.updateStatus).not.toHaveBeenCalled();
+                expect(listener).not.toHaveBeenCalled();
+                expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(10, 'success');
+            });
+
+            it('status_changed still updates a terminal mapping (guard is reconcile-scoped)', async () => {
+                AlertRequestMap.findByRequestNumber.mockResolvedValue({
+                    id: 34,
+                    infrasafe_alert_id: 304,
+                    status: 'resolved'
+                });
+                AlertRequestMap.updateStatus.mockResolvedValue({});
+                AlertRequestMap.areAllTerminal.mockResolvedValue(false);
+
+                await service.handleRequestWebhook({
+                    event_id: 'ddeeff00-4455-6677-8899-001122334455',
+                    event: 'request.status_changed',
+                    request: { request_number: '260723-014', status: 'В работе' }
+                });
+
+                expect(AlertRequestMap.updateStatus).toHaveBeenCalledWith(34, 'active');
+            });
+
             it('upsert failure → marks integration_log error and rethrows (variant A retry path)', async () => {
                 AlertRequestMap.findByRequestNumber.mockResolvedValue(null);
                 UkRequest.reconcile.mockRejectedValue(new Error('DB down'));
@@ -1020,6 +1077,21 @@ describe('UKIntegrationService — Phase 3-5', () => {
             expect(sql).toMatch(/status IN \('pending', 'sent', 'active'\)/);
         });
 
+        // [request.reconcile — 2026-07-23] Counters union uk_requests with a
+        // parameterized UK terminal-status list (single shared constant, no
+        // vocabulary triplication in SQL literals).
+        it('unions uk_requests (non-terminal, deduped by number) with parameterized terminal list', async () => {
+            IntegrationConfig.isEnabled.mockResolvedValue(true);
+            db.query.mockResolvedValue({ rows: [] });
+
+            await service.getRequestCounts();
+
+            const [sql, params] = db.query.mock.calls[0];
+            expect(sql).toMatch(/FROM uk_requests/);
+            expect(sql).toMatch(/NOT EXISTS/i);
+            expect(params).toEqual([['Принято', 'Отменена']]);
+        });
+
         it('returns cached result within TTL window', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
             db.query.mockResolvedValue({
@@ -1065,6 +1137,22 @@ describe('UKIntegrationService — Phase 3-5', () => {
     describe('getBuildingRequests()', () => {
         const validUUID = '550e8400-e29b-41d4-a716-446655440000';
 
+        // [review fix] ARM and uk_requests both use SERIAL ids — the union
+        // must carry a source discriminator so numerically colliding ids
+        // can't be mistaken for the same record by a consumer.
+        it('unions uk_requests with a source discriminator and parameterized terminal list', async () => {
+            IntegrationConfig.isEnabled.mockResolvedValue(true);
+            db.query.mockResolvedValue({ rows: [] });
+
+            await service.getBuildingRequests(validUUID);
+
+            const [sql, params] = db.query.mock.calls[0];
+            expect(sql).toMatch(/'arm' AS source/);
+            expect(sql).toMatch(/'uk' AS source/);
+            expect(sql).toMatch(/FROM uk_requests/);
+            expect(params).toEqual([validUUID, 3, ['Принято', 'Отменена']]);
+        });
+
         it('returns empty when externalId is null', async () => {
             const result = await service.getBuildingRequests(null);
             expect(result).toEqual({ requests: [] });
@@ -1097,7 +1185,9 @@ describe('UKIntegrationService — Phase 3-5', () => {
             const [sql, params] = db.query.mock.calls[0];
             expect(sql).toMatch(/FROM alert_request_map/);
             expect(sql).toMatch(/building_external_id = \$1/);
-            expect(params).toEqual([validUUID, 3]);
+            // [2026-07-23] third param = shared UK terminal-status list for
+            // the uk_requests union branch.
+            expect(params).toEqual([validUUID, 3, ['Принято', 'Отменена']]);
         });
 
         it('respects custom limit', async () => {

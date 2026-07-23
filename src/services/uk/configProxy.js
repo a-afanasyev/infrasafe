@@ -18,6 +18,7 @@
 const IntegrationConfig = require('../../models/IntegrationConfig');
 const logger = require('../../utils/logger');
 const { validateUKApiUrl } = require('../../utils/urlValidation');
+const { UK_TERMINAL_STATUSES } = require('./ukStatusConstants');
 
 const ALLOWED_CONFIG_KEYS = ['uk_integration_enabled', 'uk_api_url', 'uk_frontend_url'];
 const SENSITIVE_KEYS = ['uk_webhook_secret', 'uk_service_user', 'uk_service_password'];
@@ -155,11 +156,11 @@ class UKConfigProxy {
             const db = require('../../config/database');
             // [request.reconcile — UK contract 2026-07-23] Count both
             // alert-originated requests (ARM, InfraSafe status vocabulary) and
-            // UK-originated ones (uk_requests, UK's dictionary — terminal is
-            // 'Принято'/'Отменена', mirror requestProcessor.TERMINAL_STATUSES).
-            // NOT EXISTS prevents double-counting a number present in both.
-            // This also closes the ARCH-113 under-count caveat for bot-created
-            // requests that carry a building.
+            // UK-originated ones (uk_requests, UK's dictionary — terminal list
+            // parameterized from the shared ukStatusConstants). NOT EXISTS
+            // prevents double-counting a number present in both. This also
+            // closes the ARCH-113 under-count caveat for bot-created requests
+            // that carry a building.
             const result = await db.query(
                 `SELECT external_id, SUM(count)::int AS count FROM (
                      SELECT building_external_id::text AS external_id, COUNT(*)::int AS count
@@ -171,14 +172,15 @@ class UKConfigProxy {
                      SELECT ur.building_external_id::text AS external_id, COUNT(*)::int AS count
                      FROM uk_requests ur
                      WHERE ur.building_external_id IS NOT NULL
-                       AND (ur.status IS NULL OR ur.status NOT IN ('Принято', 'Отменена'))
+                       AND (ur.status IS NULL OR NOT (ur.status = ANY($1)))
                        AND NOT EXISTS (
                            SELECT 1 FROM alert_request_map arm
                            WHERE arm.uk_request_number = ur.uk_request_number
                        )
                      GROUP BY ur.building_external_id
                  ) counts
-                 GROUP BY external_id`
+                 GROUP BY external_id`,
+                [UK_TERMINAL_STATUSES]
             );
 
             const buildings = {};
@@ -219,29 +221,31 @@ class UKConfigProxy {
             const db = require('../../config/database');
             // [request.reconcile — UK contract 2026-07-23] Include
             // UK-originated requests for this building (uk_requests); their
-            // alert-side fields are NULL by nature. Same dedup + terminal
-            // semantics as getRequestCounts above.
+            // alert-side fields are NULL by nature. `source` disambiguates the
+            // two independent SERIAL id spaces (ARM id=7 and uk_requests id=7
+            // are different records). Same dedup + terminal semantics as
+            // getRequestCounts above.
             const result = await db.query(
-                `SELECT id, uk_request_number, status, infrasafe_alert_id,
-                        idempotency_key, created_at, updated_at
+                `SELECT id, 'arm' AS source, uk_request_number, status,
+                        infrasafe_alert_id, idempotency_key, created_at, updated_at
                  FROM alert_request_map
                  WHERE building_external_id = $1
                    AND status IN ('pending', 'sent', 'active')
                  UNION ALL
-                 SELECT ur.id, ur.uk_request_number, ur.status,
+                 SELECT ur.id, 'uk' AS source, ur.uk_request_number, ur.status,
                         NULL AS infrasafe_alert_id, NULL AS idempotency_key,
                         ur.first_seen_at AS created_at,
                         ur.last_reconciled_at AS updated_at
                  FROM uk_requests ur
                  WHERE ur.building_external_id = $1
-                   AND (ur.status IS NULL OR ur.status NOT IN ('Принято', 'Отменена'))
+                   AND (ur.status IS NULL OR NOT (ur.status = ANY($3)))
                    AND NOT EXISTS (
                        SELECT 1 FROM alert_request_map arm
                        WHERE arm.uk_request_number = ur.uk_request_number
                    )
                  ORDER BY created_at DESC
                  LIMIT $2`,
-                [externalId, safeLimit]
+                [externalId, safeLimit, UK_TERMINAL_STATUSES]
             );
 
             return { requests: result.rows };

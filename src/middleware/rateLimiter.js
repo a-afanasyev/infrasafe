@@ -471,7 +471,13 @@ const ukInventoryLimiter = new SimpleRateLimiter({
     windowMs: 60 * 1000,
     max: 30,
     message: 'Слишком много запросов инвентаря UK. Попробуйте позже.',
-    keyGenerator: (req) => `uk-inventory:${req.ip || req.connection.remoteAddress}`,
+    // [review fix 2026-07-23] Key includes the mount path: this limiter is
+    // now shared by TWO inventory routes (/uk-requests-metrics and
+    // /uk-buildings-metrics) — without the path component they'd share one
+    // 30/min budget per IP, and UK's worker pairing both pulls (or an
+    // anonymous caller on a token-less env) could starve one endpoint's
+    // quota with the other's traffic.
+    keyGenerator: (req) => `uk-inventory:${req.baseUrl || req.path}:${req.ip || req.connection.remoteAddress}`,
     standardHeaders: true,
     legacyHeaders: false,
     namespace: 'uk-inventory'

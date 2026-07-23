@@ -31,6 +31,14 @@ class UkRequest {
      */
     static async reconcile({ requestNumber, status, buildingExternalId }) {
         try {
+            // [review fix, defense-in-depth] status round-trips to a public
+            // JSON endpoint (inventory union) — collapse control characters
+            // at write time so no future consumer can be log/DOM-injected by
+            // a stored value. Mirrors the safeLogValue convention.
+            const safeStatus = typeof status === 'string'
+                // eslint-disable-next-line no-control-regex -- deliberate: stripping control chars IS the point
+                ? status.replace(/[\x00-\x1f\x7f]+/g, ' ').trim()
+                : status;
             const { rows } = await db.query(
                 `INSERT INTO uk_requests (uk_request_number, status, building_external_id)
                  VALUES ($1, $2, $3)
@@ -39,7 +47,7 @@ class UkRequest {
                      building_external_id = COALESCE(EXCLUDED.building_external_id, uk_requests.building_external_id),
                      last_reconciled_at = NOW()
                  RETURNING *`,
-                [requestNumber, status, buildingExternalId ?? null]
+                [requestNumber, safeStatus, buildingExternalId ?? null]
             );
             return rows[0];
         } catch (error) {
