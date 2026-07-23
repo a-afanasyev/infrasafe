@@ -44,6 +44,15 @@ jobs:
       - name: Install host deps (jest + supertest + pg + otplib for the harness)
         run: npm ci
 
+      - name: Pre-create the logs bind-mount dir
+        # docker-compose.dev.yml bind-mounts ./logs:/app/logs. On a fresh CI
+        # checkout the dir doesn't exist, so dockerd creates it ROOT-owned and
+        # the app (user nodejs, uid 1001) crashes at boot with EACCES opening
+        # its winston log file — the app never became healthy in ANY nightly
+        # run since this workflow was added. Create it as the runner user
+        # (+world-writable in case the container uid ever changes).
+        run: mkdir -p logs && chmod 0777 logs
+
       - name: Start the dev stack
         run: docker compose -f "$COMPOSE" up -d --build
 

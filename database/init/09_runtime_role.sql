@@ -69,12 +69,28 @@ GRANT EXECUTE
     ON ALL FUNCTIONS IN SCHEMA public
     TO infrasafe_runtime;
 
-ALTER DEFAULT PRIVILEGES FOR ROLE infrasafe_app IN SCHEMA public
-    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES    TO infrasafe_runtime;
--- [1A-FU2-DB-H2] USAGE+SELECT only for future sequences.
-ALTER DEFAULT PRIVILEGES FOR ROLE infrasafe_app IN SCHEMA public
-    GRANT USAGE, SELECT                  ON SEQUENCES TO infrasafe_runtime;
--- [1A-FU2-DB-H1] No EXECUTE auto-grant. Each future function explicit.
+-- [#150 e2e-ci] The header's assumption "POSTGRES_USER == infrasafe_app" holds
+-- for prod bootstraps but NOT for the dev stack (docker-compose.dev.yml uses
+-- POSTGRES_USER=postgres). The official postgres entrypoint runs init scripts
+-- with ON_ERROR_STOP, so an unguarded reference to the absent role aborted the
+-- whole init partway (rest of this file + 99_schema_migrations_baseline never
+-- ran; the container only came up on restart over the half-initialized volume).
+-- Guard the default-privilege grants on role existence; dev doesn't need them
+-- (its app connects as the postgres superuser).
+DO $default_priv_09$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'infrasafe_app') THEN
+        ALTER DEFAULT PRIVILEGES FOR ROLE infrasafe_app IN SCHEMA public
+            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES    TO infrasafe_runtime;
+        -- [1A-FU2-DB-H2] USAGE+SELECT only for future sequences.
+        ALTER DEFAULT PRIVILEGES FOR ROLE infrasafe_app IN SCHEMA public
+            GRANT USAGE, SELECT                  ON SEQUENCES TO infrasafe_runtime;
+        -- [1A-FU2-DB-H1] No EXECUTE auto-grant. Each future function explicit.
+    ELSE
+        RAISE NOTICE '09_runtime_role: role infrasafe_app absent (dev bootstrap) — skipping default-privilege grants';
+    END IF;
+END
+$default_priv_09$;
 
 DO $sec_def_09$
 BEGIN
