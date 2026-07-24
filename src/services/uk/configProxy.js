@@ -167,6 +167,7 @@ class UKConfigProxy {
                      FROM alert_request_map
                      WHERE status IN ('pending', 'sent', 'active')
                        AND building_external_id IS NOT NULL
+                       AND archived_at IS NULL
                      GROUP BY building_external_id
                      UNION ALL
                      SELECT ur.building_external_id::text AS external_id, COUNT(*)::int AS count
@@ -176,6 +177,7 @@ class UKConfigProxy {
                        AND NOT EXISTS (
                            SELECT 1 FROM alert_request_map arm
                            WHERE arm.uk_request_number = ur.uk_request_number
+                             AND arm.archived_at IS NULL
                        )
                      GROUP BY ur.building_external_id
                  ) counts
@@ -231,6 +233,7 @@ class UKConfigProxy {
                  FROM alert_request_map
                  WHERE building_external_id = $1
                    AND status IN ('pending', 'sent', 'active')
+                   AND archived_at IS NULL
                  UNION ALL
                  SELECT ur.id, 'uk' AS source, ur.uk_request_number, ur.status,
                         NULL AS infrasafe_alert_id, NULL AS idempotency_key,
@@ -242,6 +245,7 @@ class UKConfigProxy {
                    AND NOT EXISTS (
                        SELECT 1 FROM alert_request_map arm
                        WHERE arm.uk_request_number = ur.uk_request_number
+                             AND arm.archived_at IS NULL
                    )
                  ORDER BY created_at DESC
                  LIMIT $2`,

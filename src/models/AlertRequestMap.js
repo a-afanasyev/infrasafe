@@ -152,6 +152,7 @@ class AlertRequestMap {
                         updated_at
                  FROM alert_request_map
                  WHERE uk_request_number IS NOT NULL
+                   AND archived_at IS NULL
                  UNION ALL
                  SELECT ur.uk_request_number,
                         ur.status,
@@ -161,6 +162,7 @@ class AlertRequestMap {
                  WHERE NOT EXISTS (
                      SELECT 1 FROM alert_request_map arm
                      WHERE arm.uk_request_number = ur.uk_request_number
+                       AND arm.archived_at IS NULL
                  )
                  ORDER BY updated_at DESC
                  LIMIT $1`,
