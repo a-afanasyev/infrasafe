@@ -88,7 +88,11 @@ psql postgresql://postgres:postgres@localhost:5435/infrasafe
 #                        drops 036's mistaken 2-arg one. Deliberate CONTRACT migration; rollback target = Phase-1 image),
 #                    038 uk_requests table (request.reconcile — UK contract 2026-07-23: registry of UK-originated
 #                        bot/dashboard requests that can't live in alert_request_map (alert_id NOT NULL); upsert key
-#                        uk_request_number; inventory + map counters serve ARM ∪ uk_requests)
+#                        uk_request_number; inventory + map counters serve ARM ∪ uk_requests),
+#                    039 ARM widen + archive (2026-07-24: uk_request_number VARCHAR(20)→(50) — validator accepted 50,
+#                        markSent would 500 on 21+; archived_at column + archive of 7 UK-confirmed orphan synthetics
+#                        on infrasafe — archived rows hidden from inventory/counters via archived_at IS NULL,
+#                        audit kept; no-op on profk/fresh)
 ```
 
 ### Migration runner (AUD-002, PR-1a)

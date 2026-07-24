@@ -136,6 +136,20 @@ describe('AlertRequestMap.listInventory (ARCH-114)', () => {
     // UK-originated requests (uk_requests table) too, or UK's set-diff keeps
     // "repairing" them forever — the exact eternal-repair loop this feature
     // exists to close.
+    // [migration 039] Archived ARM rows (UK-confirmed orphans — synthetics
+    // deleted on UK's side) must not appear in the inventory, or they sit as
+    // permanent noise in UK's orphan diff.
+    describe('archived rows excluded', () => {
+        test('ARM branch filters archived_at IS NULL', async () => {
+            db.query.mockResolvedValue({ rows: [] });
+
+            await AlertRequestMap.listInventory();
+
+            const sql = db.query.mock.calls[0][0];
+            expect(sql).toMatch(/archived_at IS NULL/);
+        });
+    });
+
     describe('uk_requests UNION (request.reconcile)', () => {
         test('SQL unions alert_request_map with uk_requests', async () => {
             db.query.mockResolvedValue({ rows: [] });

@@ -1092,6 +1092,17 @@ describe('UKIntegrationService — Phase 3-5', () => {
             expect(params).toEqual([['Принято', 'Отменена']]);
         });
 
+        // [migration 039] An archived ARM row can still carry status='active'
+        // (e.g. the 260528-002 orphan) — the counters must skip it.
+        it('excludes archived ARM rows from counts', async () => {
+            IntegrationConfig.isEnabled.mockResolvedValue(true);
+            db.query.mockResolvedValue({ rows: [] });
+
+            await service.getRequestCounts();
+
+            expect(db.query.mock.calls[0][0]).toMatch(/archived_at IS NULL/);
+        });
+
         it('returns cached result within TTL window', async () => {
             IntegrationConfig.isEnabled.mockResolvedValue(true);
             db.query.mockResolvedValue({
@@ -1150,6 +1161,7 @@ describe('UKIntegrationService — Phase 3-5', () => {
             expect(sql).toMatch(/'arm' AS source/);
             expect(sql).toMatch(/'uk' AS source/);
             expect(sql).toMatch(/FROM uk_requests/);
+            expect(sql).toMatch(/archived_at IS NULL/);
             expect(params).toEqual([validUUID, 3, ['Принято', 'Отменена']]);
         });
 
