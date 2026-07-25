@@ -197,12 +197,19 @@ tpsql -c "DELETE FROM schema_migrations WHERE filename='035_e2e_marker.sql'" >/d
 
 # ===========================================================================
 info "7) drift: an edited applied-migration checksum makes status exit 5"
+# Сохраняем ИСХОДНЫЙ checksum и возвращаем его же. Прежний вариант (DELETE +
+# `up || true`) чинить состояние не мог: 022 не идемпотентна, её переприменение
+# падает на уже существующих объектах, `|| true` это глотал — и БД оставалась с
+# одной pending-миграцией до конца прогона. Латентный дефект: он не ломал ни один
+# из тогдашних шагов, но отравлял любой следующий `up` (что и вскрылось на 14).
+orig_ck="$(tpsql -c "SELECT checksum FROM schema_migrations WHERE filename='022_uk_outbox.sql'")"
+[ -n "$orig_ck" ] && pass "checksum 022 захвачен до порчи" || fail "не удалось прочитать checksum 022"
 tpsql -c "UPDATE schema_migrations SET checksum='deadbeef' WHERE filename='022_uk_outbox.sql'" >/dev/null
 rc=0; migrate "$BASELINE_TARGET" status >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 5 ] && pass "checksum drift → status exit 5" || fail "drift status exit $rc (want 5)"
-tpsql -c "DELETE FROM schema_migrations WHERE filename='022_uk_outbox.sql'" >/dev/null
-# re-record correct checksum via a fresh up so later steps stay clean
-migrate "$BASELINE_TARGET" up >/dev/null 2>&1 || true
+tpsql -c "UPDATE schema_migrations SET checksum='$orig_ck' WHERE filename='022_uk_outbox.sql'" >/dev/null
+rc=0; migrate "$BASELINE_TARGET" status >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && pass "checksum восстановлен — status снова чистый" || fail "после восстановления status exit $rc (want 0)"
 
 # ===========================================================================
 info "8) db-only: a recorded file absent from target makes status exit 5"
@@ -277,6 +284,69 @@ rc=0; MIGRATE_COMPOSE_FILE="$COMPOSE" MIGRATE_PG_USER=postgres MIGRATE_PG_DB="$P
     MIGRATE_TARGET_COMMIT="$BASELINE_TARGET" MIGRATE_NODE_MODE=bogus \
     bash scripts/migrate.sh status >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 1 ] && pass "invalid MIGRATE_NODE_MODE rejected (exit 1)" || fail "bogus mode exit $rc (want 1)"
+
+# ===========================================================================
+# [M-12b / PR-2b] Прогоняем НАСТОЯЩИЙ файл миграции 040, а не синтетический
+# аналог: смысл шага — поймать расхождение между тем, что мы задеплоим, и тем,
+# что проверили. Строится тот же dangling-commit поверх BASELINE_TARGET, поэтому
+# 040 оказывается единственным pending-файлом независимо от реальных 035-039.
+#
+# Обязан идти ПОСЛЕ шага 13: после него 040 остаётся записанным в
+# schema_migrations, а в BASELINE_TARGET его нет → любой последующий
+# `status $BASELINE_TARGET` увидел бы db-only drift и вышел с 5.
+info "14) миграция 040: fail-closed на грязных данных, затем применяется и держит домен"
+MIG040="database/migrations/040_water_lines_status_check.sql"
+[ -f "$MIG040" ] && pass "040 найдена в рабочем дереве" || fail "040 отсутствует: $MIG040"
+C040="$(commit_with "040_water_lines_status_check.sql" "$(cat "$MIG040")")"
+
+# Предусловие. Без него шаг лжёт: если от предыдущих шагов осталась чужая
+# pending-миграция, `up` потащит её тоже, упадёт на ней — и 14a «пройдёт» по
+# неверной причине (ждём non-zero и получаем его не от 040). Ровно это и
+# произошло до фикса шага 7.
+pre="$(migrate "$BASELINE_TARGET" status 2>/dev/null | grep '^migrate-status:' || true)"
+echo "$pre" | grep -q "pending=0 drift=0 db_only=0" \
+    && pass "предусловие: перед 14 нет посторонних pending/drift ($pre)" \
+    || fail "грязное состояние перед 14 — шаг недостоверен: $pre"
+
+# 14a. Грязная строка → миграция ОБЯЗАНА упасть и не записаться (fail-closed).
+tpsql -c "INSERT INTO water_lines(main_path, status) VALUES (1, 'broken')" >/dev/null
+before="$(count_applied)"
+rc=0; migrate "$C040" up >/dev/null 2>&1 || rc=$?
+[ "$rc" -ne 0 ] && pass "040 падает при значении вне домена (exit $rc)" || fail "040 применилась на грязных данных (exit 0)"
+after="$(count_applied)"
+[ "$after" = "$before" ] && pass "упавшая 040 не записана в schema_migrations" || fail "rows $before→$after"
+c="$(tpsql -c "SELECT count(*) FROM pg_constraint WHERE conname='water_lines_status_check'")"
+[ "$c" = "0" ] && pass "констрейнт не создан при откате транзакции" || fail "констрейнт остался после падения"
+held="$(tpsql -c "SELECT count(*) FROM migrate_lock WHERE id=1")"
+[ "$held" = "0" ] && pass "замок освобождён после падения 040" || fail "замок завис (rows=$held)"
+
+# 14b. Данные вычищены → применяется.
+tpsql -c "DELETE FROM water_lines WHERE status NOT IN ('active','maintenance','inactive')" >/dev/null
+rc=0; migrate "$C040" up >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && pass "040 применяется на чистых данных (exit 0)" || fail "040 exit $rc (want 0)"
+rec="$(tpsql -c "SELECT count(*) FROM schema_migrations WHERE filename='040_water_lines_status_check.sql'")"
+[ "$rec" = "1" ] && pass "040 записана в schema_migrations" || fail "040 не записана (rows=$rec)"
+c="$(tpsql -c "SELECT count(*) FROM pg_constraint WHERE conname='water_lines_status_check'")"
+[ "$c" = "1" ] && pass "констрейнт создан" || fail "констрейнт отсутствует"
+# Валидный, а не NOT VALID — иначе старые строки остались бы непроверенными.
+v="$(tpsql -c "SELECT convalidated FROM pg_constraint WHERE conname='water_lines_status_check'")"
+[ "$v" = "t" ] && pass "констрейнт сразу VALID (не NOT VALID)" || fail "convalidated=$v (want t)"
+
+# 14c. Домен реально держится: невалидные записи отбиваются, валидные проходят.
+rc=0; tpsql -c "INSERT INTO water_lines(main_path, status) VALUES (2, 'broken')" >/dev/null 2>&1 || rc=$?
+[ "$rc" -ne 0 ] && pass "INSERT со статусом вне домена отвергнут" || fail "INSERT 'broken' прошёл"
+for st in active maintenance inactive; do
+    rc=0; tpsql -c "INSERT INTO water_lines(main_path, status) VALUES (3, '$st')" >/dev/null 2>&1 || rc=$?
+    [ "$rc" -eq 0 ] && pass "INSERT со статусом '$st' проходит" || fail "'$st' отвергнут (exit $rc)"
+done
+rc=0; tpsql -c "INSERT INTO water_lines(main_path, status) VALUES (4, NULL)" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && pass "NULL-статус разрешён явно (колонка nullable)" || fail "NULL отвергнут (exit $rc)"
+rc=0; tpsql -c "UPDATE water_lines SET status='broken' WHERE main_path=3" >/dev/null 2>&1 || rc=$?
+[ "$rc" -ne 0 ] && pass "UPDATE в статус вне домена отвергнут" || fail "UPDATE 'broken' прошёл"
+
+# 14d. Идемпотентность: повторный up — no-op, не падает на существующем констрейнте.
+rc=0; migrate "$C040" up >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && pass "повторный up после 040 — no-op (exit 0)" || fail "повторный up exit $rc"
 
 echo ""
 info "summary: pass=$PASS fail=$FAIL"

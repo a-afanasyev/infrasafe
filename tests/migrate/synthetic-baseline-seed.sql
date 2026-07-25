@@ -30,7 +30,10 @@ CREATE TABLE buildings (            -- 008: canonical prod KEEPS hot_water + has
 );
 CREATE TABLE transformers (id SERIAL PRIMARY KEY, geom INT);
 CREATE TABLE power_lines (id SERIAL PRIMARY KEY, main_path INT);
-CREATE TABLE water_lines (id SERIAL PRIMARY KEY, main_path INT);
+-- [M-12b] `status` нужен шагу 14 (миграция 040 вешает на него CHECK). Тип и
+-- DEFAULT — как в реальной схеме (01_init_database.sql), иначе тест проверял бы
+-- не тот контракт.
+CREATE TABLE water_lines (id SERIAL PRIMARY KEY, main_path INT, status VARCHAR(20) DEFAULT 'active');
 CREATE TABLE cold_water_sources (id SERIAL PRIMARY KEY, status TEXT);
 -- 009: mirror prod — token_hash indexed via a UNIQUE key (token_blacklist_token_hash_key),
 -- not 009's named idx_token_blacklist_hash.
