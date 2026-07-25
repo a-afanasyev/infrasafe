@@ -850,6 +850,11 @@ class InfrastructureAlertService {
         return alertGates.checkAffectedBuildingsGate(alertData, rule);
     }
 
+    // [B-009] delegate-only → alert/alertGates. `now` инжектируется тестами.
+    _checkSeasonGate(alertData, rule, now) {
+        return alertGates.checkSeasonGate(alertData, rule, now);
+    }
+
     // Создание нового алерта.
     //
     // [Sprint 10 PR-1] options.bypassGates=true skips persistence + buildings
@@ -872,6 +877,18 @@ class InfrastructureAlertService {
             const rule = options.ruleSnapshot
                 || await AlertRule.findByTypeAndSeverity(alertData.type, alertData.severity);
             if (rule) {
+                // [B-009] Сезонный гейт идёт ПЕРВЫМ: он синхронный и не ходит в
+                // БД, а persistence-гейт агрегирует `metrics`. Вне сезона нет
+                // смысла платить за этот запрос. Правила без окна (оба поля
+                // NULL — все существующие) гейт пропускает.
+                const seasonCheck = this._checkSeasonGate(alertData, rule, options.now);
+                if (!seasonCheck.allowed) {
+                    logger.info(
+                        `Alert skipped by season gate: ${alertData.type}/${alertData.severity} ` +
+                        `for ${alertData.infrastructure_type}:${alertData.infrastructure_id} — ${seasonCheck.reason}`
+                    );
+                    return null;
+                }
                 // sinceTimestamp (verify mode) clamps the persistence gate to
                 // post-resolve telemetry and switches it to continuous-fault
                 // semantics. Null in the legacy path → existing behavior.

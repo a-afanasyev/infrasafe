@@ -3403,22 +3403,35 @@ document.addEventListener("DOMContentLoaded", function () {
     // [Sprint 10 PR-5] PATCH one field. Validates client-side via
     // window.UkRulesValidation, then POSTs.
     async function patchRuleField(ruleId, fieldName, rawValue) {
+        return patchRuleFields(ruleId, { [fieldName]: rawValue }, fieldName);
+    }
+
+    // [B-009] Патч НЕСКОЛЬКИХ полей одним запросом. Нужен сезонному окну:
+    // season_from/season_to обязаны меняться вместе (парность проверяют и
+    // сервер, и констрейнт БД), поэтому отправлять их двумя запросами нельзя —
+    // первый бы отвалился с 400 на половине пары.
+    async function patchRuleFields(ruleId, rawFields, label) {
         if (!window.UkRulesValidation) {
             showToast('Validation helper не загружен', 'error');
             return false;
         }
-        const check = window.UkRulesValidation.validateRuleField(fieldName, rawValue);
-        if (!check.ok) {
-            showToast(check.error, 'error');
-            return false;
+        const payload = {};
+        for (const [name, rawValue] of Object.entries(rawFields)) {
+            const check = window.UkRulesValidation.validateRuleField(name, rawValue);
+            if (!check.ok) {
+                showToast(check.error, 'error');
+                return false;
+            }
+            payload[name] = check.coerced;
         }
+        const fieldName = label || Object.keys(rawFields).join(', ');
         try {
             const response = await fetch(`${backendURL}/integration/rules/${ruleId}`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ fields: { [fieldName]: check.coerced } })
+                body: JSON.stringify({ fields: payload })
             });
             const data = await response.json();
             if (data.success) {
@@ -3547,7 +3560,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!integrationState.rules || integrationState.rules.length === 0) {
             const tr = document.createElement('tr');
             const td = document.createElement('td');
-            td.colSpan = 10;
+            td.colSpan = 11;   // [B-009] +1 колонка «Сезон»
             td.style.textAlign = 'center';
             td.style.color = '#999';
             td.textContent = 'Правил нет';
@@ -3568,8 +3581,9 @@ document.addEventListener("DOMContentLoaded", function () {
             tr.appendChild(_mkEditableInt(rule, 'verification_window_seconds'));
             tr.appendChild(_mkEditableInt(rule, 'max_reopens_per_24h'));
             tr.appendChild(_mkBoolCheck(rule, 'reopen_urgency_bump'));
+            tr.appendChild(_mkSeasonCell(rule));   // [B-009]
 
-            // Col 9: stats badges
+            // Col 10: stats badges
             const statsTd = document.createElement('td');
             statsTd.style.fontSize = '12px';
             const alertCount = rule.alert_count || 0;
@@ -3584,7 +3598,7 @@ document.addEventListener("DOMContentLoaded", function () {
             }
             tr.appendChild(statsTd);
 
-            // Col 10: actions
+            // Col 11: actions
             const actionsTd = document.createElement('td');
             actionsTd.style.whiteSpace = 'nowrap';
             const enableLabel = document.createElement('label');
@@ -3662,6 +3676,81 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         });
         td.appendChild(input);
+        return td;
+    }
+
+    // [B-009] Сезонное окно одной ячейкой. Оба поля патчатся ОДНИМ запросом —
+    // так UI физически не может отправить половину пары (её отвергли бы и
+    // AlertRule.update, и констрейнт БД). Пустые оба = снять окно (круглый год).
+    function _mkSeasonCell(rule) {
+        const td = document.createElement('td');
+        td.style.whiteSpace = 'nowrap';
+
+        const mkInput = (fieldName) => {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = rule[fieldName] ? String(rule[fieldName]).trim() : '';
+            input.placeholder = 'MM-DD';
+            input.maxLength = 5;
+            input.style.width = '58px';
+            input.style.padding = '2px 4px';
+            input.style.border = '1px solid #ddd';
+            input.style.borderRadius = '3px';
+            input.style.textAlign = 'center';
+            const spec = window.UkRulesValidation && window.UkRulesValidation.RULE_FIELD_SPEC[fieldName];
+            if (spec) input.title = spec.hint || '';
+            return input;
+        };
+
+        const fromInput = mkInput('season_from');
+        const toInput = mkInput('season_to');
+
+        const commit = async () => {
+            const from = fromInput.value.trim();
+            const to = toInput.value.trim();
+            const wasFrom = rule.season_from ? String(rule.season_from).trim() : '';
+            const wasTo = rule.season_to ? String(rule.season_to).trim() : '';
+            if (from === wasFrom && to === wasTo) return;
+
+            if ((from === '') !== (to === '')) {
+                showToast('Сезон: заполните оба поля или очистите оба', 'error');
+                fromInput.value = wasFrom;
+                toInput.value = wasTo;
+                return;
+            }
+
+            const ok = await patchRuleFields(
+                rule.id,
+                { season_from: from, season_to: to },
+                'сезонное окно'
+            );
+            if (ok) {
+                rule.season_from = from || null;
+                rule.season_to = to || null;
+                for (const el of [fromInput, toInput]) {
+                    el.style.background = '#e8f5e9';
+                    setTimeout(() => { el.style.background = ''; }, 1000);
+                }
+            } else {
+                fromInput.value = wasFrom;
+                toInput.value = wasTo;
+            }
+        };
+
+        // Коммитим только когда фокус ушёл из ЯЧЕЙКИ целиком. Иначе переход
+        // Tab'ом из «с» в «по» отправлял бы наполовину заполненную пару и
+        // затирал бы поле, которое пользователь как раз собирается заполнить.
+        const onBlur = (e) => {
+            const next = e.relatedTarget;
+            if (next === fromInput || next === toInput) return;
+            commit();
+        };
+        fromInput.addEventListener('blur', onBlur);
+        toInput.addEventListener('blur', onBlur);
+
+        td.appendChild(fromInput);
+        td.appendChild(document.createTextNode(' → '));
+        td.appendChild(toInput);
         return td;
     }
 

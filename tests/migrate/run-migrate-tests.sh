@@ -348,5 +348,60 @@ rc=0; tpsql -c "UPDATE water_lines SET status='broken' WHERE main_path=3" >/dev/
 rc=0; migrate "$C040" up >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 0 ] && pass "повторный up после 040 — no-op (exit 0)" || fail "повторный up exit $rc"
 
+# ===========================================================================
+# [B-009] Миграция 041 — сезонное окно. Как и 040, гоняем НАСТОЯЩИЙ файл.
+# Строится на BASELINE_TARGET, поэтому 041 — единственная pending; 040 из шага 14
+# осталась записанной в БД, но её нет в этой цели, значит `status` показал бы
+# db-only drift. Поэтому предусловие здесь проверяет только отсутствие DRIFT по
+# checksum, а запись 040 снимаем — она своё уже доказала.
+info "15) миграция 041: сезонное окно — формат, парность, откат на грязных данных"
+tpsql -c "DELETE FROM schema_migrations WHERE filename='040_water_lines_status_check.sql'" >/dev/null
+MIG041="database/migrations/041_alert_rules_season_window.sql"
+[ -f "$MIG041" ] && pass "041 найдена в рабочем дереве" || fail "041 отсутствует: $MIG041"
+C041="$(commit_with "041_alert_rules_season_window.sql" "$(cat "$MIG041")")"
+
+# 15a. Существующая строка с мусором в будущем окне → миграция обязана упасть.
+# Проверяем ровно то, ради чего CHECK и добавляется: он не пускает мусор ДАЖЕ
+# если тот появился до миграции.
+tpsql -c "ALTER TABLE alert_rules ADD COLUMN season_from CHAR(5)" >/dev/null
+tpsql -c "ALTER TABLE alert_rules ADD COLUMN season_to CHAR(5)" >/dev/null
+tpsql -c "UPDATE alert_rules SET season_from='13-99', season_to='04-15'" >/dev/null
+before="$(count_applied)"
+rc=0; migrate "$C041" up >/dev/null 2>&1 || rc=$?
+[ "$rc" -ne 0 ] && pass "041 падает на существующем мусорном значении (exit $rc)" || fail "041 применилась поверх мусора"
+after="$(count_applied)"
+[ "$after" = "$before" ] && pass "упавшая 041 не записана" || fail "rows $before→$after"
+c="$(tpsql -c "SELECT count(*) FROM pg_constraint WHERE conname='alert_rules_season_format_check'")"
+[ "$c" = "0" ] && pass "констрейнт формата не создан при откате" || fail "констрейнт остался после падения"
+
+# 15b. Чистим → применяется.
+tpsql -c "UPDATE alert_rules SET season_from=NULL, season_to=NULL" >/dev/null
+rc=0; migrate "$C041" up >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && pass "041 применяется на чистых данных" || fail "041 exit $rc (want 0)"
+rec="$(tpsql -c "SELECT count(*) FROM schema_migrations WHERE filename='041_alert_rules_season_window.sql'")"
+[ "$rec" = "1" ] && pass "041 записана в schema_migrations" || fail "041 не записана (rows=$rec)"
+for cn in alert_rules_season_format_check alert_rules_season_pair_check; do
+    v="$(tpsql -c "SELECT convalidated FROM pg_constraint WHERE conname='$cn'")"
+    [ "$v" = "t" ] && pass "$cn создан и VALID" || fail "$cn: convalidated=$v"
+done
+
+# 15c. Контракт формата и парности держится.
+rc=0; tpsql -c "UPDATE alert_rules SET season_from='13-01', season_to='04-15'" >/dev/null 2>&1 || rc=$?
+[ "$rc" -ne 0 ] && pass "13-01 отвергнут (месяц > 12)" || fail "13-01 прошёл"
+rc=0; tpsql -c "UPDATE alert_rules SET season_from='2026-10-15', season_to='04-15'" >/dev/null 2>&1 || rc=$?
+[ "$rc" -ne 0 ] && pass "формат с годом отвергнут" || fail "2026-10-15 прошёл"
+rc=0; tpsql -c "UPDATE alert_rules SET season_from='10-15', season_to=NULL" >/dev/null 2>&1 || rc=$?
+[ "$rc" -ne 0 ] && pass "полузаполненная пара отвергнута" || fail "половина пары прошла"
+rc=0; tpsql -c "UPDATE alert_rules SET season_from='10-15', season_to='04-15'" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && pass "валидное окно через Новый год принимается" || fail "10-15..04-15 отвергнуто (exit $rc)"
+rc=0; tpsql -c "UPDATE alert_rules SET season_from='02-29', season_to='02-29'" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && pass "02-29 принимается (високосный год)" || fail "02-29 отвергнут"
+rc=0; tpsql -c "UPDATE alert_rules SET season_from=NULL, season_to=NULL" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && pass "снятие окна (оба NULL) принимается" || fail "оба NULL отвергнуты"
+
+# 15d. Идемпотентность.
+rc=0; migrate "$C041" up >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && pass "повторный up после 041 — no-op" || fail "повторный up exit $rc"
+
 echo ""
 info "summary: pass=$PASS fail=$FAIL"

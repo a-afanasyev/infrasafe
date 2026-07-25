@@ -2,6 +2,7 @@
 
 const db = require('../../config/database');
 const sharedThresholds = require('../../config/thresholds');
+const logger = require('../../utils/logger');
 
 /**
  * [AUD-012] Alert creation gates extracted from alertService.js (delegate-only
@@ -269,9 +270,62 @@ async function checkAffectedBuildingsGate(alertData, rule) {
     return { allowed: true, reason: `buildings gate OK: ${buildings.length} affected` };
 }
 
+// [B-009] Сезонное окно правила. Синхронный (в отличие от соседей) — данных из
+// БД не нужно, окно уже лежит в снапшоте правила.
+//
+// Формат хранения — 'MM-DD' (миграция 041); лексикографическое сравнение
+// zero-padded строк совпадает с календарным, поэтому парсинг не нужен.
+//
+// Переход через Новый год — основной случай (отопительный сезон 10-15..04-15),
+// а не краевой:
+//   from <= to → внутри, если from <= today <= to
+//   from >  to → внутри, если today >= from ИЛИ today <= to
+// Границы ВКЛЮЧИТЕЛЬНЫЕ с обеих сторон.
+//
+// Оба NULL = круглый год (значение по умолчанию для всех существующих правил →
+// поведение до B-009 сохраняется). Полузаполненная пара запрещена констрейнтом
+// БД, но если она каким-то образом возникла — fail-open: гейт пропускает и пишет
+// warn. Заглушить эскалацию из-за недоредактированной строки хуже, чем пропустить
+// лишний алерт.
+//
+// `now` инжектируется тестами; по умолчанию — локальное время процесса
+// (TZ контейнера, Asia/Tashkent на проде). Для суточной границы этого достаточно.
+function checkSeasonGate(alertData, rule, now = new Date()) {
+    const from = rule.season_from ? String(rule.season_from).trim() : null;
+    const to   = rule.season_to   ? String(rule.season_to).trim()   : null;
+
+    if (!from && !to) {
+        return { allowed: true, reason: 'season gate: круглогодичное правило' };
+    }
+    if (!from || !to) {
+        logger.warn(
+            `season gate: полузаполненное окно у правила ${rule.alert_type}/${rule.severity} ` +
+            `(from=${from ?? 'NULL'}, to=${to ?? 'NULL'}) — пропускаем (fail-open)`
+        );
+        return { allowed: true, reason: 'season gate: неполное окно, fail-open' };
+    }
+
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const today = `${mm}-${dd}`;
+
+    const inside = (from <= to)
+        ? (today >= from && today <= to)
+        : (today >= from || today <= to);
+
+    if (!inside) {
+        return {
+            allowed: false,
+            reason: `season gate: ${today} вне окна ${from}..${to}`
+        };
+    }
+    return { allowed: true, reason: `season gate OK: ${today} внутри ${from}..${to}` };
+}
+
 module.exports = {
     checkPersistenceGate,
     checkVerifyPersistenceGate,
     evaluateVerifyFaultWindow,
-    checkAffectedBuildingsGate
+    checkAffectedBuildingsGate,
+    checkSeasonGate
 };
