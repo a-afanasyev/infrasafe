@@ -1,4 +1,8 @@
 const alertService = require('../services/alertService');
+// [R2-23] Код берём из модуля констант, а НЕ с alertService: мок сервиса в тесте
+// оставил бы поле undefined, и любая ошибка без `code` совпала бы по
+// `undefined === undefined`, превратившись в ложный 404.
+const { ALERT_NOT_FOUND } = require('../services/alert/alertConstants');
 const { validatePagination } = require('../utils/queryValidation');
 // [R2-05] Canonical error envelope { success:false, error:{ message, status } }.
 const { sendError } = require('../utils/apiResponse');
@@ -83,7 +87,9 @@ class AlertController {
             });
 
         } catch (error) {
-            if (error.message && error.message.includes('не найден')) {
+            // [R2-23] Типизированный код вместо подстроки русского текста:
+            // переформулировка сообщения в сервисе больше не превращает 404 в 500.
+            if (error.code === ALERT_NOT_FOUND) {
                 return sendError(res, 404, 'Алерт не найден или уже обработан');
             }
             next(error);
@@ -109,7 +115,9 @@ class AlertController {
             });
 
         } catch (error) {
-            if (error.message && error.message.includes('не найден')) {
+            // [R2-23] Типизированный код вместо подстроки русского текста:
+            // переформулировка сообщения в сервисе больше не превращает 404 в 500.
+            if (error.code === ALERT_NOT_FOUND) {
                 return sendError(res, 404, 'Алерт не найден или уже обработан');
             }
             next(error);

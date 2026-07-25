@@ -2,6 +2,10 @@ const express = require('express');
 const adminController = require('../controllers/admin');
 const { rateLimitStrict } = require('../middleware/rateLimiter');
 const { isAdmin } = require('../middleware/auth');
+// [R2-16] Общий guard на :id — без него нечисловой id доходит до pg и даёт 500
+// вместо 400. Ставится ПОСЛЕ rateLimitStrict (лимитер защищает эндпоинт первым)
+// и ПЕРЕД контроллером, как в waterLineRoutes.
+const { validateIdParam } = require('../middleware/validators');
 
 const router = express.Router();
 
@@ -116,9 +120,9 @@ router.get('/buildings', adminController.getOptimizedBuildings);
 
 // CRUD операции для зданий
 router.post('/buildings', rateLimitStrict, adminController.createBuilding);
-router.get('/buildings/:id', adminController.getBuildingById);
-router.put('/buildings/:id', rateLimitStrict, adminController.updateBuilding);
-router.delete('/buildings/:id', rateLimitStrict, adminController.deleteBuilding);
+router.get('/buildings/:id', validateIdParam, adminController.getBuildingById);
+router.put('/buildings/:id', rateLimitStrict, validateIdParam, adminController.updateBuilding);
+router.delete('/buildings/:id', rateLimitStrict, validateIdParam, adminController.deleteBuilding);
 
 /**
  * @swagger
@@ -220,9 +224,9 @@ router.get('/controllers', adminController.getOptimizedControllers);
 
 // CRUD операции для контроллеров
 router.post('/controllers', rateLimitStrict, adminController.createController);
-router.get('/controllers/:id', adminController.getControllerById);
-router.put('/controllers/:id', rateLimitStrict, adminController.updateController);
-router.delete('/controllers/:id', rateLimitStrict, adminController.deleteController);
+router.get('/controllers/:id', validateIdParam, adminController.getControllerById);
+router.put('/controllers/:id', rateLimitStrict, validateIdParam, adminController.updateController);
+router.delete('/controllers/:id', rateLimitStrict, validateIdParam, adminController.deleteController);
 
 /**
  * @swagger
@@ -326,8 +330,8 @@ router.get('/metrics', adminController.getOptimizedMetrics);
 // NOTE: PUT intentionally absent — metricService has no update path
 // (metrics are append-only telemetry; the prior admin route was dead code).
 router.post('/metrics', rateLimitStrict, adminController.createMetric);
-router.get('/metrics/:id', adminController.getMetricById);
-router.delete('/metrics/:id', rateLimitStrict, adminController.deleteMetric);
+router.get('/metrics/:id', validateIdParam, adminController.getMetricById);
+router.delete('/metrics/:id', rateLimitStrict, validateIdParam, adminController.deleteMetric);
 
 /**
  * @swagger
@@ -530,9 +534,9 @@ router.post('/transformers', rateLimitStrict, adminController.createTransformer)
  *       200:
  *         description: Трансформатор удален
  */
-router.get('/transformers/:id', adminController.getTransformerById);
-router.put('/transformers/:id', rateLimitStrict, adminController.updateTransformer);
-router.delete('/transformers/:id', rateLimitStrict, adminController.deleteTransformer);
+router.get('/transformers/:id', validateIdParam, adminController.getTransformerById);
+router.put('/transformers/:id', rateLimitStrict, validateIdParam, adminController.updateTransformer);
+router.delete('/transformers/:id', rateLimitStrict, validateIdParam, adminController.deleteTransformer);
 
 /**
  * @swagger
@@ -711,9 +715,9 @@ router.post('/lines', rateLimitStrict, adminController.createLine);
  *       200:
  *         description: Линия удалена
  */
-router.get('/lines/:id', adminController.getLineById);
-router.put('/lines/:id', rateLimitStrict, adminController.updateLine);
-router.delete('/lines/:id', rateLimitStrict, adminController.deleteLine);
+router.get('/lines/:id', validateIdParam, adminController.getLineById);
+router.put('/lines/:id', rateLimitStrict, validateIdParam, adminController.updateLine);
+router.delete('/lines/:id', rateLimitStrict, validateIdParam, adminController.deleteLine);
 
 /**
  * @swagger
@@ -911,9 +915,9 @@ router.post('/water-lines', rateLimitStrict, adminController.createWaterLine);
  *       200:
  *         description: Линия водоснабжения удалена
  */
-router.get('/water-lines/:id', adminController.getWaterLineById);
-router.put('/water-lines/:id', rateLimitStrict, adminController.updateWaterLine);
-router.delete('/water-lines/:id', rateLimitStrict, adminController.deleteWaterLine);
+router.get('/water-lines/:id', validateIdParam, adminController.getWaterLineById);
+router.put('/water-lines/:id', rateLimitStrict, validateIdParam, adminController.updateWaterLine);
+router.delete('/water-lines/:id', rateLimitStrict, validateIdParam, adminController.deleteWaterLine);
 
 /**
  * @swagger
@@ -949,9 +953,9 @@ router.post('/water-lines/batch', rateLimitStrict, adminController.batchWaterLin
 
 router.get('/cold-water-sources', adminController.getOptimizedColdWaterSources);
 router.post('/cold-water-sources', rateLimitStrict, adminController.createColdWaterSource);
-router.get('/cold-water-sources/:id', adminController.getColdWaterSourceById);
-router.put('/cold-water-sources/:id', rateLimitStrict, adminController.updateColdWaterSource);
-router.delete('/cold-water-sources/:id', rateLimitStrict, adminController.deleteColdWaterSource);
+router.get('/cold-water-sources/:id', validateIdParam, adminController.getColdWaterSourceById);
+router.put('/cold-water-sources/:id', rateLimitStrict, validateIdParam, adminController.updateColdWaterSource);
+router.delete('/cold-water-sources/:id', rateLimitStrict, validateIdParam, adminController.deleteColdWaterSource);
 
 // ===============================================
 // ИСТОЧНИКИ ТЕПЛА
@@ -959,8 +963,8 @@ router.delete('/cold-water-sources/:id', rateLimitStrict, adminController.delete
 
 router.get('/heat-sources', adminController.getOptimizedHeatSources);
 router.post('/heat-sources', rateLimitStrict, adminController.createHeatSource);
-router.get('/heat-sources/:id', adminController.getHeatSourceById);
-router.put('/heat-sources/:id', rateLimitStrict, adminController.updateHeatSource);
-router.delete('/heat-sources/:id', rateLimitStrict, adminController.deleteHeatSource);
+router.get('/heat-sources/:id', validateIdParam, adminController.getHeatSourceById);
+router.put('/heat-sources/:id', rateLimitStrict, validateIdParam, adminController.updateHeatSource);
+router.delete('/heat-sources/:id', rateLimitStrict, validateIdParam, adminController.deleteHeatSource);
 
 module.exports = router;

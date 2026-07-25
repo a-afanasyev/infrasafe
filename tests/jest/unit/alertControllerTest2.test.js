@@ -23,6 +23,9 @@ jest.mock('../../../src/utils/logger', () => ({
 
 const AlertController = require('../../../src/controllers/alertController');
 const alertService = require('../../../src/services/alertService');
+// [R2-23] Источник истины для кода ошибки — модуль констант (alertService здесь
+// замокан, брать константу с него было бы нельзя).
+const { ALERT_NOT_FOUND } = require('../../../src/services/alert/alertConstants');
 
 describe('AlertController', () => {
     let req, res, next;
@@ -189,9 +192,14 @@ describe('AlertController', () => {
 
         test('returns 404 when alert not found', async () => {
             req.params = { alertId: '999' };
-            alertService.acknowledgeAlert.mockRejectedValue(
-                new Error('Алерт 999 не найден или уже обработан')
+            // [R2-23] 404 определяется КОДОМ ошибки, а не подстрокой текста.
+            // Раньше здесь бросался нетипизированный Error, и тест проходил лишь
+            // потому, что контроллер матчил сообщение.
+            const notFound = Object.assign(
+                new Error('Алерт 999 не найден или уже обработан'),
+                { code: ALERT_NOT_FOUND }
             );
+            alertService.acknowledgeAlert.mockRejectedValue(notFound);
 
             await AlertController.acknowledgeAlert(req, res, next);
 
@@ -235,9 +243,11 @@ describe('AlertController', () => {
 
         test('returns 404 when alert not found', async () => {
             req.params = { alertId: '999' };
-            alertService.resolveAlert.mockRejectedValue(
-                new Error('Алерт 999 не найден или уже закрыт')
+            const notFound = Object.assign(
+                new Error('Алерт 999 не найден или уже закрыт'),
+                { code: ALERT_NOT_FOUND }
             );
+            alertService.resolveAlert.mockRejectedValue(notFound);
 
             await AlertController.resolveAlert(req, res, next);
 

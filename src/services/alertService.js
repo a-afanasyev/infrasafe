@@ -11,13 +11,31 @@ const analyticsService = require('./analyticsService');
 // [AUD-012] Constants split out (delegate-only). Re-required here so every
 // bare reference in the class body resolves unchanged; the singleton still
 // re-exports COOLDOWN_SUFFIX_BY_TYPE / SEVERITY_RANK at the bottom of the file.
-const { UK_REQUESTS_MAX_PER_ALERT, COOLDOWN_SUFFIX_BY_TYPE, SEVERITY_RANK } = require('./alert/alertConstants');
+const { UK_REQUESTS_MAX_PER_ALERT, COOLDOWN_SUFFIX_BY_TYPE, SEVERITY_RANK, ALERT_NOT_FOUND } = require('./alert/alertConstants');
 // [AUD-012] Pure alertData builders split out (delegate-only).
 const alertDataBuilders = require('./alert/alertDataBuilders');
 // [AUD-012] Stateless read-only SQL helpers split out (delegate-only).
 const alertQueries = require('./alert/alertQueries');
 // [AUD-012] Alert creation gates split out (delegate-only).
 const alertGates = require('./alert/alertGates');
+
+/**
+ * [R2-23] Типизированная «алерт не найден».
+ *
+ * До этого контроллер определял 404 подстрокой русского сообщения
+ * (`error.message.includes('не найден')`). Связь была невидимой: достаточно было
+ * переформулировать текст здесь — «отсутствует», «уже закрыт» — и 404 молча
+ * превращался в 500. И наоборот: любая посторонняя ошибка со словом «не найден»
+ * в тексте отдавалась бы как 404.
+ *
+ * `code` — та же идиома, что уже используется в metricService
+ * (`CONTROLLER_NOT_FOUND` / `VALIDATION_ERROR`), а не новый механизм.
+ */
+function alertNotFound(message) {
+    const error = new Error(message);
+    error.code = ALERT_NOT_FOUND;
+    return error;
+}
 
 class InfrastructureAlertService {
     constructor() {
@@ -1100,7 +1118,7 @@ class InfrastructureAlertService {
             const result = await db.query(query, [alertId, userId]);
 
             if (result.rows.length === 0) {
-                throw new Error(`Алерт ${alertId} не найден или уже обработан`);
+                throw alertNotFound(`Алерт ${alertId} не найден или уже обработан`);
             }
 
             const alert = result.rows[0];
@@ -1150,7 +1168,7 @@ class InfrastructureAlertService {
                 [alertId]
             );
             if (existing.rows.length === 0) {
-                throw new Error(`Алерт ${alertId} не найден или уже закрыт`);
+                throw alertNotFound(`Алерт ${alertId} не найден или уже закрыт`);
             }
             const current = existing.rows[0];
 
@@ -1194,7 +1212,7 @@ class InfrastructureAlertService {
                 );
                 if (updateResult.rows.length === 0) {
                     // Race: someone else closed it between SELECT and UPDATE.
-                    throw new Error(`Алерт ${alertId} не найден или уже закрыт`);
+                    throw alertNotFound(`Алерт ${alertId} не найден или уже закрыт`);
                 }
                 const alert = updateResult.rows[0];
                 this.activeAlerts.delete(`${alert.infrastructure_type}:${alert.infrastructure_id}:${alert.type}`);
@@ -1264,7 +1282,7 @@ class InfrastructureAlertService {
                     );
                     if (updateResult.rows.length === 0) {
                         // Race: someone else closed it between SELECT and UPDATE.
-                        throw new Error(`Алерт ${alertId} не найден или уже закрыт`);
+                        throw alertNotFound(`Алерт ${alertId} не найден или уже закрыт`);
                     }
                     alert = updateResult.rows[0];
 
@@ -1648,5 +1666,7 @@ for (const [event, method] of VERIFY_LISTENER_MAP) {
 // [AUD-003] Expose the suffix map for the drift guard test (read-only).
 singleton.COOLDOWN_SUFFIX_BY_TYPE = COOLDOWN_SUFFIX_BY_TYPE;
 singleton.SEVERITY_RANK = SEVERITY_RANK;
+// [R2-23] Удобный ре-экспорт (источник истины — alert/alertConstants.js).
+singleton.ALERT_NOT_FOUND = ALERT_NOT_FOUND;
 
 module.exports = singleton;

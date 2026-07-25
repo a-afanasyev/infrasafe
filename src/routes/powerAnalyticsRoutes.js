@@ -3,6 +3,8 @@ const router = express.Router();
 const powerAnalyticsController = require('../controllers/powerAnalyticsController');
 const { applyCrudRateLimit } = require('../middleware/rateLimiter');
 const { isAdmin } = require('../middleware/auth');
+// [R2-16] non-numeric :buildingId/:lineId/:transformerId → 400, а не pg-500.
+const { validateIntParam } = require('../middleware/validators');
 
 /**
  * @swagger
@@ -29,7 +31,7 @@ router.get('/buildings', powerAnalyticsController.getBuildingsPower);
  *         schema:
  *           type: integer
  */
-router.get('/buildings/:buildingId', powerAnalyticsController.getBuildingPower);
+router.get('/buildings/:buildingId', validateIntParam('buildingId'), powerAnalyticsController.getBuildingPower);
 
 /**
  * @swagger
@@ -56,7 +58,7 @@ router.get('/lines', powerAnalyticsController.getLinesPower);
  *         schema:
  *           type: integer
  */
-router.get('/lines/:lineId', powerAnalyticsController.getLinePower);
+router.get('/lines/:lineId', validateIntParam('lineId'), powerAnalyticsController.getLinePower);
 
 /**
  * @swagger
@@ -83,7 +85,7 @@ router.get('/transformers', powerAnalyticsController.getTransformersPower);
  *         schema:
  *           type: string
  */
-router.get('/transformers/:transformerId', powerAnalyticsController.getTransformerPower);
+router.get('/transformers/:transformerId', validateIntParam('transformerId'), powerAnalyticsController.getTransformerPower);
 
 /**
  * @swagger

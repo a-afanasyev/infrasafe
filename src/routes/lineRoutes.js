@@ -15,6 +15,6 @@ router.put('/:id', applyCrudRateLimit, isAdmin, validateIntParam('id'), lineCont
 router.delete('/:id', applyCrudRateLimit, isAdmin, validateIntParam('id'), lineController.deleteLine);
 
 // Дополнительные маршруты
-router.get('/transformer/:transformerId', lineController.getLinesByTransformer);
+router.get('/transformer/:transformerId', validateIntParam('transformerId'), lineController.getLinesByTransformer);
 
 module.exports = router;
