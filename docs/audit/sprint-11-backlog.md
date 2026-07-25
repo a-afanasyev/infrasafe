@@ -20,10 +20,12 @@
 UK-трек (`c794c45`, #145, #146, #147) — 2026-07-23/24, оба прода. Всё, что помечено «код закрыт»,
 живёт на продах, если не оговорено иное.
 
-**PR-2 (`d6c0f8e`, #148) — смержен в main 2026-07-25 (`052722f`), на прода ПОКА НЕ задеплоен** ни на
-profk, ни на infrasafe.uz. В нём есть frontend-изменение (`map-layers-control.js`), значит нужен ребилд
-образа: `public/dist` печётся внутрь по SEC-14 и извлекается `scripts/rebuild-frontend.sh` на деплое.
-Снять эту пометку после деплоя на оба хоста.
+**PR-2** (`d6c0f8e` → merge `052722f`) + этот бэклог (`6c88ae3`) **задеплоены на оба прода 2026-07-25**,
+образ `ghcr.io/a-afanasyev/infrasafe-app@sha256:c55a8aea…` (тег `sha-6c88ae36…`) — один и тот же артефакт
+на profk и infrasafe.uz. Проверено на обоих: HEAD `6c88ae3`, контейнер healthy, `schema_migrations`=38 при
+`migrate_lock`=0, edge `/health` 200, `fail-closed` присутствует в отданном с эджа `map-layers-control.js`,
+в контейнере есть `assertValidStatus`/`validateSearchString`/`redactFormat`/`logRedaction.js` и ноль чтений
+`process.env.COOKIE_SIGNING_SECRET`.
 
 ---
 
