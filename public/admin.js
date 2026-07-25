@@ -734,9 +734,19 @@ document.addEventListener("DOMContentLoaded", function () {
 
             return responseData;
         } catch (error) {
+            // [R2-29] Пробрасываем, а не возвращаем []. Раньше ошибка тонула
+            // здесь, вызывающий получал пустой массив и рисовал «Нет данных» —
+            // то есть отказ сети/сервера был неотличим от пустой таблицы, и
+            // оператор видел «всё в порядке, просто пусто».
+            //
+            // Ловить не нужно ничего дописывать: все девять потребителей
+            // loadData уже обёрнуты в try/catch с showErrorMessage(...) — до
+            // этого фикса те ветки были мёртвым кодом. Заодно `dataLoaded[section]`
+            // остаётся false (он выставляется после render внутри try), поэтому
+            // повторный заход в раздел честно пытается загрузить снова.
             console.error(`Error loading data from ${endpoint}:`, error);
             showToast(`Ошибка загрузки данных: ${error.message}`, 'error');
-            return [];
+            throw error;
         }
     }
 

@@ -3,6 +3,9 @@
 const express = require('express');
 const router = express.Router();
 const { isAdmin } = require('../middleware/auth');
+// [R2-16] non-numeric :id → 400, а не pg-500. `:externalId` не трогаем — он
+// UUID и валидируется отдельно прямо в обработчике.
+const { validateIntParam } = require('../middleware/validators');
 const ukIntegrationService = require('../services/ukIntegrationService');
 const IntegrationLog = require('../models/IntegrationLog');
 const AlertRule = require('../models/AlertRule');
@@ -299,6 +302,10 @@ const handlers = {
 router.get('/config', handlers.getConfig);
 router.put('/config', handlers.updateConfig);
 router.get('/logs', handlers.getLogs);
+// [R2-16] БЕЗ validateIntParam: getLogById/retryLog валидируют id сами
+// (parseInt + isNaN + id < 1) и отдают собственный 400 с внятным сообщением.
+// Guard тут ничего не чинил бы, а только подменил форму ответа на конверт
+// express-validator — сломав контракт, на который уже опираются тесты.
 router.get('/logs/:id', handlers.getLogById);
 router.post('/logs/retry/:id', handlers.retryLog);
 router.get('/rules', handlers.getRules);
@@ -306,9 +313,9 @@ router.get('/rules', handlers.getRules);
 // [Sprint 10 PR-5] Rules admin endpoints — all admin-only via the
 // `router.use(isAdmin)` mounted earlier in this file.
 router.get('/rules/stats', handlers.getRulesStats);
-router.patch('/rules/:id', handlers.updateRule);
-router.post('/rules/:id/toggle', handlers.toggleRule);
-router.get('/rules/:id/history', handlers.getRuleHistory);
+router.patch('/rules/:id', validateIntParam('id'), handlers.updateRule);
+router.post('/rules/:id/toggle', validateIntParam('id'), handlers.toggleRule);
+router.get('/rules/:id/history', validateIntParam('id'), handlers.getRuleHistory);
 
 module.exports = router;
 module.exports.handlers = handlers;

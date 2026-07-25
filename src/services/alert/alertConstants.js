@@ -34,4 +34,12 @@ const COOLDOWN_SUFFIX_BY_TYPE = Object.freeze({
 // newly-classified severity outranks the currently-active one.
 const SEVERITY_RANK = Object.freeze({ INFO: 0, WARNING: 1, CRITICAL: 2 });
 
-module.exports = { UK_REQUESTS_MAX_PER_ALERT, COOLDOWN_SUFFIX_BY_TYPE, SEVERITY_RANK };
+// [R2-23] Код ошибки «алерт не найден». Живёт ЗДЕСЬ, а не на singleton'е
+// alertService, намеренно: контроллер сверяет `error.code` именно с этой
+// константой, и если бы он брал её с сервиса, то любой тест, мокающий
+// alertService без этого поля, получал бы `undefined === undefined` для обычной
+// ошибки без `code` — и та молча классифицировалась бы как 404. Отдельный
+// модуль констант мокнуть «мимо» нельзя.
+const ALERT_NOT_FOUND = 'ALERT_NOT_FOUND';
+
+module.exports = { UK_REQUESTS_MAX_PER_ALERT, COOLDOWN_SUFFIX_BY_TYPE, SEVERITY_RANK, ALERT_NOT_FOUND };

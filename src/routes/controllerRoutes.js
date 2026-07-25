@@ -2,7 +2,9 @@ const express = require('express');
 const controllerController = require('../controllers/controllerController');
 const { applyCrudRateLimit, applyAnalyticsRateLimit } = require('../middleware/rateLimiter');
 const { isAdmin } = require('../middleware/auth');
-const { validateControllerCreate, validateIdParam } = require('../middleware/validators');
+// [R2-16] validateIntParam — для именованных параметров (:buildingId), которые
+// validateIdParam (жёстко привязан к 'id') не покрывает.
+const { validateControllerCreate, validateIdParam, validateIntParam } = require('../middleware/validators');
 const router = express.Router();
 
 /**
@@ -171,7 +173,7 @@ router.get('/:id', validateIdParam, controllerController.getControllerById);
  *       200:
  *         description: Успешный ответ со списком контроллеров
  */
-router.get('/building/:buildingId', controllerController.getControllersByBuildingId);
+router.get('/building/:buildingId', validateIntParam('buildingId'), controllerController.getControllersByBuildingId);
 
 /**
  * @swagger
@@ -204,7 +206,7 @@ router.get('/building/:buildingId', controllerController.getControllersByBuildin
  *       404:
  *         description: Контроллер не найден
  */
-router.get('/:id/metrics', controllerController.getControllerMetrics);
+router.get('/:id/metrics', validateIdParam, controllerController.getControllerMetrics);
 
 /**
  * @swagger
