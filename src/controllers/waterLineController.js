@@ -11,7 +11,14 @@ const { sendError, sendNotFound } = require('../utils/apiResponse');
  * Success shapes are intentionally preserved RAW (array / object / instance /
  * { message }) to stay byte-compatible with existing consumers (decision A).
  * 500 messages are generic Russian strings — no internal detail leaks.
+ *
+ * [M-12] Валидационные ошибки модели (400, whitelist статусов) должны доходить
+ * до клиента как есть — иначе whitelist выглядит как 500. Пробрасываем ТОЛЬКО
+ * 4xx: 5xx из модели содержит внутренний текст и обязан схлопываться в generic.
  */
+
+const isClientError = (error) =>
+    Number.isInteger(error?.statusCode) && error.statusCode >= 400 && error.statusCode < 500;
 
 async function getAllWaterLines(req, res) {
     try {
@@ -84,6 +91,9 @@ async function createWaterLine(req, res) {
             method: 'POST',
             body: req.body
         });
+        if (isClientError(error)) {
+            return sendError(res, error.statusCode, error.message);
+        }
         return sendError(res, 500, 'Ошибка создания водной линии');
     }
 }
@@ -103,6 +113,9 @@ async function updateWaterLine(req, res) {
             id: req.params.id,
             body: req.body
         });
+        if (isClientError(error)) {
+            return sendError(res, error.statusCode, error.message);
+        }
         return sendError(res, 500, 'Ошибка обновления водной линии');
     }
 }

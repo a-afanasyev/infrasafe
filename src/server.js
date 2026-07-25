@@ -97,16 +97,12 @@ app.use(express.json({
 // [P1-2] cookie-parser populates req.cookies — auth middleware reads
 // access_token / refresh_token from HttpOnly cookies as a fallback to
 // the Authorization header / req.body.refreshToken paths.
-// [1A-FU2-S-L1] Sign cookies when COOKIE_SIGNING_SECRET is set. Today no
-// code reads req.signedCookies, but future code that does will get a
-// silent `false` instead of the signed value if the parser was constructed
-// without a secret. Cheap insurance — supports zero, one, or rotated-pair
-// secrets via a single env var (comma-separated for rotation).
-const COOKIE_SIGNING_SECRET = process.env.COOKIE_SIGNING_SECRET || '';
-const signingSecrets = COOKIE_SIGNING_SECRET
-    ? COOKIE_SIGNING_SECRET.split(',').map(s => s.trim()).filter(Boolean)
-    : null;
-app.use(cookieParser(signingSecrets));
+// [M-13/R2-36] Подпись cookie удалена: req.signedCookies не читает никто,
+// а .env.example объявлял COOKIE_SIGNING_SECRET как Required — «обязательный»
+// секрет, отсутствие которого ни на что не влияло. Внутри cookie лежит JWT со
+// своей подписью. Если когда-нибудь появится реальный потребитель
+// req.signedCookies — вводить секрет вместе с ним и с проверкой в validateEnv.
+app.use(cookieParser());
 app.use(correlationId); // Correlation ID для трейсинга запросов
 morgan.token('safepath', (req) => req.path); // path without query string
 morgan.token('correlationId', (req) => req.correlationId || '-');

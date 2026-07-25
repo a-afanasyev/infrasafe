@@ -26,11 +26,19 @@ class MapLayersControl {
             return div.innerHTML;
         };
         
+        // [M-9] Fail-close: если DOMSecurity недоступен (бандл сломался, скрипт
+        // заблокирован), сырой HTML НЕ должен уходить в Leaflet — схлопываем его
+        // в экранированный текст тем же textContent-приёмом, что и script.js.
+        // Fallback обязан жить здесь: он нужен ровно тогда, когда общий модуль
+        // domSecurity.js недоступен.
         this.sanitizePopup = (html) => {
             if (window.DOMSecurity && window.DOMSecurity.sanitizePopupContent) {
                 return window.DOMSecurity.sanitizePopupContent(html);
             }
-            return html; // Fallback если DOMSecurity не загружен
+            console.error('DOMSecurity недоступен — popup контент экранируется как обычный текст (fail-closed).');
+            const fallbackDiv = document.createElement('div');
+            fallbackDiv.textContent = String(html === null || html === undefined ? '' : html);
+            return fallbackDiv.innerHTML;
         };
         
         // Проверяем что карта действительно передана
