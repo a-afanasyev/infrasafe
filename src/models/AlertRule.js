@@ -16,12 +16,33 @@ const EDITABLE_FIELDS = Object.freeze({
     verification_window_seconds: { type: 'int', min: 60, max: 3600 },
     max_reopens_per_24h:         { type: 'int', min: 0, max: 20 },
     reopen_cooldown_min:         { type: 'int', min: 1, max: 1440 },
-    reopen_urgency_bump:         { type: 'boolean' }
+    reopen_urgency_bump:         { type: 'boolean' },
+    // [B-009] Сезонное окно 'MM-DD'. nullable: null очищает окно (правило
+    // снова круглогодичное). Задавать/снимать ОБА поля разом — парность
+    // проверяется ниже и продублирована констрейнтом БД (миграция 041).
+    season_from:                 { type: 'mmdd', nullable: true },
+    season_to:                   { type: 'mmdd', nullable: true }
 });
+
+// [B-009] Тот же регекс, что в CHECK'е миграции 041 — 02-30/02-31 допускаются
+// как граница осознанно (без года длину месяца не проверить, 02-29 обязана быть
+// валидной).
+const MMDD_RE = /^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/;
 
 function validateField(name, value) {
     const spec = EDITABLE_FIELDS[name];
     if (!spec) return { ok: false, error: `field "${name}" is not editable` };
+    if (value === null) {
+        return spec.nullable
+            ? { ok: true }
+            : { ok: false, error: `${name} must not be null` };
+    }
+    if (spec.type === 'mmdd') {
+        if (typeof value !== 'string' || !MMDD_RE.test(value)) {
+            return { ok: false, error: `${name} must be MM-DD (e.g. 10-15) or null` };
+        }
+        return { ok: true };
+    }
     if (spec.type === 'boolean') {
         if (typeof value !== 'boolean') return { ok: false, error: `${name} must be boolean` };
     } else if (spec.type === 'int') {
@@ -122,6 +143,19 @@ class AlertRule {
 
         const before = await AlertRule.findById(id);
         if (!before) return { rule: null, changes: [] };
+
+        // [B-009] Парность сезонного окна проверяем на РЕЗУЛЬТИРУЮЩЕЙ строке,
+        // а не на патче: PATCH обычно частичный, и «прислали только season_to»
+        // законно, если season_from уже стоит. Констрейнт БД поймал бы это в
+        // любом случае, но там ошибка прилетела бы 500-кой с текстом Postgres —
+        // здесь она становится внятной 400.
+        const seasonFrom = 'season_from' in fields ? fields.season_from : before.season_from;
+        const seasonTo   = 'season_to'   in fields ? fields.season_to   : before.season_to;
+        if ((seasonFrom === null || seasonFrom === undefined) !== (seasonTo === null || seasonTo === undefined)) {
+            throw new Error(
+                'AlertRule.update: season_from и season_to задаются и снимаются только вместе'
+            );
+        }
 
         // Filter to fields whose value actually changes
         const diffEntries = fieldNames

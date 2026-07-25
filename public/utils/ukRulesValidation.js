@@ -37,8 +37,20 @@
             label: 'Срочность УК',
             hint: 'Канонический ключ: low | medium | high | critical' },
         description:                 { type: 'string', maxLen: 500,
-            label: 'Описание' }
+            label: 'Описание' },
+        // [B-009] Сезонное окно. nullable: пустое значение очищает окно.
+        // Парность (оба или ни одного) обеспечивает UI — ячейка патчит оба поля
+        // разом; сервер и констрейнт БД проверяют её независимо.
+        season_from:                 { type: 'mmdd', nullable: true,
+            label: 'Сезон с',
+            hint: 'MM-DD включительно, пусто = круглый год' },
+        season_to:                   { type: 'mmdd', nullable: true,
+            label: 'Сезон по',
+            hint: 'MM-DD включительно; если раньше начала — окно переходит через Новый год' }
     });
+
+    // Тот же регекс, что в src/models/AlertRule.js и в CHECK'е миграции 041.
+    const MMDD_RE = /^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/;
 
     /**
      * Validate one field value. Returns { ok, error?, coerced? }.
@@ -48,6 +60,18 @@
         const spec = RULE_FIELD_SPEC[name];
         if (!spec) return { ok: false, error: `Поле "${name}" не редактируется` };
 
+        // Пустое значение = очистить поле. Разрешено только там, где nullable.
+        const isBlank = value === null || value === undefined
+            || (typeof value === 'string' && value.trim() === '');
+        if (isBlank && spec.nullable) return { ok: true, coerced: null };
+
+        if (spec.type === 'mmdd') {
+            const s = String(value).trim();
+            if (!MMDD_RE.test(s)) {
+                return { ok: false, error: `${spec.label}: формат MM-DD, например 10-15` };
+            }
+            return { ok: true, coerced: s };
+        }
         if (spec.type === 'boolean') {
             const b = (typeof value === 'boolean') ? value : (value === 'true' || value === true);
             return { ok: true, coerced: b };

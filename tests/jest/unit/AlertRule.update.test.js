@@ -216,5 +216,93 @@ describe('AlertRule.update — Sprint 10 PR-5', () => {
             expect(AlertRule.EDITABLE_FIELDS).not.toHaveProperty('severity');
             expect(AlertRule.EDITABLE_FIELDS).not.toHaveProperty('created_at');
         });
+
+        test('[B-009] сезонное окно редактируемо и nullable', () => {
+            expect(AlertRule.EDITABLE_FIELDS.season_from).toEqual({ type: 'mmdd', nullable: true });
+            expect(AlertRule.EDITABLE_FIELDS.season_to).toEqual({ type: 'mmdd', nullable: true });
+        });
+    });
+
+    // ────────────────────────────────────────────────────────────────────
+    // [B-009] Сезонное окно
+    // ────────────────────────────────────────────────────────────────────
+    describe('[B-009] season window', () => {
+        const yearRound = { ...baseRule, season_from: null, season_to: null };
+        const heating = { ...baseRule, season_from: '10-15', season_to: '04-15' };
+
+        const expectRejected = async (fields, before, pattern) => {
+            db.query.mockResolvedValueOnce({ rows: [before] });   // findById (если дойдёт)
+            await expect(AlertRule.update(4, fields)).rejects.toThrow(pattern);
+        };
+
+        test('принимает валидную пару и пишет её одним UPDATE', async () => {
+            db.query
+                .mockResolvedValueOnce({ rows: [yearRound] })                                  // findById
+                .mockResolvedValueOnce({ rows: [{ ...heating }] });                            // UPDATE
+            mockClient.query.mockResolvedValue({ rows: [{ id: 1 }] });
+
+            const { rule } = await AlertRule.update(4, { season_from: '10-15', season_to: '04-15' });
+
+            expect(rule.season_from).toBe('10-15');
+            const sql = db.query.mock.calls[1][0];
+            expect(sql).toContain('season_from = $2');
+            expect(sql).toContain('season_to = $3');
+        });
+
+        test('снимает окно, если оба поля null', async () => {
+            db.query
+                .mockResolvedValueOnce({ rows: [heating] })
+                .mockResolvedValueOnce({ rows: [{ ...yearRound }] });
+            mockClient.query.mockResolvedValue({ rows: [{ id: 1 }] });
+
+            const { rule } = await AlertRule.update(4, { season_from: null, season_to: null });
+
+            expect(rule.season_from).toBeNull();
+            expect(db.query.mock.calls[1][1]).toEqual([4, null, null]);
+        });
+
+        test('частичный PATCH законен, если второе поле уже стоит в строке', async () => {
+            db.query
+                .mockResolvedValueOnce({ rows: [heating] })                                    // season_from уже '10-15'
+                .mockResolvedValueOnce({ rows: [{ ...heating, season_to: '04-30' }] });
+            mockClient.query.mockResolvedValue({ rows: [{ id: 1 }] });
+
+            const { rule } = await AlertRule.update(4, { season_to: '04-30' });
+
+            expect(rule.season_to).toBe('04-30');
+        });
+
+        test('половина пары на круглогодичном правиле → внятная ошибка, а не 500 от Postgres', async () => {
+            await expectRejected({ season_from: '10-15' }, yearRound, /только вместе/);
+        });
+
+        test('снятие только одного поля тоже отвергается', async () => {
+            await expectRejected({ season_to: null }, heating, /только вместе/);
+        });
+
+        test.each(['10/15', '2026-10-15', '13-01', '10-32', '0-1', 'октябрь', ''])(
+            'отвергает мусорный формат %p до обращения к БД', async (bad) => {
+                await expect(AlertRule.update(4, { season_from: bad, season_to: '04-15' }))
+                    .rejects.toThrow(/must be MM-DD/);
+                expect(db.query).not.toHaveBeenCalled();
+            }
+        );
+
+        test('02-29 допустима (високосный год; длину месяца без года не проверить)', async () => {
+            db.query
+                .mockResolvedValueOnce({ rows: [yearRound] })
+                .mockResolvedValueOnce({ rows: [{ ...yearRound, season_from: '02-01', season_to: '02-29' }] });
+            mockClient.query.mockResolvedValue({ rows: [{ id: 1 }] });
+
+            const { rule } = await AlertRule.update(4, { season_from: '02-01', season_to: '02-29' });
+
+            expect(rule.season_to).toBe('02-29');
+        });
+
+        test('null в поле без nullable по-прежнему отвергается', async () => {
+            await expect(AlertRule.update(4, { min_persistence_seconds: null }))
+                .rejects.toThrow(/must not be null/);
+            expect(db.query).not.toHaveBeenCalled();
+        });
     });
 });
