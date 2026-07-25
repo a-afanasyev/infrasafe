@@ -20,12 +20,21 @@
 UK-трек (`c794c45`, #145, #146, #147) — 2026-07-23/24, оба прода. Всё, что помечено «код закрыт»,
 живёт на продах, если не оговорено иное.
 
-**PR-2** (`d6c0f8e` → merge `052722f`) + этот бэклог (`6c88ae3`) **задеплоены на оба прода 2026-07-25**,
-образ `ghcr.io/a-afanasyev/infrasafe-app@sha256:c55a8aea…` (тег `sha-6c88ae36…`) — один и тот же артефакт
-на profk и infrasafe.uz. Проверено на обоих: HEAD `6c88ae3`, контейнер healthy, `schema_migrations`=38 при
-`migrate_lock`=0, edge `/health` 200, `fail-closed` присутствует в отданном с эджа `map-layers-control.js`,
-в контейнере есть `assertValidStatus`/`validateSearchString`/`redactFormat`/`logRedaction.js` и ноль чтений
-`process.env.COOKIE_SIGNING_SECRET`.
+**PR-2 + PR-2b задеплоены на оба прода 2026-07-25.** Актуальный прод — `beaaba0` (merge #149), образ
+`sha-beaaba09…`; до него в тот же день прошёл `6c88ae3` (PR-2, образ `sha-6c88ae36…`). Проверено на profk и
+infrasafe.uz по отдельности: HEAD совпадает, рабочее дерево чистое, контейнер healthy, `migrate_lock`=0,
+edge `/health` 200, `fail-closed` присутствует в **отданном с эджа** `map-layers-control.js` (M-9 живой, а не
+только в образе), в контейнере есть `assertValidStatus`/`validateSearchString`/`redactFormat`/
+`logRedaction.js` и **ноль** чтений `process.env.COOKIE_SIGNING_SECRET` (M-13). Миграция 040 применена
+раннером на обоих (`schema_migrations` → 39 файлов), `water_lines_status_check` с `convalidated='t'`; живая
+проверка на profk: INSERT со статусом вне домена отбит констрейнтом, валидный проходит.
+
+**Операционная заметка (стоила одного неудачного прогона).** Деплой нельзя запускать как
+`ssh host './update-production.sh'`: при обрыве ssh скрипт осиротеет и умрёт на SIGPIPE — 25.07 это случилось
+на profk посреди `migrate up`. Состояние тогда осталось консистентным (замок снят, схема не тронута, образ не
+подменён), но повторять не стоит. Запускать отвязанным:
+`setsid nohup ./update-production.sh > /tmp/deploy.log 2>&1 < /dev/null &`, следить `tail -f` отдельным
+заходом.
 
 ---
 
@@ -39,12 +48,12 @@ UK-трек (`c794c45`, #145, #146, #147) — 2026-07-23/24, оба прода. 
 
 ### P2 — security tail аудита 2026-07-11 (код, не ops)
 
-> **PR-2 (`d6c0f8e`, #148) закрыл отсюда семь пунктов** — M-12, M-8-остаток, M-9-остаток, M-17, M-22,
-> M-13/R2-36 и prod-половину CVE-гейта. Строки перенесены в §3. Осталось то, что ниже.
+> **PR-2 (`d6c0f8e`, #148) + PR-2b (`8d29194`, #149) закрыли отсюда восемь пунктов** — M-12 целиком
+> (обе половины: код-whitelist и CHECK в БД), M-8-остаток, M-9-остаток, M-17, M-22, M-13/R2-36 и
+> prod-половину CVE-гейта. Строки перенесены в §3. Осталось то, что ниже.
 
 | ID | Что | Доказательство | Работа |
 |---|---|---|---|
-| **M-12b** | Остаток M-12: код-whitelist есть (`WaterLine.assertValidStatus`), **CHECK-констрейнта в БД нет** — прямой SQL/будущий путь записи мимо модели по-прежнему запишет что угодно | `database/init/01_init_database.sql:162` (`status VARCHAR(20) DEFAULT 'active'`, без CHECK) | **PR-2b**, отдельным релизом: это contract change, не expand-only. Плюс доработка `tests/migrate/` harness'а (`run-migrate-tests.sh:72` строит цель на BASELINE_TARGET 003-034, а в `synthetic-baseline-seed.sql:33` у `water_lines` нет колонки `status`). **S** |
 | **M-2** | TOTP anti-replay — per-process `Map`; при >1 реплики код, потраченный на A, реплеится на B в окне 120 с | `src/services/totpService.js:39-56`, ни одного обращения к Redis; `git log --since=2026-07-11 -- totpService.js` пуст | Перенести в Redis (шаблон — `webhookVerifier` nonce-dedup). Совпадает с остатком **B-003**. **S** |
 | **M-4** | 2FA `tempToken`, TOTP-секрет и recovery-коды по-прежнему в JSON-теле (access/refresh давно в HttpOnly-cookie) | `authController.js:26-32,37-43` (tempToken), `:364-370` (secret + recoveryCodes) | Как минимум tempToken → HttpOnly-cookie; секрет/коды при self-service setup — обсуждаемо. **M** |
 | **M-6** | Реплей refresh-токена теперь отдаёт 401 (закрыто), но **invalidate-all-sessions нет**: блокируется только один хэш, украденное семейство живёт до истечения | `authService.js:347-360`; `grep revokeAll\|token_version src/` — ноль | Примитив revoke-all (по `token_version` в `users`). **M** |
@@ -144,14 +153,15 @@ UK-трек (`c794c45`, #145, #146, #147) — 2026-07-23/24, оба прода. 
 | M-1 (`optionalAuth` проверяет is_active/cutoff/lockout uncached), M-8, M-9 (script.js), M-15, M-16, CVE morgan/form-data/uuid, H-6 (loopback) | `0be1250` (PR-5) |
 | M-3 (стухший кэш роли больше не влияет на авторизацию), SEC-27, SEC-31, SEC-32, SEC-34a, SEC-34h | подтверждено на HEAD |
 | UK-трек целиком: reprocess error-строк, `request.reconcile` + `uk-buildings-metrics`, миграция 039 (widen + архив 7 орфанов), F-08/F-09 эджа | `c794c45`, `f7ab615`/`1192d6b` (#145), `1b49544` (#146), `287c8e9`/`ef52f01` (#147) |
-| **M-12** (код-whitelist на всех 5 путях записи `status` + проброс 4xx), **M-8-остаток** (`WaterLine` ILIKE), **M-9-остаток** (`map-layers-control.js` fail-closed), **M-17** (`logRedaction` в цепочке winston), **M-22** (generator на loopback), **M-13/R2-36** (`COOKIE_SIGNING_SECRET` удалён), **CVE prod+generator** (оба дерева = 0) | `d6c0f8e` (#148). Остатки заведены отдельно: **M-12b** (CHECK в БД → PR-2b) и **CVE-остаток** (`brace-expansion`, нужен мажор eslint) |
+| **M-12** (код-whitelist на всех 5 путях записи `status` + проброс 4xx), **M-8-остаток** (`WaterLine` ILIKE), **M-9-остаток** (`map-layers-control.js` fail-closed), **M-17** (`logRedaction` в цепочке winston), **M-22** (generator на loopback), **M-13/R2-36** (`COOKIE_SIGNING_SECRET` удалён), **CVE prod+generator** (оба дерева = 0) | `d6c0f8e` (#148). Остаток заведён отдельно: **CVE-остаток** (`brace-expansion`, нужен мажор eslint) |
+| **M-12b** — вторая половина M-12: CHECK `water_lines_status_check` (`active`/`maintenance`/`inactive`, NULL явно). Констрейнт **сразу валидный**: таблица пуста на обоих продах. Попутно починен латентный дефект harness'а — шаг 7 не восстанавливал 022 (`up \|\| true` глотал падение неидемпотентной миграции), из-за чего БД до конца прогона жила с pending-миграцией и шаг 14 «проходил» по неверной причине | `8d29194` (#149), миграция `040_water_lines_status_check.sql`. Задеплоено на оба прода 2026-07-25 (`beaaba0`), `convalidated='t'`, живая проверка на profk: INSERT вне домена отбит, валидный проходит |
 
 ---
 
 ## 4. Рекомендованный порядок
 
 1. **B-009** — единственное с внешним сроком (до отопительного сезона).
-2. ~~**Одна security-пачка S-размера:** M-12, M-8-остаток, M-9-остаток, M-22, M-13/R2-36, M-17, CVE~~ — **сделано**, `d6c0f8e` (#148). Хвост: **PR-2b** (M-12b, CHECK-констрейнт + harness миграционных тестов) — берётся отдельным релизом, потому что это contract change.
+2. ~~**Одна security-пачка S-размера:** M-12, M-8-остаток, M-9-остаток, M-22, M-13/R2-36, M-17, CVE~~ — **сделано и задеплоено**: PR-2 `d6c0f8e` (#148) + PR-2b `8d29194` (#149, миграция 040). M-12 закрыт целиком, обе половины.
 3. **M-2 (TOTP → Redis)** вместе с гарантией `REDIS_URL` (M-7/M-11) — один узел, закрывает и остаток B-003.
 4. **Половинчатые фиксы:** R2-16 (admin-роутер), R2-23 (404 по тексту), R2-29 (глушение ошибок админки) — «наполовину закрыто» опаснее открытого, потому что выглядит сделанным.
 5. **STAGING-VM / R2-15 Phase B** — пока его нет, любой деплой идёт сразу в два прода; попутно чинится ложнозелёный тест.
