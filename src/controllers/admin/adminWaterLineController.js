@@ -3,6 +3,7 @@ const logger = require('../../utils/logger');
 const { createError } = require('../../utils/helpers');
 const { buildPaginatedList } = require('../../utils/adminQueryBuilder');
 const { buildUpdateQuery } = require('../../utils/dynamicUpdateBuilder');
+const { WATER_LINE_STATUS, assertValidStatus } = require('../../models/WaterLine');
 
 /**
  * Admin water-line operations: optimized list, full CRUD, batch ops.
@@ -14,7 +15,15 @@ const { buildUpdateQuery } = require('../../utils/dynamicUpdateBuilder');
  *
  * Delete keeps its custom pre-check for connected buildings (gotcha
  * noted in the Phase 5 plan — not refactored).
+ *
+ * [M-12] `status` пишется тремя путями этого файла (create / update /
+ * batch update_status) — каждый проверяется assertValidStatus. Catch-блоки
+ * пропускают наружу ТОЛЬКО 4xx: 5xx схлопывается в generic 500, чтобы не
+ * утёк внутренний текст ошибки.
  */
+
+const isClientError = (error) =>
+    Number.isInteger(error?.statusCode) && error.statusCode >= 400 && error.statusCode < 500;
 
 const LIST_CONFIG = {
     table: 'water_lines',
@@ -62,6 +71,7 @@ async function createWaterLine(req, res, next) {
         if (!name || !diameter_mm || !material) {
             return next(createError('Name, diameter_mm, and material are required', 400));
         }
+        assertValidStatus(status);   // [M-12]
 
         const query = `
             INSERT INTO water_lines (name, description, diameter_mm, material, pressure_bar, installation_date, status,
@@ -83,6 +93,7 @@ async function createWaterLine(req, res, next) {
         });
     } catch (error) {
         logger.error(`Error in createWaterLine: ${error.message}`);
+        if (isClientError(error)) return next(error);
         next(createError('Internal server error', 500));
     }
 }
@@ -122,6 +133,8 @@ async function updateWaterLine(req, res, next) {
     try {
         const { id } = req.params;
 
+        assertValidStatus(req.body.status);   // [M-12]
+
         // Pre-transform JSONB-bound fields so the builder can treat them
         // as plain strings. Keeping this here preserves the existing DB
         // contract (store stringified JSON) without leaking it into the
@@ -153,6 +166,7 @@ async function updateWaterLine(req, res, next) {
         });
     } catch (error) {
         logger.error(`Error in updateWaterLine: ${error.message}`);
+        if (isClientError(error)) return next(error);
         next(createError('Internal server error', 500));
     }
 }
@@ -205,13 +219,15 @@ async function batchWaterLinesOperation(req, res, next) {
                 if (!data || !data.status) {
                     return next(createError('status is required for update_status action', 400));
                 }
+                assertValidStatus(data.status);   // [M-12]
                 const updateStatusQuery = 'UPDATE water_lines SET status = $1, updated_at = NOW() WHERE line_id = ANY($2) RETURNING line_id';
                 result = await pool.query(updateStatusQuery, [data.status, ids]);
                 break;
             }
             case 'set_maintenance': {
-                const maintenanceQuery = "UPDATE water_lines SET status = 'maintenance', updated_at = NOW() WHERE line_id = ANY($1) RETURNING line_id";
-                result = await pool.query(maintenanceQuery, [ids]);
+                // [M-12] Значение — из общего домена, параметром, а не литералом.
+                const maintenanceQuery = 'UPDATE water_lines SET status = $1, updated_at = NOW() WHERE line_id = ANY($2) RETURNING line_id';
+                result = await pool.query(maintenanceQuery, [WATER_LINE_STATUS.MAINTENANCE, ids]);
                 break;
             }
             default:
@@ -225,6 +241,7 @@ async function batchWaterLinesOperation(req, res, next) {
         });
     } catch (error) {
         logger.error(`Error in batchWaterLinesOperation: ${error.message}`);
+        if (isClientError(error)) return next(error);
         next(createError('Internal server error', 500));
     }
 }

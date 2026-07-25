@@ -2,6 +2,7 @@ const db = require('../config/database');
 const logger = require('../utils/logger');
 const { createError } = require('../utils/helpers');
 const { buildUpdateQuery } = require('../utils/dynamicUpdateBuilder');
+const { validateSearchString } = require('../utils/queryValidation');
 
 // [AUD-009] Columns writable on create/update and which of them are jsonb.
 const WATER_LINE_JSON_COLUMNS = new Set(['main_path', 'branches']);
@@ -10,6 +11,32 @@ const WATER_LINE_WRITABLE_COLUMNS = [
     'installation_date', 'status', 'main_path', 'branches',
     'latitude_start', 'longitude_start', 'latitude_end', 'longitude_end',
 ];
+
+// [M-12] Домен статуса водной линии. Источник истины — UI-селектор
+// frontend-html/admin.html (active / maintenance / inactive); ветка
+// set_maintenance в admin-контроллере пишет MAINTENANCE.
+const WATER_LINE_STATUS = Object.freeze({
+    ACTIVE: 'active',
+    MAINTENANCE: 'maintenance',
+    INACTIVE: 'inactive',
+});
+const ALLOWED_STATUSES = Object.freeze(Object.values(WATER_LINE_STATUS));
+
+/**
+ * [M-12] Бросает 400, если статус вне домена. `undefined`/`null` пропускаются
+ * осознанно — колонка nullable с DEFAULT 'active', отсутствие поля означает
+ * «не меняем».
+ * @param {*} status
+ */
+function assertValidStatus(status) {
+    if (status === undefined || status === null) return;
+    if (!ALLOWED_STATUSES.includes(status)) {
+        throw createError(
+            `Invalid status: allowed values are ${ALLOWED_STATUSES.join(', ')}`,
+            400
+        );
+    }
+}
 
 class WaterLine {
     constructor(data) {
@@ -44,9 +71,11 @@ class WaterLine {
             const conditions = [];
 
             if (filters.name) {
+                // [M-8] escape ILIKE wildcards (%, _) so a name containing them
+                // is matched literally instead of acting as a pattern.
                 paramCount++;
                 conditions.push(`wl.name ILIKE $${paramCount}`);
-                values.push(`%${filters.name}%`);
+                values.push(`%${validateSearchString(filters.name)}%`);
             }
 
             if (filters.status) {
@@ -138,6 +167,7 @@ class WaterLine {
     // приводили к 500. jsonb-колонки сериализуются; отсутствующие опускаются.
     static async create(lineData) {
         try {
+            assertValidStatus(lineData.status);   // [M-12]
             const fields = [];
             const values = [];
             for (const col of WATER_LINE_WRITABLE_COLUMNS) {
@@ -169,6 +199,7 @@ class WaterLine {
     // [AUD-009] Делегирует построение SET в общий buildUpdateQuery; пустое тело → 400.
     static async update(id, lineData) {
         try {
+            assertValidStatus(lineData.status);   // [M-12]
             const fields = { ...lineData };
             for (const col of WATER_LINE_JSON_COLUMNS) {
                 if (fields[col] !== undefined) fields[col] = JSON.stringify(fields[col]);
@@ -252,3 +283,8 @@ class WaterLine {
 }
 
 module.exports = WaterLine;
+// [M-12] Дополняем дефолтный экспорт, не заменяя его — WaterLine остаётся
+// callable как `require('../models/WaterLine')`.
+module.exports.WATER_LINE_STATUS = WATER_LINE_STATUS;
+module.exports.ALLOWED_STATUSES = ALLOWED_STATUSES;
+module.exports.assertValidStatus = assertValidStatus;

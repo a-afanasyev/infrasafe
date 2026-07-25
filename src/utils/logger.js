@@ -1,12 +1,18 @@
 const winston = require('winston');
 const path = require('path');
 require('winston-daily-rotate-file');
+const { redactLogInfo } = require('./logRedaction');
+
+// [M-17] Вычищаем секреты из метаданных ПЕРЕД сериализацией. Ставится после
+// errors({stack:true}) — стек к этому моменту уже развёрнут — и перед json().
+const redactFormat = winston.format((info) => redactLogInfo(info));
 
 // Определение форматов логирования
 const formats = winston.format.combine(
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     winston.format.errors({ stack: true }),
     winston.format.splat(),
+    redactFormat(),
     winston.format.json()
 );
 

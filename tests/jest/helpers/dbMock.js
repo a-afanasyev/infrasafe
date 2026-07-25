@@ -16,6 +16,36 @@ const getTestPasswordHash = async () => {
 
 let buildingIdSeq = 100;
 let controllerIdSeq = 200;
+let waterLineIdSeq = 300;
+
+/**
+ * [M-12] Восстанавливает строку из параметризованного INSERT/UPDATE, чтобы
+ * RETURNING * возвращал то, что реально записали. Нужно интеграционным тестам,
+ * которые проверяют не только отказ (400), но и успешный путь: без этого
+ * неизвестный запрос отдавал пустой `rows`, валидный POST падал в 500
+ * (`rows[0] === undefined`), а PUT возвращал 404.
+ *
+ * Разбирает обе формы:
+ *   INSERT INTO t (a, b) VALUES ($1, $2) RETURNING *
+ *   UPDATE t SET a = $1, b = $2, updated_at = NOW() WHERE id = $3 RETURNING *
+ */
+const rowFromWrite = (sql, params = []) => {
+    const row = {};
+    const insertCols = sql.match(/INSERT\s+INTO\s+\w+\s*\(([^)]*)\)/i);
+    if (insertCols) {
+        insertCols[1].split(',').map((c) => c.trim()).forEach((col, i) => {
+            row[col] = params[i];
+        });
+        return row;
+    }
+    const setPart = sql.match(/SET\s+([\s\S]*?)\s+WHERE/i);
+    if (setPart) {
+        for (const [, col, idx] of setPart[1].matchAll(/(\w+)\s*=\s*\$(\d+)/g)) {
+            row[col] = params[Number(idx) - 1];
+        }
+    }
+    return row;
+};
 
 const makeUser = (overrides = {}) => ({
     user_id: 1,
@@ -86,6 +116,26 @@ const setupQueryMock = (db) => {
         // Update failed_login_attempts
         if (s.includes('failed_login_attempts') || s.includes('UPDATE users')) {
             return { rows: [], rowCount: 0 };
+        }
+
+        // Water-line ЗАПИСИ — отражаются обратно, чтобы RETURNING * был правдивым.
+        // Матчим только write-формы: `water_lines` встречается ещё и в LEFT JOIN
+        // внутри Building-запросов (src/models/Building.js:43), и широкий матч по
+        // имени таблицы ломал бы GET /api/buildings/:id.
+        if (s.includes('INSERT INTO water_lines')) {
+            return {
+                rows: [{ line_id: waterLineIdSeq++, ...rowFromWrite(s, params) }],
+                rowCount: 1
+            };
+        }
+        if (s.includes('UPDATE water_lines')) {
+            const written = rowFromWrite(s, params);
+            // ANY($n) — батч; иначе последний параметр это line_id.
+            const id = s.includes('ANY(') ? 1 : parseInt(params[params.length - 1]) || 1;
+            return { rows: [{ line_id: id, ...written }], rowCount: 1 };
+        }
+        if (s.includes('DELETE FROM water_lines')) {
+            return { rows: [{ line_id: parseInt(params[0]) || 1 }], rowCount: 1 };
         }
 
         // COUNT queries

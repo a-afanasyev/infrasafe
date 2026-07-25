@@ -418,4 +418,74 @@ describe('WaterLine Model', () => {
             expect(db.query).not.toHaveBeenCalled();
         });
     });
+
+    // [M-12] Whitelist статусов — модель как источник истины.
+    describe('status whitelist (M-12)', () => {
+        test('exports the domain taken from the admin UI selector', () => {
+            expect(WaterLine.WATER_LINE_STATUS).toEqual({
+                ACTIVE: 'active',
+                MAINTENANCE: 'maintenance',
+                INACTIVE: 'inactive'
+            });
+            expect(WaterLine.ALLOWED_STATUSES).toEqual(['active', 'maintenance', 'inactive']);
+        });
+
+        test('create rejects an out-of-domain status with 400 before any DB call', async () => {
+            await expect(WaterLine.create({ name: 'WL', status: 'broken' }))
+                .rejects.toMatchObject({ statusCode: 400 });
+            expect(db.query).not.toHaveBeenCalled();
+        });
+
+        test('update rejects an out-of-domain status with 400 before any DB call', async () => {
+            await expect(WaterLine.update(1, { status: 'DROP TABLE' }))
+                .rejects.toMatchObject({ statusCode: 400 });
+            expect(db.query).not.toHaveBeenCalled();
+        });
+
+        test('status is case-sensitive — "Active" is rejected', async () => {
+            await expect(WaterLine.create({ name: 'WL', status: 'Active' }))
+                .rejects.toMatchObject({ statusCode: 400 });
+            expect(db.query).not.toHaveBeenCalled();
+        });
+
+        test.each(['active', 'maintenance', 'inactive'])('accepts %s', async (status) => {
+            db.query.mockResolvedValue({ rows: [{ ...mockRow, status }] });
+            const result = await WaterLine.create({ name: 'WL', status });
+            expect(result.status).toBe(status);
+        });
+
+        test('null/undefined status passes through (column is nullable, DEFAULT active)', async () => {
+            db.query.mockResolvedValue({ rows: [mockRow] });
+            await expect(WaterLine.create({ name: 'WL', status: null })).resolves.toBeDefined();
+            await expect(WaterLine.update(1, { name: 'WL' })).resolves.toBeDefined();
+        });
+
+        test('assertValidStatus is exported and throws a 400 error object', () => {
+            expect(() => WaterLine.assertValidStatus('broken')).toThrow(/Invalid status/);
+            expect(() => WaterLine.assertValidStatus('active')).not.toThrow();
+        });
+    });
+
+    // [M-8] ILIKE-эскейпинг: остаток пачки, сделанной в Line/WaterSupplier/HeatSource.
+    describe('findAll name filter — ILIKE escaping (M-8)', () => {
+        test('escapes % and _ so they are matched literally', async () => {
+            db.query
+                .mockResolvedValueOnce({ rows: [{ count: '0' }] })
+                .mockResolvedValueOnce({ rows: [] });
+
+            await WaterLine.findAll(1, 10, { name: '100%_pipe' });
+
+            expect(db.query.mock.calls[0][1][0]).toBe('%100\\%\\_pipe%');
+        });
+
+        test('escapes a lone backslash', async () => {
+            db.query
+                .mockResolvedValueOnce({ rows: [{ count: '0' }] })
+                .mockResolvedValueOnce({ rows: [] });
+
+            await WaterLine.findAll(1, 10, { name: 'a\\b' });
+
+            expect(db.query.mock.calls[0][1][0]).toBe('%a\\\\b%');
+        });
+    });
 });

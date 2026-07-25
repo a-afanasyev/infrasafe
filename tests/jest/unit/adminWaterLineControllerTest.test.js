@@ -487,4 +487,70 @@ describe('AdminWaterLineController', () => {
             expect(next).toHaveBeenCalledWith(expect.any(Error));
         });
     });
+
+    // [M-12] Whitelist статусов на всех трёх admin-путях записи `status`.
+    describe('status whitelist (M-12)', () => {
+        test('batch update_status rejects an out-of-domain status with 400 and no DB write', async () => {
+            req.body = { action: 'update_status', ids: [1, 2], data: { status: 'broken' } };
+
+            await batchWaterLinesOperation(req, res, next);
+
+            expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
+            expect(db.query).not.toHaveBeenCalled();
+            expect(res.json).not.toHaveBeenCalled();
+        });
+
+        test('batch update_status still accepts a valid status', async () => {
+            req.body = { action: 'update_status', ids: [1], data: { status: 'inactive' } };
+            db.query.mockResolvedValue({ rows: [{ line_id: 1 }] });
+
+            await batchWaterLinesOperation(req, res, next);
+
+            expect(db.query.mock.calls[0][1]).toEqual(['inactive', [1]]);
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+        });
+
+        test('set_maintenance passes the domain constant as a parameter, not a literal', async () => {
+            req.body = { action: 'set_maintenance', ids: [7] };
+            db.query.mockResolvedValue({ rows: [{ line_id: 7 }] });
+
+            await batchWaterLinesOperation(req, res, next);
+
+            const [sql, params] = db.query.mock.calls[0];
+            expect(sql).toContain('status = $1');
+            expect(params).toEqual(['maintenance', [7]]);
+        });
+
+        test('create rejects an out-of-domain status with 400 and no DB write', async () => {
+            req.body = { name: 'WL', diameter_mm: 100, material: 'steel', status: 'broken' };
+
+            await createWaterLine(req, res, next);
+
+            expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
+            expect(db.query).not.toHaveBeenCalled();
+        });
+
+        test('update rejects an out-of-domain status with 400 and no DB write', async () => {
+            req.params.id = '1';
+            req.body = { status: 'broken' };
+
+            await updateWaterLine(req, res, next);
+
+            expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
+            expect(db.query).not.toHaveBeenCalled();
+        });
+
+        test('a 5xx from below is still collapsed into a generic 500 (no internal leak)', async () => {
+            req.body = { name: 'WL', diameter_mm: 100, material: 'steel', status: 'active' };
+            const internal = Object.assign(new Error('connection to 10.0.0.5 refused'), { statusCode: 500 });
+            db.query.mockRejectedValue(internal);
+
+            await createWaterLine(req, res, next);
+
+            expect(next).toHaveBeenCalledWith(expect.objectContaining({
+                statusCode: 500,
+                message: 'Internal server error'
+            }));
+        });
+    });
 });
