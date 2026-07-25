@@ -159,6 +159,9 @@ CREATE TABLE IF NOT EXISTS water_lines (
     material VARCHAR(100),
     pressure_bar NUMERIC(5,2) CHECK (pressure_bar > 0),
     installation_date DATE,
+    -- [M-12b] Домен статуса (active/maintenance/inactive) задаётся CHECK'ом из
+    -- миграции 040_water_lines_status_check.sql — единственный источник этого
+    -- констрейнта, чтобы fresh-bootstrap и прод сходились через раннер.
     status VARCHAR(20) DEFAULT 'active',
     -- Координаты (для обратной совместимости)
     latitude_start NUMERIC(9,6),

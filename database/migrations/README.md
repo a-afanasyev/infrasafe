@@ -125,6 +125,8 @@ backward-compatible (expand-only).
 | 038 | `038_uk_requests.sql` | 2026-07-23 | request.reconcile (контракт УК 2026-07-23) — таблица `uk_requests` для заявок, заведённых на стороне УК (в `alert_request_map` им нельзя: `infrasafe_alert_id NOT NULL`); upsert-ключ `uk_request_number`; инвентаризация и счётчики карты — ARM ∪ uk_requests. Плюс индекс `idx_arm_building_status` под ARM-ветку счётчиков (закрыт pre-existing gap Sprint 9). Expand-only. |
 | 039 | `039_arm_widen_and_archive.sql` | 2026-07-24 | ARM: `uk_request_number` VARCHAR(20)→(50) (валидатор пускал до 50 → `markSent` падал бы на 21+; выравнивание с `uk_requests`) + колонка `archived_at` + архивация 7 UK-подтверждённых orphan-строк (синтетики мая-июня, УК их удалила; вечный шум в их orphan-диффе). Архивные строки скрыты из инвентаризации и счётчиков (`archived_at IS NULL` во всех ARM-ветках), аудит сохранён. No-op на profk/fresh. Expand-only. |
 
+| 040 | `040_water_lines_status_check.sql` | 2026-07-25 | M-12b (PR-2b) — CHECK на `water_lines.status` (`active`/`maintenance`/`inactive`, NULL разрешён явно). Вторая половина M-12: PR-2 закрыл приложение (`WaterLine.assertValidStatus` на всех 5 путях записи), БД принимала что угодно ≤20 символов. Констрейнт **сразу валидный**, не NOT VALID: таблица пуста на обоих продах (проверено 2026-07-25). **Contract change, не expand-only** — едет отдельным релизом ПОСЛЕ PR-2, чтобы образ отката уже содержал тот же whitelist. |
+
 ## Примечание про `003_*` и `012_*`
 
 - **003** — каноническая версия `003_power_calculation_v2.sql`. Исторические попытки (`_system`, `_system_fixed`) перенесены в [`_superseded/`](./_superseded/README.md) и **не должны** применяться. Раннер исключает `_superseded/` строгой regex (`^database/migrations/[0-9]{3}_…\.sql$`).

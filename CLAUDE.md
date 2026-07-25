@@ -92,7 +92,14 @@ psql postgresql://postgres:postgres@localhost:5435/infrasafe
 #                    039 ARM widen + archive (2026-07-24: uk_request_number VARCHAR(20)→(50) — validator accepted 50,
 #                        markSent would 500 on 21+; archived_at column + archive of 7 UK-confirmed orphan synthetics
 #                        on infrasafe — archived rows hidden from inventory/counters via archived_at IS NULL,
-#                        audit kept; no-op on profk/fresh)
+#                        audit kept; no-op on profk/fresh),
+#                    040 water_lines.status CHECK (M-12b / PR-2b, 2026-07-25: active|maintenance|inactive,
+#                        NULL allowed explicitly — column is nullable with DEFAULT 'active'. Second half of
+#                        M-12: PR-2 closed the APPLICATION side (WaterLine.assertValidStatus on all 5 write
+#                        paths), the DB still accepted any ≤20-char string. Constraint is immediately VALID,
+#                        not NOT VALID — water_lines is EMPTY on both prods (verified 2026-07-25), so there
+#                        is nothing to scan. CONTRACT change, NOT expand-only: ships as its own release AFTER
+#                        PR-2 so the rollback image already carries the same whitelist)
 ```
 
 ### Migration runner (AUD-002, PR-1a)
