@@ -102,10 +102,127 @@
   --st-crit: #EF4444;
   --st-info: #3B82F6;
   --st-offline: #9CA3AF;
+  /* Единственное место, где зелёный уместен как СОСТОЯНИЕ: всплывающее
+     подтверждение выполненного действия. Оно живёт секунды и говорит об
+     исходе действия, а не о состоянии объекта на карте. Держится отдельно
+     от --accent, чтобы кнопка и подтверждение не сливались в один цвет. */
+  --st-success: #4CAF50;
 
-  /* Чертёжная подложка. Живёт в хроме — шапка, панели, пустые состояния —
-     и никогда не заходит на полотно карты. */
-  --grid-ink: rgba(26, 29, 43, 0.04);
+  /* Компоненты тех же цветов, без обёртки rgb(). Нужны там, где цвет берётся
+     с прозрачностью: `rgba(var(--accent-rgb), .12)`. В style.css таких мест
+     было 60+, и каждое было записано литералом — то есть оставалось бирюзовым
+     при любой смене бренда. Одна переменная закрывает их все.
+     Держать в синхроне с --accent / --st-warn / --st-crit. */
+  --accent-rgb: 0, 191, 165;
+  --accent-alt-rgb: 60, 228, 60;
+  --warn-rgb: 245, 158, 11;
+  --crit-rgb: 239, 68, 68;
+
+  /* Чертёжная подложка. У нейтрального бренда её НЕТ: прозрачный цвет
+     означает, что градиенты рисуются, но не видны, и infrasafe.uz остаётся
+     без изменений. Видимое значение задаёт только бренд, которому она нужна. */
+  --grid-ink: transparent;
+  --grid-step: 28px;
+
+  /* Отделка поверхностей. Вынесена из .neomorph, чтобы бренд мог заменить
+     неоморфизм плоскими карточками, не трогая ни одного правила компонента.
+     Значения здесь — ровно те, что были захардкожены в .neomorph. */
+  --surface-shadow:
+    6px 6px 12px rgba(163, 177, 198, 0.3),
+    -6px -6px 12px rgba(255, 255, 255, 0.5);
+  --surface-border: 1px solid rgba(255, 255, 255, 0.3);
+  --surface-blur: blur(10px);
+  --header-border: 1px solid rgba(255, 255, 255, 0.3);
+
+  /* ------------------------------------------- ПОВЕРХНОСТИ И БЛОКИ ----
+     Всё ниже было захардкожено в правилах компонентов css/style.css и не
+     реагировало на смену темы или бренда. Значения перенесены как есть. */
+
+  /* Боковая панель слоёв и статусов. В светлой теме это белые плашки, в
+     тёмной — отдельная тёмно-синяя палитра, заведённая когда-то вручную. */
+  --panel-surface: #ffffff;
+
+  /* Баннер «тестовые данные» */
+  --banner-bg: linear-gradient(135deg, var(--st-warn) 0%, var(--st-crit) 100%);
+  --banner-ink: #ffffff;
+
+  /* Маркетинговые блоки лендингов about/documentation */
+  --hero-ink: #ffffff;
+  --hero-dot: #3CE43C;
+  --hero-btn-ink: #0F1E25;
+  --hero-btn-hover: #00BFA5;
+  --hero-bg:
+    radial-gradient(120% 140% at 0% 0%, rgba(var(--accent-rgb), 0.55) 0%, rgba(var(--accent-rgb), 0) 55%),
+    radial-gradient(120% 140% at 100% 100%, rgba(var(--accent-alt-rgb), 0.35) 0%, rgba(var(--accent-alt-rgb), 0) 60%),
+    linear-gradient(135deg, #0F1E25 0%, #133340 50%, #0F1E25 100%);
+  --cta-bg:
+    radial-gradient(120% 200% at 50% 0%, rgba(var(--accent-rgb), 0.45) 0%, rgba(var(--accent-rgb), 0) 60%),
+    linear-gradient(135deg, #133340 0%, #0F1E25 100%);
+
+  /* Цветные плитки-иконки лендингов */
+  --icon-power:  linear-gradient(135deg, #F59E0B, #EF4444);
+  --icon-water:  linear-gradient(135deg, #3B82F6, #06B6D4);
+  --icon-safety: linear-gradient(135deg, #8B5CF6, #EC4899);
+  --icon-map:    linear-gradient(135deg, #00BFA5, #10B981);
+  --icon-user:   linear-gradient(135deg, #00BFA5, #10B981);
+  --icon-admin:  linear-gradient(135deg, #8B5CF6, #3B82F6);
+  --icon-dev:    linear-gradient(135deg, #1A1D2B, #475569);
+
+  /* Бейджи статуса раздела документации */
+  --badge-soon-ink: #B45309;
+  --badge-ondemand-ink: #047857;
+
+  /* Popup карты. Он намеренно остаётся светлым в обеих темах — читаемость
+     поверх тайлов важнее консистентности с оболочкой. */
+  --popup-surface: #ffffff;
+  --popup-ink: #333333;
+  --popup-ink-strong: #1A1D2B;
+  --popup-ink-muted: #757575;
+  --popup-ink-muted-hover: #585858;
+  --popup-heading: #1a202c;
+  --popup-body: #2d3748;
+  --popup-danger: #c53030;
+
+  /* Панель слоёв карты (public/css/map-layers.css). Своя серая шкала в стиле
+     Chakra, не пересекавшаяся ни с чем. Здесь только повторяющийся хром;
+     доменные цвета — коричневые трубы отопления, синие водные линии —
+     намеренно оставлены литералами: это кодировка данных, а не оформление,
+     и менять её вместе с брендом нельзя. */
+  --panel-divider: #e2e8f0;
+  --layers-heading: #1f2933;
+
+  /* Показания мощности в popup */
+  --power-label: #666666;
+  --power-value: #333333;
+  --power-total: #1A1D2B;
+  --power-title: #00BFA5;
+
+  /* Перегрузка трансформатора */
+  --overload-surface: #FEE;
+  --overload-bg: linear-gradient(135deg, #FEE 0%, #FDD 100%);
+  --overload-border: #EF4444;
+  --overload-ink: #C00;
+
+  /* Мигание ячеек в popup */
+  --blink-warn-ink: #F59E0B;
+  --blink-crit-ink: #EF4444;
+
+  /* ⚠️ Имя @keyframes blink-red объявлено ДВАЖДЫ: в css/style.css и в
+     css/map-components.css. Имена анимаций глобальны, а map-components.css
+     подключается позже — значит на карте побеждает его версия, и реальные
+     цвета мигания там #ff0000/#ff6666, а не --blink-crit-ink выше.
+     Здесь эти цвета сохранены как есть, чтобы ничего не сдвинуть. Слияние
+     двух объявлений в одно — отдельная задача: сейчас у них разные цвета,
+     и «починка» изменила бы вид карты. */
+  --blink-map-crit: #ff0000;
+  --blink-map-crit-soft: #ff6666;
+
+  /* Кнопка авторизации на карте в состоянии «вошёл» */
+  --auth-ok: #34a236;
+
+  /* Ошибка формы входа на карте */
+  --form-error: #dc3545;
+  --form-error-bg: rgba(220, 53, 69, 0.1);
 
   /* Гарнитуры. Нейтральный бренд остаётся на Inter, как сейчас. */
   --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -184,5 +301,36 @@
   --accent-ink: #00BFA5;
   --accent-hover: #26D7C0;
   --st-ok-ring: rgba(229, 231, 235, 0.32);
-  --grid-ink: rgba(229, 231, 235, 0.05);
+  --grid-ink: transparent;
+
+  --surface-shadow:
+    6px 6px 12px rgba(0, 0, 0, 0.3),
+    -6px -6px 12px rgba(255, 255, 255, 0.02);
+  --surface-border: 1px solid rgba(255, 255, 255, 0.1);
+  --header-border: 1px solid rgba(255, 255, 255, 0.1);
+
+  /* Тёмно-синяя палитра боковой панели. Заведена вручную и до сих пор никак
+     не связана с остальной тёмной темой — здесь она хотя бы становится
+     переопределяемой. */
+  --panel-surface: #253041;
+  --panel-surface-hover: #2d3a4b;
+  --panel-item: #3a4a5e;
+  --panel-item-hover: #4a5a6e;
+  --panel-item-active: #34a236;
+  --panel-text: #e0e0e0;
+  --panel-border: rgba(255, 255, 255, 0.1);
+
+  --badge-soon-ink: #FBBF24;
+  --badge-ondemand-ink: #34D399;
+  --power-label: #9CA3AF;
+  --power-value: #E5E7EB;
+  --power-total: #E5E7EB;
+  --auth-ok: #4ade80;
+
+  /* --blink-* здесь НЕ переопределяются намеренно. Тёмные цвета мигания
+     задумывались (#FBBF24 / #F87171), но лежали в блоке `.dark { @keyframes }`,
+     который браузер отбрасывает, — то есть тёмная тема мигала светлыми
+     цветами всё это время. Чинить это здесь значило бы менять вид
+     infrasafe.uz под видом рефакторинга. Бренд, которому нужны свои цвета
+     мигания, задаёт --blink-* в собственном .dark. */
 }

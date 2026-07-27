@@ -10,145 +10,178 @@
     <link rel="stylesheet" href="css/style.css?v=20260727">
     <link rel="stylesheet" href="/brand/brand.css?v=20260727">
     <style>
-        /* Стили для страницы входа */
+        /* Страница входа собрана на общих токенах.
+           Раньше здесь жила автономная тема: 'Segoe UI', фиолетовый градиент
+           #667eea→#764ba2 и свой набор серых. Она не совпадала ни с картой, ни
+           с админкой, ни с каким-либо брендом — это был единственный экран,
+           не похожий ни на что вокруг, и при этом первый, который видит
+           пользователь. Ни одного собственного цвета здесь больше нет. */
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: var(--font-body);
+            background: var(--background);
+            background-image:
+                linear-gradient(var(--grid-ink) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid-ink) 1px, transparent 1px);
+            background-size: var(--grid-step) var(--grid-step);
+            color: var(--foreground);
             margin: 0;
-            padding: 0;
+            padding: 24px;
             min-height: 100vh;
+            height: auto;
+            overflow: auto;
             display: flex;
             align-items: center;
             justify-content: center;
+            box-sizing: border-box;
         }
 
         .login-container {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
-            padding: 40px;
+            background: var(--card);
+            border: var(--surface-border);
+            border-radius: var(--radius);
+            box-shadow: var(--surface-shadow);
+            padding: 36px 32px;
             width: 100%;
             max-width: 400px;
             text-align: center;
         }
 
-        .login-header {
-            margin-bottom: 30px;
+        .login-header { margin-bottom: 28px; }
+
+        .login-mark {
+            width: 44px;
+            height: 44px;
+            display: block;
+            margin: 0 auto 12px;
         }
 
         .login-header h1 {
-            color: #333;
-            margin: 0 0 10px 0;
-            font-size: 28px;
-            font-weight: 300;
+            font-family: var(--font-display);
+            color: var(--foreground);
+            margin: 0 0 6px 0;
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.01em;
         }
 
         .login-header p {
-            color: #666;
+            color: var(--muted-foreground);
             margin: 0;
-            font-size: 14px;
+            font-size: 0.875rem;
         }
 
-        .form-group {
-            margin-bottom: 20px;
-            text-align: left;
-        }
+        .form-group { margin-bottom: 18px; text-align: left; }
 
         .form-group label {
             display: block;
-            margin-bottom: 5px;
-            color: #333;
-            font-weight: 500;
-            font-size: 14px;
+            margin-bottom: 6px;
+            font-family: var(--font-display);
+            color: var(--secondary-foreground);
+            font-weight: 600;
+            font-size: 0.8125rem;
         }
 
         .form-group input {
             width: 100%;
-            padding: 12px 15px;
-            border: 2px solid #e1e1e1;
-            border-radius: 5px;
+            padding: 11px 13px;
+            background: var(--input-background);
+            color: var(--foreground);
+            border: 1.5px solid var(--border);
+            border-radius: calc(var(--radius) - 2px);
             box-sizing: border-box;
-            font-size: 14px;
-            transition: border-color 0.3s;
+            font-family: var(--font-body);
+            font-size: 0.9375rem;
+            transition: border-color 0.15s, box-shadow 0.15s;
         }
 
         .form-group input:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: var(--ring);
+            box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.15);
         }
 
-        .login-btn {
+        /* Селектор по ID, а не по классу, — сознательно.
+           В css/style.css есть правило
+             button[type="submit"]:not(.btn-outline):not(.btn-ghost):not(.btn-secondary)
+           со специфичностью (0,4,1), которая перебивает любой `.login-btn`
+           (0,1,0) независимо от порядка подключения. Из-за этого прежний
+           фиолетовый градиент на этой кнопке не применялся НИКОГДА — она
+           красилась общим правилом в --primary. #login-button (1,0,0) —
+           единственный способ задать главному действию страницы цвет
+           акцента, не поднимая !important. */
+        #login-button {
             width: 100%;
             padding: 12px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: var(--accent);
+            color: var(--accent-foreground);
             border: none;
-            border-radius: 5px;
-            font-size: 16px;
-            font-weight: 500;
+            border-radius: calc(var(--radius) - 2px);
+            font-family: var(--font-display);
+            font-size: 0.9375rem;
+            font-weight: 700;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: background-color 0.15s, box-shadow 0.2s;
         }
 
-        .login-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
-        }
+        #login-button:hover { background: var(--accent-hover); }
 
-        .login-btn:active {
-            transform: translateY(0);
+        #login-button:focus-visible {
+            outline: 3px solid rgba(var(--accent-rgb), 0.35);
+            outline-offset: 2px;
         }
 
         .error-message {
-            background: #fee;
-            color: #c33;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            font-size: 14px;
+            background: var(--form-error-bg);
+            color: var(--form-error);
+            padding: 10px 12px;
+            border-radius: calc(var(--radius) - 4px);
+            margin-bottom: 18px;
+            font-size: 0.875rem;
+            text-align: center;
+        }
+
+        .success-message {
+            background: rgba(var(--accent-rgb), 0.12);
+            color: var(--accent-ink);
+            padding: 10px 12px;
+            border-radius: calc(var(--radius) - 4px);
+            margin-bottom: 18px;
+            font-size: 0.875rem;
             text-align: center;
         }
 
         .login-info {
-            margin-top: 30px;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 5px;
-            border-left: 4px solid #667eea;
+            margin-top: 26px;
+            padding: 16px 18px;
+            background: var(--muted);
+            border-radius: calc(var(--radius) - 2px);
+            border-left: 3px solid var(--accent);
+            text-align: left;
         }
 
         .login-info p {
-            margin: 5px 0;
-            font-size: 14px;
-            color: #666;
+            margin: 4px 0;
+            font-size: 0.8125rem;
+            color: var(--muted-foreground);
         }
 
         .login-info code {
-            background: #e9ecef;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-family: 'Courier New', monospace;
-            color: #333;
+            background: var(--card);
+            border: 1px solid var(--border);
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.8125rem;
+            color: var(--foreground);
         }
 
         .loading {
             display: none;
             margin-top: 10px;
-            color: #667eea;
-            font-size: 14px;
+            color: var(--accent-ink);
+            font-size: 0.875rem;
         }
 
-        .success-message {
-            background: #efe;
-            color: #3c3;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            font-size: 14px;
-            text-align: center;
-        }
-
-        /* Анимация загрузки */
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
@@ -159,11 +192,15 @@
             display: inline-block;
             width: 12px;
             height: 12px;
-            border: 2px solid #667eea;
+            border: 2px solid var(--accent);
             border-top: 2px solid transparent;
             border-radius: 50%;
             animation: spin 1s linear infinite;
             margin-right: 8px;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .loading::before { animation: none; }
         }
     </style>
     
@@ -178,11 +215,17 @@
     <script src="public/dist/utils/domSecurity.js?v=20260527"></script>
     <!-- [R2-12] shared 2FA/auth layer — must load before login.js -->
     <script src="public/dist/utils/authFlow.js?v=20260703"></script>
+    <!-- Применяет сохранённую тему до отрисовки — иначе переход с карты в
+         тёмной теме давал бы вспышку светлого экрана. Кнопки переключения
+         здесь нет, и скрипт это переживает: обработчик вешается только
+         если элемент найден. -->
+    <script src="public/theme-toggle.js"></script>
 </head>
 <body>
     <div class="login-container">
         <div class="login-header">
-            <h1>🔐 InfraSafe</h1>
+            <img class="login-mark" src="/brand/favicon.svg" alt="">
+            <h1>InfraSafe</h1>
             <p>Система мониторинга инфраструктуры</p>
         </div>
 
