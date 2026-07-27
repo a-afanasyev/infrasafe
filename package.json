@@ -7,7 +7,7 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "lint": "eslint src/ public/ tests/ --max-warnings 0",
-    "test": "jest --forceExit",
+    "test": "jest",
     "test:unit": "jest tests/jest/unit",
     "test:integration": "jest tests/jest/integration",
     "test:security": "jest tests/jest/security",
