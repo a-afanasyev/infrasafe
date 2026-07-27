@@ -4,6 +4,22 @@
  */
 
 /**
+ * Цвет из токенов темы с запасным литералом.
+ * Разметка здесь собирается строками и вставляется через innerHTML, поэтому
+ * CSS-переменные приходится разрешать в коде. Запасное значение — литерал:
+ * в окне деплоя бандл может оказаться новее CSS.
+ *
+ * @param {string} name
+ * @param {string} fallback
+ * @returns {string}
+ */
+function PU_T(name, fallback) {
+    return (typeof window !== 'undefined' && window.BrandTokens)
+        ? window.BrandTokens.token(name, fallback)
+        : fallback;
+}
+
+/**
  * Создать SVG прогресс-бар для маркера трансформатора
  * 
  * @param {number} loadPercent - Процент загрузки (0-100)
@@ -41,10 +57,14 @@ function createTransformerProgressRing(loadPercent) {
  * @returns {string} HEX цвет
  */
 function getLoadColor(loadPercent) {
-    if (loadPercent >= 90) return '#EF4444'; // Красный - критическая перегрузка
-    if (loadPercent >= 80) return '#FF9800'; // Оранжевый - высокая загрузка
-    if (loadPercent >= 60) return '#F59E0B'; // Жёлтый - средняя загрузка
-    return '#10B981'; // Зелёный - нормальная загрузка
+    // Норма здесь заливается ЦВЕТОМ, а не остаётся пустой: это шкала
+    // величины, а не состояние объекта на карте. Пустое кольцо на индикаторе
+    // нагрузки читалось бы как «нет данных», а не как «нагрузка в норме»,
+    // поэтому берётся --st-success, а не --st-ok.
+    if (loadPercent >= 90) return PU_T('--st-crit', '#EF4444');        // критическая перегрузка
+    if (loadPercent >= 80) return PU_T('--st-warn-strong', '#FF9800'); // высокая загрузка
+    if (loadPercent >= 60) return PU_T('--st-warn', '#F59E0B');        // средняя загрузка
+    return PU_T('--st-success', '#10B981');                            // нормальная загрузка
 }
 
 /**
@@ -105,7 +125,7 @@ function createPowerSection(powerData, options = {}) {
     } = options;
     
     if (!powerData) {
-        return '<p style="color: #718096;">Нет данных о мощности</p>';
+        return `<p style="color: ${PU_T('--muted-foreground', '#718096')};">Нет данных о мощности</p>`;
     }
     
     const ph1 = parseFloat(powerData.power_ph1_kw) || 0;
@@ -117,7 +137,7 @@ function createPowerSection(powerData, options = {}) {
     const maxPowerPerPhase = capacityKva ? capacityKva / 3 : Math.max(ph1, ph2, ph3) * 1.5;
     
     let html = `<div class="power-section">`;
-    html += `<div class="power-section-title" style="color: #2d3748;">💡 ${title}</div>`;
+    html += `<div class="power-section-title" style="color: ${PU_T('--popup-body', '#2d3748')};">💡 ${title}</div>`;
     
     if (showPhaseDetails) {
         html += createPhaseIndicator('Фаза 1', ph1, (ph1 / maxPowerPerPhase) * 100);
@@ -131,7 +151,7 @@ function createPowerSection(powerData, options = {}) {
             : `${total.toFixed(2)} кВт`;
         
         html += `
-            <div class="power-summary" style="color: #2d3748;">
+            <div class="power-summary" style="color: ${PU_T('--popup-body', '#2d3748')};">
                 ${showPhaseDetails ? 'По фазам: ' + summaryText + ' | ' : ''}
                 <strong>Всего: ${total.toFixed(2)} кВт</strong>
             </div>
@@ -153,7 +173,7 @@ function createOverloadWarning(loadPercent, objectName) {
     if (loadPercent < 90) return '';
     
     return `
-        <div class="overload-warning" style="color: #c53030; background-color: #fff5f5; padding: 8px; border-radius: 4px; border-left: 4px solid #fc8181;">
+        <div class="overload-warning" style="color: ${PU_T('--popup-danger', '#c53030')}; background-color: ${PU_T('--overload-surface', '#fff5f5')}; padding: 8px; border-radius: 4px; border-left: 4px solid #fc8181;">
             <strong>ПЕРЕГРУЗКА!</strong> ${objectName} загружен на ${loadPercent.toFixed(1)}%
         </div>
     `;
@@ -178,7 +198,7 @@ function formatTransformerLoadInfo(transformer, powerData) {
     
     // Общая информация о загрузке
     html += `
-        <p style="margin: 8px 0; color: #2d3748;">
+        <p style="margin: 8px 0; color: ${PU_T('--popup-body', '#2d3748')};">
             <strong>Загрузка:</strong> 
             ${totalPower.toFixed(2)} кВт / ${capacity.toFixed(0)} кВА 
             (<strong style="color: ${getLoadColor(loadPercent)};">${loadPercent.toFixed(1)}%</strong>)
@@ -195,7 +215,7 @@ function formatTransformerLoadInfo(transformer, powerData) {
     
     // Статистика
     html += `
-        <p style="margin: 8px 0; font-size: 12px; color: #4a5568;">
+        <p style="margin: 8px 0; font-size: 12px; color: ${PU_T('--power-label', '#4a5568')};">
             Зданий: ${powerData.buildings_count || 0} | 
             Линий: ${powerData.lines_count || 0} | 
             Контроллеров: ${powerData.active_controllers_count || 0}/${powerData.controllers_count || 0}

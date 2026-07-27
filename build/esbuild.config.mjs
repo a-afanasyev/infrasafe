@@ -44,6 +44,10 @@ const ENTRIES = [
     'public/utils/sectionId.js',
     // [R2-12] shared 2FA/auth network + QR-validation layer
     'public/utils/authFlow.js',
+    // [brand] доступ к токенам темы из кода: маркеры карты, popup'ы, бейджи.
+    // Должен грузиться ПЕРЕД script.js / map-layers-control.js / admin.js —
+    // они читают window.BrandTokens при отрисовке.
+    'public/utils/brandTokens.js',
 ].map(f => path.join(projectRoot, f));
 
 const sharedOptions = {
