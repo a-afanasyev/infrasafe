@@ -198,47 +198,66 @@ if (process.env.NODE_ENV === 'production' && replicaCount > 1 && !process.env.RE
     );
 }
 
-db.init()
-    .then(() => {
-        server = app.listen(PORT, () => {
-            logger.info(`Сервер запущен на порту ${PORT}`);
+// [flake] Слушающий сокет открывается ТОЛЬКО когда файл запущен напрямую
+// (`node src/server.js` — так делают npm start и CMD образа).
+//
+// Раньше `app.listen()` вызывался при любом require. Тесты импортируют этот
+// модуль шестью наборами и работают через supertest, который поднимает
+// собственный временный сокет, — слушающий порт им не нужен вовсе. Но каждый
+// импорт его открывал, а tests/jest/setup.js выдаёт СЛУЧАЙНЫЙ порт из тысячи:
+// два jest-воркера рано или поздно выбирали один и тот же, и набор падал с
+// EADDRINUSE по причине, не имеющей отношения к его предмету.
+//
+// Обходной приём тоже существовал: tests/jest/unit/serverTest.test.js мокал
+// db.init() невыполнимым промисом ровно затем, чтобы .then() с listen() не
+// сработал. Теперь это не нужно.
+//
+// Обработчики сигналов ниже НЕ под охраной сознательно: serverTest.test.js
+// проверяет, что они зарегистрированы, и они относятся к модулю, а не к
+// режиму запуска.
+if (require.main === module) {
+    db.init()
+        .then(() => {
+            server = app.listen(PORT, () => {
+                logger.info(`Сервер запущен на порту ${PORT}`);
+            });
+            server.timeout = 30000; // 30s — максимальное время обработки запроса
+            server.keepAliveTimeout = 65000; // Чуть больше чем типичный Nginx proxy_read_timeout (60s)
+            server.headersTimeout = 66000; // Должен быть больше keepAliveTimeout
+
+            // [Sprint 6 / P0-6] Start the materialized-view refresh scheduler
+            // AFTER DB is ready. Lazy-require so test harness can shim it out
+            // by setting MV_REFRESH_ENABLED=false in the env before requiring
+            // server.js.
+            try {
+                require('./services/mvRefreshService').start();
+            } catch (e) {
+                logger.error('MV refresh scheduler failed to start:', e);
+            }
+
+            // [Sprint 9 / FIX-007] Start UK outbox drain worker. Dormant when
+            // UK_USE_WEBHOOK_SENDER is unset/false (no interval started).
+            try {
+                require('./services/uk/ukOutboxService').start();
+            } catch (e) {
+                logger.error('UK outbox drain worker failed to start:', e);
+            }
+
+            // [Sprint 10 PR-2] Start alert verification drain worker. Dormant
+            // when ALERT_VERIFICATION_ENABLED is unset/false (no interval).
+            // Wakes up scheduled post-resolve verifications enqueued by
+            // alertService.resolveAlert (system path, PR-3 wiring).
+            try {
+                require('./services/alertVerificationService').start();
+            } catch (e) {
+                logger.error('Alert verification drain worker failed to start:', e);
+            }
+        })
+        .catch((error) => {
+            logger.error(`Ошибка инициализации базы данных: ${error.message}`);
+            process.exit(1);
         });
-        server.timeout = 30000; // 30s — максимальное время обработки запроса
-        server.keepAliveTimeout = 65000; // Чуть больше чем типичный Nginx proxy_read_timeout (60s)
-        server.headersTimeout = 66000; // Должен быть больше keepAliveTimeout
-
-        // [Sprint 6 / P0-6] Start the materialized-view refresh scheduler
-        // AFTER DB is ready. Lazy-require so test harness can shim it out
-        // by setting MV_REFRESH_ENABLED=false in the env before requiring
-        // server.js.
-        try {
-            require('./services/mvRefreshService').start();
-        } catch (e) {
-            logger.error('MV refresh scheduler failed to start:', e);
-        }
-
-        // [Sprint 9 / FIX-007] Start UK outbox drain worker. Dormant when
-        // UK_USE_WEBHOOK_SENDER is unset/false (no interval started).
-        try {
-            require('./services/uk/ukOutboxService').start();
-        } catch (e) {
-            logger.error('UK outbox drain worker failed to start:', e);
-        }
-
-        // [Sprint 10 PR-2] Start alert verification drain worker. Dormant
-        // when ALERT_VERIFICATION_ENABLED is unset/false (no interval).
-        // Wakes up scheduled post-resolve verifications enqueued by
-        // alertService.resolveAlert (system path, PR-3 wiring).
-        try {
-            require('./services/alertVerificationService').start();
-        } catch (e) {
-            logger.error('Alert verification drain worker failed to start:', e);
-        }
-    })
-    .catch((error) => {
-        logger.error(`Ошибка инициализации базы данных: ${error.message}`);
-        process.exit(1);
-    });
+}
 
 // Graceful shutdown.
 // [AUD-028] exitCode is propagated to process.exit so an abnormal trigger
