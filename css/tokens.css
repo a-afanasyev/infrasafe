@@ -239,22 +239,40 @@
      подключает admin.css после tokens.css) и выигрывает в каскаде. То есть
      сейчас эти алиасы намеренно неактивны, и вид админки не меняется.
 
-     Три значения не имеют канонического аналога и оставлены как были:
-     --color-secondary/-hover (синий «действие» админки) и --color-muted. */
+     Собственный :root в admin.css удалён на этапе 2 — эти имена теперь
+     единственный источник, и админка слушается бренда. */
   --color-primary: var(--accent);
   --color-primary-hover: var(--accent-hover);
-  --color-secondary: #007bff;
-  --color-secondary-hover: #0056b3;
+  --color-secondary: var(--st-info);
+  --color-secondary-hover: var(--st-info);
   --color-danger: var(--destructive);
-  --color-danger-hover: #c82333;
+  --color-danger-hover: var(--destructive);
   --color-warning: var(--st-warn);
   --color-text: var(--foreground);
   --color-text-light: var(--muted-foreground);
-  --color-surface: var(--card);
+  /* Сплошной белый, а не var(--card): у админки нет тёмной темы, а
+     полупрозрачная карточка на таблицах читается хуже сплошной. */
+  --color-surface: #ffffff;
   --color-background: var(--background);
   --color-border: var(--border);
   --color-hover: var(--muted);
-  --color-muted: #999;
+  --color-muted: var(--st-offline);
+
+  /* Бейджи статусов и серьёзности в админке. В admin.css они были помечены
+     комментарием «semantic colors — intentionally not in :root variables»:
+     намерение понятное, но следствие — единственный экран, который не
+     реагирует ни на тему, ни на бренд. Пары «подложка + текст» вынесены
+     сюда; смысл при этом сохранён, а не размазан по акценту. */
+  --badge-info-bg: #e3f2fd;      --badge-info-ink: #1565c0;
+  --badge-warn-bg: #fff3e0;      --badge-warn-ink: #e65100;
+  --badge-crit-bg: #ffebee;      --badge-crit-ink: #c62828;
+  --badge-ok-bg: #e8f5e9;        --badge-ok-ink: #2e7d32;
+  --badge-pending-bg: #fffde7;   --badge-pending-ink: #f9a825;
+
+  /* Шапка таблиц админки. Нейтральные значения — как было: сплошная заливка
+     акцентом с белым текстом. */
+  --table-head-bg: var(--color-primary);
+  --table-head-ink: #ffffff;
 }
 
 /* Темная тема */

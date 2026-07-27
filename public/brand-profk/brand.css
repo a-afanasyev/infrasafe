@@ -230,6 +230,21 @@
   --badge-soon-ink: #8a5a12;
   --badge-ondemand-ink: #2b7a33;
 
+  /* Бейджи админки — тонированные пары из превью брендбука (.badge-*).
+     Зелёный здесь тёмный (#2f8f37), а не акцентный: это состояние заявки,
+     а не кнопка. */
+  --badge-info-bg: #e7f0fb;      --badge-info-ink: #2f74c0;
+  --badge-warn-bg: #fff2df;      --badge-warn-ink: #b9791f;
+  --badge-crit-bg: #fdeceb;      --badge-crit-ink: #c0433e;
+  --badge-ok-bg: #e8f6e9;        --badge-ok-ink: #2f8f37;
+  --badge-pending-bg: #eaf1ee;   --badge-pending-ink: #4a6b58;
+
+  /* Шапка таблицы по брендбуку: почти белая подложка и приглушённая
+     подпись. Сплошная зелёная полоса над каждой таблицей читалась бы как
+     статус «всё в норме» и обесценивала бы настоящий зелёный. */
+  --table-head-bg: #fafbfb;
+  --table-head-ink: #8a929c;
+
   /* Перегрузка и ошибки — на красный брендбука вместо #EF4444 */
   --overload-surface: #fdeceb;
   --overload-bg: linear-gradient(135deg, #fdeceb 0%, #fbdcda 100%);

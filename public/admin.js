@@ -3092,18 +3092,18 @@ document.addEventListener("DOMContentLoaded", function () {
             font-size: 12px;
             font-weight: bold;
         }
-        .status-online { background-color: #4CAF50; }
-        .status-offline { background-color: #f44336; }
-        .status-maintenance { background-color: #ff9800; }
+        .status-online { background-color: var(--st-success); }
+        .status-offline { background-color: var(--color-danger); }
+        .status-maintenance { background-color: var(--color-warning); }
         .alert-badge {
-            background-color: #f44336;
+            background-color: var(--color-danger);
             color: white;
             padding: 2px 6px;
             border-radius: 8px;
             font-size: 11px;
         }
         .ok-badge {
-            background-color: #4CAF50;
+            background-color: var(--st-success);
             color: white;
             padding: 2px 6px;
             border-radius: 8px;
@@ -3120,7 +3120,7 @@ document.addEventListener("DOMContentLoaded", function () {
         .form-field input, .form-field select, .form-field textarea {
             width: 100%;
             padding: 8px;
-            border: 1px solid #ddd;
+            border: 1px solid var(--color-border);
             border-radius: 4px;
         }
         .form-field textarea {

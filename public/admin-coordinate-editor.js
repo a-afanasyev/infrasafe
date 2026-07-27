@@ -143,7 +143,7 @@ class CoordinateEditor {
                 <!-- Мини-карта (скрыта по умолчанию) -->
                 <div id="mini-map-container" style="display: none;">
                     <div id="coordinate-mini-map" style="height: 300px; margin: 15px 0; border-radius: 4px;"></div>
-                    <small style="color: #666;">
+                    <small style="color: var(--color-text-light);">
                         💡 Кликните на карте или перетащите маркер для выбора координат
                     </small>
                 </div>
@@ -501,12 +501,12 @@ if (!document.getElementById('coordinate-editor-styles')) {
             justify-content: space-between;
             align-items: center;
             padding: 15px 20px;
-            border-bottom: 1px solid #ddd;
+            border-bottom: 1px solid var(--color-border);
         }
 
         .modal-header h3 {
             margin: 0;
-            color: #333;
+            color: var(--color-text);
         }
 
         .close-btn {
@@ -514,7 +514,7 @@ if (!document.getElementById('coordinate-editor-styles')) {
             border: none;
             font-size: 24px;
             cursor: pointer;
-            color: #999;
+            color: var(--color-muted);
             padding: 0;
             width: 30px;
             height: 30px;
@@ -524,7 +524,7 @@ if (!document.getElementById('coordinate-editor-styles')) {
         }
 
         .close-btn:hover {
-            color: #333;
+            color: var(--color-text);
         }
 
         .modal-body {
@@ -532,7 +532,7 @@ if (!document.getElementById('coordinate-editor-styles')) {
         }
 
         .info-section {
-            background: #f5f5f5;
+            background: var(--color-hover);
             padding: 10px;
             border-radius: 4px;
             margin-bottom: 15px;
@@ -546,13 +546,13 @@ if (!document.getElementById('coordinate-editor-styles')) {
             display: block;
             margin-bottom: 5px;
             font-weight: bold;
-            color: #333;
+            color: var(--color-text);
         }
 
         .form-group input {
             width: 100%;
             padding: 8px;
-            border: 1px solid #ddd;
+            border: 1px solid var(--color-border);
             border-radius: 4px;
             font-size: 14px;
             box-sizing: border-box;
@@ -560,14 +560,14 @@ if (!document.getElementById('coordinate-editor-styles')) {
 
         .form-group input:focus {
             outline: none;
-            border-color: #4CAF50;
+            border-color: var(--color-primary);
             box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.1);
         }
 
         .form-group small {
             display: block;
             margin-top: 3px;
-            color: #666;
+            color: var(--color-text-light);
             font-size: 12px;
         }
 
@@ -576,9 +576,13 @@ if (!document.getElementById('coordinate-editor-styles')) {
             text-align: center;
         }
 
+        /* Держим в согласии с .btn-secondary из admin.css: этот блок
+           вставляется в документ позже и перебивает её. Раньше здесь стоял
+           синий #2196F3, из-за чего ВСЕ вторичные кнопки админки, включая
+           «Сменить пароль» в шапке, были синими вопреки таблице стилей. */
         .btn-secondary {
-            background: #2196F3;
-            color: white;
+            background: var(--secondary-foreground);
+            color: var(--primary-foreground);
             border: none;
             padding: 10px 20px;
             border-radius: 4px;
@@ -587,7 +591,7 @@ if (!document.getElementById('coordinate-editor-styles')) {
         }
 
         .btn-secondary:hover {
-            background: #1976D2;
+            background: var(--color-text);
         }
 
         .form-actions {
@@ -595,12 +599,12 @@ if (!document.getElementById('coordinate-editor-styles')) {
             gap: 10px;
             margin-top: 20px;
             padding-top: 15px;
-            border-top: 1px solid #ddd;
+            border-top: 1px solid var(--color-border);
         }
 
         .btn-save {
             flex: 1;
-            background: #4CAF50;
+            background: var(--color-primary);
             color: white;
             border: none;
             padding: 12px;
@@ -611,11 +615,11 @@ if (!document.getElementById('coordinate-editor-styles')) {
         }
 
         .btn-save:hover {
-            background: #45a049;
+            background: var(--color-primary-hover);
         }
 
         .btn-cancel {
-            background: #f44336;
+            background: var(--color-danger);
             color: white;
             border: none;
             padding: 12px 20px;
@@ -625,11 +629,11 @@ if (!document.getElementById('coordinate-editor-styles')) {
         }
 
         .btn-cancel:hover {
-            background: #da190b;
+            background: var(--color-danger-hover);
         }
 
         #coordinate-mini-map {
-            border: 1px solid #ddd;
+            border: 1px solid var(--color-border);
         }
 
         /* Leaflet popup fix */

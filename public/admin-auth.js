@@ -424,7 +424,7 @@ class AdminAuth {
                     top: 20px;
                     right: 20px;
                     padding: 0.5rem 1rem;
-                    background: #dc3545;
+                    background: var(--color-danger);
                     color: white;
                     border: none;
                     border-radius: 6px;
@@ -432,7 +432,7 @@ class AdminAuth {
                     font-size: 0.9rem;
                     z-index: 1000;
                 }
-                .logout-btn:hover { background: #c82333; }
+                .logout-btn:hover { background: var(--color-danger-hover); }
             </style>
         `;
         document.head.insertAdjacentHTML('beforeend', styles);
