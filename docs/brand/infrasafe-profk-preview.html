@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>InfraSafe × PRoFK — витрина темы</title>
+<link rel="icon" href="assets/profk-favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Open+Sans:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================================
+   БЛОК 1 — токены бренда. Ровно этот блок станет public/brand-profk/brand.css.
+   Всё ниже — только витрина.
+   ========================================================================== */
+:root {
+  --background:#f5f5f5; --card:#ffffff; --foreground:#333333;
+  --muted-fg:#8a929c; --text-2:#5b6660;
+  --border:#dcdcdc; --border-soft:#ececec;
+  --accent:#44c24a; --accent-hover:#3aa540; --accent-ink:#2b7a33;
+  --accent-dim:rgba(68,194,74,.12);
+  --destructive:#d9534f;
+  --radius:8px; --radius-lg:12px;
+  --shadow:0 1px 3px rgba(51,51,51,.06);
+
+  /* шкала статусов — норма без цвета */
+  --st-ok:transparent; --st-ok-ring:rgba(51,51,51,.35);
+  --st-warn:#f0ad4e; --st-crit:#d9534f; --st-info:#5bc0de; --st-offline:#8a929c;
+
+  /* чертёжная подложка */
+  --grid-ink:rgba(51,51,51,.045);
+
+  --font-display:'Montserrat',system-ui,sans-serif;
+  --font-body:'Open Sans',system-ui,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,monospace;
+  --font-size:15px;
+}
+.dark {
+  --background:#1f2320; --card:#2a2f2c; --foreground:#ececec;
+  --muted-fg:#9aa39c; --text-2:#b9c1ba;
+  --border:rgba(236,236,236,.14); --border-soft:rgba(236,236,236,.08);
+  --accent:#44c24a; --accent-hover:#4fd156; --accent-ink:#44c24a;
+  --accent-dim:rgba(68,194,74,.18);
+  --shadow:0 1px 3px rgba(0,0,0,.4);
+  --st-ok-ring:rgba(236,236,236,.32);
+  --grid-ink:rgba(236,236,236,.05);
+}
+
+/* ============================================================================
+   БЛОК 2 — компоненты
+   ========================================================================== */
+*{box-sizing:border-box}
+html{font-size:var(--font-size)}
+body{
+  margin:0; font-family:var(--font-body); color:var(--foreground);
+  background:var(--background); line-height:1.5; -webkit-font-smoothing:antialiased;
+  /* подпись: чертёжная сетка 28px — живёт в хроме, не на карте */
+  background-image:linear-gradient(var(--grid-ink) 1px,transparent 1px),
+                   linear-gradient(90deg,var(--grid-ink) 1px,transparent 1px);
+  background-size:28px 28px;
+  transition:background-color .2s,color .2s;
+}
+h1,h2,h3{font-family:var(--font-display);margin:0;font-weight:700;color:var(--foreground)}
+h1{font-size:2rem;font-weight:800;letter-spacing:-.4px}
+h2{font-size:1.5rem}
+h3{font-size:1.125rem}
+code,.mono{font-family:var(--font-mono);font-size:.82em}
+
+/* штрих основания из знака PROFK — разделитель разделов */
+.rule{width:40px;height:2px;background:var(--foreground);margin:10px 0 22px;border:0}
+
+.wrap{max-width:1100px;margin:0 auto;padding:32px 24px 80px}
+.sec{margin-top:52px}
+.sec-label{font-family:var(--font-display);font-weight:800;font-size:.7rem;letter-spacing:2px;
+  text-transform:uppercase;color:var(--muted-fg)}
+.lead{color:var(--text-2);max-width:60ch;margin:0 0 4px}
+
+.card{background:var(--card);border:1px solid var(--border-soft);border-radius:var(--radius-lg);
+  box-shadow:var(--shadow);padding:18px 20px}
+.grid{display:grid;gap:16px}
+.cols-2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.cols-3{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+
+/* кнопки */
+.btn{font-family:var(--font-display);font-weight:700;font-size:.875rem;border-radius:var(--radius);
+  padding:10px 18px;border:1.5px solid transparent;cursor:pointer;display:inline-flex;
+  align-items:center;gap:8px;line-height:1;transition:background .15s,border-color .15s,color .15s}
+.btn:focus-visible{outline:3px solid var(--accent-dim);outline-offset:2px;border-color:var(--accent)}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-secondary{background:var(--foreground);color:var(--background)}
+.btn-outline{background:transparent;color:var(--foreground);border-color:var(--border)}
+.btn-outline:hover{border-color:var(--accent);color:var(--accent-ink)}
+.btn-text{background:none;color:var(--accent-ink);padding:6px 4px}
+.btn-text:hover{text-decoration:underline}
+a{color:var(--accent-ink)}
+
+/* поля */
+.label{display:block;font-family:var(--font-display);font-weight:600;font-size:.75rem;
+  letter-spacing:.4px;color:var(--text-2);margin-bottom:6px}
+.input{width:100%;font-family:var(--font-body);font-size:.94rem;color:var(--foreground);
+  background:var(--card);border:1.5px solid var(--border);border-radius:var(--radius);
+  padding:11px 13px;outline:none;transition:border-color .15s,box-shadow .15s}
+.input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+
+/* свотчи */
+.sw{border-radius:var(--radius);overflow:hidden;border:1px solid var(--border-soft)}
+/* кольцо внутрь на каждом свотче: иначе #f5f5f5 пропадает на белой карточке,
+   а #1f2320/#2a2f2c — на тёмной */
+.sw .chip{height:62px;box-shadow:inset 0 0 0 1px var(--border)}
+.sw .meta{padding:8px 10px;background:var(--card);font-size:.75rem}
+.sw .meta b{display:block;font-family:var(--font-display);font-size:.8rem}
+.sw .meta span{font-family:var(--font-mono);color:var(--muted-fg)}
+
+/* ── ПОДПИСЬ: планка статуса. У нормы планки нет. ────────────────────────── */
+.row{position:relative;background:var(--card);border:1px solid var(--border-soft);
+  border-radius:var(--radius);padding:12px 14px 12px 18px;margin-bottom:8px;overflow:hidden}
+.row::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:transparent}
+.row.warn::before{background:var(--st-warn)}
+.row.crit::before{background:var(--st-crit)}
+.row.info::before{background:var(--st-info)}
+.row.off::before{background:var(--st-offline)}
+.row .id{font-family:var(--font-mono);font-size:.72rem;color:var(--muted-fg);font-weight:500}
+.row .ttl{font-weight:600;font-size:.9rem;margin-top:2px}
+.row .sub{font-size:.78rem;color:var(--text-2);margin-top:3px}
+.row .val{font-family:var(--font-mono);font-weight:500}
+
+/* маркеры карты */
+.mk{width:16px;height:16px;border-radius:50%;display:inline-block;flex-shrink:0}
+.mk-ok{background:var(--st-ok);border:2px solid var(--st-ok-ring)}
+.mk-warn{background:transparent;border:2.5px solid var(--st-warn)}
+.mk-crit{background:var(--st-crit);border:2px solid var(--card);animation:pulse 1.4s infinite}
+.mk-info{background:var(--st-info);border:2px solid var(--card)}
+/* сплошной приглушённый, НЕ пунктир: на 16px пунктирная окружность
+   рассыпается в звёздочку и читается как чужая иконка */
+.mk-off{background:var(--st-offline);border:2px solid var(--card);opacity:.5}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(217,83,79,.55)}70%{box-shadow:0 0 0 7px rgba(217,83,79,0)}}
+@media (prefers-reduced-motion:reduce){.mk-crit{animation:none;outline:2px solid var(--st-crit);outline-offset:2px}}
+
+.legend{display:flex;flex-wrap:wrap;gap:16px;align-items:center;font-size:.8rem;color:var(--text-2)}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+
+/* сравнение до/после */
+.vs{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(290px,1fr))}
+.vs h3{font-size:.85rem;letter-spacing:.5px;text-transform:uppercase;color:var(--muted-fg);margin-bottom:10px}
+.dot-field{display:flex;flex-wrap:wrap;gap:9px;padding:14px;border-radius:var(--radius);
+  background:var(--card);border:1px solid var(--border-soft);min-height:96px;align-content:flex-start}
+.old-ok{background:#4caf50;border:2px solid var(--card)}
+.old-warn{background:#ff9800;border:2px solid var(--card)}
+.old-crit{background:#f44336;border:2px solid var(--card)}
+.old-off{background:#9e9e9e;border:2px solid var(--card)}
+
+/* макет экрана */
+.shot{border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;
+  box-shadow:var(--shadow);background:var(--card)}
+.shot-top{display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--border-soft);
+  background:var(--card)}
+.shot-top img{width:30px;height:30px}
+.brandline{font-family:var(--font-display);font-weight:800;font-size:.9rem;letter-spacing:.3px}
+.brandline s{display:block;text-decoration:none;font-size:.6rem;letter-spacing:1.6px;
+  color:var(--muted-fg);font-weight:600}
+.shot-body{display:grid;grid-template-columns:1fr 290px;min-height:330px}
+@media (max-width:760px){.shot-body{grid-template-columns:1fr}}
+.canvas{position:relative;background:var(--background);
+  background-image:linear-gradient(var(--grid-ink) 1px,transparent 1px),
+                   linear-gradient(90deg,var(--grid-ink) 1px,transparent 1px);
+  background-size:28px 28px;min-height:330px}
+.canvas .mk{position:absolute;transform:translate(-50%,-50%)}
+.panel{border-left:1px solid var(--border-soft);padding:14px;background:var(--card);overflow:auto}
+.panel-h{font-family:var(--font-display);font-weight:700;font-size:.8rem;letter-spacing:.4px;
+  text-transform:uppercase;color:var(--muted-fg);margin-bottom:10px}
+
+/* таблица */
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{text-align:left;font-family:var(--font-display);font-size:.7rem;letter-spacing:.4px;
+  text-transform:uppercase;color:var(--muted-fg);padding:10px 12px;border-bottom:1px solid var(--border)}
+td{padding:11px 12px;border-bottom:1px solid var(--border-soft)}
+tr:last-child td{border-bottom:none}
+td .mono{color:var(--text-2)}
+
+.badge{display:inline-flex;align-items:center;gap:5px;font-family:var(--font-display);
+  font-weight:600;font-size:.72rem;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.b-ok{background:var(--border-soft);color:var(--text-2)}
+.b-warn{background:rgba(240,173,78,.16);color:#8a5a12}
+.b-crit{background:rgba(217,83,79,.14);color:#b23c38}
+.b-info{background:rgba(91,192,222,.16);color:#256b80}
+.dark .b-warn{color:#f0ad4e}.dark .b-crit{color:#e88b87}.dark .b-info{color:#8fd4e8}
+
+.type-row{display:flex;align-items:baseline;gap:16px;padding:9px 0;border-bottom:1px solid var(--border-soft);flex-wrap:wrap}
+.type-row .n{font-family:var(--font-mono);font-size:.72rem;color:var(--muted-fg);min-width:170px}
+
+.toggle{margin-left:auto;display:inline-flex;gap:6px}
+.note{font-size:.82rem;color:var(--text-2);border-left:2px solid var(--accent);padding-left:12px;margin-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    <img src="assets/profk-mark.svg" alt="" width="52" height="52">
+    <div>
+      <div class="sec-label">Витрина темы · приёмка до рефакторинга</div>
+      <h1>InfraSafe × PRoFK</h1>
+    </div>
+    <div class="toggle">
+      <button class="btn btn-outline" id="t-light" type="button">Светлая</button>
+      <button class="btn btn-outline" id="t-dark" type="button">Ночная</button>
+    </div>
+  </header>
+  <hr class="rule">
+  <p class="lead">Так будет выглядеть InfraSafe на <code>profk.uz</code>. На <code>infrasafe.uz</code>
+  ничего не меняется — бренд подключается каталогом, который отдаёт nginx.</p>
+
+  <!-- ── палитра ─────────────────────────────────────────────────────────── -->
+  <section class="sec">
+    <div class="sec-label">01</div><h2>Палитра</h2><hr class="rule">
+    <p class="lead">Зелёный принадлежит интерактиву. В шкале статусов его нет.</p>
+    <div class="grid cols-3" style="margin-top:18px">
+      <div class="sw"><div class="chip" style="background:#44c24a"></div>
+        <div class="meta"><b>Акцент — заливки</b><span>#44c24a</span></div></div>
+      <div class="sw"><div class="chip" style="background:#2b7a33"></div>
+        <div class="meta"><b>Акцент — текст</b><span>#2b7a33 · 4.6:1</span></div></div>
+      <div class="sw"><div class="chip" style="background:#333333"></div>
+        <div class="meta"><b>Угольный</b><span>#333333</span></div></div>
+      <div class="sw"><div class="chip" style="background:#f5f5f5"></div>
+        <div class="meta"><b>Фон</b><span>#f5f5f5</span></div></div>
+      <div class="sw"><div class="chip" style="background:#1f2320"></div>
+        <div class="meta"><b>Ночной фон</b><span>#1f2320</span></div></div>
+      <div class="sw"><div class="chip" style="background:#2a2f2c"></div>
+        <div class="meta"><b>Ночная карточка</b><span>#2a2f2c</span></div></div>
+    </div>
+    <p class="note">Зелёный на светлом фоне даёт 2.0:1 и как текст не проходит. Поэтому
+    <code>#44c24a</code> — только заливка, а зелёный текст — <code>#2b7a33</code>, цвет
+    <code>.alert-success</code> из брендбука.</p>
+  </section>
+
+  <!-- ── статусы ─────────────────────────────────────────────────────────── -->
+  <section class="sec">
+    <div class="sec-label">02 · подпись макета</div><h2>Тихая норма</h2><hr class="rule">
+    <p class="lead">Норма — это отсутствие тревоги, а не ещё один цвет. Здоровый объект теряет
+    заливку и остаётся контурным кольцом. Двести зелёных точек — шум; значение имеют те три,
+    что не зелёные.</p>
+
+    <div class="vs" style="margin-top:20px">
+      <div>
+        <h3>Как сейчас</h3>
+        <div class="dot-field">
+          <i class="mk old-ok"></i><i class="mk old-ok"></i><i class="mk old-ok"></i><i class="mk old-ok"></i>
+          <i class="mk old-ok"></i><i class="mk old-ok"></i><i class="mk old-warn"></i><i class="mk old-ok"></i>
+          <i class="mk old-ok"></i><i class="mk old-ok"></i><i class="mk old-ok"></i><i class="mk old-crit"></i>
+          <i class="mk old-ok"></i><i class="mk old-off"></i><i class="mk old-ok"></i><i class="mk old-ok"></i>
+          <i class="mk old-ok"></i><i class="mk old-ok"></i><i class="mk old-ok"></i><i class="mk old-ok"></i>
+        </div>
+      </div>
+      <div>
+        <h3>Предлагается</h3>
+        <div class="dot-field">
+          <i class="mk mk-ok"></i><i class="mk mk-ok"></i><i class="mk mk-ok"></i><i class="mk mk-ok"></i>
+          <i class="mk mk-ok"></i><i class="mk mk-ok"></i><i class="mk mk-warn"></i><i class="mk mk-ok"></i>
+          <i class="mk mk-ok"></i><i class="mk mk-ok"></i><i class="mk mk-ok"></i><i class="mk mk-crit"></i>
+          <i class="mk mk-ok"></i><i class="mk mk-off"></i><i class="mk mk-ok"></i><i class="mk mk-ok"></i>
+          <i class="mk mk-ok"></i><i class="mk mk-ok"></i><i class="mk mk-ok"></i><i class="mk mk-ok"></i>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend" style="margin-top:18px">
+      <span><i class="mk mk-ok"></i> норма</span>
+      <span><i class="mk mk-warn"></i> предупреждение</span>
+      <span><i class="mk mk-crit"></i> критично</span>
+      <span><i class="mk mk-info"></i> протечка</span>
+      <span><i class="mk mk-off"></i> нет данных</span>
+    </div>
+    <p class="note">Предупреждение и критично различаются не только цветом: критично — заливка
+    и пульсация, предупреждение — только кольцо. Оранжевый и красный неразличимы при
+    дейтеранопии, форма это закрывает. Пульсация снимается при
+    <code>prefers-reduced-motion</code>.</p>
+  </section>
+
+  <!-- ── экран карты ─────────────────────────────────────────────────────── -->
+  <section class="sec">
+    <div class="sec-label">03</div><h2>Экран карты</h2><hr class="rule">
+    <p class="lead">Оболочка — калька в чертёжную сетку, карта — чертёж на ней. В продукте сетка
+    остаётся в хроме: шапка, панели, пустые состояния. Полотно ниже — заглушка вместо тайлов
+    Leaflet, поэтому сетка на нём видна.</p>
+    <div class="shot" style="margin-top:18px">
+      <div class="shot-top">
+        <img src="assets/profk-mark.svg" alt="">
+        <div class="brandline">PROFK<s>PRO FACILITY KOMMUNAL</s></div>
+        <div style="width:1px;height:26px;background:var(--border)"></div>
+        <div style="font-family:var(--font-display);font-weight:700;font-size:.85rem">
+          InfraSafe — мониторинг инфраструктуры</div>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="btn btn-outline" style="padding:7px 12px;font-size:.78rem" type="button">Слои</button>
+          <button class="btn btn-primary" style="padding:7px 12px;font-size:.78rem" type="button">Войти</button>
+        </div>
+      </div>
+      <div class="shot-body">
+        <div class="canvas">
+          <span style="position:absolute;left:14px;bottom:10px;font-family:var(--font-mono);
+            font-size:.66rem;color:var(--muted-fg)">здесь тайлы карты</span>
+          <i class="mk mk-ok"   style="left:18%;top:24%"></i>
+          <i class="mk mk-ok"   style="left:31%;top:41%"></i>
+          <i class="mk mk-ok"   style="left:24%;top:63%"></i>
+          <i class="mk mk-ok"   style="left:46%;top:29%"></i>
+          <i class="mk mk-warn" style="left:57%;top:52%"></i>
+          <i class="mk mk-ok"   style="left:68%;top:35%"></i>
+          <i class="mk mk-crit" style="left:74%;top:66%"></i>
+          <i class="mk mk-ok"   style="left:39%;top:76%"></i>
+          <i class="mk mk-info" style="left:60%;top:19%"></i>
+          <i class="mk mk-off"  style="left:85%;top:44%"></i>
+          <i class="mk mk-ok"   style="left:12%;top:47%"></i>
+          <i class="mk mk-ok"   style="left:52%;top:83%"></i>
+        </div>
+        <aside class="panel">
+          <div class="panel-h">Требуют внимания · 3</div>
+          <div class="row crit">
+            <div class="id">ALT-2291 · ТП-4 Олмазор-1</div>
+            <div class="ttl">Перегрузка трансформатора</div>
+            <div class="sub">Нагрузка <span class="val">104%</span> · 8 мин</div>
+          </div>
+          <div class="row warn">
+            <div class="id">ALT-2288 · дом 14/2</div>
+            <div class="ttl">Напряжение ниже нормы</div>
+            <div class="sub">Фаза B <span class="val">194 В</span> · 21 мин</div>
+          </div>
+          <div class="row off">
+            <div class="id">CTL-0117 · дом 9</div>
+            <div class="ttl">Контроллер не отвечает</div>
+            <div class="sub">Последний пакет <span class="val">04:12</span></div>
+          </div>
+          <div class="panel-h" style="margin-top:18px">В норме · 14</div>
+          <div class="row">
+            <div class="id">CTL-0102 · дом 3</div>
+            <div class="ttl">Все системы штатно</div>
+          </div>
+          <div class="row">
+            <div class="id">CTL-0103 · дом 5</div>
+            <div class="ttl">Все системы штатно</div>
+          </div>
+        </aside>
+      </div>
+    </div>
+    <p class="note">Планка статуса слева от карточки: у нормы её нет. Идентификаторы —
+    <code>IBM Plex Mono</code>, поэтому цифры не прыгают при обновлении значения.</p>
+  </section>
+
+  <!-- ── типографика ─────────────────────────────────────────────────────── -->
+  <section class="sec">
+    <div class="sec-label">04</div><h2>Типографика</h2><hr class="rule">
+    <div class="card" style="margin-top:18px">
+      <div class="type-row"><span class="n">Montserrat 800 · 32px</span><h1 style="font-size:2rem">Мониторинг</h1></div>
+      <div class="type-row"><span class="n">Montserrat 700 · 24px</span><h2>Электроснабжение</h2></div>
+      <div class="type-row"><span class="n">Montserrat 700 · 18px</span><h3>Трансформаторная подстанция</h3></div>
+      <div class="type-row"><span class="n">Open Sans 400 · 15px</span>
+        <span>Основной текст интерфейса с межстрочным 1.5</span></div>
+      <div class="type-row"><span class="n">IBM Plex Mono 500</span>
+        <span class="mono">260524-004 · ALT-2291 · 41.3111, 69.2797 · 194 В · 04:12:38</span></div>
+    </div>
+  </section>
+
+  <!-- ── компоненты ──────────────────────────────────────────────────────── -->
+  <section class="sec">
+    <div class="sec-label">05</div><h2>Компоненты</h2><hr class="rule">
+    <div class="grid cols-2" style="margin-top:18px">
+      <div class="card">
+        <h3 style="font-size:.95rem;margin-bottom:14px">Действия</h3>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" type="button">Подтвердить</button>
+          <button class="btn btn-secondary" type="button">Отменить</button>
+          <button class="btn btn-outline" type="button">Подробнее</button>
+          <button class="btn btn-text" type="button">Открыть в УК</button>
+        </div>
+        <div style="margin-top:18px">
+          <label class="label" for="f1">Номер заявки</label>
+          <input class="input mono" id="f1" value="260524-004">
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="font-size:.95rem;margin-bottom:14px">Состояния</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <span class="badge b-ok">В норме</span>
+          <span class="badge b-warn">Предупреждение</span>
+          <span class="badge b-crit">Критично</span>
+          <span class="badge b-info">Протечка</span>
+        </div>
+        <p class="lead" style="margin-top:14px;font-size:.82rem">«В норме» — нейтральный, а не
+        зелёный. Зелёный остаётся за кнопкой «Подтвердить» слева.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── админка ─────────────────────────────────────────────────────────── -->
+  <section class="sec">
+    <div class="sec-label">06</div><h2>Таблица админки</h2><hr class="rule">
+    <div class="card" style="margin-top:18px;padding:0;overflow:auto">
+      <table>
+        <thead><tr><th>Контроллер</th><th>Адрес</th><th>Напряжение</th><th>Пакет</th><th>Статус</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">CTL-0102</td><td>Олмазор, 3</td><td class="mono">228 В</td>
+              <td class="mono">04:31:02</td><td><span class="badge b-ok">В норме</span></td></tr>
+          <tr><td class="mono">CTL-0114</td><td>Олмазор, 14/2</td><td class="mono">194 В</td>
+              <td class="mono">04:30:58</td><td><span class="badge b-warn">Предупреждение</span></td></tr>
+          <tr><td class="mono">CTL-0117</td><td>Шифонур, 9</td><td class="mono">—</td>
+              <td class="mono">04:12:11</td><td><span class="badge b-ok">Нет данных</span></td></tr>
+          <tr><td class="mono">CTL-0121</td><td>Фараби, 21</td><td class="mono">231 В</td>
+              <td class="mono">04:31:04</td><td><span class="badge b-ok">В норме</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── вход ────────────────────────────────────────────────────────────── -->
+  <section class="sec">
+    <div class="sec-label">07</div><h2>Вход</h2><hr class="rule">
+    <p class="lead">Сейчас это отдельная страница с фиолетовым градиентом и Segoe UI — единственный
+    экран, который не похож ни на что вокруг. Собирается на тех же компонентах.</p>
+    <div class="card" style="max-width:380px;margin-top:18px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <img src="assets/profk-mark.svg" alt="" width="34" height="34">
+        <div class="brandline">PROFK<s>PRO FACILITY KOMMUNAL</s></div>
+      </div>
+      <hr class="rule" style="margin:12px 0 18px">
+      <label class="label" for="u">Логин</label>
+      <input class="input" id="u" value="operator" style="margin-bottom:14px">
+      <label class="label" for="p">Пароль</label>
+      <input class="input" id="p" type="password" value="xxxxxxxx" style="margin-bottom:18px">
+      <button class="btn btn-primary" style="width:100%;justify-content:center" type="button">Войти</button>
+    </div>
+  </section>
+
+</div>
+<script>
+(function(){
+  var html=document.documentElement;
+  function set(t){ html.classList.toggle('dark', t==='dark'); try{localStorage.setItem('previewTheme',t);}catch(e){} }
+  document.getElementById('t-light').addEventListener('click',function(){set('light');});
+  document.getElementById('t-dark').addEventListener('click',function(){set('dark');});
+  var saved=null; try{saved=localStorage.getItem('previewTheme');}catch(e){}
+  if(saved) set(saved);
+  else if(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches) set('dark');
+})();
+</script>
+</body>
+</html>
