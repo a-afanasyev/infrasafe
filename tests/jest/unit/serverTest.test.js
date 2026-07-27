@@ -10,10 +10,13 @@
 
 const request = require('supertest');
 
-// We need to prevent server.js from actually calling app.listen().
-// Strategy: mock db.init() to return a never-resolving promise so the
-// .then() block that calls app.listen() is never executed.
-// Then we test the exported `app` directly via supertest (no port needed).
+// Мы тестируем экспортированный `app` напрямую через supertest — слушающий
+// порт для этого не нужен.
+//
+// Раньше здесь стоял обходной приём: db.init() мокался НЕВЫПОЛНИМЫМ промисом,
+// чтобы .then() с app.listen() никогда не сработал. Теперь server.js сам
+// открывает сокет только при прямом запуске (`require.main === module`), так
+// что приём не нужен. Мок оставлен: он изолирует тест от БД, а не от listen.
 
 jest.mock('../../../src/config/database', () => ({
     init: jest.fn().mockReturnValue(new Promise(() => {})), // never resolves
