@@ -1,0 +1,396 @@
+/* ============================================================================
+   БРЕНД: PRoFK (profk.uz)
+   ============================================================================
+
+   Реализация docs/profk-brandbook/brandbook.md поверх нейтрального токен-слоя
+   css/tokens.css. Подключается ПОСЛЕДНИМ — переопределяет только переменные,
+   ни одного правила компонента здесь нет и быть не должно: правила общие для
+   всех брендов и живут в css/style.css.
+
+   Наглядная приёмка: docs/brand/infrasafe-profk-preview.html
+
+   ГЛАВНОЕ ПРАВИЛО ЭТОГО БРЕНДА
+   ----------------------------
+   Зелёный #44c24a почти совпадает с семантическим «всё в норме». Если им
+   покрасить и кнопки, и здоровые объекты, зелёный перестанет что-либо значить
+   ровно там, где должен. Поэтому:
+
+     * --accent    принадлежит ИНТЕРАКТИВУ: кнопки, ссылки, фокус, активная
+                   навигация;
+     * --st-*      описывают СОСТОЯНИЕ объекта, и зелёного среди них нет.
+                   Норма — отсутствие заливки, а не ещё один цвет.
+
+   КОНТРАСТ
+   --------
+   #44c24a на светлом #f5f5f5 даёт ≈2.0:1 — как текст не проходит. Поэтому
+   заливка и текст разведены: --accent для фона, --accent-ink (#2b7a33, цвет
+   .alert-success из брендбука, ≈4.6:1) для текста. На тёмном фоне подмена не
+   нужна, там сам #44c24a даёт ≈7.3:1.
+
+   НОЧНАЯ ТЕМА
+   -----------
+   Брендбук описывает только светлый вариант. Ночные нейтрали не выдуманы, а
+   взяты из его же палитры: #1f2320 — это .btn-secondary:hover, #2a2f2c —
+   рамка телефона в превью брендбука. Требует подтверждения владельца бренда.
+
+   ШРИФТЫ
+   ------
+   Self-hosted, только подмножества cyrillic и latin (350 КБ на все начертания
+   против 1.3 МБ одного текущего логотипа). Это же позволяет со временем убрать
+   fonts.googleapis.com и fonts.gstatic.com из CSP.
+   ========================================================================== */
+
+/* ======================================================= ШРИФТЫ ==== */
+
+@font-face {
+  font-family: 'Montserrat';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('fonts/Montserrat-600-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Montserrat';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('fonts/Montserrat-600-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Montserrat';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('fonts/Montserrat-700-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Montserrat';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('fonts/Montserrat-700-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Montserrat';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('fonts/Montserrat-800-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Montserrat';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('fonts/Montserrat-800-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Open Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('fonts/OpenSans-400-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Open Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('fonts/OpenSans-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Open Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('fonts/OpenSans-600-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Open Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('fonts/OpenSans-600-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('fonts/IBMPlexMono-500-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('fonts/IBMPlexMono-500-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ============================================================ ТОКЕНЫ ==== */
+
+:root {
+  /* --- поверхности -------------------------------------------------- */
+  --background: #f5f5f5;
+  --foreground: #333333;
+  --card: #ffffff;
+  --card-foreground: #333333;
+  --popover: #ffffff;
+  --popover-foreground: #333333;
+
+  /* «Первичный» в этом бренде — угольный: вторичные кнопки и тёмные плашки.
+     Зелёный сюда не идёт, он занят интерактивом (см. --accent). */
+  --primary: #333333;
+  --primary-foreground: #ffffff;
+  --secondary: #eef1f0;
+  --secondary-foreground: #5b6660;
+  --muted: #eef1f0;
+  --muted-foreground: #8a929c;
+
+  /* --- акцент ------------------------------------------------------- */
+  --accent: #44c24a;
+  --accent-foreground: #ffffff;
+  --accent-hover: #3aa540;
+  --accent-ink: #2b7a33;          /* зелёный как ТЕКСТ, ≈4.6:1 на #f5f5f5 */
+  --destructive: #d9534f;
+  --destructive-foreground: #ffffff;
+  --ring: #44c24a;
+
+  /* --- границы и поля ----------------------------------------------- */
+  --border: #dcdcdc;
+  --input: transparent;
+  --input-background: #ffffff;
+  --switch-background: #dcdcdc;
+
+  /* --- метрики ------------------------------------------------------ */
+  /* 1rem → 8px: брендбук задаёт скруглённые, но не «мягкие» углы. */
+  --radius: 8px;
+  --font-size: 15px;
+
+  /* --- отделка: плоско, а не неоморфно ------------------------------ */
+  /* PRoFK — чистый инженерный вид. Двойные мягкие тени ему противоречат,
+     поэтому одна короткая тень из брендбука и настоящая граница вместо
+     белой подсветки. Размытие подложки выключено: карточка непрозрачна,
+     blur не виден, но стоит кадров. */
+  --surface-shadow: 0 1px 3px rgba(51, 51, 51, .06), 0 6px 20px rgba(51, 51, 51, .05);
+  --surface-border: 1px solid #ececec;
+  --surface-blur: none;
+  --header-border: 1px solid #dcdcdc;
+
+  /* --- подпись макета: чертёжная сетка ------------------------------ */
+  --grid-ink: rgba(51, 51, 51, .045);
+
+  /* --- цвета с прозрачностью ---------------------------------------- */
+  /* Компоненты зелёного и статусных цветов: их используют десятки правил
+     вида rgba(var(--accent-rgb), .12). Без этих трёх строк весь фронт
+     остался бы бирюзовым в полупрозрачных подложках. */
+  --accent-rgb: 68, 194, 74;
+  --accent-alt-rgb: 68, 194, 74;
+  --warn-rgb: 240, 173, 78;
+  --crit-rgb: 217, 83, 79;
+
+  /* --- маркетинговые блоки лендингов -------------------------------- */
+  /* База героя — угольная, а не сине-зелёная: тёмно-бирюзовый #0F1E25 это
+     цвет прежнего бренда. Свечение даёт зелёный акцент. */
+  --hero-bg:
+    radial-gradient(120% 140% at 0% 0%, rgba(var(--accent-rgb), .40) 0%, rgba(var(--accent-rgb), 0) 55%),
+    radial-gradient(120% 140% at 100% 100%, rgba(var(--accent-rgb), .22) 0%, rgba(var(--accent-rgb), 0) 60%),
+    linear-gradient(135deg, #2a2f2c 0%, #383e3a 50%, #1f2320 100%);
+  --cta-bg:
+    radial-gradient(120% 200% at 50% 0%, rgba(var(--accent-rgb), .32) 0%, rgba(var(--accent-rgb), 0) 60%),
+    linear-gradient(135deg, #383e3a 0%, #1f2320 100%);
+  --hero-ink: #ffffff;
+  --hero-dot: #44c24a;
+  --hero-btn-ink: #333333;
+  --hero-btn-hover: #44c24a;
+
+  /* Плитки-иконки: были фиолетово-розовые и голубые — чужая палитра.
+     Переведены на статусные цвета брендбука, каждая по смыслу раздела. */
+  --icon-power:  linear-gradient(135deg, #f0ad4e, #d9534f);
+  --icon-water:  linear-gradient(135deg, #5bc0de, #2f8fa8);
+  --icon-safety: linear-gradient(135deg, #5b6660, #333333);
+  --icon-map:    linear-gradient(135deg, #44c24a, #2b7a33);
+  --icon-user:   linear-gradient(135deg, #44c24a, #2b7a33);
+  --icon-admin:  linear-gradient(135deg, #5b6660, #333333);
+  --icon-dev:    linear-gradient(135deg, #333333, #5b6660);
+
+  /* Бейджи документации */
+  --badge-soon-ink: #8a5a12;
+  --badge-ondemand-ink: #2b7a33;
+
+  /* Бейджи админки — тонированные пары из превью брендбука (.badge-*).
+     Зелёный здесь тёмный (#2f8f37), а не акцентный: это состояние заявки,
+     а не кнопка. */
+  --badge-info-bg: #e7f0fb;      --badge-info-ink: #2f74c0;
+  --badge-warn-bg: #fff2df;      --badge-warn-ink: #b9791f;
+  --badge-crit-bg: #fdeceb;      --badge-crit-ink: #c0433e;
+  --badge-ok-bg: #e8f6e9;        --badge-ok-ink: #2f8f37;
+  --badge-pending-bg: #eaf1ee;   --badge-pending-ink: #4a6b58;
+
+  /* Шапка таблицы по брендбуку: почти белая подложка и приглушённая
+     подпись. Сплошная зелёная полоса над каждой таблицей читалась бы как
+     статус «всё в норме» и обесценивала бы настоящий зелёный. */
+  --table-head-bg: #fafbfb;
+  --table-head-ink: #8a929c;
+
+  /* Перегрузка и ошибки — на красный брендбука вместо #EF4444 */
+  --overload-surface: #fdeceb;
+  --overload-bg: linear-gradient(135deg, #fdeceb 0%, #fbdcda 100%);
+  --overload-border: #d9534f;
+  --overload-ink: #b23c38;
+  --form-error: #d9534f;
+  --form-error-bg: rgba(217, 83, 79, .1);
+  --blink-warn-ink: #b9791f;
+  --blink-crit-ink: #d9534f;
+  --auth-ok: #2b7a33;
+
+  /* Popup карты остаётся светлым в обеих темах — меняется только тон текста */
+  --popup-ink: #333333;
+  --popup-ink-strong: #1f2320;
+  --popup-heading: #1f2320;
+  --popup-body: #5b6660;
+  --popup-danger: #b23c38;
+  --popup-ink-muted: #8a929c;
+  --popup-ink-muted-hover: #5b6660;
+  --power-label: #8a929c;
+  --power-value: #333333;
+  --power-total: #1f2320;
+  --power-title: #2b7a33;
+
+  /* --- шкала состояний ---------------------------------------------- */
+  /* Целиком из статусных цветов брендбука. Зелёного здесь нет намеренно:
+     норма не заливается, она остаётся контурным кольцом. */
+  /* Норма — отсутствие заливки. brandTokens.js видит `transparent` и рисует
+     здоровый объект контурным кольцом вместо точки. Единственное место, где
+     это правило включается. */
+  --st-ok: transparent;
+  --st-ok-ring: rgba(51, 51, 51, .35);
+  --st-public: #5b6660;
+  --st-warn-strong: #e8913a;
+  --marker-stroke: #ffffff;
+  --st-warn: #f0ad4e;
+  --st-crit: #d9534f;
+  --st-info: #5bc0de;
+  --st-offline: #8a929c;
+  /* Приглушённый зелёный, а не акцент: подтверждение действия не должно
+     выглядеть как кнопка. */
+  --st-success: #2b7a33;
+
+  /* Легаси-имена статусов, оставшиеся в компонентах. Зелёный здесь —
+     приглушённый --accent-ink, а не акцент бренда: это состояние, не кнопка. */
+  --color-green-500: #2b7a33;
+  --color-yellow-500: #f0ad4e;
+  --color-red-500: #d9534f;
+  --color-blue-500: #5bc0de;
+  --color-gray-400: #8a929c;
+
+  /* --- боковая панель ------------------------------------------------ */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #333333;
+  --sidebar-primary: #44c24a;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(68, 194, 74, .12);
+  --sidebar-accent-foreground: #2b7a33;
+  --sidebar-border: #ececec;
+  --sidebar-ring: #44c24a;
+
+  /* --- футер --------------------------------------------------------- */
+  /* Ровный белый с границей вместо градиента: градиент — чужая идиома. */
+  --footer-background: #ffffff;
+  --footer-foreground: #333333;
+  --footer-link-color: #5b6660;
+  --footer-link-hover: #2b7a33;
+  --footer-button-background: #eef1f0;
+  --footer-button-foreground: #333333;
+  /* Фильтр применяется ТОЛЬКО к знаку вендора (#serendipity-logo) — это белый
+     PNG, и на белом футере он исчезал бы бесследно. brightness(0) красит его
+     в чёрный, invert поднимает до серого уровня вторичного текста. */
+  --footer-logo-filter: brightness(0) invert(0.42);
+  --footer-logo-filter-hover: brightness(0) invert(0.25);
+
+  /* --- гарнитуры ------------------------------------------------------ */
+  --font-display: 'Montserrat', system-ui, -apple-system, sans-serif;
+  --font-body: 'Open Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ============================================================ НОЧНАЯ ==== */
+
+.dark {
+  --background: #1f2320;
+  --foreground: #ececec;
+  --card: #2a2f2c;
+  --card-foreground: #ececec;
+  --popover: #2a2f2c;
+  --popover-foreground: #ececec;
+
+  --primary: #ececec;
+  --primary-foreground: #1f2320;
+  --secondary: #2f3531;
+  --secondary-foreground: #b9c1ba;
+  --muted: #2f3531;
+  --muted-foreground: #9aa39c;
+
+  /* На тёмном фоне зелёный читается и как текст — подмена не нужна. */
+  --accent: #44c24a;
+  --accent-hover: #4fd156;
+  --accent-ink: #44c24a;
+
+  --border: rgba(236, 236, 236, .14);
+  --input: rgba(236, 236, 236, .05);
+  --input-background: #262b28;
+  --switch-background: #3a413c;
+
+  --surface-shadow: 0 1px 3px rgba(0, 0, 0, .4);
+  --surface-border: 1px solid rgba(236, 236, 236, .08);
+  --header-border: 1px solid rgba(236, 236, 236, .14);
+
+  --grid-ink: rgba(236, 236, 236, .05);
+  --st-ok-ring: rgba(236, 236, 236, .32);
+  --color-green-500: #44c24a;
+
+  --sidebar: #2a2f2c;
+  --sidebar-foreground: #ececec;
+  --sidebar-accent: rgba(68, 194, 74, .18);
+  --sidebar-accent-foreground: #44c24a;
+  --sidebar-border: rgba(236, 236, 236, .08);
+
+  --footer-background: #2a2f2c;
+  --footer-foreground: #ececec;
+  --footer-link-color: #b9c1ba;
+  --footer-link-hover: #44c24a;
+  --footer-button-background: rgba(236, 236, 236, .08);
+  --footer-button-foreground: #ececec;
+  /* На тёмном футере белый знак вендора читается сам — фильтр не нужен.
+     Знак PRoFK несёт собственный светлый диск, и его этот фильтр не касается
+     вовсе: он применяется только к #serendipity-logo. */
+  --footer-logo-filter: none;
+  --footer-logo-filter-hover: brightness(1.1);
+
+  /* Тёмный герой на тёмном фоне теряет границу — поднимаем базу. */
+  --hero-bg:
+    radial-gradient(120% 140% at 0% 0%, rgba(var(--accent-rgb), .34) 0%, rgba(var(--accent-rgb), 0) 55%),
+    radial-gradient(120% 140% at 100% 100%, rgba(var(--accent-rgb), .18) 0%, rgba(var(--accent-rgb), 0) 60%),
+    linear-gradient(135deg, #333a35 0%, #3f4741 50%, #2a2f2c 100%);
+  --cta-bg:
+    radial-gradient(120% 200% at 50% 0%, rgba(var(--accent-rgb), .28) 0%, rgba(var(--accent-rgb), 0) 60%),
+    linear-gradient(135deg, #3f4741 0%, #2a2f2c 100%);
+  --hero-btn-ink: #1f2320;
+  --badge-soon-ink: #f0ad4e;
+  --badge-ondemand-ink: #44c24a;
+  --blink-warn-ink: #f0ad4e;
+  --blink-crit-ink: #e88b87;
+  --auth-ok: #44c24a;
+}

@@ -946,7 +946,7 @@ if (!document.getElementById('infrastructure-line-editor-styles')) {
         .editing-mode {
             margin: 20px 0;
             padding: 15px;
-            background: #f5f5f5;
+            background: var(--color-hover);
             border-radius: 4px;
         }
 
@@ -959,7 +959,7 @@ if (!document.getElementById('infrastructure-line-editor-styles')) {
         .mode-btn {
             flex: 1;
             padding: 10px 15px;
-            background: #e0e0e0;
+            background: var(--color-border);
             border: 2px solid transparent;
             border-radius: 4px;
             cursor: pointer;
@@ -968,21 +968,21 @@ if (!document.getElementById('infrastructure-line-editor-styles')) {
         }
 
         .mode-btn.active {
-            background: #4CAF50;
+            background: var(--color-primary);
             color: white;
-            border-color: #45a049;
+            border-color: var(--color-primary-hover);
             font-weight: bold;
         }
 
         .mode-btn:hover:not(.active) {
-            background: #d0d0d0;
+            background: var(--color-border);
         }
 
         .instruction-box {
-            background: #e3f2fd;
+            background: var(--badge-info-bg);
             padding: 10px;
             border-radius: 4px;
-            border-left: 4px solid #2196F3;
+            border-left: 4px solid var(--color-secondary);
             margin: 15px 0;
             font-size: 14px;
         }
@@ -994,7 +994,7 @@ if (!document.getElementById('infrastructure-line-editor-styles')) {
         }
 
         .btn-warning {
-            background: #ff9800;
+            background: var(--color-warning);
             color: white;
             border: none;
             padding: 10px 15px;
@@ -1004,11 +1004,11 @@ if (!document.getElementById('infrastructure-line-editor-styles')) {
         }
 
         .btn-warning:hover {
-            background: #f57c00;
+            background: var(--color-warning);
         }
 
         .btn-danger {
-            background: #f44336;
+            background: var(--color-danger);
             color: white;
             border: none;
             padding: 10px 15px;
@@ -1017,18 +1017,18 @@ if (!document.getElementById('infrastructure-line-editor-styles')) {
         }
 
         .btn-danger:hover {
-            background: #da190b;
+            background: var(--color-danger-hover);
         }
 
         #branches-list {
-            background: #f9f9f9;
+            background: var(--color-hover);
             padding: 15px;
             border-radius: 4px;
         }
 
         #branches-list h4 {
             margin: 0 0 10px 0;
-            color: #333;
+            color: var(--color-text);
         }
 
         #branches-items {
@@ -1048,7 +1048,7 @@ if (!document.getElementById('infrastructure-line-editor-styles')) {
         }
 
         #line-editor-map {
-            border: 2px solid #ddd;
+            border: 2px solid var(--color-border);
         }
 
         /* Leaflet маркеры */

@@ -1,4 +1,25 @@
 // ============================================================
+// ЦВЕТА ИЗ ТОКЕНОВ ТЕМЫ
+// ============================================================
+
+/**
+ * Значение CSS-переменной темы с запасным литералом.
+ *
+ * Карта рисуется не только стилями: маркеры, легенда и накладные плашки
+ * задаются из кода. Раньше цвета в них были литералами и не менялись вместе
+ * с брендом. Запасное значение оставлено литералом намеренно — в окне
+ * деплоя возможна пара «новый бандл, старый CSS», и лучше показать
+ * небрендовый, но видимый цвет, чем пустую строку.
+ *
+ * @param {string} name - имя переменной, например '--st-crit'
+ * @param {string} fallback
+ * @returns {string}
+ */
+function T(name, fallback) {
+    return window.BrandTokens ? window.BrandTokens.token(name, fallback) : fallback;
+}
+
+// ============================================================
 // ПЕРЕКЛЮЧЕНИЕ ТЕМЫ (СВЕТЛАЯ/ТЕМНАЯ)
 // ============================================================
 
@@ -653,13 +674,16 @@ document.addEventListener('DOMContentLoaded', async function () {
             statusSection.className = 'tab-section';
             statusSection.id = 'industrial-status-groups';
             
+            // Легенда обязана показывать РОВНО те цвета, которыми нарисованы
+            // маркеры, иначе она вводит в заблуждение. Раньше расходились:
+            // легенда #4caf50, маркер — ключевое слово 'green' (#008000).
             // Создаем группы статусов
             const statusGroups = [
-                { id: 'industrial-ok-group', title: '✓ Нет проблем', icon: '✓', color: '#4caf50' },
-                { id: 'industrial-warning-group', title: '⚠ Предупреждение', icon: '⚠', color: '#ff9800' },
-                { id: 'industrial-leak-group', title: '💧 Вода в подвале', icon: '💧', color: '#2196f3' },
-                { id: 'industrial-critical-group', title: '🔴 Авария', icon: '🔴', color: '#f44336' },
-                { id: 'industrial-no-group', title: '⚪ Нет контроллера', icon: '⚪', color: '#9e9e9e' }
+                { id: 'industrial-ok-group', title: '✓ Нет проблем', icon: '✓', color: T('--st-ok', '#4caf50') },
+                { id: 'industrial-warning-group', title: '⚠ Предупреждение', icon: '⚠', color: T('--st-warn', '#ff9800') },
+                { id: 'industrial-leak-group', title: '💧 Вода в подвале', icon: '💧', color: T('--st-info', '#2196f3') },
+                { id: 'industrial-critical-group', title: '🔴 Авария', icon: '🔴', color: T('--st-crit', '#f44336') },
+                { id: 'industrial-no-group', title: '⚪ Нет контроллера', icon: '⚪', color: T('--st-offline', '#9e9e9e') }
             ];
             
             statusGroups.forEach(group => {
@@ -1211,13 +1235,13 @@ document.addEventListener('DOMContentLoaded', async function () {
     const ukControl = L.control({ position: 'topright' });
     ukControl.onAdd = function() {
         const container = L.DomUtil.create('div', 'uk-control');
-        container.style.background = 'rgba(255, 255, 255, 0.9)';
+        container.style.background = T('--card', 'rgba(255, 255, 255, 0.9)');
         container.style.padding = '8px 12px';
         container.style.borderRadius = '4px';
         container.style.boxShadow = '0 2px 5px rgba(0, 0, 0, 0.1)';
         container.style.fontSize = '14px';
         container.style.fontWeight = '500';
-        container.style.color = '#333';
+        container.style.color = T('--foreground', '#333');
         container.style.backdropFilter = 'blur(8px)';
         container.style.border = '1px solid rgba(255, 255, 255, 0.2)';
         // ИСПРАВЛЕНИЕ XSS: Создаем логотип через DOM API вместо innerHTML
@@ -1225,8 +1249,11 @@ document.addEventListener('DOMContentLoaded', async function () {
         wrapper.style.cssText = 'display: flex; align-items: center; gap: 10px;';
         
         const img = document.createElement('img');
-        img.src = 'public/images/BSK-Logo-transparent.png';
-        img.alt = 'BSK Logo';
+        // Через /brand/, а не прямой путь: этот знак — часть бренда, и nginx
+        // подставляет каталог нужного хоста. Раньше здесь висел BSK-Logo,
+        // который оставался прежним даже на брендированной площадке.
+        img.src = '/brand/mark-small.svg';
+        img.alt = '';
         img.style.cssText = 'width: 35px; height: 35px; object-fit: contain;';
         
         const span = document.createElement('span');
@@ -1626,17 +1653,24 @@ document.addEventListener('DOMContentLoaded', async function () {
                     status = item.has_controller ? 'public' : 'no';
                 }
 
-                const circleOptions = {
-                    radius: status === 'leak' ? 10 : 8,
-                    weight: status === 'leak' ? 2 : 1,
-                    color: status === 'leak' ? '#1e88e5' : 'white',
-                    fillColor: status === 'ok' ? 'green' :
-                                status === 'warning' ? 'orange' :
-                                status === 'leak' ? '#2196f3' :
-                                status === 'critical' ? 'red' :
-                                status === 'public' ? '#607d8b' : 'gray',
-                    fillOpacity: status === 'leak' ? 0.8 : 1,
-                };
+                // Стиль маркера берётся из токенов темы, а не из литералов:
+                // здесь была отдельная палитра — смесь CSS-ключевых слов
+                // ('green', 'gray', 'orange', 'red') и хексов, не совпадавшая
+                // ни с легендой выше, ни с остальным интерфейсом.
+                // Правило «норма без заливки» живёт в brandTokens.markerStyle.
+                const circleOptions = window.BrandTokens
+                    ? window.BrandTokens.markerStyle(status)
+                    : {
+                        radius: status === 'leak' ? 10 : 8,
+                        weight: status === 'leak' ? 2 : 1,
+                        color: status === 'leak' ? '#1e88e5' : 'white',
+                        fillColor: status === 'ok' ? '#4caf50' :
+                                    status === 'warning' ? 'orange' :
+                                    status === 'leak' ? '#2196f3' :
+                                    status === 'critical' ? 'red' :
+                                    status === 'public' ? '#607d8b' : 'gray',
+                        fillOpacity: status === 'leak' ? 0.8 : 1,
+                    };
 
 
                 // Create a Leaflet marker
@@ -1682,8 +1716,8 @@ document.addEventListener('DOMContentLoaded', async function () {
                     popupContent = `
                     <div>
                         <strong>${escapeHTML(item.building_name || '')}</strong><br>
-                        <span style="color: #607d8b;">${escapeHTML(item.address || '')}</span><br>
-                        <span style="color: #90a4ae; font-size: 0.85em;">Оборудование установлено</span>
+                        <span style="color: ${T('--st-public', '#607d8b')};">${escapeHTML(item.address || '')}</span><br>
+                        <span style="color: ${T('--muted-foreground', '#90a4ae')}; font-size: 0.85em;">Оборудование установлено</span>
                     </div>`;
                 }
                 else if(status === 'no'){
@@ -1724,16 +1758,16 @@ document.addEventListener('DOMContentLoaded', async function () {
                     
                     <!-- Power Data - будет загружено динамически -->
                     <tr id="power-row-${safeBuildingId}" style="display: none;">
-                        <td style="font-size: 10px; color: #666;">💡</td>
-                        <td id="power-ph1-${safeBuildingId}" style="font-size: 11px; font-weight: 600; color: #2d3748;"></td>
-                        <td id="power-ph2-${safeBuildingId}" style="font-size: 11px; font-weight: 600; color: #2d3748;"></td>
-                        <td id="power-ph3-${safeBuildingId}" style="font-size: 11px; font-weight: 600; color: #2d3748;"></td>
+                        <td style="font-size: 10px; color: ${T('--power-label', '#666')};">💡</td>
+                        <td id="power-ph1-${safeBuildingId}" style="font-size: 11px; font-weight: 600; color: ${T('--popup-body', '#2d3748')};"></td>
+                        <td id="power-ph2-${safeBuildingId}" style="font-size: 11px; font-weight: 600; color: ${T('--popup-body', '#2d3748')};"></td>
+                        <td id="power-ph3-${safeBuildingId}" style="font-size: 11px; font-weight: 600; color: ${T('--popup-body', '#2d3748')};"></td>
                     </tr>
 
                     <!-- Total Power - будет загружено динамически -->
                     <tr id="total-power-row-${safeBuildingId}" style="display: none;">
-                        <td style="font-size: 10px; color: #666;">Σ</td>
-                        <td colspan="3" id="total-power-${safeBuildingId}" style="font-size: 11px; font-weight: 700; color: #1a5490;"></td>
+                        <td style="font-size: 10px; color: ${T('--power-label', '#666')};">Σ</td>
+                        <td colspan="3" id="total-power-${safeBuildingId}" style="font-size: 11px; font-weight: 700; color: ${T('--power-total', '#1a5490')};"></td>
                     </tr>
 
                     <!-- Cold Water Data -->

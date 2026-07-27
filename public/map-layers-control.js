@@ -1,3 +1,19 @@
+/**
+ * Цвет из токенов темы с запасным литералом.
+ * Слои карты собирают разметку строками и создают маркеры из кода, поэтому
+ * CSS-переменные приходится разрешать здесь. Запасное значение — литерал: в
+ * окне деплоя бандл может оказаться новее CSS (см. public/utils/brandTokens.js).
+ *
+ * @param {string} name
+ * @param {string} fallback
+ * @returns {string}
+ */
+function MLC_T(name, fallback) {
+    return (typeof window !== 'undefined' && window.BrandTokens)
+        ? window.BrandTokens.token(name, fallback)
+        : fallback;
+}
+
 class MapLayersControl {
     constructor(map, opts = {}) {
         this.map = map;
@@ -654,8 +670,8 @@ class MapLayersControl {
         const powerKVA = parseFloat(transformer.power_kva) || parseFloat(transformer.capacity_kva) || 0;
         
         let popupHTML = `
-            <div style="min-width: 280px; color: #2d3748;">
-                <h4 style="margin: 0 0 10px 0; color: #1a202c;">⚡ ${transformerName}</h4>
+            <div style="min-width: 280px; color: ${MLC_T('--popup-body', '#2d3748')};">
+                <h4 style="margin: 0 0 10px 0; color: ${MLC_T('--popup-heading', '#1a202c')};">⚡ ${transformerName}</h4>
                 ${transformerAddress ? `<p style="margin: 5px 0;"><strong>Адрес:</strong> ${transformerAddress}</p>` : ''}
                 <p style="margin: 5px 0;"><strong>Мощность:</strong> ${this.escapeHTML(String(powerKVA))} кВА</p>
                 <p style="margin: 5px 0;"><strong>Статус:</strong> ${transformerStatus}</p>
@@ -667,7 +683,7 @@ class MapLayersControl {
                 power
             );
         } else {
-            popupHTML += '<p style="margin: 10px 0; color: #718096;">Нет данных о текущей загрузке</p>';
+            popupHTML += `<p style="margin: 10px 0; color: ${MLC_T('--muted-foreground', '#718096')};">Нет данных о текущей загрузке</p>`;
         }
         
         popupHTML += `</div>`;
@@ -699,13 +715,16 @@ class MapLayersControl {
 
     createBuildingMarker(building) {
         // Определяем цвет маркера на основе статуса контроллера
-        let color = '#666'; // По умолчанию серый
+        // Здесь была отдельная (Bootstrap) палитра — четвёртый набор цветов
+        // статуса в проекте. Теперь та же шкала, что у маркеров зданий и
+        // легенды. Онлайн берёт --st-success, а не акцент: это состояние.
+        let color = MLC_T('--st-offline', '#666');
         if (building.controller_status === 'online') {
-            color = '#28a745'; // Зеленый для онлайн
+            color = MLC_T('--st-success', '#28a745');
         } else if (building.controller_status === 'warning') {
-            color = '#ffc107'; // Желтый для предупреждения
+            color = MLC_T('--st-warn', '#ffc107');
         } else if (building.controller_status === 'offline') {
-            color = '#dc3545'; // Красный для офлайн
+            color = MLC_T('--st-crit', '#dc3545');
         }
         
         const lat = parseFloat(building.latitude);
@@ -714,7 +733,7 @@ class MapLayersControl {
         const marker = L.circleMarker([lat, lng], {
             radius: 6,
             fillColor: color,
-            color: '#000',
+            color: MLC_T('--popup-ink-strong', '#000'),
             weight: 2,
             opacity: 1,
             fillOpacity: 0.8
@@ -911,10 +930,10 @@ class MapLayersControl {
     }
 
     getLoadColor(loadPercent) {
-        if (loadPercent > 90) return '#ff4444'; // Критическая загрузка
-        if (loadPercent > 75) return '#ff8800'; // Высокая загрузка
-        if (loadPercent > 50) return '#ffdd00'; // Средняя загрузка
-        return '#44ff44'; // Низкая загрузка
+        if (loadPercent > 90) return MLC_T('--st-crit', '#ff4444');        // критическая
+        if (loadPercent > 75) return MLC_T('--st-warn-strong', '#ff8800');  // высокая
+        if (loadPercent > 50) return MLC_T('--st-warn', '#ffdd00');         // средняя
+        return MLC_T('--st-success', '#44ff44');                            // низкая
     }
 
     getPressureColor(pressure) {
@@ -1371,12 +1390,12 @@ class MapLayersControl {
     // Получить цвет для алерта по важности
     getAlertColor(severity) {
         const colors = {
-            'critical': '#d32f2f',
-            'high': '#f57c00',
-            'medium': '#fbc02d',
-            'low': '#388e3c'
+            'critical': MLC_T('--st-crit', '#d32f2f'),
+            'high': MLC_T('--st-warn-strong', '#f57c00'),
+            'medium': MLC_T('--st-warn', '#fbc02d'),
+            'low': MLC_T('--st-success', '#388e3c')
         };
-        return colors[severity] || '#757575';
+        return colors[severity] || MLC_T('--st-offline', '#757575');
     }
 
     /**
@@ -1593,8 +1612,8 @@ class MapLayersControl {
         }
         
         const popupHTML = `
-            <div style="min-width: 250px; color: #2d3748;">
-                <h4 style="margin: 0 0 10px 0; color: #1a202c;">${typeIcon} ${lineName}</h4>
+            <div style="min-width: 250px; color: ${MLC_T('--popup-body', '#2d3748')};">
+                <h4 style="margin: 0 0 10px 0; color: ${MLC_T('--popup-heading', '#1a202c')};">${typeIcon} ${lineName}</h4>
                 <p style="margin: 5px 0;"><strong>Тип:</strong> ${typeName}</p>
                 ${lineDescription ? `<p style="margin: 5px 0;"><strong>Описание:</strong> ${lineDescription}</p>` : ''}
                 <p style="margin: 5px 0;"><strong>Статус:</strong> <span style="color: ${statusColor}; font-weight: bold;">${lineStatus}</span></p>
@@ -1604,7 +1623,7 @@ class MapLayersControl {
                 ${lineBranchesCount > 0 ? `<p style="margin: 5px 0;"><strong>Ответвлений:</strong> ${lineBranchesCount}</p>` : ''}
                 
                 <!-- Power data for electricity lines - placeholder -->
-                ${lineData.line_type === 'electricity' ? `<div id="line-power-${lineData.line_id}" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(0,0,0,0.1);"><p style="color: #718096; font-size: 12px;">Загрузка данных мощности...</p></div>` : ''}
+                ${lineData.line_type === 'electricity' ? `<div id="line-power-${lineData.line_id}" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(0,0,0,0.1);"><p style="color: ${MLC_T('--muted-foreground', '#718096')}; font-size: 12px;">Загрузка данных мощности...</p></div>` : ''}
             </div>
         `;
         
@@ -1625,14 +1644,14 @@ class MapLayersControl {
                             powerContainer.textContent = '';
 
                             const p1 = document.createElement('p');
-                            p1.style.cssText = 'margin: 5px 0; color: #2d3748;';
+                            p1.style.cssText = `margin: 5px 0; color: ${MLC_T('--popup-body', '#2d3748')};`;
                             const icon1 = document.createElement('strong');
                             icon1.textContent = '⚡ Суммарная нагрузка:';
                             p1.appendChild(icon1);
                             p1.appendChild(document.createTextNode(` ${(parseFloat(totalPower) || 0).toFixed(2)} кВт`));
 
                             const p2 = document.createElement('p');
-                            p2.style.cssText = 'margin: 5px 0; font-size: 12px; color: #4a5568;';
+                            p2.style.cssText = `margin: 5px 0; font-size: 12px; color: ${MLC_T('--power-label', '#4a5568')};`;
                             const ph1 = (parseFloat(lineP.total_power_ph1_kw) || 0).toFixed(1);
                             const ph2 = (parseFloat(lineP.total_power_ph2_kw) || 0).toFixed(1);
                             const ph3 = (parseFloat(lineP.total_power_ph3_kw) || 0).toFixed(1);

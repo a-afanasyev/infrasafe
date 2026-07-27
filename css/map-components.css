@@ -7,9 +7,9 @@
 
 /* Добавляем стили для мигающего текста */
 @keyframes blink-red {
-    0% { color: #ff0000; }
-    50% { color: #ff6666; }
-    100% { color: #ff0000; }
+    0% { color: var(--blink-map-crit); }
+    50% { color: var(--blink-map-crit-soft); }
+    100% { color: var(--blink-map-crit); }
 }
 
 .blinking-text-red {
@@ -37,7 +37,7 @@
 
 .blinking-leak-header {
     animation: blink-animation 1s infinite;
-    color: #1976d2;
+    color: var(--st-info);
 }
 
 @keyframes blink-animation {
@@ -137,19 +137,19 @@
 }
 
 .toast-info {
-    background-color: #2196F3;
+    background-color: var(--st-info);
 }
 
 .toast-success {
-    background-color: #4CAF50;
+    background-color: var(--st-success);
 }
 
 .toast-warning {
-    background-color: #FF9800;
+    background-color: var(--st-warn);
 }
 
 .toast-error {
-    background-color: #F44336;
+    background-color: var(--st-crit);
 }
 
 @keyframes toast-slide-in {
@@ -180,7 +180,7 @@
 
 /* Skeleton Loading Styles */
 .skeleton {
-    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background: linear-gradient(90deg, var(--muted) 25%, var(--border) 50%, var(--muted) 75%);
     background-size: 200% 100%;
     animation: skeleton-loading 1.5s infinite;
 }
@@ -201,7 +201,7 @@
 
 .skeleton-table td {
     padding: 12px 8px;
-    border-bottom: 1px solid #eee;
+    border-bottom: 1px solid var(--border);
 }
 
 .skeleton-row {
@@ -227,7 +227,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background: linear-gradient(90deg, var(--muted) 25%, var(--border) 50%, var(--muted) 75%);
     background-size: 200% 100%;
     animation: skeleton-loading 1.5s infinite;
     z-index: 999;
@@ -236,7 +236,7 @@
     align-items: center;
     justify-content: center;
     font-size: 18px;
-    color: #666;
+    color: var(--muted-foreground);
 }
 
 .skeleton-map::before {

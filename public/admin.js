@@ -1,3 +1,19 @@
+/**
+ * Цвет из токенов темы с запасным литералом.
+ * Часть админской разметки собирается в коде (инлайн-стили ячеек и бейджей),
+ * поэтому CSS-переменные разрешаются здесь. Запасное значение оставлено
+ * литералом: в окне деплоя бандл может оказаться новее CSS.
+ *
+ * @param {string} name
+ * @param {string} fallback
+ * @returns {string}
+ */
+function A_T(name, fallback) {
+    return (typeof window !== 'undefined' && window.BrandTokens)
+        ? window.BrandTokens.token(name, fallback)
+        : fallback;
+}
+
 document.addEventListener("DOMContentLoaded", function () {
     const backendURL = "/api";
 
@@ -1136,7 +1152,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const picker = document.createElement('div');
         picker.id = 'uk-request-picker';
         picker.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);'
-            + 'background:white;border:1px solid #ccc;border-radius:6px;padding:16px;'
+            + `background:${A_T('--color-surface', 'white')};border:1px solid ${A_T('--color-border', '#ccc')};border-radius:6px;padding:16px;`
             + 'box-shadow:0 4px 12px rgba(0,0,0,.15);z-index:9999;min-width:280px;';
         const title = document.createElement('div');
         title.textContent = `Связанные заявки УК (${requests.length}):`;
@@ -1150,7 +1166,7 @@ document.addEventListener("DOMContentLoaded", function () {
             link.rel = 'noopener noreferrer';
             link.textContent = `№${req.uk_request_number}` + (req.status ? ` · ${req.status}` : '');
             link.style.cssText = 'display:block;padding:6px 8px;margin:4px 0;'
-                + 'background:#f5f5f5;border-radius:4px;text-decoration:none;color:#0066cc;';
+                + `background:${A_T('--color-hover', '#f5f5f5')};border-radius:4px;text-decoration:none;color:${A_T('--accent-ink', '#0066cc')};`;
             link.addEventListener('click', () => setTimeout(() => picker.remove(), 100));
             picker.appendChild(link);
         });
@@ -3092,18 +3108,18 @@ document.addEventListener("DOMContentLoaded", function () {
             font-size: 12px;
             font-weight: bold;
         }
-        .status-online { background-color: #4CAF50; }
-        .status-offline { background-color: #f44336; }
-        .status-maintenance { background-color: #ff9800; }
+        .status-online { background-color: var(--st-success); }
+        .status-offline { background-color: var(--color-danger); }
+        .status-maintenance { background-color: var(--color-warning); }
         .alert-badge {
-            background-color: #f44336;
+            background-color: var(--color-danger);
             color: white;
             padding: 2px 6px;
             border-radius: 8px;
             font-size: 11px;
         }
         .ok-badge {
-            background-color: #4CAF50;
+            background-color: var(--st-success);
             color: white;
             padding: 2px 6px;
             border-radius: 8px;
@@ -3120,7 +3136,7 @@ document.addEventListener("DOMContentLoaded", function () {
         .form-field input, .form-field select, .form-field textarea {
             width: 100%;
             padding: 8px;
-            border: 1px solid #ddd;
+            border: 1px solid var(--color-border);
             border-radius: 4px;
         }
         .form-field textarea {
@@ -3407,7 +3423,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const el = document.getElementById('rules-status');
         if (!el) return;
         el.textContent = text;
-        el.style.color = isError ? '#c00' : '#666';
+        el.style.color = isError ? A_T('--color-danger', '#c00') : A_T('--color-text-light', '#666');
     }
 
     // [Sprint 10 PR-5] PATCH one field. Validates client-side via
@@ -3526,7 +3542,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 const td = document.createElement('td');
                 td.colSpan = 5;
                 td.style.textAlign = 'center';
-                td.style.color = '#999';
+                td.style.color = A_T('--color-muted', '#999');
                 td.textContent = 'Изменений нет';
                 tr.appendChild(td);
                 tbody.appendChild(tr);
@@ -3545,7 +3561,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     const td = document.createElement('td');
                     td.textContent = text;
                     td.style.padding = '4px 8px';
-                    td.style.borderBottom = '1px solid #eee';
+                    td.style.borderBottom = `1px solid ${A_T('--color-border', '#eee')}`;
                     tr.appendChild(td);
                 });
                 tbody.appendChild(tr);
@@ -3572,7 +3588,7 @@ document.addEventListener("DOMContentLoaded", function () {
             const td = document.createElement('td');
             td.colSpan = 11;   // [B-009] +1 колонка «Сезон»
             td.style.textAlign = 'center';
-            td.style.color = '#999';
+            td.style.color = A_T('--color-muted', '#999');
             td.textContent = 'Правил нет';
             tr.appendChild(td);
             tbody.appendChild(tr);
@@ -3581,10 +3597,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
         integrationState.rules.forEach(rule => {
             const tr = document.createElement('tr');
-            if (!rule.enabled) tr.style.background = '#fafafa';
+            if (!rule.enabled) tr.style.background = A_T('--color-hover', '#fafafa');
 
             tr.appendChild(_mkCell(`${rule.alert_type} / ${rule.severity}`, { fontWeight: '600' }));
-            tr.appendChild(_mkCell(`${rule.uk_category} / ${rule.uk_urgency}`, { color: '#555' }));
+            tr.appendChild(_mkCell(`${rule.uk_category} / ${rule.uk_urgency}`, { color: A_T('--color-text-light', '#555') }));
             tr.appendChild(_mkEditableInt(rule, 'min_persistence_seconds'));
             tr.appendChild(_mkEditableInt(rule, 'min_affected_buildings'));
             tr.appendChild(_mkEditableInt(rule, 'verification_grace_seconds'));
@@ -3599,12 +3615,12 @@ document.addEventListener("DOMContentLoaded", function () {
             const alertCount = rule.alert_count || 0;
             const escalatedCount = rule.escalated_count || 0;
             const reopenCount = rule.reopen_count || 0;
-            statsTd.appendChild(_mkStatBadge(`${alertCount} alerts`, '#e3f2fd', '#1565c0'));
+            statsTd.appendChild(_mkStatBadge(`${alertCount} alerts`, A_T('--badge-info-bg', '#e3f2fd'), A_T('--badge-info-ink', '#1565c0')));
             statsTd.appendChild(document.createTextNode(' '));
-            statsTd.appendChild(_mkStatBadge(`${escalatedCount} → УК`, '#fff3e0', '#e65100'));
+            statsTd.appendChild(_mkStatBadge(`${escalatedCount} → УК`, A_T('--badge-warn-bg', '#fff3e0'), A_T('--badge-warn-ink', '#e65100')));
             if (reopenCount > 0) {
                 statsTd.appendChild(document.createTextNode(' '));
-                statsTd.appendChild(_mkStatBadge(`${reopenCount} reopen`, '#fce4ec', '#ad1457'));
+                statsTd.appendChild(_mkStatBadge(`${reopenCount} reopen`, A_T('--badge-pending-bg', '#fce4ec'), A_T('--badge-pending-ink', '#ad1457')));
             }
             tr.appendChild(statsTd);
 
@@ -3661,7 +3677,7 @@ document.addEventListener("DOMContentLoaded", function () {
         input.value = rule[fieldName];
         input.style.width = '70px';
         input.style.padding = '2px 4px';
-        input.style.border = '1px solid #ddd';
+        input.style.border = `1px solid ${A_T('--color-border', '#ddd')}`;
         input.style.borderRadius = '3px';
         input.style.textAlign = 'right';
 
@@ -3679,7 +3695,7 @@ document.addEventListener("DOMContentLoaded", function () {
             const success = await patchRuleField(rule.id, fieldName, newVal);
             if (success) {
                 originalValue = newVal;
-                input.style.background = '#e8f5e9';
+                input.style.background = A_T('--badge-ok-bg', '#e8f5e9');
                 setTimeout(() => { input.style.background = ''; }, 1000);
             } else {
                 input.value = originalValue;
@@ -3704,7 +3720,7 @@ document.addEventListener("DOMContentLoaded", function () {
             input.maxLength = 5;
             input.style.width = '58px';
             input.style.padding = '2px 4px';
-            input.style.border = '1px solid #ddd';
+            input.style.border = `1px solid ${A_T('--color-border', '#ddd')}`;
             input.style.borderRadius = '3px';
             input.style.textAlign = 'center';
             const spec = window.UkRulesValidation && window.UkRulesValidation.RULE_FIELD_SPEC[fieldName];
@@ -3738,7 +3754,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 rule.season_from = from || null;
                 rule.season_to = to || null;
                 for (const el of [fromInput, toInput]) {
-                    el.style.background = '#e8f5e9';
+                    el.style.background = A_T('--badge-ok-bg', '#e8f5e9');
                     setTimeout(() => { el.style.background = ''; }, 1000);
                 }
             } else {

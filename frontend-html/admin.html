@@ -4,9 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>InfraSafe - Администрирование</title>
-    <link rel="icon" type="image/svg+xml" href="public/images/favicon.svg">
+    <link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
     <!-- Скрипт подключается в конце body -->
+    <link rel="stylesheet" href="css/tokens.css?v=20260727">
     <link rel="stylesheet" href="public/css/admin.css">
+    <link rel="stylesheet" href="/brand/brand.css?v=20260727">
 </head>
 <body>
     <div class="admin-header">
@@ -1508,6 +1510,7 @@
     <script src="public/libs/leaflet/leaflet.js?v=20260527"></script>
     
     <!-- Подключение утилит безопасности -->
+    <script src="public/dist/utils/brandTokens.js?v=20260727"></script>
     <script src="public/dist/utils/domSecurity.js?v=20260527"></script>
 
     <!-- [AUD-013 phase 2] csrf.js removed — the server never validated
@@ -1528,16 +1531,16 @@
     <script src="public/dist/utils/sectionId.js?v=20260703"></script>
 
     <!-- Подключаем систему авторизации перед основным скриптом -->
-    <script src="public/dist/admin-auth.js?v=20260527"></script>
+    <script src="public/dist/admin-auth.js?v=20260727"></script>
 
     <!-- Компонент редактирования координат -->
-    <script src="public/dist/admin-coordinate-editor.js?v=20260527"></script>
+    <script src="public/dist/admin-coordinate-editor.js?v=20260727"></script>
 
     <!-- Компонент редактирования линий инфраструктуры -->
-    <script src="public/dist/infrastructure-line-editor.js?v=20260527"></script>
+    <script src="public/dist/infrastructure-line-editor.js?v=20260727"></script>
 
     <!-- Основной скрипт админки -->
-    <script src="public/dist/admin.js?v=20260703"></script>
+    <script src="public/dist/admin.js?v=20260727"></script>
 
 <dialog id="change-password-modal" class="modal-dialog">
     <form id="change-password-form">

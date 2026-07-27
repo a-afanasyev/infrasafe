@@ -110,7 +110,8 @@ class AdminAuth {
             el.id = 'admin-connection-notice';
             el.setAttribute('role', 'status');
             el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2000;' +
-                'padding:0.5rem 1rem;background:#b45309;color:#fff;text-align:center;font-size:0.9rem;';
+                `padding:0.5rem 1rem;background:${(window.BrandTokens
+        ? window.BrandTokens.token('--st-warn-strong', '#b45309') : '#b45309')};color:#fff;text-align:center;font-size:0.9rem;`;
             (document.body || document.documentElement).appendChild(el);
         }
         // textContent only — no untrusted HTML.
@@ -424,7 +425,7 @@ class AdminAuth {
                     top: 20px;
                     right: 20px;
                     padding: 0.5rem 1rem;
-                    background: #dc3545;
+                    background: var(--color-danger);
                     color: white;
                     border: none;
                     border-radius: 6px;
@@ -432,7 +433,7 @@ class AdminAuth {
                     font-size: 0.9rem;
                     z-index: 1000;
                 }
-                .logout-btn:hover { background: #c82333; }
+                .logout-btn:hover { background: var(--color-danger-hover); }
             </style>
         `;
         document.head.insertAdjacentHTML('beforeend', styles);
