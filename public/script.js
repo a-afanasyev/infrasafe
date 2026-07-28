@@ -1257,7 +1257,12 @@ document.addEventListener('DOMContentLoaded', async function () {
         img.style.cssText = 'width: 35px; height: 35px; object-fit: contain;';
         
         const span = document.createElement('span');
-        span.textContent = 'InfraSafe';
+        // Имя берётся из бренда: на profk.uz это «ProFK», на infrasafe.uz —
+        // «InfraSafe». Раньше строка была захардкожена, и брендированная
+        // площадка подписывала плашку чужим именем.
+        span.textContent = window.BrandTokens
+            ? window.BrandTokens.text('--brand-name', 'InfraSafe')
+            : 'InfraSafe';
         
         wrapper.appendChild(img);
         wrapper.appendChild(span);

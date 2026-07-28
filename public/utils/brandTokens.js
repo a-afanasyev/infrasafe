@@ -86,6 +86,31 @@
         cache = null;
     }
 
+    /**
+     * Текстовый токен бренда (например, имя площадки).
+     *
+     * CSS-переменная умеет хранить строку, но getPropertyValue возвращает её
+     * ВМЕСТЕ с кавычками: `--brand-name: "ProFK"` придёт как `"ProFK"`.
+     * Кавычки снимаем здесь, чтобы вызывающий код не знал об этой детали.
+     *
+     * Зачем через токен, а не строкой в коде: script.js один на оба хоста.
+     * Захардкоженное имя показалось бы и на той площадке, которой оно не
+     * принадлежит.
+     *
+     * @param {string} name
+     * @param {string} fallback
+     * @returns {string}
+     */
+    function text(name, fallback) {
+        var v = token(name, fallback);
+        if (v.length > 1 &&
+            ((v[0] === '"' && v[v.length - 1] === '"') ||
+             (v[0] === "'" && v[v.length - 1] === "'"))) {
+            return v.slice(1, -1);
+        }
+        return v;
+    }
+
     /** Цвет состояния объекта по ключу шкалы. */
     function status(kind) {
         return token('--st-' + kind);
@@ -146,6 +171,7 @@
 
     global.BrandTokens = {
         token: token,
+        text: text,
         status: status,
         markerStyle: markerStyle,
         refresh: refresh
