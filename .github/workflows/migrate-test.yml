@@ -38,13 +38,13 @@ jobs:
     name: Migrate Runner E2E
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The harness builds a baseline target and dangling commits from git
           # plumbing (read-tree/commit-tree) off HEAD; full history keeps that
           # robust regardless of how deep the referenced objects sit.
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
       # No `npm ci`: the harness only needs host `node` for the stdlib-only
