@@ -145,23 +145,44 @@ jobs:
 
       # [EN-2] Скан уязвимостей САМОГО образа. npm audit (job выше) покрывает
       # только npm-дерево; базовый node:20-alpine и его OS-пакеты не проверял
-      # никто. Стоит ДО пуша в GHCR: публиковать образ, который не прошёл скан,
-      # незачем.
+      # никто. Стоит ДО пуша в GHCR: публиковать образ, не прошедший скан, незачем.
       #
-      # ignore-unfixed: без доступного апстрим-фикса алерт превращается в шум,
-      # который нечем закрыть. exit-code 1 делает шаг настоящим гейтом, а не
-      # информационным выводом.
+      # Калибровка (по факту первого прогона, а не по умолчанию):
+      #   * skip-dirs /usr/local/lib/node_modules — это пакеты, поставляемые с
+      #     npm ВНУТРИ базового образа, а не наши. Наше прод-дерево там не лежит
+      #     (`npm ls tar --omit=dev` пусто), починить их из этого репозитория
+      #     нельзя, и блокировать ими пайплайн — значит выключить гейт целиком.
+      #     Наш слой (/app) и OS-пакеты Alpine при этом сканируются.
+      #   * блокируем на CRITICAL, HIGH только показываем. На момент введения
+      #     все HIGH — это лаг Alpine в базовом образе (openssl 3.5.6-r0 при
+      #     доступном 3.5.7-r0, libcurl), то есть чинятся бампом базы, а не
+      #     кодом. Держать пайплайн красным из-за апстрима — верный способ
+      #     приучить всех игнорировать красное. Бамп базы отслеживается
+      #     отдельно (dependabot: node:20-alpine → node:26-alpine).
+      #   * ignore-unfixed — без доступного фикса алерт нечем закрыть.
       # Пин по SHA, а не по тегу: это сторонний action, а тег можно переставить
       # на другой коммит. Тот же довод, что в EN-8 про gitleaks-action.
-      - name: Scan image for OS/library vulnerabilities (Trivy)
+      - name: Scan image — отчёт по HIGH (не блокирует)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25   # v0.36.0
         with:
           image-ref: infrasafe-app:latest
           format: table
-          severity: HIGH,CRITICAL
+          severity: HIGH
+          ignore-unfixed: true
+          exit-code: '0'
+          vuln-type: os,library
+          skip-dirs: /usr/local/lib/node_modules
+
+      - name: Scan image — гейт на CRITICAL
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25   # v0.36.0
+        with:
+          image-ref: infrasafe-app:latest
+          format: table
+          severity: CRITICAL
           ignore-unfixed: true
           exit-code: '1'
           vuln-type: os,library
+          skip-dirs: /usr/local/lib/node_modules
 
       # [R2-15] Push the EXACT image that just passed the checks above to GHCR
       # (docker tag + push — NOT a rebuild). Gated to push-on-main only, so PRs

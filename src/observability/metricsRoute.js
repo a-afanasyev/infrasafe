@@ -32,10 +32,27 @@ function tokenMatches(expected, provided) {
     return crypto.timingSafeEqual(expectedBuf, providedBuf);
 }
 
+/**
+ * Разбор `Authorization: Bearer <token>` БЕЗ регулярного выражения.
+ *
+ * Была `/^Bearer\s+(.+)$/` — CodeQL справедливо пометил её как
+ * polynomial-redos: `\s+` рядом с `.+` на заголовке, который приходит от
+ * кого угодно, даёт квадратичный откат на подобранной строке. Здесь разбор
+ * линейный, а поведение то же: схема сравнивается точно, разделителем
+ * считается пробел или таб, пустой токен отвергается.
+ */
 function extractBearer(header) {
     if (typeof header !== 'string') return null;
-    const match = /^Bearer\s+(.+)$/.exec(header.trim());
-    return match ? match[1] : null;
+    const trimmed = header.trim();
+    const SCHEME = 'Bearer';
+    if (!trimmed.startsWith(SCHEME)) return null;
+
+    const rest = trimmed.slice(SCHEME.length);
+    // Нужен явный разделитель: "BearerXYZ" — не наша схема.
+    if (rest.length === 0 || (rest[0] !== ' ' && rest[0] !== '\t')) return null;
+
+    const token = rest.trim();
+    return token || null;
 }
 
 function mountInternalMetrics(app) {

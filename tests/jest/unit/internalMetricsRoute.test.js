@@ -91,6 +91,38 @@ describe('[AR-2] /internal/metrics', () => {
         expect(res.text).toContain('infrasafe_alert_checks_total');
     });
 
+    // Разбор заголовка стал строковым (без регулярки) после CodeQL
+    // polynomial-redos — семантику фиксируем явно.
+    test('"BearerXYZ" без разделителя не принимается за схему', async () => {
+        process.env.INTERNAL_METRICS_TOKEN = TOKEN;
+
+        const res = await request(makeApp())
+            .get('/internal/metrics')
+            .set('Authorization', `Bearer${TOKEN}`);
+
+        expect(res.status).toBe(401);
+    });
+
+    test('лишние пробелы после схемы допускаются', async () => {
+        process.env.INTERNAL_METRICS_TOKEN = TOKEN;
+
+        const res = await request(makeApp())
+            .get('/internal/metrics')
+            .set('Authorization', `Bearer   ${TOKEN}`);
+
+        expect(res.status).toBe(200);
+    });
+
+    test('пустой токен после схемы отвергается', async () => {
+        process.env.INTERNAL_METRICS_TOKEN = TOKEN;
+
+        const res = await request(makeApp())
+            .get('/internal/metrics')
+            .set('Authorization', 'Bearer    ');
+
+        expect(res.status).toBe(401);
+    });
+
     test('схема Basic не принимается вместо Bearer', async () => {
         process.env.INTERNAL_METRICS_TOKEN = TOKEN;
 
