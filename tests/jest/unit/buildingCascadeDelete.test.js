@@ -3,10 +3,16 @@
  */
 
 // Mock database
-jest.mock('../../../src/config/database', () => ({
-    query: jest.fn(),
-    getPool: jest.fn()
-}));
+jest.mock('../../../src/config/database', () => {
+    // [CO-2] Настоящие safeRollback/releaseClient — см. dbTransactionHelpers.test.js.
+    const actual = jest.requireActual('../../../src/config/database');
+    return {
+        query: jest.fn(),
+        getPool: jest.fn(),
+        safeRollback: actual.safeRollback,
+        releaseClient: actual.releaseClient
+    };
+});
 
 // Mock logger
 jest.mock('../../../src/utils/logger', () => ({
@@ -116,10 +122,15 @@ describe('Building.deleteCascade', () => {
 
         await expect(Building.deleteCascade(5)).rejects.toThrow('Failed to cascade-delete building');
 
-        expect(logger.error).toHaveBeenCalledWith(
-            expect.stringContaining('Rollback failed in Building.deleteCascade')
+        // [CO-2] Сообщение переехало в общий db.safeRollback (уровень warn) —
+        // проверяем контекст, а не точную формулировку прежней строки.
+        expect(logger.warn).toHaveBeenCalledWith(
+            expect.stringContaining('Building.deleteCascade: ROLLBACK failed')
         );
         expect(mockClient.release).toHaveBeenCalledTimes(1);
+        // [CO-2] И главное: соединение возвращается в пул ПОМЕЧЕННЫМ, то есть
+        // уничтожается, а не переиспользуется с оборванной транзакцией.
+        expect(mockClient.release.mock.calls[0][0]).toBeInstanceOf(Error);
     });
 
     it('should return null when building does not exist', async () => {

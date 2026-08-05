@@ -8,6 +8,8 @@ jest.mock('../../../src/config/database', () => {
     return {
         query: jest.fn(),
         getPool: jest.fn(() => mockPool),
+        safeRollback: jest.requireActual('../../../src/config/database').safeRollback,
+        releaseClient: jest.requireActual('../../../src/config/database').releaseClient,
         __mockClient: mockClient,
         __mockPool: mockPool
     };

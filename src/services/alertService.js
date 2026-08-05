@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const metrics = require('../observability/metrics');   // [AR-2]
 const logger = require('../utils/logger');
 const { CircuitBreakerFactory } = require('../utils/circuitBreaker');
 const sharedThresholds = require('../config/thresholds');
@@ -39,8 +40,17 @@ function alertNotFound(message) {
 
 class InfrastructureAlertService {
     constructor() {
-        // Circuit breaker для операций с БД
-        this.dbBreaker = CircuitBreakerFactory.createDatabaseBreaker('AlertsDB');
+        // Circuit breaker для операций с БД.
+        //
+        // [AR-1] `alertNotFound` бросается ИЗНУТРИ dbBreaker.execute (acknowledge/
+        // resolve) уже ПОСЛЕ успешного запроса — 0 строк означает, что БД жива и
+        // ответила. Без этого предиката пять таких промахов подряд (двойной клик
+        // оператора; повторный UK_REQUEST_RESOLVED по закрытому алерту во время
+        // reconcile-шторма УК) открывали AlertsDB на минуту, а он общий с
+        // createAlert/_escalateAlert — то есть переставали создаваться АЛЕРТЫ.
+        this.dbBreaker = CircuitBreakerFactory.createDatabaseBreaker('AlertsDB', {
+            isFailure: (error) => error?.code !== ALERT_NOT_FOUND
+        });
 
         // Phase 4.2 (KISS-008): thresholds come from the shared config module.
         // Local copy kept for updateThresholds() compatibility (runtime overrides).
@@ -185,6 +195,11 @@ class InfrastructureAlertService {
         if (!opts.bypassCooldown && this.lastChecks.has(checkKey)) {
             const lastCheck = this.lastChecks.get(checkKey);
             if (now - lastCheck < this.alertCooldown * 60 * 1000) {
+                // [AR-2] cooldown — тоже исход проверки. Не считать его нельзя:
+                // при штатной телеметрии им отсекается большинство вызовов, и
+                // здоровая система выглядела бы «молчащей» для правила
+                // InfrasafeAlertEngineSilent.
+                metrics.recordAlertCheck('TRANSFORMER_OVERLOAD', 'cooldown');
                 return verifyMode ? { checked: false, alert: null } : null; // Слишком рано для повторной проверки
             }
         }
@@ -290,6 +305,7 @@ class InfrastructureAlertService {
 
         } catch (error) {
             logger.error(`Ошибка проверки трансформатора ${transformerId}:`, error);
+            metrics.recordAlertCheck('TRANSFORMER_OVERLOAD', 'error');   // [AR-2]
             return verifyMode ? { checked: false, alert: null } : null;
         }
     }
@@ -335,6 +351,11 @@ class InfrastructureAlertService {
         if (!opts.bypassCooldown && this.lastChecks.has(checkKey)) {
             const lastCheck = this.lastChecks.get(checkKey);
             if (now - lastCheck < this.alertCooldown * 60 * 1000) {
+                // [AR-2] cooldown — тоже исход проверки. Не считать его нельзя:
+                // при штатной телеметрии им отсекается большинство вызовов, и
+                // здоровая система выглядела бы «молчащей» для правила
+                // InfrasafeAlertEngineSilent.
+                metrics.recordAlertCheck('LEAK_DETECTED', 'cooldown');
                 return verifyMode ? { checked: false, alert: null } : null;
             }
         }
@@ -381,6 +402,7 @@ class InfrastructureAlertService {
             return createdAlert;
         } catch (error) {
             logger.error(`Ошибка checkLeak для контроллера ${controllerId}: ${error.message}`);
+            metrics.recordAlertCheck('LEAK_DETECTED', 'error');   // [AR-2]
             return verifyMode ? { checked: false, alert: null } : null;
         }
     }
@@ -486,6 +508,11 @@ class InfrastructureAlertService {
         if (!opts.bypassCooldown && !escalationPossible && this.lastChecks.has(checkKey)) {
             const lastCheck = this.lastChecks.get(checkKey);
             if (now - lastCheck < this.alertCooldown * 60 * 1000) {
+                // [AR-2] cooldown — тоже исход проверки. Не считать его нельзя:
+                // при штатной телеметрии им отсекается большинство вызовов, и
+                // здоровая система выглядела бы «молчащей» для правила
+                // InfrasafeAlertEngineSilent.
+                metrics.recordAlertCheck('VOLTAGE_ANOMALY', 'cooldown');
                 return verifyMode ? { checked: false, alert: null } : null;
             }
         }
@@ -565,6 +592,7 @@ class InfrastructureAlertService {
             return createdAlert;
         } catch (error) {
             logger.error(`Ошибка checkVoltage для контроллера ${controllerId}: ${error.message}`);
+            metrics.recordAlertCheck('VOLTAGE_ANOMALY', 'error');   // [AR-2]
             return verifyMode ? { checked: false, alert: null } : null;
         }
     }
@@ -613,6 +641,11 @@ class InfrastructureAlertService {
         if (!opts.bypassCooldown && this.lastChecks.has(checkKey)) {
             const lastCheck = this.lastChecks.get(checkKey);
             if (now - lastCheck < this.alertCooldown * 60 * 1000) {
+                // [AR-2] cooldown — тоже исход проверки. Не считать его нельзя:
+                // при штатной телеметрии им отсекается большинство вызовов, и
+                // здоровая система выглядела бы «молчащей» для правила
+                // InfrasafeAlertEngineSilent.
+                metrics.recordAlertCheck('HEATING_FAILURE', 'cooldown');
                 return verifyMode ? { checked: false, alert: null } : null;
             }
         }
@@ -658,6 +691,7 @@ class InfrastructureAlertService {
             return createdAlert;
         } catch (error) {
             logger.error(`Ошибка checkHeating для контроллера ${controllerId}: ${error.message}`);
+            metrics.recordAlertCheck('HEATING_FAILURE', 'error');   // [AR-2]
             return verifyMode ? { checked: false, alert: null } : null;
         }
     }
@@ -905,6 +939,7 @@ class InfrastructureAlertService {
                         `Alert skipped by season gate: ${alertData.type}/${alertData.severity} ` +
                         `for ${alertData.infrastructure_type}:${alertData.infrastructure_id} — ${seasonCheck.reason}`
                     );
+                    metrics.recordAlertCheck(alertData.type, 'gate_denied');   // [AR-2]
                     return null;
                 }
                 // sinceTimestamp (verify mode) clamps the persistence gate to
@@ -916,6 +951,7 @@ class InfrastructureAlertService {
                         `Alert skipped by persistence gate: ${alertData.type}/${alertData.severity} ` +
                         `for ${alertData.infrastructure_type}:${alertData.infrastructure_id} — ${persistenceCheck.reason}`
                     );
+                    metrics.recordAlertCheck(alertData.type, 'gate_denied');   // [AR-2]
                     return null;
                 }
                 const buildingsCheck = await this._checkAffectedBuildingsGate(alertData, rule);
@@ -924,6 +960,7 @@ class InfrastructureAlertService {
                         `Alert skipped by buildings gate: ${alertData.type}/${alertData.severity} ` +
                         `for ${alertData.infrastructure_type}:${alertData.infrastructure_id} — ${buildingsCheck.reason}`
                     );
+                    metrics.recordAlertCheck(alertData.type, 'gate_denied');   // [AR-2]
                     return null;
                 }
             }
@@ -977,6 +1014,7 @@ class InfrastructureAlertService {
                     logger.info(
                         `Duplicate alert suppressed by DB (UNIQUE): ${alertData.type} for ${alertData.infrastructure_type}:${alertData.infrastructure_id}`
                     );
+                    metrics.recordAlertCheck(alertData.type, 'deduped');   // [AR-2]
                     return null;
                 }
                 throw err;
@@ -1014,6 +1052,11 @@ class InfrastructureAlertService {
             // Логируем создание алерта
             const reopenLog = isReopen ? ` (reopen chain=${reopenChainId} seq=${reopenSequence})` : '';
             logger.info(`Создан алерт ${alertData.type} для ${alertData.infrastructure_type} ${alertData.infrastructure_id}, severity: ${alertData.severity}${reopenLog}`);
+            // [AR-2] Единственная точка, где алерт ТОЧНО создан (после всех
+            // гейтов и записи в БД). «Алерты перестали создаваться» перестаёт
+            // быть невидимым отказом.
+            metrics.recordAlertCreated(alertData.type, alertData.severity);
+            metrics.recordAlertCheck(alertData.type, 'created');
 
             return {
                 alert_id: alertId,
@@ -1311,9 +1354,9 @@ class InfrastructureAlertService {
                     }
                     await client.query('COMMIT');
                 } catch (err) {
-                    await client.query('ROLLBACK').catch((e) => {
-                        logger.warn(`resolveAlert: ROLLBACK failed for alert ${alertId}: ${e.message}`);
-                    });
+                    // [CO-2] Помечаем клиент, чтобы он не вернулся в пул с
+                    // оборванной транзакцией — release ниже его уничтожит.
+                    await db.safeRollback(client, `resolveAlert(alert ${alertId})`);
                     throw err;
                 }
             } finally {
@@ -1322,7 +1365,7 @@ class InfrastructureAlertService {
                 });
             }
         } finally {
-            client.release();
+            db.releaseClient(client);
         }
 
         // Post-commit in-memory bookkeeping.

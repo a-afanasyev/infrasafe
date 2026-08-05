@@ -122,6 +122,15 @@ app.get('/health', async (req, res) => {
     }
 });
 
+// [AR-2 / Task 6] Скрейп Prometheus. Монтируется рядом с /health и ДО
+// статики/роутера — путь машинный, под default-deny JWT ему нельзя.
+// Контракт (путь, bearer, интервал) задан строфой infrasafe_app в
+// profk-observability/alloy/config.alloy.
+require('./observability/metricsRoute').mountInternalMetrics(app);
+// Метрики процесса (heap, event-loop lag, GC) включаем только здесь, а не при
+// загрузке модуля — иначе их сборщики поднимались бы в каждом юнит-тесте.
+require('./observability/metrics').enableDefaultMetrics();
+
 // Статические файлы
 app.use(express.static(path.join(__dirname, '../public')));
 

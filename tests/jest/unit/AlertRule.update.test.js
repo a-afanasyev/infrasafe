@@ -1,8 +1,15 @@
 // [Sprint 10 PR-5] AlertRule.update + listWithStats unit tests
-jest.mock('../../../src/config/database', () => ({
-    query: jest.fn(),
-    getPool: jest.fn()
-}));
+jest.mock('../../../src/config/database', () => {
+    // [CO-2] safeRollback/releaseClient берём настоящие: они несут контракт
+    // «упавший ROLLBACK ⇒ соединение уничтожается», и подделка его бы скрыла.
+    const actual = jest.requireActual('../../../src/config/database');
+    return {
+        query: jest.fn(),
+        getPool: jest.fn(),
+        safeRollback: actual.safeRollback,
+        releaseClient: actual.releaseClient
+    };
+});
 
 jest.mock('../../../src/utils/logger', () => ({
     info: jest.fn(),

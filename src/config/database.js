@@ -87,9 +87,44 @@ const close = async () => {
     }
 };
 
+// [CO-2] Отметка «этот клиент испорчен неудавшимся ROLLBACK». Живёт НА объекте
+// клиента, а не в локальной переменной: откат и release нередко находятся в
+// разных кадрах (alertVerificationService откатывает внутри `_processDue`, а
+// освобождает соединение вызывающий двумя уровнями выше). Symbol — чтобы не
+// столкнуться с полями самого pg.
+const BROKEN_BY_FAILED_ROLLBACK = Symbol('brokenByFailedRollback');
+
+/**
+ * Откатить транзакцию, не маскируя исходную ошибку.
+ *
+ * Упавший ROLLBACK не пробрасывается (иначе он подменит собой настоящую
+ * причину сбоя), но клиент помечается: `releaseClient` уничтожит соединение
+ * вместо возврата в пул. Без этого соединение могло вернуться в состоянии
+ * «current transaction is aborted», и падал бы уже следующий, ни в чём не
+ * повинный запрос.
+ */
+const safeRollback = async (client, context = 'transaction') => {
+    try {
+        await client.query('ROLLBACK');
+    } catch (rollbackError) {
+        client[BROKEN_BY_FAILED_ROLLBACK] = rollbackError;
+        logger.warn(`${context}: ROLLBACK failed: ${rollbackError.message}`);
+    }
+};
+
+/**
+ * Вернуть клиент в пул. Если откат не удался — передаём ошибку в `release`,
+ * что заставляет pg уничтожить соединение, а не переиспользовать его.
+ */
+const releaseClient = (client) => {
+    client.release(client[BROKEN_BY_FAILED_ROLLBACK] || undefined);
+};
+
 module.exports = {
     init,
     query,
     getPool,
-    close
+    close,
+    safeRollback,
+    releaseClient
 };

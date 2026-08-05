@@ -307,14 +307,14 @@ class Building {
             return result.rows.length ? result.rows[0] : null;
         } catch (error) {
             // [AUD-030] Guard ROLLBACK so a broken connection can't mask the
-            // original error (pattern mirrors alertService / alertVerificationService).
-            await client.query('ROLLBACK').catch((rbErr) =>
-                logger.error(`Rollback failed in Building.deleteCascade: ${rbErr.message}`)
-            );
+            // original error. [CO-2] safeRollback дополнительно помечает клиент,
+            // чтобы releaseClient уничтожил соединение, а не вернул его в пул
+            // с оборванной транзакцией.
+            await db.safeRollback(client, 'Building.deleteCascade');
             logger.error(`Error in Building.deleteCascade: ${error.message}`);
             throw createError(`Failed to cascade-delete building: ${error.message}`, 500);
         } finally {
-            client.release();
+            db.releaseClient(client);
         }
     }
 

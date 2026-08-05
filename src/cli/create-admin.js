@@ -34,7 +34,8 @@ const readline = require('readline');
 
 const db = require('../config/database');
 const authService = require('../services/authService');
-const logger = require('../utils/logger');
+// [CO-2] logger больше не нужен здесь: единственное сообщение (сбой ROLLBACK)
+// пишет общий db.safeRollback.
 
 // Arbitrary, stable advisory-lock key namespaced to the admin bootstrap.
 // Two concurrent `create-admin` runs serialize on this key.
@@ -126,14 +127,12 @@ async function createAdmin({ username, email, password }) {
         await client.query('COMMIT');
         return { status: 'created', user: insertRes.rows[0] };
     } catch (err) {
-        try {
-            await client.query('ROLLBACK');
-        } catch (rollbackErr) {
-            logger.error(`create-admin: ROLLBACK failed: ${rollbackErr.message}`);
-        }
+        // [CO-2] Единый приём отката: логирует сбой и помечает клиент, чтобы
+        // releaseClient уничтожил соединение вместо возврата в пул.
+        await db.safeRollback(client, 'create-admin');
         throw err;
     } finally {
-        client.release();
+        db.releaseClient(client);
         await db.close();
     }
 }
