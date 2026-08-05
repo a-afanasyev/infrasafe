@@ -143,6 +143,13 @@ class UKWebhookClient {
                 // Important: send the body verbatim (string), not re-JSON.stringified.
                 transformRequest: [(data) => data],
                 timeout: DEFAULT_TIMEOUT_MS,
+                // [SE-2] Не следовать за редиректами. validateUKApiUrl проверяет
+                // хост при каждом send(), но НЕ проверяет цепочку 3xx: доверенный
+                // хост, ответив `302 Location: http://169.254.169.254/...`, увёл
+                // бы подписанный запрос на внутренний адрес. С maxRedirects: 0
+                // редирект становится обычным неуспешным кодом, который дальше
+                // разбирает штатная логика retry/dead.
+                maxRedirects: 0,
                 // Accept any status; we decide the outcome below.
                 validateStatus: () => true
             });
