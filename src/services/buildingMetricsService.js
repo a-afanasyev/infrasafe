@@ -1,8 +1,38 @@
 const db = require('../config/database');
+const cacheService = require('./cacheService');
 const logger = require('../utils/logger');
 
 const DEFAULT_LIMIT = 5000;
 const MAX_LIMIT = 5000;
+
+// [AR-7] Публичный эндпоинт до этого шёл в БД на каждый запрос: LATERAL
+// «последняя метрика» на каждый контроллер под LIMIT 5000, без кэша и без
+// прикладного лимитера. 15 с выбраны так, чтобы кэш не стал самым старым
+// звеном в цепочке: интервал обновления MV аналитики — 60 с.
+const CACHE_TTL_SECONDS = 15;
+
+// Кэшируется ТОЛЬКО анонимная выдача, и на то две причины.
+//
+// 1. Свежесть там, где она нужна. Авторизованный вызов — это операторская
+//    консоль: карта, по которой смотрят протечки и перегрузки, и админ,
+//    который только что подвинул маркер и ждёт, что тот останется на месте
+//    (админский путь записи кэши вообще не инвалидирует — см. adminService).
+//    Пятнадцать секунд «правка не сохранилась» здесь дороже, чем экономия
+//    одного запроса.
+// 2. Изоляция аудиторий становится структурной, а не договорной. Анонимная
+//    проекция урезана намеренно (`mapAnonymousRow` не отдаёт external_id —
+//    P-PENTEST-3 — и никаких метрик). Раз авторизованный ответ в кэш не
+//    попадает вовсе, утечь через него нечему — это сильнее, чем «мы не забыли
+//    добавить аудиторию в ключ».
+//
+// Нагрузку это снимает там, где она есть: публичная карта — единственный
+// источник трафика, который никто не ограничивает по числу клиентов.
+const buildCacheKey = (bbox, limit) => {
+    const box = bbox
+        ? `${bbox.latMin},${bbox.latMax},${bbox.lngMin},${bbox.lngMax}`
+        : 'all';
+    return `buildings-metrics:anon:${box}:${limit}`;
+};
 
 /**
  * Query with optional bbox filter and hard LIMIT.
@@ -140,6 +170,20 @@ const parseLimit = (raw) => {
 
 const getBuildingsWithMetrics = async (isAuthenticated, options = {}) => {
     const { bbox = null, limit = DEFAULT_LIMIT } = options;
+    const cacheKey = isAuthenticated ? null : buildCacheKey(bbox, limit);
+
+    // Кэш — ускоритель, а не зависимость: его отказ переводит запрос в БД,
+    // а не в 500. Карта — публичная страница, падение Redis не должно её гасить.
+    if (cacheKey) {
+        try {
+            const cached = await cacheService.get(cacheKey, { ttl: CACHE_TTL_SECONDS });
+            if (cached) {
+                return cached;
+            }
+        } catch (error) {
+            logger.warn(`buildings-metrics: чтение кэша не удалось (${error.message}), идём в БД`);
+        }
+    }
 
     const params = [
         bbox ? bbox.latMin : null,
@@ -157,7 +201,7 @@ const getBuildingsWithMetrics = async (isAuthenticated, options = {}) => {
 
     logger.info(`Retrieved ${buildings.length} buildings with metrics for map (limit=${limit}, bbox=${bbox ? 'set' : 'none'})`);
 
-    return {
+    const payload = {
         data: buildings,
         pagination: {
             total: buildings.length,
@@ -166,12 +210,24 @@ const getBuildingsWithMetrics = async (isAuthenticated, options = {}) => {
             totalPages: 1
         }
     };
+
+    if (cacheKey) {
+        try {
+            await cacheService.set(cacheKey, payload, { ttl: CACHE_TTL_SECONDS });
+        } catch (error) {
+            logger.warn(`buildings-metrics: запись в кэш не удалась (${error.message})`);
+        }
+    }
+
+    return payload;
 };
 
 module.exports = {
     getBuildingsWithMetrics,
     parseBbox,
     parseLimit,
+    buildCacheKey,
     DEFAULT_LIMIT,
     MAX_LIMIT,
+    CACHE_TTL_SECONDS,
 };

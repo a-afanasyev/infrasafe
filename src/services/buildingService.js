@@ -309,6 +309,11 @@ class BuildingService {
         try {
             await cacheService.invalidatePattern(`${this.cachePrefix}:list:`);
             await cacheService.invalidatePattern(`${this.cachePrefix}:geo:`);
+            // [AR-7] Кэш карты (15 с) живёт под собственным префиксом и в эти
+            // два паттерна не попадает. Без этой строки админ, поправивший
+            // координаты, до четверти минуты видел бы здание на старом месте —
+            // то есть считал бы, что правка не сохранилась.
+            await cacheService.invalidatePattern('buildings-metrics:');
         } catch (error) {
             logger.warn(`Ошибка инвалидации кэша списков зданий: ${error.message}`);
         }
