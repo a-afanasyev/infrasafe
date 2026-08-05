@@ -1,6 +1,7 @@
 const express = require('express');
 const buildingMetricsController = require('../controllers/buildingMetricsController');
 const { optionalAuth } = require('../middleware/auth');
+const { applyMapDataRateLimit } = require('../middleware/rateLimiter');
 const router = express.Router();
 
 /**
@@ -72,6 +73,10 @@ const router = express.Router();
  *                   leak_sensor:
  *                     type: boolean
  */
-router.get('/', optionalAuth, buildingMetricsController.getBuildingsWithMetrics);
+// [AR-7] Лимитер стоит ПЕРЕД optionalAuth: разбор токена не должен быть частью
+// стоимости запроса, который мы всё равно отклоним. Ответ кэшируется на 15 с
+// (buildingMetricsService), поэтому 60/мин на IP — это не более 4 реальных
+// обращений к БД в минуту при повторяющихся параметрах.
+router.get('/', applyMapDataRateLimit, optionalAuth, buildingMetricsController.getBuildingsWithMetrics);
 
 module.exports = router;

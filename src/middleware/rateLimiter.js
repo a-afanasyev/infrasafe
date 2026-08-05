@@ -483,6 +483,26 @@ const ukInventoryLimiter = new SimpleRateLimiter({
     namespace: 'uk-inventory'
 });
 
+// [AR-7] Публичная карта: /api/buildings-metrics. Отдельный лимитер, а не
+// переиспользованный analytics, намеренно — у аналитики есть slow-down
+// (задержка после 20 запросов в минуту), и на публичной странице он бил бы по
+// офису за одним NAT: двадцать сотрудников, открывших карту, это законный
+// трафик, а не атака. Здесь нужен потолок против одного назойливого клиента,
+// а не штраф за плотность.
+//
+// 60/мин при 15-секундном кэше означает максимум 4 реальных обращения к БД на
+// IP в минуту для повторяющихся параметров. Работает лимитер прежде всего по
+// запросам, которые кэш промахивают: клиент со случайным bbox платит
+// LATERAL-сканом за каждый.
+const mapDataLimiter = new SimpleRateLimiter({
+    windowMs: 60 * 1000,
+    max: 60,
+    message: 'Слишком много запросов к данным карты. Попробуйте позже.',
+    standardHeaders: true,
+    legacyHeaders: false,
+    namespace: 'map-data'
+});
+
 // Middleware для применения к конкретным роутам
 const applyAnalyticsRateLimit = [
     analyticsSlowDown.middleware(),
@@ -505,6 +525,10 @@ const applyUkInventoryRateLimit = [
     ukInventoryLimiter.middleware()
 ];
 
+const applyMapDataRateLimit = [
+    mapDataLimiter.middleware()
+];
+
 // Функция для получения статистики всех rate limiter'ов
 function getAllRateLimitStats() {
     return {
@@ -518,6 +542,7 @@ function getAllRateLimitStats() {
         crud: crudLimiter.getStats(),
         telemetry: telemetryLimiter.getStats(),
         uk_inventory: ukInventoryLimiter.getStats(),
+        map_data: mapDataLimiter.getStats(),
         auth: authLimiter.getStats(),
         register: registerLimiter.getStats(),
         password_change: passwordChangeLimiter.getStats()
@@ -560,6 +585,7 @@ module.exports = {
     applyCrudRateLimit,
     applyTelemetryRateLimit,
     applyUkInventoryRateLimit,
+    applyMapDataRateLimit,
     getAllRateLimitStats,
     resetAllRateLimits,
     destroyAllLimiters,

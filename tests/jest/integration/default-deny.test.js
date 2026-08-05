@@ -51,6 +51,7 @@ jest.mock('../../../src/middleware/rateLimiter', () => {
         applyAnalyticsRateLimit: passThrough,
         applyAdminRateLimit: passThrough,
         applyUkInventoryRateLimit: passThrough,
+        applyMapDataRateLimit: passThrough,
         rateLimitStrict: passThrough,
         authLimiter: limiterObj,
         registerLimiter: limiterObj,

@@ -2,6 +2,16 @@ jest.mock('../../../src/config/database', () => ({
     query: jest.fn()
 }));
 
+// [AR-7] Этот файл проверяет ПРОЕКЦИИ строк, а не кэш. Без заглушки кэша
+// анонимные кейсы с одинаковыми параметрами (bbox=none, limit=5000) начинают
+// делить одну запись: первый тест прогревает её, следующий получает чужой
+// результат вместо своей мок-строки. Кэш проверяется отдельно —
+// tests/jest/unit/buildingMetricsService.cache.test.js.
+jest.mock('../../../src/services/cacheService', () => ({
+    get: jest.fn().mockResolvedValue(null),
+    set: jest.fn().mockResolvedValue(undefined)
+}));
+
 jest.mock('../../../src/utils/logger', () => ({
     info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn()
 }));
