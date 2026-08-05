@@ -39,6 +39,7 @@
 
 const db = require('../config/database');
 const logger = require('../utils/logger');
+const metrics = require('../observability/metrics');   // [AR-2]
 
 const AlertVerification = require('../models/AlertVerification');
 const alertEvents = require('../events/alertEvents');
@@ -188,13 +189,20 @@ class AlertVerificationService {
                     });
                 }
             } finally {
-                client.release();
+                db.releaseClient(client);
             }
         } catch (err) {
             this._consecutiveFailures += 1;
             this._logFailure(err);
         } finally {
             this._running = false;
+            // [AR-2] Отмечаем ЗАВЕРШЁННЫЙ тик, включая неудачный: правило
+            // InfrasafeVerificationWorkerStalled следит за тем, что воркер
+            // вообще крутится (`time() - last_tick > 300`). Если ставить метку
+            // только при успехе, застрявший на ошибках воркер выглядел бы
+            // мёртвым — но это уже покрывают счётчики отказов, а «не тикает
+            // вовсе» иначе не отличить от «тикает и падает».
+            metrics.markVerificationTick();
         }
 
         for (const e of sweepEmits) {
@@ -283,9 +291,11 @@ class AlertVerificationService {
             pendingEmit = await this._processDue(executor);
             await executor.query('COMMIT');
         } catch (err) {
-            await executor.query('ROLLBACK').catch((e) => {
-                logger.warn(`alertVerificationService: ROLLBACK failed: ${e.message}`);
-            });
+            // [CO-2] Откат идёт по `executor`, а соединение освобождает кадр
+            // двумя уровнями выше (_tick). Отметка живёт на самом объекте
+            // клиента, поэтому доезжает до releaseClient и там уничтожает
+            // соединение с оборванной транзакцией.
+            await db.safeRollback(executor, 'alertVerificationService drain');
             throw err;
         }
 
@@ -714,9 +724,8 @@ class AlertVerificationService {
                     await client.query('COMMIT');
                     logger.info(`alertVerificationService: verification ${pending.id} → reopened (new alert_id=${alertId}, chain=${reopenChainId})`);
                 } catch (err) {
-                    await client.query('ROLLBACK').catch((e) => {
-                        logger.warn(`alertVerificationService: ALERT_REOPENED ROLLBACK failed: ${e.message}`);
-                    });
+                    // [CO-2] Клиент помечается, releaseClient его уничтожит.
+                    await db.safeRollback(client, 'alertVerificationService ALERT_REOPENED');
                     throw err;
                 }
             } finally {
@@ -727,7 +736,7 @@ class AlertVerificationService {
         } catch (err) {
             logger.error(`alertVerificationService: ALERT_REOPENED handler failed: ${err.message}`);
         } finally {
-            client.release();
+            db.releaseClient(client);
         }
     }
 

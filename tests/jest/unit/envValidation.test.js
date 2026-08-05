@@ -256,3 +256,32 @@ describe('validateEnv — PR-6 INFRASAFE_WEBHOOK_SECRET hard requirement', () =>
         expect(() => validateEnv()).not.toThrow();
     });
 });
+
+// [EN-1] Drift-guard между `.env.example` и env.js.
+//
+// PR-6 повысил TELEMETRY_HMAC_SECRET / UK_INVENTORY_TOKEN до
+// PRODUCTION_REQUIRED_VARS, но в шаблоне они остались закомментированными с
+// пометкой «dormant». Оператор, собравший .env.prod по шаблону, получал не
+// «тихую деградацию», а краш-петлю на старте. Тест не даёт разойтись снова.
+describe('.env.example покрывает обязательные переменные (EN-1)', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const { REQUIRED_VARS, PRODUCTION_REQUIRED_VARS } = require('../../../src/config/env');
+
+    const declaredKeys = (() => {
+        const raw = fs.readFileSync(path.join(__dirname, '../../../.env.example'), 'utf8');
+        return new Set(
+            raw.split('\n')
+                .map(line => line.trim())
+                .filter(line => line && !line.startsWith('#') && line.includes('='))
+                .map(line => line.slice(0, line.indexOf('=')).trim())
+        );
+    })();
+
+    test.each([...REQUIRED_VARS, ...PRODUCTION_REQUIRED_VARS])(
+        '%s объявлена в .env.example и НЕ закомментирована',
+        (name) => {
+            expect(declaredKeys.has(name)).toBe(true);
+        }
+    );
+});

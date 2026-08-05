@@ -1,4 +1,7 @@
 const logger = require('./logger');
+// [AR-2] metrics — «листовой» модуль (prom-client + db + logger), поэтому
+// требовать его отсюда безопасно: цикла не возникает.
+const metrics = require('../observability/metrics');
 
 class CircuitBreaker {
     constructor(options = {}) {
@@ -11,6 +14,17 @@ class CircuitBreaker {
         this.lastFailureTime = null;
         this.nextAttempt = Date.now();
         this.name = options.name || 'Circuit Breaker';
+
+        // [AR-1] Предикат «эта ошибка — отказ зависимости?». По умолчанию отказом
+        // считается ЛЮБОЕ исключение — это намеренно fail-safe: незнакомая ошибка
+        // должна открывать circuit, а не игнорироваться. Владелец breaker'а может
+        // ИСКЛЮЧИТЬ заведомо доменные ошибки (например «алерт не найден»), которые
+        // прилетают уже ПОСЛЕ успешного запроса и ничего не говорят о здоровье БД.
+        // Обратный подход (allowlist инфраструктурных кодов) опаснее: любой не
+        // перечисленный режим отказа перестал бы открывать circuit.
+        this.isFailure = typeof options.isFailure === 'function'
+            ? options.isFailure
+            : () => true;
 
         // Статистика
         this.stats = {
@@ -47,6 +61,7 @@ class CircuitBreaker {
                 // Переходим в полуоткрытое состояние
                 this.state = 'HALF_OPEN';
                 this.successCount = 0;
+                metrics.setCircuitBreakerState(this.name, this.state);   // [AR-2]
                 logger.info(`${this.name}: Переход в состояние HALF_OPEN`);
             }
         }
@@ -59,6 +74,14 @@ class CircuitBreaker {
             this.onSuccess(duration);
             return result;
         } catch (error) {
+            // [AR-1] Доменная ошибка нейтральна для circuit: не инкрементит счётчик
+            // отказов, но и НЕ сбрасывает уже накопленные — иначе редкие промахи
+            // маскировали бы настоящую деградацию БД. Fallback не применяется:
+            // вызывающий ждёт именно эту ошибку (404), а не подменённый ответ.
+            if (!this._countsAsFailure(error)) {
+                throw error;
+            }
+
             this.onFailure(error);
 
             // Если есть fallback и circuit открыт, используем его
@@ -75,6 +98,17 @@ class CircuitBreaker {
         }
     }
 
+    // [AR-1] Отдельный метод, чтобы падение самого предиката не проглатывало
+    // отказ: если классификатор бросил — считаем ошибку отказом (fail-safe).
+    _countsAsFailure(error) {
+        try {
+            return this.isFailure(error) !== false;
+        } catch (predicateError) {
+            logger.warn(`${this.name}: isFailure predicate threw, treating as failure: ${predicateError.message}`);
+            return true;
+        }
+    }
+
     onSuccess(duration) {
         this.failureCount = 0;
         this.successCount++;
@@ -86,6 +120,7 @@ class CircuitBreaker {
                 this.state = 'CLOSED';
                 this.stats.circuitClosed++;
                 this.stats.lastStateChange = Date.now();
+                metrics.setCircuitBreakerState(this.name, this.state);   // [AR-2]
                 logger.info(`${this.name}: Circuit CLOSED после ${this.successCount} успешных запросов`);
             }
         } else if (this.state === 'OPEN') {
@@ -93,6 +128,7 @@ class CircuitBreaker {
             this.state = 'CLOSED';
             this.stats.circuitClosed++;
             this.stats.lastStateChange = Date.now();
+            metrics.setCircuitBreakerState(this.name, this.state);   // [AR-2]
             logger.info(`${this.name}: Circuit CLOSED после успешного запроса`);
         }
 
@@ -119,6 +155,12 @@ class CircuitBreaker {
         this.nextAttempt = Date.now() + this.resetTimeout;
         this.stats.circuitOpened++;
         this.stats.lastStateChange = Date.now();
+
+        // [AR-2] Открытие предохранителя перестаёт быть событием, видимым
+        // только в логах. Именно на этот вопрос («срабатывал ли он вообще?»)
+        // не удалось ответить при разборе AR-1.
+        metrics.incCircuitBreakerOpened(this.name);
+        metrics.setCircuitBreakerState(this.name, this.state);
 
         logger.error(`${this.name}: Circuit OPENED после ${this.failureCount} неудач. Следующая попытка через ${this.resetTimeout}ms`);
     }
@@ -200,21 +242,27 @@ class CircuitBreaker {
 
 // Фабрика для создания circuit breaker с предустановленными настройками
 class CircuitBreakerFactory {
-    static createAnalyticsBreaker(name = 'Analytics') {
+    // [AR-19] `options` — как и у createDatabaseBreaker: позволяет объявить
+    // isFailure, не переписывая пресет порогов.
+    static createAnalyticsBreaker(name = 'Analytics', options = {}) {
         return new CircuitBreaker({
             name: name,
             failureThreshold: 3,
             resetTimeout: 30000, // 30 секунд
-            monitoringInterval: 15000 // 15 секунд
+            monitoringInterval: 15000, // 15 секунд
+            ...options
         });
     }
 
-    static createDatabaseBreaker(name = 'Database') {
+    // [AR-1] `options` позволяет владельцу объявить isFailure (какие ошибки не
+    // являются отказом БД), не переписывая пресет порогов.
+    static createDatabaseBreaker(name = 'Database', options = {}) {
         return new CircuitBreaker({
             name: name,
             failureThreshold: 5,
             resetTimeout: 60000, // 1 минута
-            monitoringInterval: 20000 // 20 секунд
+            monitoringInterval: 20000, // 20 секунд
+            ...options
         });
     }
 

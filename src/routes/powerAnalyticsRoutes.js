@@ -87,17 +87,12 @@ router.get('/transformers', powerAnalyticsController.getTransformersPower);
  */
 router.get('/transformers/:transformerId', validateIntParam('transformerId'), powerAnalyticsController.getTransformerPower);
 
-/**
- * @swagger
- * /api/power-analytics/phase-imbalance:
- *   get:
- *     summary: Анализ дисбаланса фаз
- *     tags: [Power Analytics]
- *     responses:
- *       200:
- *         description: Трансформаторы с анализом дисбаланса нагрузки по фазам
- */
-router.get('/phase-imbalance', powerAnalyticsController.getPhaseImbalanceAnalysis);
+// [DE-1] GET /phase-imbalance удалён (аудит 2026-08-03). Роут возвращал
+// захардкоженный `{success:true, data:[], count:0}` — реализации в сервисе не
+// было ни строки, и ответ читался как «дисбаланса нет» вместо «не реализовано».
+// Потребителей не было (ни фронт, ни тесты, ни bash-смоки). Если анализ
+// дисбаланса фаз понадобится — заводить вместе с реализацией в
+// powerAnalyticsService, а не заглушкой.
 
 /**
  * @swagger

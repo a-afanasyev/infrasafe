@@ -24,6 +24,7 @@
 
 const db = require('../config/database');
 const logger = require('../utils/logger');
+const metrics = require('../observability/metrics');   // [AR-2]
 
 // After this many failed send attempts a row is marked dead.
 const MAX_ATTEMPTS = 5;
@@ -173,6 +174,11 @@ class UkOutbox {
                  RETURNING *`,
                 [id, errorMessage, responseCode]
             );
+            // [AR-2] Считаем здесь, а не в трёх местах ukOutboxService: это
+            // единственная точка, где строка ТОЧНО стала dead. Правило
+            // InfrasafeOutboxDead смотрит increase(...[1h]), поэтому нужен
+            // именно счётчик, а не количество строк в таблице.
+            if (result.rows[0]) metrics.incOutboxDead();
             return result.rows[0] || null;
         } catch (error) {
             logger.error(`UkOutbox.markDead error: ${error.message}`);

@@ -5,12 +5,38 @@ const db = require('../config/database');
 const logger = require('../utils/logger');
 const alertEvents = require('../events/alertEvents');
 
+// [AR-19] Код доменной ошибки «трансформатора нет». Идиома та же, что в
+// metricService/controllerService/authService (строковый `error.code`), а не
+// новый механизм. Нужен, чтобы предохранители могли отличить «такой сущности
+// не существует» от «зависимость недоступна».
+const TRANSFORMER_NOT_FOUND = 'TRANSFORMER_NOT_FOUND';
+
+function transformerNotFound(transformerId) {
+    const error = new Error(`Трансформатор ${transformerId} не найден`);
+    error.code = TRANSFORMER_NOT_FOUND;
+    return error;
+}
+
 class AnalyticsService {
     constructor() {
-        // Circuit breakers для разных типов операций
-        this.transformerAnalyticsBreaker = CircuitBreakerFactory.createAnalyticsBreaker('TransformerAnalytics');
+        // Circuit breakers для разных типов операций.
+        //
+        // [AR-19] Оба аналитических предохранителя пропускают доменную ошибку
+        // «трансформатора нет» мимо счётчика отказов: она не говорит ничего о
+        // здоровье MV или БД. Порог здесь всего 3, а ошибка пролетала СРАЗУ
+        // через два предохранителя, поэтому три запроса несуществующего
+        // трансформатора глушили аналитику целиком на 30 секунд.
+        const domainErrorsAreNotFailures = {
+            isFailure: (error) => error?.code !== TRANSFORMER_NOT_FOUND
+        };
+
+        this.transformerAnalyticsBreaker = CircuitBreakerFactory.createAnalyticsBreaker(
+            'TransformerAnalytics', domainErrorsAreNotFailures
+        );
         this.databaseBreaker = CircuitBreakerFactory.createDatabaseBreaker('AnalyticsDB');
-        this.materializedViewBreaker = CircuitBreakerFactory.createAnalyticsBreaker('MaterializedView');
+        this.materializedViewBreaker = CircuitBreakerFactory.createAnalyticsBreaker(
+            'MaterializedView', domainErrorsAreNotFailures
+        );
 
         // Phase 4.2 (KISS-008): thresholds come from the shared config module.
         // Previously had transformer_overload=80 here — now unified at 85.
@@ -35,40 +61,23 @@ class AnalyticsService {
             }
 
             // Если кэш пуст, запрашиваем из материализованного представления
-            const data = await this.materializedViewBreaker.execute(async () => {
-                const result = await Transformer.getLoadAnalytics(transformerId);
-                if (!result) {
-                    throw new Error(`Трансформатор ${transformerId} не найден в аналитических данных`);
-                }
-                return result;
-            },
-            // Fallback: получаем базовые данные из основной таблицы
-            async () => {
-                logger.warn(`Используем fallback для трансформатора ${transformerId}`);
-                const transformer = await Transformer.findById(transformerId);
-                if (!transformer) {
-                    throw new Error(`Трансформатор ${transformerId} не найден`);
-                }
-
-                // Возвращаем базовую структуру без детальной аналитики
-                return {
-                    id: transformer.transformer_id,
-                    name: transformer.name,
-                    capacity_kva: transformer.power_kva,
-                    status: transformer.status,
-                    latitude: transformer.latitude,
-                    longitude: transformer.longitude,
-                    buildings_count: transformer.buildings_count || 0,
-                    controllers_count: transformer.controllers_count || 0,
-                    active_controllers_count: 0,
-                    avg_total_voltage: 0,
-                    avg_total_amperage: 0,
-                    load_percent: 0,
-                    last_metric_time: null,
-                    recent_metrics_count: 0,
-                    is_fallback: true
-                };
-            });
+            const data = await this.materializedViewBreaker.execute(
+                async () => {
+                    const result = await Transformer.getLoadAnalytics(transformerId);
+                    // [AR-19] Пустой результат — НЕ отказ MV. `getLoadAnalytics`
+                    // штатно возвращает null, когда строки нет: трансформатор
+                    // могли завести только что, а MV обновляется раз в 60 с.
+                    // Раньше здесь бросалось исключение прямо внутри execute —
+                    // предохранитель считал это отказом и после трёх промахов
+                    // выключал аналитику всем. Теперь это обычная ветка:
+                    // деградируем на основную таблицу тем же путём, что и при
+                    // реально недоступном MV.
+                    return result || await this._baseTransformerData(transformerId);
+                },
+                // Fallback: MV недоступен (предохранитель открыт) — базовые
+                // данные из основной таблицы.
+                async () => await this._baseTransformerData(transformerId)
+            );
 
             // Сохраняем в кэш
             await cacheService.setTransformerAnalytics(transformerId, data);
@@ -80,6 +89,35 @@ class AnalyticsService {
 
             return data;
         });
+    }
+
+    // [AR-19] Базовая структура из основной таблицы — без детальной аналитики.
+    // Используется и когда трансформатора ещё нет в MV, и когда MV недоступен.
+    // Единственное место, где «трансформатора нет вовсе» становится ошибкой.
+    async _baseTransformerData(transformerId) {
+        logger.warn(`Используем fallback для трансформатора ${transformerId}`);
+        const transformer = await Transformer.findById(transformerId);
+        if (!transformer) {
+            throw transformerNotFound(transformerId);
+        }
+
+        return {
+            id: transformer.transformer_id,
+            name: transformer.name,
+            capacity_kva: transformer.power_kva,
+            status: transformer.status,
+            latitude: transformer.latitude,
+            longitude: transformer.longitude,
+            buildings_count: transformer.buildings_count || 0,
+            controllers_count: transformer.controllers_count || 0,
+            active_controllers_count: 0,
+            avg_total_voltage: 0,
+            avg_total_amperage: 0,
+            load_percent: 0,
+            last_metric_time: null,
+            recent_metrics_count: 0,
+            is_fallback: true
+        };
     }
 
     // Асинхронная проверка на алерты (не блокирует основной запрос).
@@ -389,4 +427,10 @@ class AnalyticsService {
 }
 
 // Экспортируем синглтон
-module.exports = new AnalyticsService();
+const singleton = new AnalyticsService();
+
+// [AR-19] Код доступен потребителям (и тестам) с синглтона — та же идиома, что
+// `alertService.ALERT_NOT_FOUND`.
+singleton.TRANSFORMER_NOT_FOUND = TRANSFORMER_NOT_FOUND;
+
+module.exports = singleton;

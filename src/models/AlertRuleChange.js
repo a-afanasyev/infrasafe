@@ -82,11 +82,13 @@ class AlertRuleChange {
         } catch (error) {
             // [R2-22] Guard ROLLBACK: on a dropped connection the ROLLBACK itself
             // throws and would mask the original error. Swallow it, keep the cause.
-            await client.query('ROLLBACK').catch(() => {});
+            // [AR-11] Пустой catch заменён: сбой отката теперь логируется, а не
+            // исчезает бесследно. [CO-2] Клиент помечается как испорченный.
+            await db.safeRollback(client, 'AlertRuleChange.createBatch');
             logger.error(`AlertRuleChange.createBatch error: ${error.message}`);
             throw error;
         } finally {
-            client.release();
+            db.releaseClient(client);
         }
     }
 

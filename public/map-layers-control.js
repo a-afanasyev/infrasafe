@@ -30,6 +30,15 @@ class MapLayersControl {
         // before loading JWT-gated infra layers (no event-loop-timing reliance).
         this._readyResolve = null;
         this._ready = new Promise((res) => { this._readyResolve = res; });
+        // [CO-1] Слои, загрузка которых уже в полёте. Каждый загрузчик делает
+        // clearLayers() + перерисовку, поэтому два параллельных запроса одного
+        // слоя могут разложиться в обратном порядке, и БОЛЕЕ СТАРЫЙ ответ
+        // перерисует слой устаревшими данными — на карте мониторинга это прячет
+        // активную аварию до следующего тика. Тот же приём, что [R2-28] в
+        // script.js. Ключ — имя слоя: разные слои по-прежнему грузятся
+        // параллельно, а тихая предзагрузка и пользовательский тогл делят
+        // один и тот же замок.
+        this._loadingLayers = new Set();
         
         // ИСПРАВЛЕНИЕ БЕЗОПАСНОСТИ: Вспомогательные функции для безопасной работы с данными
         this.escapeHTML = (text) => {
@@ -167,9 +176,16 @@ class MapLayersControl {
     
     // Загружаем данные слоя без отображения на карте (только для обновления счетчика)
     async loadLayerDataSilent(layerName) {
+        // [CO-1] Тот же замок, что у пользовательского тогла: предзагрузка при
+        // логине (handleAuthChange → loadInfrastructureLayers) идёт по тем же
+        // слоям и вызывает те же clearLayers().
+        return await this._guardLayerLoad(layerName, () => this._loadLayerDataSilentInner(layerName));
+    }
+
+    async _loadLayerDataSilentInner(layerName) {
         // [AUD-033] auth via httpOnly cookie (same-origin fetch); no Bearer header.
         const headers = { 'Content-Type': 'application/json' };
-        
+
         try {
             switch (layerName) {
                 case "🏢 Здания":
@@ -512,7 +528,26 @@ class MapLayersControl {
         }
     }
 
+    // [CO-1] Общий замок на слой для обоих входов загрузки (пользовательский
+    // тогл и тихая предзагрузка). Возвращает false, если загрузка пропущена.
+    async _guardLayerLoad(layerName, run) {
+        if (this._loadingLayers.has(layerName)) return false;
+        this._loadingLayers.add(layerName);
+        try {
+            await run();
+            return true;
+        } finally {
+            // finally, а не хвост try: упавший запрос обязан снять замок,
+            // иначе слой залипнет незагружаемым до перезагрузки страницы.
+            this._loadingLayers.delete(layerName);
+        }
+    }
+
     async loadLayerData(layerName) {
+        return await this._guardLayerLoad(layerName, () => this._loadLayerDataInner(layerName));
+    }
+
+    async _loadLayerDataInner(layerName) {
         // [AUD-033] auth via httpOnly cookie (same-origin fetch); no Bearer header.
         const headers = { 'Content-Type': 'application/json' };
 
@@ -1065,10 +1100,13 @@ class MapLayersControl {
     async updateRealTimeMetrics() {
         // Обновляем метрики для видимых слоев
         // [AUD-033] auth via httpOnly cookie (same-origin fetch); no Bearer header.
+        // [CO-1] Через loadLayerData, а НЕ прямым вызовом loadTransformers:
+        // этот тик идёт раз в 30 с и был третьим, незащищённым входом в ту же
+        // гонку — тот же clearLayers() и та же перерисовка слоя. Прямой вызов
+        // обходил замок, и медленный ответ тика мог перерисовать слой поверх
+        // более свежего пользовательского тогла.
         if (this.map.hasLayer(this.overlays["⚡ Трансформаторы"])) {
-            await this.loadTransformers({
-                'Content-Type': 'application/json'
-            });
+            await this.loadLayerData("⚡ Трансформаторы");
         }
     }
 

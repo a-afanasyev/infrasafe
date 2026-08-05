@@ -383,7 +383,10 @@ class UKAlertForwarder {
                 return false;
             }
         }
-        const eventType = 'alert.created';
+        // [CO-3] eventType убран: имя события ('alert.created') определяет сам
+        // _buildAlertEventBody по флагам engineerRequired/escalated — держать
+        // вторую копию значения ровно там, где мы устраняли вторую копию
+        // сборки payload'а, было бы странно.
         const enqueueAction = 'alert.enqueued';
         try {
             const enabled = await configProxy.isEnabled();
@@ -472,66 +475,18 @@ class UKAlertForwarder {
                         continue;
                     }
 
-                    // [Sprint 10 PR-3] Reopen context — if this alert is part
-                    // of a reopen chain, include related_request_number +
-                    // reopen_sequence so УК UI can show "Повторное обращение
-                    // №N, предыдущая заявка XXX-YYY". Urgency bump (one tier
-                    // up, capped at Критическая) is applied here if the rule
-                    // says so — the УК side just sees a higher-urgency
-                    // ticket without needing to know about reopens.
-                    const isReopen = !!alertData.reopen_chain_id && (alertData.reopen_sequence || 1) > 1;
-                    // Normalize to a canonical key (low|medium|high|critical);
-                    // bump one tier on reopen if the rule says so.
-                    let effectiveUrgency = (isReopen && rule.reopen_urgency_bump)
-                        ? bumpUrgency(rule.uk_urgency)
-                        : toUrgencyKey(rule.uk_urgency);
-
-                    // Build canonical payload bytes ONCE. These exact bytes
-                    // are signed by ukWebhookClient at send time and POSTed
-                    // verbatim. Re-stringifying elsewhere would invalidate
-                    // the HMAC (D1/D2 in the plan).
-                    const eventBody = JSON.stringify({
-                        event_id: idempotencyKey,
-                        event: eventType,
-                        timestamp: new Date().toISOString(),
-                        alert: {
-                            // UK Phase 2 schema (FIX-007 O0/O1/A1, see contract).
-                            external_id: building.external_id,
-                            type: alertData.type,
-                            severity: alertData.severity,           // WARNING|CRITICAL — UK maps to urgency itself
-                            message: alertData.message,
-                            // Желательно поля для трассировки/debug:
-                            alert_id: alertData.alert_id,
-                            created_at: alertData.created_at || new Date().toISOString(),
-                            correlation_id: alertData.correlation_id || null,
-                            // [FE-119] Опционально metric/infrastructure context
-                            // (UK сохраняет в raw, не для логики) — общий хелпер
-                            // с escalation-путём, чтобы схема не разъезжалась.
-                            ...this._optionalMetricBlock(alertData),
-                            // [Sprint 10 PR-3] Reopen context (optional fields,
-                            // UK can ignore unknowns per Phase 2 contract):
-                            reopen_chain_id: alertData.reopen_chain_id || null,
-                            reopen_sequence: alertData.reopen_sequence || 1,
-                            related_request_number: alertData.previous_uk_request_number || null,
-                            // For engineer_required: hardcoded override per spec
-                            // §2.4 ("Инженерный разбор" / 'critical'). Otherwise
-                            // carry the per-rule urgency: effectiveUrgency is the
-                            // bumped key on a reopen and toUrgencyKey(rule.uk_urgency)
-                            // on a fresh alert.created — so UK uses our intended
-                            // urgency instead of deriving it from severity
-                            // (severity→urgency gap fix). Always a canonical key (UK
-                            // contract 2026-06), never Russian; unknown → null
-                            // (graceful fallback to UK's severity mapping).
-                            uk_urgency_override: engineerRequired
-                                ? 'critical'
-                                : effectiveUrgency,
-                            // Engineer-required-specific fields. Null on
-                            // alert.created so UK schema validation sees a
-                            // consistent shape regardless of event type.
-                            uk_category_override: engineerRequired ? 'Инженерный разбор' : null,
-                            engineer_required_reason: engineerRequired ? 'max_reopens_per_24h' : null
-                        }
-                    });
+                    // [CO-3] Единственный источник байтов исходящего payload'а.
+                    // Раньше здесь стоял второй, независимый экземпляр той же
+                    // сборки JSON, хотя _buildAlertEventBody документирован как
+                    // канонический для ОБОИХ путей. Байты важны буквально:
+                    // ukWebhookClient подписывает HMAC именно эту строку и
+                    // отправляет её verbatim, поэтому пересборка в другом месте
+                    // ломала бы подпись, а расхождение схемы уехало бы в УК
+                    // молча. Reopen-контекст, bump срочности и опциональный
+                    // metric-блок считает сам хелпер.
+                    const eventBody = this._buildAlertEventBody(
+                        alertData, building, idempotencyKey, rule, {}
+                    );
 
                     // ON CONFLICT DO NOTHING — idempotent enqueue. A null
                     // return here means a previous enqueue with the same

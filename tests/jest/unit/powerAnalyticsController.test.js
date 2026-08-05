@@ -208,15 +208,12 @@ describe('PowerAnalyticsController', () => {
         });
     });
 
-    describe('getPhaseImbalanceAnalysis', () => {
-        // Stub returns empty array; pinning until implemented.
-        test('stub returns empty array with count 0', async () => {
-            const { getPhaseImbalanceAnalysis } = require('../../../src/controllers/powerAnalyticsController');
-            await getPhaseImbalanceAnalysis(req, res, next);
-            expect(res.status).toHaveBeenCalledWith(200);
-            expect(res.json).toHaveBeenCalledWith({
-                success: true, data: [], count: 0,
-            });
+    // [DE-1] Блок getPhaseImbalanceAnalysis удалён вместе с самой заглушкой:
+    // тест закреплял ответ «дисбаланса нет» у эндпоинта без реализации.
+    describe('[DE-1] заглушка phase-imbalance удалена', () => {
+        test('контроллер больше не экспортирует getPhaseImbalanceAnalysis', () => {
+            const controller = require('../../../src/controllers/powerAnalyticsController');
+            expect(controller.getPhaseImbalanceAnalysis).toBeUndefined();
         });
     });
 

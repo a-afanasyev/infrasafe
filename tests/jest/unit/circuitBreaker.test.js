@@ -312,6 +312,105 @@ describe('CircuitBreaker', () => {
             expect(breaker.monitoringTimer).toBeNull();
         });
     });
+
+    // [AR-1] Доменная ошибка — не отказ зависимости. `execute()` считал отказом
+    // ЛЮБОЕ исключение, поэтому пять подряд «алерт не найден» (двойной клик
+    // оператора, reconcile-шторм УК по закрытым заявкам) открывали AlertsDB на
+    // минуту и вместе с acknowledge/resolve глушили СОЗДАНИЕ алертов.
+    describe('isFailure predicate (AR-1)', () => {
+        const domainError = () => Object.assign(new Error('алерт не найден'), { code: 'ALERT_NOT_FOUND' });
+
+        beforeEach(() => {
+            breaker = new CircuitBreaker({
+                failureThreshold: 3,
+                resetTimeout: 100,
+                isFailure: (err) => err.code !== 'ALERT_NOT_FOUND'
+            });
+        });
+
+        test('доменные ошибки сверх порога не открывают circuit', async () => {
+            for (let i = 0; i < 5; i++) {
+                await breaker.execute(() => Promise.reject(domainError())).catch(() => {});
+            }
+            expect(breaker.state).toBe('CLOSED');
+            expect(breaker.failureCount).toBe(0);
+            expect(breaker.stats.failedRequests).toBe(0);
+        });
+
+        test('доменная ошибка пробрасывается вызывающему без подмены', async () => {
+            await expect(
+                breaker.execute(() => Promise.reject(domainError()))
+            ).rejects.toMatchObject({ message: 'алерт не найден', code: 'ALERT_NOT_FOUND' });
+        });
+
+        test('доменная ошибка не сбрасывает накопленные инфраструктурные отказы', async () => {
+            await breaker.execute(() => Promise.reject(new Error('db down'))).catch(() => {});
+            await breaker.execute(() => Promise.reject(new Error('db down'))).catch(() => {});
+            await breaker.execute(() => Promise.reject(domainError())).catch(() => {});
+
+            expect(breaker.failureCount).toBe(2);
+
+            // Третий НАСТОЯЩИЙ отказ всё ещё должен открыть circuit.
+            await breaker.execute(() => Promise.reject(new Error('db down'))).catch(() => {});
+            expect(breaker.state).toBe('OPEN');
+        });
+
+        test('инфраструктурные ошибки по-прежнему открывают circuit', async () => {
+            for (let i = 0; i < 3; i++) {
+                await breaker.execute(() => Promise.reject(new Error('db down'))).catch(() => {});
+            }
+            expect(breaker.state).toBe('OPEN');
+        });
+
+        test('в HALF_OPEN доменная ошибка не переоткрывает circuit', async () => {
+            for (let i = 0; i < 3; i++) {
+                await breaker.execute(() => Promise.reject(new Error('db down'))).catch(() => {});
+            }
+            expect(breaker.state).toBe('OPEN');
+
+            await new Promise(resolve => setTimeout(resolve, 150));
+
+            await breaker.execute(() => Promise.reject(domainError())).catch(() => {});
+            expect(breaker.state).toBe('HALF_OPEN');
+        });
+
+        test('упавший предикат не проглатывает отказ (fail-safe)', async () => {
+            breaker.destroy();
+            breaker = new CircuitBreaker({
+                failureThreshold: 2,
+                resetTimeout: 100,
+                isFailure: () => { throw new Error('классификатор сломан'); }
+            });
+
+            await breaker.execute(() => Promise.reject(new Error('db down'))).catch(() => {});
+            await breaker.execute(() => Promise.reject(new Error('db down'))).catch(() => {});
+
+            expect(breaker.state).toBe('OPEN');
+        });
+
+        test('предикат, вернувший не-false, трактуется как отказ', async () => {
+            breaker.destroy();
+            breaker = new CircuitBreaker({
+                failureThreshold: 2,
+                resetTimeout: 100,
+                isFailure: () => undefined
+            });
+
+            await breaker.execute(() => Promise.reject(new Error('db down'))).catch(() => {});
+            await breaker.execute(() => Promise.reject(new Error('db down'))).catch(() => {});
+
+            expect(breaker.state).toBe('OPEN');
+        });
+
+        test('без предиката поведение прежнее — любая ошибка считается отказом', async () => {
+            breaker.destroy();
+            breaker = new CircuitBreaker({ failureThreshold: 2, resetTimeout: 100 });
+
+            await breaker.execute(() => Promise.reject(domainError())).catch(() => {});
+            await breaker.execute(() => Promise.reject(domainError())).catch(() => {});
+            expect(breaker.state).toBe('OPEN');
+        });
+    });
 });
 
 describe('CircuitBreakerFactory', () => {
@@ -341,6 +440,25 @@ describe('CircuitBreakerFactory', () => {
         expect(b.name).toBe('Database');
         expect(b.failureThreshold).toBe(5);
         expect(b.resetTimeout).toBe(60000);
+    });
+
+    // [AR-1] Владелец breaker'а должен уметь объявить, какие ошибки не являются
+    // отказом БД, не переписывая пресет.
+    test('createDatabaseBreaker пробрасывает isFailure, сохраняя пресет', async () => {
+        const b = CircuitBreakerFactory.createDatabaseBreaker('AlertsDB', {
+            isFailure: (err) => err.code !== 'ALERT_NOT_FOUND'
+        });
+        breakers.push(b);
+
+        expect(b.name).toBe('AlertsDB');
+        expect(b.failureThreshold).toBe(5);
+
+        for (let i = 0; i < 6; i++) {
+            await b.execute(() =>
+                Promise.reject(Object.assign(new Error('нет строки'), { code: 'ALERT_NOT_FOUND' }))
+            ).catch(() => {});
+        }
+        expect(b.state).toBe('CLOSED');
     });
 
     test('createExternalServiceBreaker returns breaker with external settings', () => {

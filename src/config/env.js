@@ -186,4 +186,6 @@ function validateEnv() {
     }
 }
 
-module.exports = { validateEnv };
+// [EN-1] Списки экспортируются, чтобы drift-guard в тестах сверял с ними
+// `.env.example` автоматически, а не хранил собственную копию, которая устареет.
+module.exports = { validateEnv, REQUIRED_VARS, PRODUCTION_REQUIRED_VARS };
