@@ -1,6 +1,9 @@
 # ИНДЕКС ДОКУМЕНТАЦИИ InfraSafe
 
-> Последнее обновление: 2026-06-12
+> Последнее обновление: 2026-08-05
+>
+> Битые ссылки на `COMBINED_PROJECT_CONTEXT.md` (файл уехал в gitignored `trash/`)
+> и `MAP_LAYERS_GUIDE.md` (не существует) убраны 2026-08-05 (EN-5).
 
 ---
 
@@ -25,7 +28,6 @@
 - **[universal-code-audit.md](universal-code-audit.md)** — методология code-аудита
 - **[ARCHITECTURE_ANALYSIS.md](ARCHITECTURE_ANALYSIS.md)** — анализ архитектуры
 - **[systemPatterns.md](systemPatterns.md)** — архитектурные паттерны (Service Layer, Circuit Breaker, JWT, Caching, EventBus, CRUD Factory, AccountLockout, Bundler)
-- **[COMBINED_PROJECT_CONTEXT.md](COMBINED_PROJECT_CONTEXT.md)** — сводный контекст InfraSafe + UK Management
 
 ### API и Backend
 
@@ -39,8 +41,7 @@
 
 ### База данных
 
-- **[../database/migrations/README.md](../database/migrations/README.md)** — индекс всех миграций (003-035) с назначением и статусом
-- **[MAP_LAYERS_GUIDE.md](MAP_LAYERS_GUIDE.md)** — руководство по слоям карты (entity-релевантно)
+- **[../database/migrations/README.md](../database/migrations/README.md)** — индекс всех миграций (003-041) с назначением и статусом
 
 ### Docker и развертывание
 

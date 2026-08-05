@@ -13,7 +13,7 @@
 - **Платформа:** Node.js 20+ / Express.js
 - **База данных:** PostgreSQL 15+ с PostGIS
 - **Авторизация:** JWT (access + refresh tokens, blacklist, account locking)
-- **API документация:** Swagger/OpenAPI 3.0
+- **API документация:** Swagger/OpenAPI 3.0 — **только dev**: `src/server.js:138` монтирует `/api-docs` при `NODE_ENV !== 'production'`, в прод-образе пакетов нет (AUD-042)
 - **Логирование:** Winston + daily-rotate-file
 - **Контейнеризация:** Docker & Docker Compose
 
@@ -26,7 +26,7 @@
 ### DevOps & Инфраструктура
 - **Оркестрация:** Docker Compose (dev, prod, unified, generator)
 - **Reverse Proxy:** Nginx
-- **Тестирование:** Jest (~2618 unit/integration/security тестов, 148 suites, 57 E2E)
+- **Тестирование:** Jest (3061 unit/integration/security тестов, 184 suites, плюс 64 E2E) — состояние на 2026-08-05, сверяйтесь прогоном
 - **Линтинг:** ESLint
 
 ## Структура проекта
@@ -72,10 +72,15 @@
 │   │   └── powerAnalyticsService.js   # Анализ электросетей
 │   ├── models/                        # SQL-запросы через pg Pool (без ORM)
 │   │   ├── Building.js, Controller.js, Metric.js
-│   │   ├── Alert.js, AlertType.js
-│   │   ├── PowerTransformer.js, Transformer.js, Line.js
+│   │   ├── AlertRule.js, AlertRequestMap.js, AlertRuleChange.js
+│   │   ├── AlertVerification.js, AlertSuppression.js
+│   │   ├── Transformer.js, Line.js
 │   │   ├── ColdWaterSource.js, HeatSource.js
 │   │   ├── WaterLine.js, WaterSupplier.js
+│   │   ├── IntegrationConfig.js, IntegrationLog.js
+│   │   ├── UkOutbox.js, UkRequest.js
+│   │   ├── AccountLockout.js, MapLayerCounts.js
+│   │   └── factories/createCrudModel.js
 │   ├── middleware/
 │   │   ├── auth.js                    # JWT: authenticateJWT, isAdmin, optionalAuth
 │   │   ├── correlationId.js           # x-correlation-id для трейсинга
@@ -117,13 +122,17 @@
 │       ├── domSecurity.js             # DOMPurify обёртка (XSS-защита)
 │       ├── rateLimiter.js             # Rate limiter для API-вызовов
 │       ├── safeJsonParser.js          # Безопасный JSON-парсер
-│       ├── csrf.js                    # CSRF-защита
+│       ├── authFlow.js                # Общий сценарий логина (в т.ч. 2FA)
+│       ├── coordValidation.js         # Защита от NaN→null затирания координат
+│       ├── ukLinkBuilder.js           # Deep-link «Открыть в УК» + reopen-мета
+│       ├── ukRulesValidation.js       # Клиентские границы правил эскалации
+│       ├── brandTokens.js, sectionId.js
 │       └── powerUtils.js             # Утилиты электросетей
 ├── database/
 │   ├── init/
 │   │   ├── 01_init_database.sql       # Схема БД (PostGIS, все таблицы)
 │   │   └── 02_seed_data.sql           # Тестовые данные (17 зданий, Ташкент)
-│   └── migrations/                    # Миграции 003-034 + раннер (scripts/migrate.sh, AUD-002)
+│   └── migrations/                    # Миграции 003-041 + раннер (scripts/migrate.sh, AUD-002)
 ├── generator/                         # Сервис генерации метрик (отдельный package.json)
 ├── tests/
 │   ├── jest/
@@ -182,9 +191,10 @@ docker compose -f docker-compose.unified.yml up --build -d
 |--------|-----|
 | Карта (карта мониторинга) | http://localhost:8088 |
 | Админ-панель | http://localhost:8088/admin.html |
-| Swagger UI | http://localhost:8088/api-docs |
+| Swagger UI (только dev) | http://localhost:8088/api-docs |
 | API | http://localhost:8088/api/ |
 | Health Check | http://localhost:3000/health |
+| Метрики Prometheus | http://localhost:3000/internal/metrics (bearer `INTERNAL_METRICS_TOKEN`; без токена — 503) |
 
 ### Фронтенд-бандлинг
 
@@ -306,7 +316,7 @@ Nginx (8088) -> /api/* -> Express (3000) -> Routes -> Controllers -> Services ->
 
 ## Документация
 
-- **API:** Swagger UI на `/api-docs`
+- **API:** Swagger UI на `/api-docs` (только при `NODE_ENV !== 'production'`)
 - **Авторизация:** [docs/API_AUTH_MATRIX.md](docs/API_AUTH_MATRIX.md)
 - **Аналитика электросетей:** [docs/POWER-ANALYTICS-API.md](docs/POWER-ANALYTICS-API.md)
 - **Docker (разработка):** [docs/DEVELOPMENT_DOCKER_GUIDE.md](docs/DEVELOPMENT_DOCKER_GUIDE.md)
