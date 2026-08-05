@@ -77,4 +77,21 @@ describe('[SE-1] карта имущества не делит origin с InfraSa
         const block = serverBlock('assets.profk.uz');
         expect(block).not.toMatch(/Access-Control-Allow-Credentials/);
     });
+
+    // Ловится только так: `nginx -t` этот дефект пропускает, потому что
+    // переменная в proxy_pass резолвится в момент ЗАПРОСА, а не разбора
+    // конфига. На проде он проявился как 502 при полностью «валидном» конфиге.
+    test('в каждом server-блоке с переменной в proxy_pass объявлен resolver', () => {
+        const blocks = ['profk.uz', 'assets.profk.uz']
+            .map(name => [name, serverBlock(name)])
+            .filter(([, body]) => body && /proxy_pass\s+http:\/\/\$/.test(body));
+
+        expect(blocks.length).toBeGreaterThan(0);
+        for (const [name, body] of blocks) {
+            // `server` не наследует resolver от соседнего `server` — он должен
+            // быть либо в самом блоке, либо на уровне http.
+            const hasOwn = /resolver\s+127\.0\.0\.11/.test(body);
+            expect(`${name}: resolver=${hasOwn}`).toBe(`${name}: resolver=true`);
+        }
+    });
 });
