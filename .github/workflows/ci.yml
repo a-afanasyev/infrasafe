@@ -143,6 +143,26 @@ jobs:
             echo "❌ src/cli/create-admin.js missing from image (SEC-13 bootstrap CLI)"; exit 1
           fi
 
+      # [EN-2] Скан уязвимостей САМОГО образа. npm audit (job выше) покрывает
+      # только npm-дерево; базовый node:20-alpine и его OS-пакеты не проверял
+      # никто. Стоит ДО пуша в GHCR: публиковать образ, который не прошёл скан,
+      # незачем.
+      #
+      # ignore-unfixed: без доступного апстрим-фикса алерт превращается в шум,
+      # который нечем закрыть. exit-code 1 делает шаг настоящим гейтом, а не
+      # информационным выводом.
+      # Пин по SHA, а не по тегу: это сторонний action, а тег можно переставить
+      # на другой коммит. Тот же довод, что в EN-8 про gitleaks-action.
+      - name: Scan image for OS/library vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25   # v0.36.0
+        with:
+          image-ref: infrasafe-app:latest
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          vuln-type: os,library
+
       # [R2-15] Push the EXACT image that just passed the checks above to GHCR
       # (docker tag + push — NOT a rebuild). Gated to push-on-main only, so PRs
       # still build + verify but never publish. Prod deploys pull `sha-<full>`.
