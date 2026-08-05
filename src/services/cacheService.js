@@ -127,25 +127,12 @@ class CacheService {
         logger.debug(`Cache set (memory) для ${cacheKey}`);
     }
 
-    // Инвалидация кэша при обновлении данных
-    async invalidateTransformerCache(transformerId) {
-        const cacheKey = `transformer:${transformerId}:analytics`;
-
-        // Удаляем из memory cache
-        this.analyticsCache.delete(cacheKey);
-
-        // Удаляем из Redis
-        if (this.redisAvailable) {
-            try {
-                await this.redisClient.del(this._k(cacheKey));
-                logger.debug(`Cache invalidated (Redis) для ${cacheKey}`);
-            } catch (error) {
-                logger.warn('Не удалось очистить Redis:', error.message);
-            }
-        }
-
-        logger.debug(`Cache invalidated (memory) для ${cacheKey}`);
-    }
+    // [DE-5] `invalidateTransformerCache` (ед. ч.) удалён 2026-08-05: его не
+    // вызывал никто. Живая инвалидация — `analyticsService.
+    // invalidateTransformerCaches` (мн. ч.), и она идёт через
+    // `invalidatePattern('transformer')`, который снимает все ключи
+    // трансформатора разом, а не только `:analytics`. Два близких имени, живое
+    // из них было одно.
 
     // Универсальные методы кэширования
     async get(key, options = {}) {

@@ -287,46 +287,13 @@ class AuthService {
         }
     }
 
-    // Верификация JWT токена
-    async verifyToken(token) {
-        try {
-            const decoded = jwt.verify(token, this.jwtSecret, {
-                algorithms: ['HS256'],
-                issuer: 'infrasafe-api',
-                audience: 'infrasafe-client'
-            });
-
-            // Проверяем, не заблокирован ли токен
-            const isBlacklisted = await this.isTokenBlacklisted(token);
-            if (isBlacklisted) {
-                const error = new Error('Токен заблокирован');
-                error.code = 'TOKEN_BLACKLISTED';
-                throw error;
-            }
-
-            // Проверяем актуальность пользователя
-            const user = await this.findUserById(decoded.user_id);
-            if (!user || !user.is_active) {
-                const error = new Error('Пользователь не найден или деактивирован');
-                error.code = 'USER_NOT_FOUND';
-                throw error;
-            }
-
-            return decoded;
-        } catch (error) {
-            if (error.name === 'TokenExpiredError') {
-                const expiredError = new Error('Токен истек');
-                expiredError.code = 'TOKEN_EXPIRED';
-                throw expiredError;
-            }
-            if (error.name === 'JsonWebTokenError') {
-                const invalidError = new Error('Недействительный токен');
-                invalidError.code = 'INVALID_TOKEN';
-                throw invalidError;
-            }
-            throw error;
-        }
-    }
+    // [DE-4] `verifyToken()` удалён 2026-08-05. Боевой путь верификации —
+    // `middleware/auth.js` (собственный `verifyJwt`), этот метод не вызывал
+    // никто, но 7 тестов давали ему покрытие. Опасен был именно тем, что
+    // выглядел готовым к употреблению: пользователя он читал через
+    // закэшированный `findUserById`, а не через `getUserForAuth`, введённый
+    // специально под H-1/H-2 — подключение его как реального пути тихо
+    // вернуло бы обе уязвимости.
 
     // ARCH-105: Atomic refresh token rotation — blacklist BEFORE generating new tokens
     async refreshToken(refreshToken) {

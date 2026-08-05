@@ -177,16 +177,8 @@ describe('CacheService', () => {
         });
     });
 
-    describe('invalidateTransformerCache', () => {
-        test('removes transformer analytics from cache', async () => {
-            await cacheService.setTransformerAnalytics(5, { load: 80 });
-            expect(cacheService.analyticsCache.has('transformer:5:analytics')).toBe(true);
-
-            await cacheService.invalidateTransformerCache(5);
-
-            expect(cacheService.analyticsCache.has('transformer:5:analytics')).toBe(false);
-        });
-    });
+    // [DE-5] Блок invalidateTransformerCache удалён вместе с самим методом —
+    // живой путь инвалидации идёт через invalidatePattern('transformer').
 
     describe('getStats', () => {
         test('returns cache statistics', async () => {
