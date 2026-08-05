@@ -158,6 +158,17 @@
 git clone https://github.com/a-afanasyev/infrasafe.git
 cd infrasafe
 
+# Секреты ОБЯЗАТЕЛЬНЫ даже в dev: docker-compose.dev.yml пробрасывает
+# JWT_SECRET / JWT_REFRESH_SECRET / TOTP_ENCRYPTION_KEY из окружения без
+# значений по умолчанию, а src/config/env.js падает на старте, если их нет.
+cp .env.example .env
+openssl rand -base64 64    # → JWT_SECRET
+openssl rand -base64 64    # → JWT_REFRESH_SECRET
+openssl rand -base64 32    # → TOTP_ENCRYPTION_KEY
+
+# Сборка фронтенд-бандлов (postinstall собирает public/dist)
+npm ci
+
 # Для разработки
 docker compose -f docker-compose.dev.yml up --build -d
 
@@ -214,10 +225,18 @@ openssl rand -base64 64    # JWT_SECRET, JWT_REFRESH_SECRET
 openssl rand -base64 32    # TOTP_ENCRYPTION_KEY (2FA)
 ```
 
-Обязательные переменные в `.env`:
-`DB_*`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `TOTP_ENCRYPTION_KEY`,
-в production также `CORS_ORIGINS` и UK Integration (`UK_WEBHOOK_SECRET`,
-`UK_SERVICE_USER`, `UK_SERVICE_PASSWORD`, `UK_API_ALLOWED_HOSTS`).
+Обязательные переменные (источник правды — `REQUIRED_VARS` /
+`PRODUCTION_REQUIRED_VARS` в `src/config/env.js`; при `NODE_ENV=production`
+отсутствие любой из них — крах на старте, а не тихая деградация):
+
+| Всегда | Дополнительно в production |
+|---|---|
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | `CORS_ORIGINS` |
+| `JWT_SECRET`, `JWT_REFRESH_SECRET` | `JWT_2FA_SECRET` (обязан отличаться от `JWT_SECRET`) |
+| `TOTP_ENCRYPTION_KEY` | `INFRASAFE_WEBHOOK_SECRET`, `TELEMETRY_HMAC_SECRET`, `UK_INVENTORY_TOKEN` |
+
+Условно обязательна: `UK_API_ALLOWED_HOSTS` — если включён
+`UK_USE_WEBHOOK_SENDER=true` (защита от SSRF).
 
 ## Ключевые функции
 
