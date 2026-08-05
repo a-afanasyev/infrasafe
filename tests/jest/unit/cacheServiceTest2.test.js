@@ -3,7 +3,7 @@
 /**
  * Extended CacheService tests covering:
  * - getTransformerAnalytics / setTransformerAnalytics with Redis path
- * - invalidateTransformerCache with Redis path
+ * - invalidatePattern with Redis path
  * - getMetrics / setMetrics (via generic get/set with metrics keys)
  * - getBuildings / setBuildings (via generic get/set with buildings keys)
  * - invalidateMetricsCaches / invalidateBuildingsCaches (via invalidatePattern)
@@ -166,48 +166,9 @@ describe('CacheService — extended coverage', () => {
         });
     });
 
-    // -------------------------------------------------------------------------
-    // invalidateTransformerCache — Redis path
-    // -------------------------------------------------------------------------
-    describe('invalidateTransformerCache — Redis path', () => {
-        it('deletes from both memory and Redis', async () => {
-            const mockRedisClient = {
-                del: jest.fn().mockResolvedValue(1),
-                on: jest.fn(),
-                connect: jest.fn().mockResolvedValue(undefined)
-            };
-            installMockRedis(mockRedisClient);
-
-            cacheService.analyticsCache.set('transformer:5:analytics', {
-                data: { load: 80 },
-                timestamp: Date.now()
-            });
-
-            await cacheService.invalidateTransformerCache(5);
-
-            expect(cacheService.analyticsCache.has('transformer:5:analytics')).toBe(false);
-            expect(mockRedisClient.del).toHaveBeenCalledWith('cache:transformer:5:analytics');
-        });
-
-        it('continues when Redis delete fails', async () => {
-            const mockRedisClient = {
-                del: jest.fn().mockRejectedValue(new Error('Redis del failed')),
-                on: jest.fn(),
-                connect: jest.fn().mockResolvedValue(undefined)
-            };
-            installMockRedis(mockRedisClient);
-
-            cacheService.analyticsCache.set('transformer:5:analytics', {
-                data: { load: 80 },
-                timestamp: Date.now()
-            });
-
-            await cacheService.invalidateTransformerCache(5);
-
-            // Memory cache should still be cleared
-            expect(cacheService.analyticsCache.has('transformer:5:analytics')).toBe(false);
-        });
-    });
+    // [DE-5] Блок «invalidateTransformerCache — Redis path» удалён вместе с
+    // методом. Покрытие не потеряно: Redis-путь живой инвалидации закреплён
+    // ниже, в «invalidatePattern — Redis path», включая ветку отказа Redis.
 
     // -------------------------------------------------------------------------
     // Metrics caching via generic get/set

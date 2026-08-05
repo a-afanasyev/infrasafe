@@ -125,7 +125,7 @@ Source of truth is the DB table **`schema_migrations`** (`filename` PK + `checks
 
 ### Authentication
 - **Default-deny JWT** middleware in `src/routes/index.js` — all routes require auth by default
-- Public routes allowlist: POST `/auth/login`, `/auth/register`, `/auth/refresh`, `/auth/verify-2fa`, `/auth/setup-2fa`, `/auth/confirm-2fa`, POST `/metrics/telemetry`, GET `/buildings-metrics`, GET `/`, POST `/webhooks/uk/building`, POST `/webhooks/uk/request`
+- Public routes allowlist (source of truth: `PUBLIC_ROUTES` in `src/routes/index.js:94-129`): POST `/auth/login`, `/auth/refresh`, `/auth/verify-2fa`, `/auth/setup-2fa`, `/auth/confirm-2fa`, POST `/metrics/telemetry`, GET `/buildings-metrics`, GET `/uk-requests-metrics`, GET `/uk-buildings-metrics`, GET `/map-layer-counts`, GET `/`, POST `/webhooks/uk/building`, POST `/webhooks/uk/request`. **`/auth/register` is NOT public** — R2-01 removed it (no self-registration UI; registration is an admin operation, guarded by `isAdmin` in `authRoutes.js`). `/csp-report` is reachable without auth too, but by mount order (`routes/index.js:92`, before the default-deny middleware), not via the allowlist — the browser cannot attach an `Authorization` header to `report-uri` POSTs. The three UK/map inventory routes are public to JWT but NOT unauthenticated: `/uk-*-metrics` require `x-service-token` (H-4), `/map-layer-counts` returns integers only.
 - `optionalAuth` on `/buildings-metrics` — anonymous gets truncated data, authenticated gets full metrics
 - `isAdmin` guards on: admin routes, analytics transformer CRUD, power-analytics refresh, controller status updates, integration config/logs/rules
 - JWT with refresh tokens, blacklist, and persistent account lockout (`src/middleware/auth.js` + `src/models/AccountLockout.js`, migration 013)
@@ -240,8 +240,8 @@ Defense-in-depth: nginx TLS + HMAC-SHA256 webhook signatures (both directions, s
 
 ### Frontend (Legacy — main branch)
 - **Vanilla JS** (no framework), HTML files at project root (`index.html`, `admin.html`, `about.html`, `contacts.html`, `documentation.html`)
-- **Public assets** in `public/` — sources: `script.js` (map interface, ~2,335 LoC), `admin.js` (admin panel, ~3,429 LoC), `admin-auth.js`, `map-layers-control.js`, `infrastructure-line-editor.js`, `admin-coordinate-editor.js`, `login.html`, utility modules under `public/utils/`.
-- **Bundling** (Phase 12B.4): HTML pages reference minified bundles at `public/dist/*.js` served with `Content-Encoding: gzip` (e.g. `script.js` ≈ 49.8 KB minified, ≈ 12.6 KB gzipped). Dev: `npm run build:frontend:watch`; fresh clone runs the build via `npm ci` postinstall.
+- **Public assets** in `public/` — sources: `script.js` (map interface, 2,229 LoC), `admin.js` (admin panel, 3,983 LoC), `admin-auth.js`, `map-layers-control.js`, `infrastructure-line-editor.js`, `admin-coordinate-editor.js`, `login.html`, utility modules under `public/utils/`.
+- **Bundling** (Phase 12B.4): **это минификатор, а не бандлер** — `build/esbuild.config.mjs:55` стоит `bundle: false` (сохраняет глобалы, не заворачивает в модули), поэтому модульного графа нет и каждый файл минифицируется отдельно. HTML pages reference minified bundles at `public/dist/*.js` served with `Content-Encoding: gzip` (e.g. `script.js` ≈ 49.8 KB minified, ≈ 12.6 KB gzipped). Dev: `npm run build:frontend:watch`; fresh clone runs the build via `npm ci` postinstall.
 - **Leaflet.js** with marker clustering, multiple layers (buildings, transformers, water/heat sources), custom icons
 - **Chart.js** for analytics visualization
 - **DOMPurify** for XSS protection (`public/utils/domSecurity.js`)
@@ -259,8 +259,8 @@ Defense-in-depth: nginx TLS + HMAC-SHA256 webhook signatures (both directions, s
 
 ### Database
 - **PostgreSQL 15+ with PostGIS** extension (SRID 4326 for coordinates)
-- **Core tables**: `users`, `buildings`, `controllers`, `metrics`, `alerts`, `alert_types`
-- **Infrastructure tables**: `power_transformers`, `cold_water_sources`, `heat_sources`, `water_lines`, `water_suppliers`
+- **Core tables**: `users`, `buildings`, `controllers`, `metrics`, `infrastructure_alerts` (единственная таблица алертов — `alerts` и `alert_types` из `01_init_database.sql` дропнуты миграцией 028)
+- **Infrastructure tables**: `transformers`, `cold_water_sources`, `heat_sources`, `water_lines`, `water_suppliers` (`power_transformers` дропнут миграцией 037 — канонизация на `transformers`, AUD-039)
 - **UK Integration tables**: `integration_config`, `integration_log`, `alert_rules` (+Sprint 10 cols), `alert_request_map`, `uk_outbox`
 - **Sprint 10 tables**: `alert_verifications` (verification queue), `alert_suppressions` (operator escape hatch), `alert_rule_changes` (per-field audit log)
 - **Status enum** (`infrastructure_alerts.status`): `active`, `acknowledged`, `resolved`, `resolved_verifying`, `engineer_required` (Sprint 10 expansion via migration 027). Partial dedup index restricted to `('active', 'acknowledged')` so a reopen with a fresh `alert_id` is not blocked. `alert_types` catalog dropped in PR-1.5 — type names live as a CHECK constraint on `alert_rules.alert_type`.
@@ -384,6 +384,7 @@ ALERT_VERIFICATION_TICK_MS=15000       # Drain interval (clamped [5000, 60000])
 - **frontend**: Nginx on port 8088 (static files + API proxy)
 - **app**: Node.js Express on port 3000
 - **postgres**: PostGIS on port 5435 (mapped from container 5432)
+- **redis**: присутствует в обоих compose (`docker-compose.dev.yml:136`, `docker-compose.unified.yml:139`). Не опциональная деталь: на нём держатся rate-limiter, кэш и nonce-dedup вебхуков — при `REDIS_URL` они координируются между репликами, без него молча падают на in-memory Map. На проде требует пароля (см. memory `prod-redis-auth`).
 
 ### Prod runtime (`docker-compose.unified.yml`)
 (AUD-022, 2026-06-13: the deprecated `docker-compose.prod.yml` + `Dockerfile.prod` + `Dockerfile.frontend-only` + `nginx-frontend-only.conf` + `.dockerignore.frontend` chain was deleted — prod runs the unified compose exclusively, local dev uses `docker-compose.dev.yml`. The earlier prod.yml-specific notes here — external nginx network + a portable postgres healthcheck — are superseded: the live network topology is documented in `docker-compose.unified.yml` itself (B-010/B-016 comments), and the postgres `POSTGRES_USER=infrasafe_app` rationale is in the DB-roles bullet below + `docker-compose.unified.yml:183`.)
@@ -398,7 +399,7 @@ ALERT_VERIFICATION_TICK_MS=15000       # Drain interval (clamped [5000, 60000])
 - **17 buildings** in Tashkent with coordinates, **34 metric records**
 
 ## Test Suite
-- **~2128 tests** in `npm test` (107+ suites) plus `npm run test:e2e` (~57 in `tests/jest/e2e/`). Sprint 10 added ~300 units across persistence gate, verification worker, suppression, AlertRule.update, AlertRuleChange.
+- **3061 tests / 184 suites** in `npm test` (состояние на 2026-08-05; счётчик стареет — сверяйтесь прогоном, а не этой строкой), плюс `npm run test:e2e` (11 сьютов / 64 теста в `tests/jest/e2e/`). Sprint 10 added ~300 units across persistence gate, verification worker, suppression, AlertRule.update, AlertRuleChange.
 - Unit tests: `tests/jest/unit/` — services, controllers, models, middleware, UK integration, totpService, AccountLockout, EventBus, factories, plus Sprint 10: `AlertVerification.test.js`, `AlertSuppression.test.js`, `alertVerificationService.test.js`, `alertService.persistenceGate.test.js`, `alertService.resolveAlert.test.js`, `alertService.reopen.test.js`, `AlertRule.update.test.js`.
 - Integration tests: `tests/jest/integration/` (API, default-deny auth)
 - Security tests: `tests/jest/security/` (SQL injection, XSS, general security)
@@ -416,7 +417,7 @@ ALERT_VERIFICATION_TICK_MS=15000       # Drain interval (clamped [5000, 60000])
 
 ## Known Architecture Issues
 
-- `public/admin.js` (~3,429 lines) and `public/script.js` (~2,335 lines) are still monolithic — Phase 12B.4 activated bundling but did not split entry points.
+- `public/admin.js` (3,983 lines) and `public/script.js` (2,229 lines) are still monolithic. Phase 12B.4 включила **минификацию**, а не бандлинг (`bundle: false`), поэтому дробить их раньше, чем появится модульный граф, бессмысленно — это лишь размножит глобалы в `window.*` (см. B-004).
 - Models execute SQL directly (no repository layer). Phase 6 introduced `createCrudModel` factory for two water-source models; the rest still hand-write queries.
 - Duplication across water-related route files remains (Phase 6 factory covers models only).
 - Rate-limiter and cache are **Redis-backed hybrids** (`src/middleware/rateLimiter.js:2,4`, `src/services/cacheService.js:2` — Redis when `REDIS_URL` is set, in-memory Map fallback otherwise), so multi-replica is already coordinated. Sprint 9 outbox (`uk_outbox`) and Sprint 10 verification queue (`alert_verifications`) are DB-backed with `pg_try_advisory_lock` for cross-replica coordination.

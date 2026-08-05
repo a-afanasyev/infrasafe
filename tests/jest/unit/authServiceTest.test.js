@@ -1008,76 +1008,8 @@ describe('AuthService', () => {
         });
     });
 
-    describe('verifyToken', () => {
-        test('returns decoded payload for valid token', async () => {
-            const user = { user_id: 1, username: 'admin', email: 'admin@test.com', role: 'admin' };
-            const tokens = authService.generateTokens(user);
-
-            cacheService.get.mockResolvedValue(null); // not blacklisted
-            db.query
-                .mockResolvedValueOnce({ rows: [] }) // isTokenBlacklisted DB check
-                .mockResolvedValueOnce({
-                    rows: [{ user_id: 1, username: 'admin', email: 'admin@test.com', role: 'admin', is_active: true }]
-                }); // findUserById
-
-            const decoded = await authService.verifyToken(tokens.accessToken);
-
-            expect(decoded.user_id).toBe(1);
-            expect(decoded.username).toBe('admin');
-        });
-
-        test('throws TOKEN_BLACKLISTED when token is blacklisted', async () => {
-            const user = { user_id: 1, username: 'admin', email: 'admin@test.com', role: 'admin' };
-            const tokens = authService.generateTokens(user);
-
-            cacheService.get.mockResolvedValue(true); // blacklisted in cache
-
-            await expect(authService.verifyToken(tokens.accessToken)).rejects.toMatchObject({ code: 'TOKEN_BLACKLISTED' });
-        });
-
-        test('throws USER_NOT_FOUND when user does not exist', async () => {
-            const user = { user_id: 999, username: 'ghost', email: 'ghost@test.com', role: 'user' };
-            const tokens = authService.generateTokens(user);
-
-            cacheService.get.mockResolvedValue(null); // not blacklisted
-            db.query
-                .mockResolvedValueOnce({ rows: [] }) // isTokenBlacklisted DB check
-                .mockResolvedValueOnce({ rows: [] }); // findUserById returns null
-
-            await expect(authService.verifyToken(tokens.accessToken)).rejects.toMatchObject({ code: 'USER_NOT_FOUND' });
-        });
-
-        test('throws USER_NOT_FOUND when user is inactive', async () => {
-            const user = { user_id: 1, username: 'inactive', email: 'i@test.com', role: 'user' };
-            const tokens = authService.generateTokens(user);
-
-            cacheService.get.mockResolvedValue(null);
-            db.query
-                .mockResolvedValueOnce({ rows: [] }) // isTokenBlacklisted
-                .mockResolvedValueOnce({
-                    rows: [{ user_id: 1, username: 'inactive', is_active: false }]
-                });
-
-            await expect(authService.verifyToken(tokens.accessToken)).rejects.toMatchObject({ code: 'USER_NOT_FOUND' });
-        });
-
-        test('throws TOKEN_EXPIRED for expired token', async () => {
-            const expiredToken = jwt.sign(
-                { user_id: 1, username: 'u', email: 'u@b.com', role: 'user' },
-                process.env.JWT_SECRET,
-                { expiresIn: '0s', issuer: 'infrasafe-api', audience: 'infrasafe-client' }
-            );
-
-            // Wait a tiny bit to ensure expiration
-            await new Promise(r => setTimeout(r, 10));
-
-            await expect(authService.verifyToken(expiredToken)).rejects.toMatchObject({ code: 'TOKEN_EXPIRED' });
-        });
-
-        test('throws INVALID_TOKEN for malformed token', async () => {
-            await expect(authService.verifyToken('invalid.token.here')).rejects.toMatchObject({ code: 'INVALID_TOKEN' });
-        });
-    });
+    // [DE-4] Блок describe('verifyToken') удалён вместе с самим методом:
+    // семь тестов покрывали код, который не вызывал ни один боевой маршрут.
 
     describe('refreshToken - invalid type', () => {
         test('throws INVALID_REFRESH_TOKEN when token type is not refresh', async () => {
