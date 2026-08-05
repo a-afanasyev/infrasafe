@@ -98,19 +98,6 @@ const getTransformerPower = async (req, res, next) => {
     }
 };
 
-const getPhaseImbalanceAnalysis = async (req, res, next) => {
-    try {
-        return res.status(200).json({
-            success: true,
-            data: [],
-            count: 0
-        });
-    } catch (error) {
-        logger.error(`Error in getPhaseImbalanceAnalysis: ${error.message}`);
-        next(error);
-    }
-};
-
 const refreshPowerViews = async (req, res, next) => {
     try {
         return res.status(200).json({
@@ -130,6 +117,5 @@ module.exports = {
     getLinePower,
     getTransformersPower,
     getTransformerPower,
-    getPhaseImbalanceAnalysis,
     refreshPowerViews
 };
