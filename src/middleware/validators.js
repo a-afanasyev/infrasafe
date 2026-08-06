@@ -1,10 +1,23 @@
 const { body, param, validationResult } = require('express-validator');
+const { sendError } = require('../utils/apiResponse');
 
-// Обработка результатов валидации
+// [AR-4] Обработка результатов валидации в КАНОНИЧЕСКОМ конверте.
+//
+// Раньше отсюда уходило `{errors:[…]}` — без `success`, то есть форма, которую
+// потребителю приходилось узнавать по наличию ключа. Теперь это обычная ошибка
+// 400, а по-полевые сообщения переезжают в `error.details`: без них остаётся
+// «Ошибка валидации» без указания поля, и пользователю нечего исправлять.
+//
+// Имя поля берём из `path` (express-validator 7) с откатом на `param`
+// (версия 6) — библиотека переименовала ключ, и молча потерять его нельзя.
 const handleValidationErrors = (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
+        const details = errors.array().map(e => ({
+            field: e.path || e.param || null,
+            message: e.msg
+        }));
+        return sendError(res, 400, 'Ошибка валидации', { details });
     }
     next();
 };

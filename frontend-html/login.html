@@ -213,6 +213,8 @@
     
     <!-- Подключение утилит безопасности -->
     <script src="public/dist/utils/domSecurity.js?v=20260527"></script>
+    <!-- [AR-4] единая распаковка ошибок API — должна грузиться до login.js -->
+    <script src="public/dist/utils/apiError.js?v=20260807"></script>
     <!-- [R2-12] shared 2FA/auth layer — must load before login.js -->
     <script src="public/dist/utils/authFlow.js?v=20260703"></script>
     <!-- Применяет сохранённую тему до отрисовки — иначе переход с карты в

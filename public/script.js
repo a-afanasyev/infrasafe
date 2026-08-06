@@ -280,7 +280,11 @@ document.addEventListener('DOMContentLoaded', async function () {
                             const errorJson = window.safeJsonParser 
                                 ? window.safeJsonParser.parseString(errorText)
                                 : JSON.parse(errorText);
-                            errorMessage = errorJson.message || errorJson.error || errorMessage;
+                            // [AR-4] через общий разбор: `error` в каноне — объект,
+                            // и прежняя лесенка подставляла в текст «[object Object]».
+                            errorMessage = window.ApiError
+                                ? window.ApiError.extractApiError(errorJson, errorMessage)
+                                : errorMessage;
                         } catch (e) {
                             // Если не JSON, используем текст ошибки (ограниченный)
                             if (errorText) {

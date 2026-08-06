@@ -78,10 +78,16 @@ describe('SimpleRateLimiter', () => {
 
             await mw(req, res, next); // exceeds limit
             expect(res.status).toHaveBeenCalledWith(429);
+            // [AR-4] Форма изменена намеренно: раньше в ключ `error` клалась
+            // СТРОКА-код, тогда как в каноне `error` — объект. Код переехал в
+            // `error.code`, машинные подробности — в `error.meta`.
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
                     success: false,
-                    error: 'RATE_LIMIT_EXCEEDED'
+                    error: expect.objectContaining({
+                        code: 'RATE_LIMIT_EXCEEDED',
+                        status: 429
+                    })
                 })
             );
             expect(next).not.toHaveBeenCalled();

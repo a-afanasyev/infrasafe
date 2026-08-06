@@ -4,6 +4,7 @@ const { createError } = require('../../utils/helpers');
 const { buildPaginatedList } = require('../../utils/adminQueryBuilder');
 const { buildUpdateQuery } = require('../../utils/dynamicUpdateBuilder');
 const { WATER_LINE_STATUS, assertValidStatus } = require('../../models/WaterLine');
+const { sendSuccess } = require('../../utils/apiResponse');
 
 /**
  * Admin water-line operations: optimized list, full CRUD, batch ops.
@@ -52,7 +53,10 @@ const LIST_CONFIG = {
 async function getOptimizedWaterLines(req, res, next) {
     try {
         const result = await buildPaginatedList(pool, LIST_CONFIG, req);
-        res.json(result);
+        // [AR-4] Раньше уходило `{data, pagination}` без `success` — пятая форма
+        // конверта, которую потребитель узнавал по отсутствию ключа. Изменение
+        // аддитивное: путь чтения `body.data` на фронте не меняется.
+        sendSuccess(res, result.data, { pagination: result.pagination });
     } catch (error) {
         logger.error(`Error in getOptimizedWaterLines: ${error.message}`);
         next(createError('Internal server error', 500));

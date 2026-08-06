@@ -29,6 +29,7 @@
         "Chart": "readonly",
         "DOMPurify": "readonly",
         "AuthFlow": "readonly",
+        "ApiError": "readonly",
         "define": "readonly",
         "InfrastructureLineEditor": "readonly",
         "MapLayersControl": "readonly",

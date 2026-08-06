@@ -389,7 +389,7 @@ class AdminAuth {
 
                 let body;
                 try { body = await response.json(); } catch { body = {}; }
-                const message = body.error || body.message || 'Не удалось изменить пароль';
+                const message = ApiError.extractApiError(body, 'Не удалось изменить пароль');
 
                 if (response.status === 400 && /текущий|current/i.test(message)) {
                     showError(currentError, message);
