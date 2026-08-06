@@ -33,29 +33,7 @@ const validateBuildingCreate = [
     handleValidationErrors
 ];
 
-// Функция для проверки XSS.
-// SEC-10: заменён прежний паттерн с вложенным квантификатором
-// (/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/) — он давал
-// катастрофический backtracking (ReDoS, ~2.2s на 15k символов).
-// Все паттерны ниже линейны по времени и не содержат вложенных квантификаторов:
-// детектируем сам опасный токен (открывающий тег / javascript: / on-handler),
-// а не полностью сбалансированную пару тегов. Контракт truthy/falsy сохранён —
-// функция возвращает true только если ни один опасный токен не найден.
-const XSS_PATTERNS = [
-    /<\s*script\b/i,   // открывающий тег <script (с возможным пробелом)
-    /<\s*iframe\b/i,
-    /<\s*object\b/i,
-    /<\s*embed\b/i,
-    /javascript:/i,
-    /\bon\w+\s*=/i      // inline event-handler, напр. onerror=, onload=
-];
-
-const isXSSFree = (value) => {
-    if (typeof value !== 'string') {
-        return true;
-    }
-    return !XSS_PATTERNS.some(pattern => pattern.test(value));
-};
+const { isXSSFree } = require('./xssGuard');
 
 // Валидация для создания/обновления контроллера
 const validateControllerCreate = [
@@ -102,10 +80,17 @@ const validateIntParam = (name = 'id') => [
 // Валидация ID параметра (`:id`). Kept as a named export for existing call sites.
 const validateIdParam = validateIntParam('id');
 
+// [AR-10] Схемы остальных сущностей живут в entityValidators.js и
+// реэкспортируются здесь: точка подключения у маршрутов остаётся одна.
+// Require ниже, а не сверху — entityValidators импортирует handleValidationErrors
+// отсюда, и циклическая ссылка разрешается только после экспорта.
 module.exports = {
     validateBuildingCreate,
     validateControllerCreate,
     validateIdParam,
     validateIntParam,
+    handleValidationErrors,
     isXSSFree
 };
+
+Object.assign(module.exports, require('./entityValidators'));
