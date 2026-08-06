@@ -1,5 +1,6 @@
 const powerAnalyticsService = require('../services/powerAnalyticsService');
 const logger = require('../utils/logger');
+const { sendError } = require('../utils/apiResponse');
 
 const getBuildingsPower = async (req, res, next) => {
     try {
@@ -21,10 +22,7 @@ const getBuildingPower = async (req, res, next) => {
         const buildingPower = await powerAnalyticsService.getBuildingPower(buildingId);
 
         if (!buildingPower) {
-            return res.status(404).json({
-                success: false,
-                error: 'Building power data not found'
-            });
+            return sendError(res, 404, 'Building power data not found');
         }
 
         return res.status(200).json({
@@ -52,10 +50,7 @@ const getLinesPower = async (req, res, next) => {
 
 const getLinePower = async (req, res, next) => {
     try {
-        return res.status(404).json({
-            success: false,
-            error: 'Line power data not found'
-        });
+        return sendError(res, 404, 'Line power data not found');
     } catch (error) {
         logger.error(`Error in getLinePower: ${error.message}`);
         next(error);
@@ -82,10 +77,7 @@ const getTransformerPower = async (req, res, next) => {
         const transformerPower = await powerAnalyticsService.getTransformerPower(transformerId);
 
         if (!transformerPower) {
-            return res.status(404).json({
-                success: false,
-                error: 'Transformer power data not found'
-            });
+            return sendError(res, 404, 'Transformer power data not found');
         }
 
         return res.status(200).json({

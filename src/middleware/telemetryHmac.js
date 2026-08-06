@@ -31,6 +31,7 @@
 const crypto = require('crypto');
 const logger = require('../utils/logger');
 const redisClient = require('../utils/redisClient');
+const { sendError } = require('../utils/apiResponse');
 
 const TIMESTAMP_TOLERANCE_SEC = 300;
 const SEEN_SIGNATURE_TTL_MS = (TIMESTAMP_TOLERANCE_SEC + 10) * 1000;
@@ -163,12 +164,12 @@ async function verifyTelemetryHmac(req, res, next) {
         // express.json's verify hook always sets this; a missing rawBody
         // means something upstream changed — fail closed, not open.
         logger.error('telemetryHmac: req.rawBody missing — cannot verify signature');
-        return res.status(400).json({ success: false, message: 'Request body could not be verified' });
+        return sendError(res, 400, 'Request body could not be verified');
     }
 
     const valid = await verifyTelemetrySignature(secret, req.rawBody, headerValue);
     if (!valid) {
-        return res.status(401).json({ success: false, message: 'Invalid or missing telemetry signature' });
+        return sendError(res, 401, 'Invalid or missing telemetry signature');
     }
     next();
 }

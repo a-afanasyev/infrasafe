@@ -1,6 +1,7 @@
 const Transformer = require('../models/Transformer');
 const logger = require('../utils/logger');
 const { validatePagination } = require('../utils/queryValidation');
+const { sendError } = require('../utils/apiResponse');
 
 // Получить все трансформаторы
 const getAllTransformers = async (req, res, next) => {
@@ -38,10 +39,7 @@ const getTransformerById = async (req, res, next) => {
         const transformer = await Transformer.findById(id);
 
         if (!transformer) {
-            return res.status(404).json({
-                success: false,
-                error: 'Transformer not found'
-            });
+            return sendError(res, 404, 'Transformer not found');
         }
 
         return res.status(200).json({
@@ -77,10 +75,7 @@ const updateTransformer = async (req, res, next) => {
         const transformer = await Transformer.update(id, req.body);
 
         if (!transformer) {
-            return res.status(404).json({
-                success: false,
-                error: 'Transformer not found'
-            });
+            return sendError(res, 404, 'Transformer not found');
         }
 
         return res.status(200).json({
@@ -101,10 +96,7 @@ const deleteTransformer = async (req, res, next) => {
         const transformer = await Transformer.delete(id);
 
         if (!transformer) {
-            return res.status(404).json({
-                success: false,
-                error: 'Transformer not found'
-            });
+            return sendError(res, 404, 'Transformer not found');
         }
 
         return res.status(200).json({

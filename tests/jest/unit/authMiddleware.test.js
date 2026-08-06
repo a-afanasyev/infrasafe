@@ -60,7 +60,7 @@ describe('Auth Middleware', () => {
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
                     success: false,
-                    message: 'Access token is missing'
+                    error: expect.objectContaining({ message: 'Access token is missing' })
                 })
             );
             expect(next).not.toHaveBeenCalled();
@@ -77,9 +77,7 @@ describe('Auth Middleware', () => {
 
             expect(res.status).toHaveBeenCalledWith(401);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: expect.stringContaining('Access token is missing')
-                })
+                expect.objectContaining({ error: expect.objectContaining({ message: expect.stringContaining('Access token is missing') }) })
             );
         });
 
@@ -91,9 +89,7 @@ describe('Auth Middleware', () => {
 
             expect(res.status).toHaveBeenCalledWith(401);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: 'Token has been revoked'
-                })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'Token has been revoked' }) })
             );
         });
 
@@ -110,7 +106,7 @@ describe('Auth Middleware', () => {
             expect(res.set).toHaveBeenCalledWith('Retry-After', '30');
             expect(res.status).toHaveBeenCalledWith(503);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({ message: 'Service temporarily unavailable' })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'Service temporarily unavailable' }) })
             );
             expect(next).not.toHaveBeenCalled();
         });
@@ -124,9 +120,7 @@ describe('Auth Middleware', () => {
 
             expect(res.status).toHaveBeenCalledWith(500);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: 'Internal server configuration error'
-                })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'Internal server configuration error' }) })
             );
         });
 
@@ -143,9 +137,7 @@ describe('Auth Middleware', () => {
 
             expect(res.status).toHaveBeenCalledWith(401);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: 'Invalid or expired token'
-                })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'Invalid or expired token' }) })
             );
         });
 
@@ -161,9 +153,7 @@ describe('Auth Middleware', () => {
 
             expect(res.status).toHaveBeenCalledWith(401);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: 'User not found'
-                })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'User not found' }) })
             );
         });
 
@@ -183,9 +173,7 @@ describe('Auth Middleware', () => {
 
             expect(res.status).toHaveBeenCalledWith(401);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: 'Account is locked'
-                })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'Account is locked' }) })
             );
         });
 
@@ -203,9 +191,7 @@ describe('Auth Middleware', () => {
 
             expect(res.status).toHaveBeenCalledWith(401);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: 'Invalid or expired token'
-                })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'Invalid or expired token' }) })
             );
             expect(next).not.toHaveBeenCalled();
         });
@@ -241,9 +227,7 @@ describe('Auth Middleware', () => {
 
             expect(res.status).toHaveBeenCalledWith(500);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: 'Internal server error'
-                })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'Internal server error' }) })
             );
         });
 
@@ -262,7 +246,7 @@ describe('Auth Middleware', () => {
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
                     success: false,
-                    message: 'Invalid or expired token'
+                    error: expect.objectContaining({ message: 'Invalid or expired token' })
                 })
             );
             expect(next).not.toHaveBeenCalled();
@@ -309,7 +293,7 @@ describe('Auth Middleware', () => {
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
                     success: false,
-                    message: 'Requires admin privileges'
+                    error: expect.objectContaining({ message: 'Requires admin privileges' })
                 })
             );
             expect(next).not.toHaveBeenCalled();
@@ -342,9 +326,7 @@ describe('Auth Middleware', () => {
 
             expect(res.status).toHaveBeenCalledWith(400);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: 'Refresh token is required'
-                })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'Refresh token is required' }) })
             );
         });
 
@@ -356,9 +338,7 @@ describe('Auth Middleware', () => {
 
             expect(res.status).toHaveBeenCalledWith(401);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: 'Refresh token has been revoked'
-                })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'Refresh token has been revoked' }) })
             );
         });
 
@@ -374,7 +354,7 @@ describe('Auth Middleware', () => {
             expect(res.set).toHaveBeenCalledWith('Retry-After', '30');
             expect(res.status).toHaveBeenCalledWith(503);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({ message: 'Service temporarily unavailable' })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'Service temporarily unavailable' }) })
             );
             expect(next).not.toHaveBeenCalled();
         });
@@ -388,9 +368,7 @@ describe('Auth Middleware', () => {
 
             expect(res.status).toHaveBeenCalledWith(500);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: 'Internal server configuration error'
-                })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'Internal server configuration error' }) })
             );
         });
 
@@ -407,9 +385,7 @@ describe('Auth Middleware', () => {
 
             expect(res.status).toHaveBeenCalledWith(401);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: 'Invalid or expired refresh token'
-                })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'Invalid or expired refresh token' }) })
             );
         });
 
@@ -424,9 +400,7 @@ describe('Auth Middleware', () => {
 
             expect(res.status).toHaveBeenCalledWith(401);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: 'Invalid or expired refresh token'
-                })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'Invalid or expired refresh token' }) })
             );
             expect(authService.getUserForAuth).not.toHaveBeenCalled();
         });
@@ -443,9 +417,7 @@ describe('Auth Middleware', () => {
 
             expect(res.status).toHaveBeenCalledWith(401);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: 'User not found'
-                })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'User not found' }) })
             );
         });
 
@@ -465,9 +437,7 @@ describe('Auth Middleware', () => {
 
             expect(res.status).toHaveBeenCalledWith(401);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: 'Account is locked'
-                })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'Account is locked' }) })
             );
         });
 
@@ -483,9 +453,7 @@ describe('Auth Middleware', () => {
 
             expect(res.status).toHaveBeenCalledWith(401);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: 'Invalid or expired refresh token'
-                })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'Invalid or expired refresh token' }) })
             );
         });
 
@@ -520,9 +488,7 @@ describe('Auth Middleware', () => {
 
             expect(res.status).toHaveBeenCalledWith(500);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: 'Internal server error'
-                })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'Internal server error' }) })
             );
         });
     });
@@ -775,7 +741,10 @@ describe('Auth Middleware', () => {
             await authenticateJWT(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(401);
-            expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Invalid or expired token' });
+            expect(res.json).toHaveBeenCalledWith({
+                success: false,
+                error: { message: 'Invalid or expired token', status: 401 }
+            });
             expect(next).not.toHaveBeenCalled();
         });
 
@@ -816,7 +785,10 @@ describe('Auth Middleware', () => {
             await authenticateRefresh(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(401);
-            expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Invalid or expired refresh token' });
+            expect(res.json).toHaveBeenCalledWith({
+                success: false,
+                error: { message: 'Invalid or expired refresh token', status: 401 }
+            });
             expect(next).not.toHaveBeenCalled();
         });
     });
