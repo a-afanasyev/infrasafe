@@ -36,6 +36,11 @@ function buildApp() {
         next();
     });
     app.use('/integration', require('../../../src/routes/integrationRoutes'));
+    // [AR-12] errorHandler теперь обязательная часть конвейера: обработчики
+    // пробрасывают ошибку в next(), а канонический ответ формирует он. Раньше
+    // его отсутствие здесь было незаметно, потому что каждый обработчик
+    // отвечал сам.
+    app.use(require('../../../src/middleware/errorHandler'));
     return app;
 }
 
@@ -69,10 +74,8 @@ describe('integrationRoutes coverage (supertest)', () => {
             const res = await request(app).get('/integration/request-counts');
 
             expect(res.status).toBe(500);
-            expect(res.body).toEqual({
-                success: false,
-                message: 'Internal server error'
-            });
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.status).toBe(500);
         });
     });
 
@@ -104,10 +107,8 @@ describe('integrationRoutes coverage (supertest)', () => {
             );
 
             expect(res.status).toBe(400);
-            expect(res.body).toEqual({
-                success: false,
-                message: 'Invalid externalId format'
-            });
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Invalid externalId format');
             expect(ukIntegrationService.getBuildingRequests).not.toHaveBeenCalled();
         });
 
@@ -121,10 +122,8 @@ describe('integrationRoutes coverage (supertest)', () => {
             );
 
             expect(res.status).toBe(500);
-            expect(res.body).toEqual({
-                success: false,
-                message: 'Internal server error'
-            });
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.status).toBe(500);
         });
 
         test('clamps limit to max 10 when query exceeds', async () => {
@@ -150,20 +149,16 @@ describe('integrationRoutes coverage (supertest)', () => {
             const res = await request(app).get('/integration/logs/abc');
 
             expect(res.status).toBe(400);
-            expect(res.body).toEqual({
-                success: false,
-                message: 'Invalid log entry ID'
-            });
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Invalid log entry ID');
         });
 
         test('returns 400 for ID less than 1', async () => {
             const res = await request(app).get('/integration/logs/0');
 
             expect(res.status).toBe(400);
-            expect(res.body).toEqual({
-                success: false,
-                message: 'Invalid log entry ID'
-            });
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Invalid log entry ID');
         });
 
         test('returns 500 when findById throws', async () => {
@@ -172,10 +167,8 @@ describe('integrationRoutes coverage (supertest)', () => {
             const res = await request(app).get('/integration/logs/1');
 
             expect(res.status).toBe(500);
-            expect(res.body).toEqual({
-                success: false,
-                message: 'Internal server error'
-            });
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.status).toBe(500);
         });
     });
 
@@ -187,10 +180,8 @@ describe('integrationRoutes coverage (supertest)', () => {
             const res = await request(app).post('/integration/logs/retry/abc');
 
             expect(res.status).toBe(400);
-            expect(res.body).toEqual({
-                success: false,
-                message: 'Invalid log entry ID'
-            });
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.message).toBe('Invalid log entry ID');
         });
 
         test('returns 400 when log status is success', async () => {
@@ -200,7 +191,8 @@ describe('integrationRoutes coverage (supertest)', () => {
 
             expect(res.status).toBe(400);
             expect(res.body.success).toBe(false);
-            expect(res.body.message).toContain("Cannot retry log entry with status 'success'");
+            // [AR-4] Текст ошибки живёт в error.message.
+            expect(res.body.error.message).toContain("Cannot retry log entry with status 'success'");
             expect(IntegrationLog.updateStatus).not.toHaveBeenCalled();
             expect(IntegrationLog.incrementRetry).not.toHaveBeenCalled();
         });
@@ -211,10 +203,8 @@ describe('integrationRoutes coverage (supertest)', () => {
             const res = await request(app).post('/integration/logs/retry/1');
 
             expect(res.status).toBe(500);
-            expect(res.body).toEqual({
-                success: false,
-                message: 'Internal server error'
-            });
+            expect(res.body.success).toBe(false);
+            expect(res.body.error.status).toBe(500);
         });
     });
 });
