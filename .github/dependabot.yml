@@ -7,6 +7,11 @@
 # Security alerts fire immediately regardless of schedule.
 # Reviewer assigned to author of repo by default.
 #
+# `open-pull-requests-limit` ограничивает ТОЛЬКО version-updates. Security-
+# обновления под него не попадают и открываются даже при исчерпанном лимите —
+# то есть забитая очередь майских major'ов задерживала обычные обновления, но
+# не патчи уязвимостей.
+#
 # Docs: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/
 
 version: 2
@@ -18,8 +23,21 @@ updates:
       day: monday
       time: "06:00"
       timezone: Asia/Tashkent
-    open-pull-requests-limit: 5
+    # [EN-4, 2026-08-06] Было 5, и майские major'ы занимали 4 из них — сгруппированный
+    # minor/patch-PR (единственный, который реально мержится каждую неделю) рисковал
+    # не открыться вовсе. Восемь оставляет запас под 2-3 висящих major'а.
+    open-pull-requests-limit: 8
     versioning-strategy: increase
+    ignore:
+      # [EN-4] express 5 — не «потом посмотрим», а осознанное отклонение до
+      # отдельной задачи. Это не bump, а миграция: изменились роутинг,
+      # разбор query, поведение res.status(), убрана часть API. У нас 16
+      # файлов маршрутов, собственный default-deny слой в routes/index.js и
+      # цепочки middleware, завязанные на порядок — такое проверяется e2e и
+      # выкатывается отдельным релизом, а не в общей пачке зависимостей.
+      # Пересмотреть, когда express 4 уйдёт с поддержки безопасности.
+      - dependency-name: express
+        update-types: ["version-update:semver-major"]
     labels:
       - dependencies
       - automated
@@ -46,6 +64,12 @@ updates:
       time: "06:00"
       timezone: Asia/Tashkent
     open-pull-requests-limit: 3
+    ignore:
+      # [EN-4] Та же причина, что и для корневого пакета: express 5 — миграция,
+      # а не обновление. Генератор автономен, но чинить его отдельно от
+      # основного приложения смысла нет — пойдут одной задачей.
+      - dependency-name: express
+        update-types: ["version-update:semver-major"]
     labels:
       - dependencies
       - automated
@@ -88,6 +112,16 @@ updates:
       time: "06:00"
       timezone: Asia/Tashkent
     open-pull-requests-limit: 2
+    ignore:
+      # [EN-4] Базовый образ ведём по LTS-линии, а не по последней версии.
+      # Dependabot предлагал node:26-alpine — прыжок через три мажора от
+      # нашей 20-й; отказ не в том, что «страшно», а в том, что образ
+      # определяет рантайм обоих продов, и такой переход проверяется
+      # прогоном e2e на новом образе, а не мержем PR.
+      # Диапазон подобран так, чтобы предложение перейти на СЛЕДУЮЩУЮ LTS
+      # (22) продолжало приходить — отклонён только обгон LTS.
+      - dependency-name: node
+        versions: [">=23"]
     labels:
       - dependencies
       - docker
