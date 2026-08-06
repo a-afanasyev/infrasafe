@@ -3,7 +3,7 @@
 # [SEC-14/15] App build stage — devDependencies (esbuild) собирают public/dist.
 # Этот стейдж отбрасывается: его devDeps НЕ попадают в runtime-образ.
 # Node 20+ обязателен (esbuild >=0.20).
-FROM node:20-alpine AS app-builder
+FROM node:22-alpine AS app-builder
 
 WORKDIR /app
 
@@ -20,7 +20,7 @@ RUN npm run build:frontend
 # Образец — Dockerfile.prod: только prod-deps (`--omit=dev` → нет esbuild/nodemon),
 # только src/ + public/ (с baked dist из builder), CMD `npm start` (НЕ nodemon).
 # Секреты/.git/scripts НЕ копируются и НЕ монтируются (compose снял `.:/app`).
-FROM node:20-alpine AS app
+FROM node:22-alpine AS app
 
 WORKDIR /app
 
