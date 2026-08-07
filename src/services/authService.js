@@ -3,6 +3,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 const cacheService = require('./cacheService');
+const User = require('../models/User');
 const db = require('../config/database');
 const { CircuitBreakerFactory } = require('../utils/circuitBreaker');
 const AccountLockout = require('../models/AccountLockout');
@@ -104,14 +105,9 @@ class AuthService {
             const hashedPassword = await this.hashPassword(password);
 
             // Создаем пользователя в базе данных
-            const query = `
-                INSERT INTO users (username, email, password_hash, role, created_at, is_active)
-                VALUES ($1, $2, $3, $4, NOW(), true)
-                RETURNING user_id, username, email, role, created_at, is_active
-            `;
-
-            const result = await db.query(query, [username, email, hashedPassword, role]);
-            const newUser = result.rows[0];
+            const newUser = await User.create({
+                username, email, passwordHash: hashedPassword, role
+            });
 
             logger.info(`Новый пользователь зарегистрирован: ${username} (${email})`);
 
@@ -376,15 +372,15 @@ class AuthService {
             }
 
             // Fetch password_hash separately (not cached by findUserById for security)
-            const hashResult = await db.query('SELECT password_hash FROM users WHERE user_id = $1', [userId]);
-            if (hashResult.rows.length === 0) {
+            const currentHash = await User.getPasswordHash(userId);
+            if (currentHash == null) {
                 const error = new Error('Пользователь не найден');
                 error.code = 'USER_NOT_FOUND';
                 throw error;
             }
 
             // Проверяем текущий пароль
-            const isCurrentPasswordValid = await this.verifyPassword(currentPassword, hashResult.rows[0].password_hash);
+            const isCurrentPasswordValid = await this.verifyPassword(currentPassword, currentHash);
             if (!isCurrentPasswordValid) {
                 const error = new Error('Неверный текущий пароль');
                 error.code = 'INVALID_CURRENT_PASSWORD';
@@ -404,16 +400,9 @@ class AuthService {
             const hashedNewPassword = await this.hashPassword(newPassword);
 
             // Обновляем пароль в базе данных
-            const query = `
-                UPDATE users
-                SET password_hash = $1, password_changed_at = NOW()
-                WHERE user_id = $2
-            `;
-            await db.query(query, [hashedNewPassword, userId]);
-
-            // Phase 13: invalidate the cached user object so the next auth
-            // check sees the fresh password_changed_at (cutoff-comparison).
-            await cacheService.invalidate(`${this.cachePrefix}:user:${userId}`);
+            // [AR-3(а)] Сброс кэша — внутри модели: раньше о нём надо было помнить
+            // здесь, иначе следующая проверка читала устаревший password_changed_at.
+            await User.updatePassword(userId, hashedNewPassword);
 
             logger.info(`Пароль изменен для пользователя ID: ${userId}`);
             return { message: 'Пароль успешно изменен' };
@@ -461,13 +450,8 @@ class AuthService {
                 return cached;
             }
 
-            const query = 'SELECT user_id, username, email, role, is_active, account_locked_until, created_at, updated_at, password_changed_at FROM users WHERE user_id = $1';
-            const result = await db.query(query, [userId]);
-
-            if (result.rows.length > 0) {
-                // Destructure to exclude password_hash from cached/returned object
-                // eslint-disable-next-line no-unused-vars
-                const { password_hash, ...user } = result.rows[0];
+            const user = await User.findAuthProjection(userId);
+            if (user) {
                 await cacheService.set(cacheKey, user, { ttl: 300 });
                 return user;
             }
@@ -485,32 +469,13 @@ class AuthService {
     // cache. One extra PK SELECT per authenticated request — comparable cost
     // to the existing per-request token_blacklist SELECT.
     async getUserForAuth(userId) {
-        const query = 'SELECT user_id, username, email, role, is_active, account_locked_until, created_at, updated_at, password_changed_at FROM users WHERE user_id = $1';
-        const result = await db.query(query, [userId]);
-        if (result.rows.length === 0) return null;
-        // eslint-disable-next-line no-unused-vars
-        const { password_hash, ...user } = result.rows[0];
-        return user;
+        return User.findAuthProjection(userId);
     }
 
     // Поиск пользователя по имени или email
     async findUserByUsernameOrEmail(login, email = null) {
         try {
-            let query, params;
-
-            if (email && email !== login) {
-                // Если передан отдельный email, ищем по username ИЛИ email
-                query = 'SELECT * FROM users WHERE username = $1 OR email = $2';
-                params = [login, email];
-            } else {
-                // Если email не передан или равен login, ищем по username ИЛИ email = login
-                query = 'SELECT * FROM users WHERE username = $1 OR email = $1';
-                params = [login];
-            }
-
-            const result = await db.query(query, params);
-
-            return result.rows.length > 0 ? result.rows[0] : null;
+            return await User.findByLogin(login, email);
         } catch (error) {
             logger.error(`Ошибка поиска пользователя: ${error.message}`);
             throw error;
@@ -630,11 +595,7 @@ class AuthService {
     // Обновление времени последнего входа
     async updateLastLogin(userId) {
         try {
-            const query = 'UPDATE users SET last_login = NOW() WHERE user_id = $1';
-            await db.query(query, [userId]);
-
-            // Инвалидируем кэш пользователя
-            await cacheService.invalidate(`${this.cachePrefix}:user:${userId}`);
+            await User.updateLastLogin(userId);
         } catch (error) {
             logger.error(`Ошибка обновления времени последнего входа: ${error.message}`);
         }
@@ -757,11 +718,7 @@ class AuthService {
     // For use in secondary auth flows (disable-2fa) where failed attempts
     // should not lock the account
     async verifyPasswordOnly(userId, password) {
-        const result = await db.query(
-            'SELECT password_hash FROM users WHERE user_id = $1 AND is_active = true',
-            [userId]
-        );
-        const hash = result.rows[0]?.password_hash;
+        const hash = await User.getActivePasswordHash(userId);
         if (!hash) return false;
         return bcrypt.compare(password, hash);
     }
