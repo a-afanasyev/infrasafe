@@ -2,23 +2,14 @@ const otplib = require('otplib');
 const QRCode = require('qrcode');
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
-const db = require('../config/database');
+const User = require('../models/User');
 const logger = require('../utils/logger');
 const cacheService = require('./cacheService');
 
-// Phase 7.2 (ARCH-113 mitigation): authService caches user rows by
-// `auth:user:${userId}` with a 5-minute TTL. totpService mutates the
-// users table directly (bypassing the User model / authService),
-// so every UPDATE here must invalidate that cache or the login flow
-// will read a stale `totp_enabled` value for up to 5 minutes.
-async function invalidateUserCache(userId) {
-    try {
-        await cacheService.invalidate(`auth:user:${userId}`);
-    } catch (err) {
-        // Best-effort: cache miss is worse than log spam. Never throw here.
-        logger.error(`Failed to invalidate auth:user:${userId} cache: ${err.message}`);
-    }
-}
+// [AR-3(а)] Здесь был хелпер `invalidateUserCache`, который приходилось звать
+// после КАЖДОГО UPDATE по `users`, иначе логин до пяти минут читал устаревший
+// `totp_enabled` из кэша authService. Теперь запись идёт через `models/User.js`,
+// и сброс кэша — часть самой операции: звать его отсюда больше нечем и незачем.
 
 const ISSUER = 'InfraSafe';
 const RECOVERY_CODE_COUNT = 8;
@@ -116,19 +107,16 @@ async function generateSetup(userId, username) {
     // Without this guard a user who opens the QR, refreshes, or re-logs-in
     // before scanning ends up with a fresh overwritten secret and the first
     // QR stops working — surfacing as "different OTPs" to the user.
-    const existing = await db.query(
-        'SELECT totp_secret, totp_enabled FROM users WHERE user_id = $1',
-        [userId]
-    );
-    if (!existing.rows.length) {
+    const existing = await User.getTotpState(userId);
+    if (!existing) {
         throw new Error('User not found');
     }
 
-    const isResume = existing.rows[0].totp_secret && !existing.rows[0].totp_enabled;
+    const isResume = existing.totp_secret && !existing.totp_enabled;
 
     let secret;
     if (isResume) {
-        secret = decrypt(existing.rows[0].totp_secret);
+        secret = decrypt(existing.totp_secret);
         logger.info(`TOTP setup resumed for user ${userId} — reusing pending secret`);
     } else {
         secret = otplib.generateSecret();
@@ -159,11 +147,7 @@ async function generateSetup(userId, username) {
 
     const encryptedSecret = encrypt(secret);
 
-    await db.query(
-        `UPDATE users SET totp_secret = $1, recovery_codes = $2 WHERE user_id = $3`,
-        [encryptedSecret, JSON.stringify(hashedRecoveryCodes), userId]
-    );
-    await invalidateUserCache(userId);
+    await User.setTotpSecret(userId, encryptedSecret, JSON.stringify(hashedRecoveryCodes));
 
     // Best-effort: persist the plaintext set so a resume returns the same codes.
     try {
@@ -182,16 +166,12 @@ async function generateSetup(userId, username) {
 }
 
 async function confirmSetup(userId, code) {
-    const result = await db.query(
-        'SELECT totp_secret, totp_enabled FROM users WHERE user_id = $1',
-        [userId]
-    );
+    const user = await User.getTotpState(userId);
 
-    if (!result.rows.length) {
+    if (!user) {
         throw new Error('User not found');
     }
 
-    const user = result.rows[0];
     if (user.totp_enabled) {
         throw new Error('2FA is already enabled');
     }
@@ -211,11 +191,7 @@ async function confirmSetup(userId, code) {
         throw new Error('TOTP code already used');
     }
 
-    await db.query(
-        'UPDATE users SET totp_enabled = true WHERE user_id = $1',
-        [userId]
-    );
-    await invalidateUserCache(userId);
+    await User.enableTotp(userId);
 
     // SEC-28: the pending plaintext recovery codes are no longer needed once
     // 2FA is enabled — drop them from cache to minimise exposure.
@@ -230,16 +206,13 @@ async function confirmSetup(userId, code) {
 }
 
 async function verifyCode(userId, code) {
-    const result = await db.query(
-        'SELECT totp_secret, totp_enabled, recovery_codes FROM users WHERE user_id = $1',
-        [userId]
-    );
+    const state = await User.getTotpState(userId, { withRecoveryCodes: true });
 
-    if (!result.rows.length) {
+    if (!state) {
         throw new Error('User not found');
     }
 
-    const user = result.rows[0];
+    const user = state;
     if (!user.totp_enabled || !user.totp_secret) {
         throw new Error('2FA is not enabled for this user');
     }
@@ -264,11 +237,7 @@ async function verifyCode(userId, code) {
             // Remove used recovery code
             const updatedCodes = [...recoveryCodes];
             updatedCodes.splice(i, 1);
-            await db.query(
-                'UPDATE users SET recovery_codes = $1 WHERE user_id = $2',
-                [JSON.stringify(updatedCodes), userId]
-            );
-            await invalidateUserCache(userId);
+            await User.setRecoveryCodes(userId, JSON.stringify(updatedCodes));
 
             logger.warn(`Recovery code used for user ${userId}, ${updatedCodes.length} remaining`);
             return { valid: true, method: 'recovery' };
@@ -280,24 +249,17 @@ async function verifyCode(userId, code) {
 
 async function disable(userId) {
     // Check if user is admin — admins cannot disable 2FA via API
-    const result = await db.query(
-        'SELECT role FROM users WHERE user_id = $1',
-        [userId]
-    );
+    const role = await User.getRole(userId);
 
-    if (!result.rows.length) {
+    if (role === null) {
         throw new Error('User not found');
     }
 
-    if (result.rows[0].role === 'admin') {
+    if (role === 'admin') {
         throw new Error('Admins cannot disable 2FA');
     }
 
-    await db.query(
-        'UPDATE users SET totp_enabled = false, totp_secret = NULL, recovery_codes = NULL WHERE user_id = $1',
-        [userId]
-    );
-    await invalidateUserCache(userId);
+    await User.disableTotp(userId);
 
     logger.info(`TOTP 2FA disabled for user ${userId}`);
     return true;
