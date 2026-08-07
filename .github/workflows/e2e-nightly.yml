@@ -38,7 +38,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install host deps (jest + supertest + pg + otplib for the harness)

@@ -26,6 +26,6 @@ services:
   # --images mignode` and `docker run`s it ad-hoc; it does real work as an exited
   # one-shot so `up` pulls the image without leaving a lingering container.
   mignode:
-    image: node:20-alpine
+    image: node:22-alpine
     command: ["node", "--version"]
     restart: "no"
