@@ -27,7 +27,7 @@ const {
     optionalEnum,
     optionalDate,
 } = require('./validatorFields');
-const { handleValidationErrors } = require('./validators');
+const { handleValidationErrors } = require('./validationResultHandler');
 
 // Домен статуса водной линии — источник истины тот же, что у модели и
 // миграции 040. Продублирован строками намеренно: импорт модели в middleware

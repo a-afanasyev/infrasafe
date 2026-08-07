@@ -1,26 +1,10 @@
-const { body, param, validationResult } = require('express-validator');
-const { sendError } = require('../utils/apiResponse');
-
-// [AR-4] Обработка результатов валидации в КАНОНИЧЕСКОМ конверте.
-//
-// Раньше отсюда уходило `{errors:[…]}` — без `success`, то есть форма, которую
-// потребителю приходилось узнавать по наличию ключа. Теперь это обычная ошибка
-// 400, а по-полевые сообщения переезжают в `error.details`: без них остаётся
-// «Ошибка валидации» без указания поля, и пользователю нечего исправлять.
-//
-// Имя поля берём из `path` (express-validator 7) с откатом на `param`
-// (версия 6) — библиотека переименовала ключ, и молча потерять его нельзя.
-const handleValidationErrors = (req, res, next) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        const details = errors.array().map(e => ({
-            field: e.path || e.param || null,
-            message: e.msg
-        }));
-        return sendError(res, 400, 'Ошибка валидации', { details });
-    }
-    next();
-};
+const { body, param } = require('express-validator');
+// [AR-4] Канонический ответ на ошибку валидации живёт отдельным модулем —
+// он общий с entityValidators.js, и держать его здесь значило замкнуть цикл.
+const { handleValidationErrors } = require('./validationResultHandler');
+// [AR-10] Схемы остальных сущностей живут в entityValidators.js и
+// реэкспортируются отсюда: точка подключения у маршрутов остаётся одна.
+const entityValidators = require('./entityValidators');
 
 // Валидация для создания/обновления здания
 const validateBuildingCreate = [
@@ -80,17 +64,12 @@ const validateIntParam = (name = 'id') => [
 // Валидация ID параметра (`:id`). Kept as a named export for existing call sites.
 const validateIdParam = validateIntParam('id');
 
-// [AR-10] Схемы остальных сущностей живут в entityValidators.js и
-// реэкспортируются здесь: точка подключения у маршрутов остаётся одна.
-// Require ниже, а не сверху — entityValidators импортирует handleValidationErrors
-// отсюда, и циклическая ссылка разрешается только после экспорта.
 module.exports = {
     validateBuildingCreate,
     validateControllerCreate,
     validateIdParam,
     validateIntParam,
     handleValidationErrors,
-    isXSSFree
+    isXSSFree,
+    ...entityValidators
 };
-
-Object.assign(module.exports, require('./entityValidators'));
