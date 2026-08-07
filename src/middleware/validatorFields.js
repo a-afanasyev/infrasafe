@@ -23,9 +23,16 @@ const { body } = require('express-validator');
 // XSS жило в одном месте, а не в двух похожих.
 const { isXSSFree } = require('./xssGuard');
 
-/** Обязательный текст без XSS-токенов. */
+/**
+ * Обязательный текст без XSS-токенов.
+ *
+ * `.trim()` до `.notEmpty()` — иначе имя из одних пробелов считается
+ * заполненным и доезжает до БД: в списке появляется строка без названия,
+ * которую потом не найти поиском. Проверено в браузере на живом стенде.
+ */
 const requiredText = (field, label) => [
     body(field)
+        .trim()
         .notEmpty().withMessage(`${label} обязательно`)
         .bail()
         .custom((value) => {
@@ -70,25 +77,25 @@ const optionalEndpointCoordinates = () => [
 /** Неотрицательное число — для физических величин, где минус бессмыслен. */
 const optionalNonNegativeNumber = (field, label) => [
     body(field).optional({ nullable: true })
-        .isFloat({ min: 0 }).withMessage(`${label} должно быть неотрицательным числом`),
+        .isFloat({ min: 0 }).withMessage(`Поле «${label}»: допустимы только неотрицательные числа`),
 ];
 
 /** Целое в диапазоне — для годов, количеств. */
 const optionalIntInRange = (field, label, { min, max }) => [
     body(field).optional({ nullable: true })
-        .isInt({ min, max }).withMessage(`${label} должно быть целым числом от ${min} до ${max}`),
+        .isInt({ min, max }).withMessage(`Поле «${label}»: ожидается целое число от ${min} до ${max}`),
 ];
 
 /** Значение из закрытого списка. */
 const optionalEnum = (field, label, allowed) => [
     body(field).optional({ nullable: true })
-        .isIn(allowed).withMessage(`${label} должно быть одним из: ${allowed.join(', ')}`),
+        .isIn(allowed).withMessage(`Поле «${label}»: допустимые значения — ${allowed.join(', ')}`),
 ];
 
 /** Дата в формате ISO. */
 const optionalDate = (field, label) => [
     body(field).optional({ nullable: true })
-        .isISO8601().withMessage(`${label} должно быть датой в формате ISO`),
+        .isISO8601().withMessage(`Поле «${label}»: ожидается дата в формате ISO`),
 ];
 
 module.exports = {
