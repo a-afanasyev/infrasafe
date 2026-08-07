@@ -54,7 +54,7 @@ class SafeJsonParser {
             return JSON.parse(text);
         } catch (error) {
             // Не раскрываем детали ошибки для безопасности
-            throw new Error('Ошибка парсинга JSON ответа от сервера');
+            throw new Error('Ошибка парсинга JSON ответа от сервера', { cause: error });
         }
     }
     
@@ -79,7 +79,7 @@ class SafeJsonParser {
         try {
             return JSON.parse(jsonString);
         } catch (error) {
-            throw new Error('Ошибка парсинга JSON строки');
+            throw new Error('Ошибка парсинга JSON строки', { cause: error });
         }
     }
     

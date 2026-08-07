@@ -23,7 +23,7 @@ class ApiTestHelper {
           password, 
           email: `${username}@test.com` 
         });
-    } catch (error) {
+    } catch (_error) {
       // Пользователь уже существует, это нормально
     }
 
@@ -207,7 +207,7 @@ const testUtils = {
       expect(decoded).toHaveProperty('exp');
       return decoded;
     } catch (error) {
-      throw new Error(`Invalid JWT token: ${error.message}`);
+      throw new Error(`Invalid JWT token: ${error.message}`, { cause: error });
     }
   }
 };

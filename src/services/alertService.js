@@ -115,7 +115,7 @@ class InfrastructureAlertService {
             } catch (error) {
                 logger.warn(`Попытка ${i + 1}/${maxRetries}: БД не готова, ожидание...`);
                 if (i === maxRetries - 1) {
-                    throw new Error('Превышено максимальное время ожидания готовности БД');
+                    throw new Error('Превышено максимальное время ожидания готовности БД', { cause: error });
                 }
                 await new Promise(resolve => setTimeout(resolve, retryDelay));
             }

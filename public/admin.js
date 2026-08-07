@@ -3484,7 +3484,6 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!rule) return;
 
         if (!newEnabled && rule.severity === 'CRITICAL') {
-            // eslint-disable-next-line no-alert
             const ok = window.confirm(
                 `Вы отключаете эскалацию КРИТИЧЕСКИХ алертов "${rule.alert_type}" в УК. ` +
                 `Эти аварии больше НЕ будут создавать заявки автоматически. Подтвердить?`

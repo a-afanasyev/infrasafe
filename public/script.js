@@ -285,7 +285,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                             errorMessage = window.ApiError
                                 ? window.ApiError.extractApiError(errorJson, errorMessage)
                                 : errorMessage;
-                        } catch (e) {
+                        } catch (_e) {
                             // Если не JSON, используем текст ошибки (ограниченный)
                             if (errorText) {
                                 errorMessage = errorText.substring(0, 200);
@@ -301,7 +301,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 
                 // Если это ошибка сети
                 if (error instanceof TypeError && error.message.includes('fetch')) {
-                    throw new Error('Ошибка подключения к серверу. Проверьте соединение с интернетом.');
+                    throw new Error('Ошибка подключения к серверу. Проверьте соединение с интернетом.', { cause: error });
                 }
                 
                 throw error;
@@ -1541,7 +1541,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 result = JSON.parse(text);
             } catch (parseError) {
                 console.error('Ошибка парсинга JSON:', parseError);
-                throw new Error(`Ошибка парсинга ответа: ${parseError.message}`);
+                throw new Error(`Ошибка парсинга ответа: ${parseError.message}`, { cause: parseError });
             }
             
             // Проверяем формат данных
@@ -2031,7 +2031,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                         headers: { 'Content-Type': 'application/json' },
                         credentials: 'same-origin'
                     });
-                } catch (e) { /* продолжаем logout в любом случае */ }
+                } catch (_e) { /* продолжаем logout в любом случае */ }
                 apiClient.setToken(null);
                 updateAuthButton();
                 // Перезагружаем карту (анонимные данные)
@@ -2168,7 +2168,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 } else {
                     showMapError('map-login-error', mapErrorText(data, 'Неверные учетные данные'));
                 }
-            } catch (err) {
+            } catch (_err) {
                 showMapError('map-login-error', 'Ошибка подключения к серверу');
             } finally {
                 submitBtn.disabled = false;
@@ -2197,7 +2197,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                     document.getElementById('map-2fa-code').value = '';
                     document.getElementById('map-2fa-code').focus();
                 }
-            } catch (err) {
+            } catch (_err) {
                 showMapError('map-2fa-error', 'Ошибка подключения');
             } finally {
                 btn.disabled = false;
@@ -2230,7 +2230,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                     document.getElementById('map-confirm-code').value = '';
                     document.getElementById('map-confirm-code').focus();
                 }
-            } catch (err) {
+            } catch (_err) {
                 showMapError('map-setup-error', 'Ошибка подключения');
             } finally {
                 btn.disabled = false;
