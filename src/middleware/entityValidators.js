@@ -20,6 +20,9 @@
 const {
     requiredText,
     optionalText,
+    requiredCoordinates,
+    requiredPositiveNumber,
+    requiredNonNegativeNumber,
     optionalCoordinates,
     optionalEndpointCoordinates,
     optionalNonNegativeNumber,
@@ -39,22 +42,29 @@ const SOURCE_STATUSES = ['active', 'maintenance', 'inactive'];
 // Смысл не в исторической точности, а в отсечении опечаток вроде 202 и 20255.
 const YEAR_RANGE = { min: 1900, max: 2100 };
 
+// [доработка 2] Поля сверены с `\d transformers`, а не взяты по памяти: первая
+// редакция описывала `power_rating` / `voltage_primary` / `address` /
+// `maintenance_contact`, которых в таблице нет, и молчала про `power_kva` и
+// `voltage_kv` — NOT NULL с CHECK > 0. Схема была декоративной, а отказ
+// приходил пятисоткой из БД.
 const validateTransformerCreate = [
     ...requiredText('name', 'Название трансформатора'),
+    ...requiredPositiveNumber('power_kva', 'Мощность (кВА)'),
+    ...requiredPositiveNumber('voltage_kv', 'Напряжение (кВ)'),
     ...optionalCoordinates(),
-    ...optionalText('address', 'Адрес'),
-    ...optionalNonNegativeNumber('voltage_primary', 'Первичное напряжение'),
-    ...optionalNonNegativeNumber('voltage_secondary', 'Вторичное напряжение'),
-    ...optionalNonNegativeNumber('power_rating', 'Номинальная мощность'),
+    ...optionalText('location', 'Расположение'),
+    ...optionalText('manufacturer', 'Производитель'),
+    ...optionalText('model', 'Модель'),
+    ...optionalEnum('status', 'Статус', SOURCE_STATUSES),
     ...optionalDate('installation_date', 'Дата установки'),
-    ...optionalText('maintenance_contact', 'Контакт обслуживания'),
     handleValidationErrors,
 ];
 
+// `voltage_kv` и `length_km` — NOT NULL в `lines`; без них запрос доезжал до БД.
 const validateLineCreate = [
     ...requiredText('name', 'Название линии'),
-    ...optionalNonNegativeNumber('voltage_kv', 'Напряжение'),
-    ...optionalNonNegativeNumber('length_km', 'Длина'),
+    ...requiredNonNegativeNumber('voltage_kv', 'Напряжение (кВ)'),
+    ...requiredNonNegativeNumber('length_km', 'Длина (км)'),
     ...optionalIntInRange('commissioning_year', 'Год ввода в эксплуатацию', YEAR_RANGE),
     ...optionalText('cable_type', 'Тип кабеля'),
     ...optionalEndpointCoordinates(),
@@ -73,11 +83,12 @@ const validateWaterLineCreate = [
     handleValidationErrors,
 ];
 
+// У обоих источников `address`, `source_type`, `latitude`, `longitude` — NOT NULL.
 const validateColdWaterSourceCreate = [
     ...requiredText('name', 'Название источника'),
-    ...optionalText('address', 'Адрес'),
-    ...optionalCoordinates(),
-    ...optionalText('source_type', 'Тип источника'),
+    ...requiredText('address', 'Адрес'),
+    ...requiredText('source_type', 'Тип источника'),
+    ...requiredCoordinates(),
     ...optionalNonNegativeNumber('capacity_m3_per_hour', 'Производительность'),
     ...optionalNonNegativeNumber('operating_pressure_bar', 'Рабочее давление'),
     ...optionalDate('installation_date', 'Дата установки'),
@@ -89,9 +100,9 @@ const validateColdWaterSourceCreate = [
 
 const validateHeatSourceCreate = [
     ...requiredText('name', 'Название источника'),
-    ...optionalText('address', 'Адрес'),
-    ...optionalCoordinates(),
-    ...optionalText('source_type', 'Тип источника'),
+    ...requiredText('address', 'Адрес'),
+    ...requiredText('source_type', 'Тип источника'),
+    ...requiredCoordinates(),
     ...optionalNonNegativeNumber('capacity_mw', 'Мощность'),
     ...optionalText('fuel_type', 'Вид топлива'),
     ...optionalDate('installation_date', 'Дата установки'),

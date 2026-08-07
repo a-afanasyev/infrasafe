@@ -40,6 +40,7 @@ const stubController = () => new Proxy({}, {
 
 jest.mock('../../../src/controllers/transformerController', () => stubController());
 jest.mock('../../../src/controllers/lineController', () => stubController());
+jest.mock('../../../src/controllers/coldWaterSourceController', () => stubController());
 
 const request = require('supertest');
 const express = require('express');
@@ -86,7 +87,7 @@ describe('[AR-10] POST /api/transformers — схема на маршруте, �
     test('корректное тело проходит к контроллеру', async () => {
         const res = await request(app())
             .post('/api/transformers')
-            .send({ name: 'ТП-1', latitude: 41.31, longitude: 69.24, power_rating: 100 });
+            .send({ name: 'ТП-1', latitude: 41.31, longitude: 69.24, power_kva: 100, voltage_kv: 10 });
 
         expect(res.status).toBe(201);
         expect(mockCreated).toHaveBeenCalledTimes(1);
@@ -108,9 +109,103 @@ describe('[AR-10] POST /api/lines — схема на маршруте, кото
     test('корректное тело проходит к контроллеру', async () => {
         const res = await request(app())
             .post('/api/lines')
-            .send({ name: 'Линия-1', voltage_kv: 10, commissioning_year: 2020 });
+            .send({ name: 'Линия-1', voltage_kv: 10, length_km: 2.5, commissioning_year: 2020 });
 
         expect(res.status).toBe(201);
         expect(mockCreated).toHaveBeenCalledTimes(1);
+    });
+});
+
+/**
+ * [AR-10, доработка 2] Схема должна описывать РЕАЛЬНЫЕ колонки таблицы.
+ *
+ * Та же браузерная проверка вскрыла второй слой: схема трансформатора
+ * перечисляла поля, которых в таблице нет (`power_rating`, `voltage_primary`,
+ * `address`, `maintenance_contact`), и молчала про `power_kva` и `voltage_kv` —
+ * NOT NULL с CHECK > 0. Итог: корректное с виду тело падало не на 400 с
+ * указанием поля, а на 500 из БД. Ровно тот случай, ради которого AR-10 и
+ * затевался.
+ *
+ * Обязательность здесь не ужесточение, а перевод отказа из 500 в 400: БД эти
+ * тела и раньше не принимала.
+ */
+describe('[AR-10] схема повторяет ограничения БД, а не выдуманные поля', () => {
+    const app = (mount, routes) => buildApp(mount, routes);
+
+    describe('POST /api/transformers', () => {
+        const post = (body) => request(app('/api/transformers', '../../../src/routes/transformerRoutes'))
+            .post('/api/transformers').send(body);
+
+        test('без power_kva → 400 с указанием поля, а не 500 из БД', async () => {
+            const res = await post({ name: 'ТП-1', voltage_kv: 10, latitude: 41.3, longitude: 69.2 });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error.details.some(d => d.field === 'power_kva')).toBe(true);
+            expect(mockCreated).not.toHaveBeenCalled();
+        });
+
+        test('power_kva = 0 → 400: в БД стоит CHECK power_kva > 0', async () => {
+            const res = await post({ name: 'ТП-1', power_kva: 0, voltage_kv: 10 });
+
+            expect(res.status).toBe(400);
+            expect(mockCreated).not.toHaveBeenCalled();
+        });
+
+        test('без voltage_kv → 400', async () => {
+            const res = await post({ name: 'ТП-1', power_kva: 100 });
+
+            expect(res.status).toBe(400);
+            expect(mockCreated).not.toHaveBeenCalled();
+        });
+
+        test('тело, которое реально шлёт форма админки, проходит', async () => {
+            const res = await post({ name: 'ТП-1', power_kva: 100, voltage_kv: 10, latitude: 41.31, longitude: 69.24 });
+
+            expect(res.status).toBe(201);
+            expect(mockCreated).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('POST /api/lines', () => {
+        const post = (body) => request(app('/api/lines', '../../../src/routes/lineRoutes'))
+            .post('/api/lines').send(body);
+
+        test('без length_km → 400: колонка NOT NULL', async () => {
+            const res = await post({ name: 'Линия-1', voltage_kv: 10 });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error.details.some(d => d.field === 'length_km')).toBe(true);
+        });
+
+        test('полное тело проходит', async () => {
+            const res = await post({ name: 'Линия-1', voltage_kv: 10, length_km: 2.5 });
+
+            expect(res.status).toBe(201);
+            expect(mockCreated).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('POST /api/cold-water-sources', () => {
+        const post = (body) => request(app('/api/cold-water-sources', '../../../src/routes/waterSourceRoutes'))
+            .post('/api/cold-water-sources').send(body);
+
+        test('без address / source_type / координат → 400', async () => {
+            const res = await post({ name: 'Скважина-1' });
+
+            expect(res.status).toBe(400);
+            const fields = res.body.error.details.map(d => d.field);
+            expect(fields).toEqual(expect.arrayContaining(['address', 'source_type', 'latitude', 'longitude']));
+            expect(mockCreated).not.toHaveBeenCalled();
+        });
+
+        test('полное тело проходит', async () => {
+            const res = await post({
+                name: 'Скважина-1', address: 'ул. Тестовая, 1', source_type: 'well',
+                latitude: 41.31, longitude: 69.24,
+            });
+
+            expect(res.status).toBe(201);
+            expect(mockCreated).toHaveBeenCalledTimes(1);
+        });
     });
 });
