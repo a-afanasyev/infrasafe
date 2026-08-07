@@ -3,7 +3,7 @@ const router = express.Router();
 const coldWaterSourceController = require('../controllers/coldWaterSourceController');
 const { applyCrudRateLimit } = require('../middleware/rateLimiter');
 const { isAdmin } = require('../middleware/auth');
-const { validateIntParam } = require('../middleware/validators');
+const { validateIntParam, validateColdWaterSourceCreate } = require('../middleware/validators');
 
 /**
  * @swagger
@@ -125,7 +125,10 @@ router.get('/:id', validateIntParam('id'), coldWaterSourceController.getById);
  *         description: Ошибка валидации
  */
 // [R2-02] Infrastructure writes require admin (API_AUTH_MATRIX.md JWT→JWT+Admin). GET stays any-auth.
-router.post('/', applyCrudRateLimit, isAdmin, coldWaterSourceController.create);
+// [AR-10, доработка] Схема тела стоит здесь, а не только на `/api/admin/*`:
+// админка создаёт эти сущности именно через этот маршрут — проверено в браузере,
+// где трансформатор с именем `<script>…` создавался с кодом 201.
+router.post('/', applyCrudRateLimit, isAdmin, validateColdWaterSourceCreate, coldWaterSourceController.create);
 
 /**
  * @swagger
