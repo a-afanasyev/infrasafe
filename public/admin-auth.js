@@ -138,7 +138,7 @@ class AdminAuth {
                 credentials: 'same-origin',
                 keepalive: true
             }).catch(() => { /* network failure must not block redirect */ });
-        } catch (_) { /* eslint-disable-line no-unused-vars */ }
+        } catch (_) { /* сбой отправки не должен мешать выходу */ }
 
         this.isAuthenticated = false;
         this.restoreFetch();

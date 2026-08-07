@@ -71,7 +71,7 @@
         var value = '';
         try {
             value = global.getComputedStyle(root()).getPropertyValue(name).trim();
-        } catch (e) {
+        } catch (_e) {
             value = '';
         }
         if (!value) {

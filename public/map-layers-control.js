@@ -1051,7 +1051,7 @@ class MapLayersControl {
                 p.textContent = 'Метрики недоступны';
                 container.appendChild(p);
             }
-        } catch (error) {
+        } catch (_error) {
             // ИСПРАВЛЕНИЕ XSS: Используем textContent для сообщения об ошибке
             container.textContent = '';
             const p = document.createElement('p');

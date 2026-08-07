@@ -52,7 +52,7 @@ class CircuitBreaker {
                         return await fallback();
                     } catch (fallbackError) {
                         logger.error(`${this.name}: Fallback failed:`, fallbackError.message);
-                        throw new Error('Сервис временно недоступен');
+                        throw new Error('Сервис временно недоступен', { cause: fallbackError });
                     }
                 }
 
