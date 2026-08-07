@@ -61,16 +61,25 @@ describe('[AR-10] трансформаторы', () => {
         expect(failedFields(res)).toContain('longitude');
     });
 
+    // [доработка 2] Поля сверены с таблицей: колонок voltage_primary /
+    // voltage_secondary / power_rating в `transformers` нет, а есть
+    // power_kva и voltage_kv — NOT NULL с CHECK > 0.
     test('напряжение не может быть отрицательным', async () => {
         const res = await request(app).post('/t')
-            .send({ name: 'ТП-1', latitude: 41.3, longitude: 69.2, voltage_primary: -5 });
-        expect(failedFields(res)).toContain('voltage_primary');
+            .send({ name: 'ТП-1', latitude: 41.3, longitude: 69.2, power_kva: 100, voltage_kv: -5 });
+        expect(failedFields(res)).toContain('voltage_kv');
+    });
+
+    test('мощность и напряжение обязательны — их колонки NOT NULL', async () => {
+        const res = await request(app).post('/t')
+            .send({ name: 'ТП-1', latitude: 41.3, longitude: 69.2 });
+        expect(failedFields(res)).toEqual(expect.arrayContaining(['power_kva', 'voltage_kv']));
     });
 
     test('корректное тело проходит', async () => {
         const res = await request(app).post('/t').send({
             name: 'ТП-1', latitude: 41.3, longitude: 69.2,
-            voltage_primary: 10, voltage_secondary: 0.4
+            power_kva: 100, voltage_kv: 10
         });
         expect(res.status).toBe(200);
     });
@@ -157,7 +166,9 @@ describe('[AR-10] источники воды и тепла', () => {
     test('тепло: корректное тело проходит', async () => {
         const app = appWith(V.validateHeatSourceCreate);
         const res = await request(app).post('/t')
-            .send({ name: 'ТЭЦ-1', capacity_mw: 120, latitude: 41.3, longitude: 69.2 });
+            // address и source_type — NOT NULL, как и координаты.
+            .send({ name: 'ТЭЦ-1', address: 'ул. Тестовая, 1', source_type: 'boiler',
+                capacity_mw: 120, latitude: 41.3, longitude: 69.2 });
         expect(res.status).toBe(200);
     });
 });
@@ -167,13 +178,16 @@ describe('[AR-10] необязательные поля остаются нео�
     // формы шлют только заполненные поля.
     test('пустое необязательное поле не делает запрос невалидным', async () => {
         const app = appWith(V.validateTransformerCreate);
-        const res = await request(app).post('/t').send({ name: 'ТП-2', latitude: 41.3, longitude: 69.2 });
+        // Обязательный минимум задан, всё остальное опущено.
+        const res = await request(app).post('/t')
+            .send({ name: 'ТП-2', power_kva: 100, voltage_kv: 10 });
         expect(res.status).toBe(200);
     });
 
     test('null в необязательном числовом поле допустим', async () => {
         const app = appWith(V.validateLineCreate);
-        const res = await request(app).post('/t').send({ name: 'Л-2', voltage_kv: null });
+        const res = await request(app).post('/t')
+            .send({ name: 'Л-2', voltage_kv: 10, length_km: 1, cable_type: null });
         expect(res.status).toBe(200);
     });
 });

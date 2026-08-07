@@ -33,10 +33,10 @@ const { isXSSFree } = require('./xssGuard');
 const requiredText = (field, label) => [
     body(field)
         .trim()
-        .notEmpty().withMessage(`${label} обязательно`)
+        .notEmpty().withMessage(`Поле «${label}»: обязательно для заполнения`)
         .bail()
         .custom((value) => {
-            if (!isXSSFree(value)) throw new Error(`${label} содержит недопустимые символы`);
+            if (!isXSSFree(value)) throw new Error(`Поле «${label}»: содержит недопустимые символы`);
             return true;
         }),
 ];
@@ -46,7 +46,7 @@ const optionalText = (field, label) => [
     body(field).optional({ nullable: true })
         .custom((value) => {
             if (value === '' || value === null || value === undefined) return true;
-            if (!isXSSFree(value)) throw new Error(`${label} содержит недопустимые символы`);
+            if (!isXSSFree(value)) throw new Error(`Поле «${label}»: содержит недопустимые символы`);
             return true;
         }),
 ];
@@ -72,6 +72,41 @@ const optionalEndpointCoordinates = () => [
         .isFloat({ min: -90, max: 90 }).withMessage('Широта конца должна быть от -90 до 90'),
     body('longitude_end').optional({ nullable: true })
         .isFloat({ min: -180, max: 180 }).withMessage('Долгота конца должна быть от -180 до 180'),
+];
+
+/**
+ * Обязательные координаты — там, где колонки NOT NULL.
+ *
+ * Отдельно от `optionalCoordinates`, а не флагом: у источников воды и тепла
+ * широта с долготой в схеме NOT NULL, и пропуск раньше давал 500 из БД вместо
+ * 400 с указанием поля.
+ */
+const requiredCoordinates = () => [
+    body('latitude')
+        .exists({ checkNull: true }).withMessage('Широта обязательна').bail()
+        .isFloat({ min: -90, max: 90 }).withMessage('Широта должна быть числом от -90 до 90'),
+    body('longitude')
+        .exists({ checkNull: true }).withMessage('Долгота обязательна').bail()
+        .isFloat({ min: -180, max: 180 }).withMessage('Долгота должна быть числом от -180 до 180'),
+];
+
+/**
+ * Обязательное строго положительное число.
+ *
+ * Строго больше нуля, а не «неотрицательное»: в `transformers` на `power_kva`
+ * и `voltage_kv` стоят CHECK > 0, и ноль отвергала бы БД пятисоткой.
+ */
+const requiredPositiveNumber = (field, label) => [
+    body(field)
+        .exists({ checkNull: true }).withMessage(`Поле «${label}»: обязательно для заполнения`).bail()
+        .isFloat({ gt: 0 }).withMessage(`Поле «${label}»: ожидается число больше нуля`),
+];
+
+/** Обязательное неотрицательное число — колонка NOT NULL без CHECK на знак. */
+const requiredNonNegativeNumber = (field, label) => [
+    body(field)
+        .exists({ checkNull: true }).withMessage(`Поле «${label}»: обязательно для заполнения`).bail()
+        .isFloat({ min: 0 }).withMessage(`Поле «${label}»: допустимы только неотрицательные числа`),
 ];
 
 /** Неотрицательное число — для физических величин, где минус бессмыслен. */
@@ -101,6 +136,9 @@ const optionalDate = (field, label) => [
 module.exports = {
     requiredText,
     optionalText,
+    requiredCoordinates,
+    requiredPositiveNumber,
+    requiredNonNegativeNumber,
     optionalCoordinates,
     optionalEndpointCoordinates,
     optionalNonNegativeNumber,
