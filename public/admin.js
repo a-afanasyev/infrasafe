@@ -1509,7 +1509,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     deleted++;
                 } else {
                     const errorData = await response.json();
-                    const errorMsg = errorData.error || errorData.message || 'Ошибка удаления';
+                    const errorMsg = ApiError.extractApiError(errorData, 'Ошибка удаления');
                     errors.push(`${section} #${id}: ${errorMsg}`);
                     console.error(`  ❌ Ошибка удаления ${section} #${id}:`, errorMsg);
                 }
@@ -1591,7 +1591,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     updated++;
                 } else {
                     const errorData = await response.json();
-                    const errorMsg = errorData.error || errorData.message || 'Ошибка обновления';
+                    const errorMsg = ApiError.extractApiError(errorData, 'Ошибка обновления');
                     errors.push(`${section} #${id}: ${errorMsg}`);
                     console.error(`  ❌ Ошибка обновления ${section} #${id}:`, errorMsg);
                 }
@@ -1771,7 +1771,7 @@ document.addEventListener("DOMContentLoaded", function () {
                         .join('\n');
                     
                     const message = `⚠️ ВНИМАНИЕ: Невозможно удалить здание\n\n` +
-                                  `${errorData.error}\n\n` +
+                                  `${ApiError.extractApiError(errorData, 'Причина не указана')}\n\n` +
                                   `Привязанные контроллеры:\n${controllerList}\n\n` +
                                   `Выберите действие:\n` +
                                   `• ОК - Удалить здание вместе с контроллерами и всеми метриками (НЕОБРАТИМО)\n` +
@@ -1784,7 +1784,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     return;
                 }
                 
-                throw new Error(errorData.error || errorData.message || 'Ошибка удаления здания');
+                throw new Error(ApiError.extractApiError(errorData, 'Ошибка удаления здания'));
             }
 
             showToast('Здание успешно удалено', 'success');
@@ -1807,7 +1807,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || errorData.message || 'Ошибка каскадного удаления здания');
+                throw new Error(ApiError.extractApiError(errorData, 'Ошибка каскадного удаления здания'));
             }
 
             showToast('Здание и все связанные данные успешно удалены', 'success');
@@ -1969,7 +1969,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.message || 'Ошибка удаления линии водоснабжения');
+                throw new Error(ApiError.extractApiError(errorData, 'Ошибка удаления линии водоснабжения'));
             }
 
             showToast('Линия водоснабжения успешно удалена', 'success');
@@ -2726,7 +2726,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || 'Ошибка создания здания');
+                throw new Error(ApiError.extractApiError(errorData, 'Ошибка создания здания'));
             }
 
             showToast('Здание успешно добавлено', 'success');
@@ -2771,7 +2771,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || 'Ошибка создания контроллера');
+                throw new Error(ApiError.extractApiError(errorData, 'Ошибка создания контроллера'));
             }
 
             showToast('Контроллер успешно добавлен', 'success');
@@ -2824,7 +2824,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || 'Ошибка создания метрики');
+                throw new Error(ApiError.extractApiError(errorData, 'Ошибка создания метрики'));
             }
 
             showToast('Метрика успешно добавлена', 'success');
@@ -2871,7 +2871,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || 'Ошибка создания линии водоснабжения');
+                throw new Error(ApiError.extractApiError(errorData, 'Ошибка создания линии водоснабжения'));
             }
 
             showToast('Линия водоснабжения успешно добавлена', 'success');
@@ -2923,7 +2923,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || 'Ошибка создания трансформатора');
+                throw new Error(ApiError.extractApiError(errorData, 'Ошибка создания трансформатора'));
             }
 
             showToast('Трансформатор успешно добавлен', 'success');
@@ -3384,7 +3384,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 renderIntegrationConfig();
                 showToast('Настройки интеграции сохранены', 'success');
             } else {
-                showToast('Ошибка: ' + (data.message || 'Неизвестная ошибка'), 'error');
+                showToast('Ошибка: ' + ApiError.extractApiError(data, 'Неизвестная ошибка'), 'error');
             }
         } catch (error) {
             console.error('Failed to save integration config:', error);
@@ -3468,7 +3468,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 showToast(`Поле "${fieldName}" обновлено`, 'success');
                 return true;
             }
-            showToast(`Ошибка: ${data.message || 'unknown'}`, 'error');
+            showToast(`Ошибка: ${ApiError.extractApiError(data, 'неизвестная причина')}`, 'error');
             return false;
         } catch (error) {
             console.error('patchRuleField error:', error);
@@ -3510,7 +3510,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 showToast(`Правило ${newEnabled ? 'включено' : 'выключено'}`, 'success');
                 renderIntegrationRules();
             } else {
-                showToast(`Ошибка: ${data.message || 'unknown'}`, 'error');
+                showToast(`Ошибка: ${ApiError.extractApiError(data, 'неизвестная причина')}`, 'error');
                 renderIntegrationRules();
             }
         } catch (error) {
@@ -3952,7 +3952,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 showToast('Повтор запущен', 'success');
                 loadIntegrationLogs();
             } else {
-                showToast('Ошибка повтора: ' + (data.message || 'Неизвестная ошибка'), 'error');
+                showToast('Ошибка повтора: ' + ApiError.extractApiError(data, 'Неизвестная ошибка'), 'error');
             }
         } catch (error) {
             console.error('Failed to retry log:', error);

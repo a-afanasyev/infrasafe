@@ -23,6 +23,7 @@
 
 const crypto = require('crypto');
 const logger = require('../utils/logger');
+const { sendError } = require('../utils/apiResponse');
 
 // Per-envVar "already warned" tracking so multiple gates (e.g. telemetry +
 // UK inventory, if this factory is reused later) don't share one flag.
@@ -47,13 +48,13 @@ function requireServiceToken({ envVar, header }) {
 
         const provided = req.headers[header];
         if (!provided || typeof provided !== 'string') {
-            return res.status(401).json({ success: false, message: 'Service token required' });
+            return sendError(res, 401, 'Service token required');
         }
 
         const expectedBuf = Buffer.from(expected);
         const providedBuf = Buffer.from(provided);
         if (expectedBuf.length !== providedBuf.length || !crypto.timingSafeEqual(expectedBuf, providedBuf)) {
-            return res.status(401).json({ success: false, message: 'Invalid service token' });
+            return sendError(res, 401, 'Invalid service token');
         }
 
         next();

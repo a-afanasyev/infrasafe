@@ -829,7 +829,7 @@ class InfrastructureLineEditor {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || 'Ошибка сохранения линии');
+                throw new Error(ApiError.extractApiError(errorData, 'Ошибка сохранения линии'));
             }
 
             const result = await response.json();

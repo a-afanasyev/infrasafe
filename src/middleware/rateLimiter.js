@@ -1,5 +1,6 @@
 const logger = require('../utils/logger');
 const redisClient = require('../utils/redisClient');
+const { sendError } = require('../utils/apiResponse');
 
 // [Sprint 4] Hybrid rate-limiter: Redis-backed when REDIS_URL is set
 // (multi-replica safe), in-memory Map when not (single-replica only).
@@ -170,17 +171,23 @@ class SimpleRateLimiter {
             if (hitData.hits > this.max) {
                 logger.warn(`Rate limit exceeded for ${key}: ${hitData.hits}/${this.max}`);
 
-                res.set('Retry-After', Math.ceil(msUntilReset / 1000));
+                const retryAfter = Math.ceil(msUntilReset / 1000);
+                res.set('Retry-After', retryAfter);
 
-                return res.status(429).json({
-                    success: false,
-                    message: this.message,
-                    error: 'RATE_LIMIT_EXCEEDED',
-                    limit: this.max,
-                    current: hitData.hits,
-                    remaining: remaining,
-                    reset_time: new Date(hitData.resetTime).toISOString(),
-                    retry_after_seconds: Math.ceil(msUntilReset / 1000)
+                // [AR-4] Канонический конверт. Прежняя форма клала в ключ `error`
+                // СТРОКУ-код, тогда как в каноне `error` — объект: один ключ в двух
+                // несовместимых формах, из-за чего фронт и гадал, что ему прислали.
+                // Код переехал в `error.code`, машинные подробности — в `error.meta`,
+                // человеку по-прежнему показывается `error.message`.
+                return sendError(res, 429, this.message, {
+                    code: 'RATE_LIMIT_EXCEEDED',
+                    meta: {
+                        limit: this.max,
+                        current: hitData.hits,
+                        remaining,
+                        resetTime: new Date(hitData.resetTime).toISOString(),
+                        retryAfter
+                    }
                 });
             }
 

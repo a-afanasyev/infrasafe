@@ -3,6 +3,7 @@ const logger = require('../../utils/logger');
 const { createError } = require('../../utils/helpers');
 const { buildPaginatedList } = require('../../utils/adminQueryBuilder');
 const adminService = require('../../services/adminService');
+const { sendSuccess } = require('../../utils/apiResponse');
 
 /**
  * Admin metric operations: optimized list + batch stub.
@@ -26,7 +27,10 @@ const LIST_CONFIG = {
 async function getOptimizedMetrics(req, res, next) {
     try {
         const result = await buildPaginatedList(pool, LIST_CONFIG, req);
-        res.json(result);
+        // [AR-4] Раньше уходило `{data, pagination}` без `success` — пятая форма
+        // конверта, которую потребитель узнавал по отсутствию ключа. Изменение
+        // аддитивное: путь чтения `body.data` на фронте не меняется.
+        sendSuccess(res, result.data, { pagination: result.pagination });
     } catch (error) {
         logger.error(`Error in getOptimizedMetrics: ${error.message}`);
         next(createError('Internal server error', 500));

@@ -5,7 +5,15 @@ const { isAdmin } = require('../middleware/auth');
 // [R2-16] Общий guard на :id — без него нечисловой id доходит до pg и даёт 500
 // вместо 400. Ставится ПОСЛЕ rateLimitStrict (лимитер защищает эндпоинт первым)
 // и ПЕРЕД контроллером, как в waterLineRoutes.
-const { validateIdParam } = require('../middleware/validators');
+const {
+    validateIdParam,
+    // [AR-10] схемная валидация тел — раньше эти пять POST принимали любое тело
+    validateTransformerCreate,
+    validateLineCreate,
+    validateWaterLineCreate,
+    validateColdWaterSourceCreate,
+    validateHeatSourceCreate,
+} = require('../middleware/validators');
 
 const router = express.Router();
 
@@ -462,7 +470,7 @@ router.get('/stats', adminController.getAdminStats);
  *         description: Трансформатор создан
  */
 router.get('/transformers', adminController.getOptimizedTransformers);
-router.post('/transformers', rateLimitStrict, adminController.createTransformer);
+router.post('/transformers', rateLimitStrict, validateTransformerCreate, adminController.createTransformer);
 
 /**
  * @swagger
@@ -656,7 +664,7 @@ router.post('/transformers/batch', rateLimitStrict, adminController.batchTransfo
  *         description: Линия создана
  */
 router.get('/lines', adminController.getOptimizedLines);
-router.post('/lines', rateLimitStrict, adminController.createLine);
+router.post('/lines', rateLimitStrict, validateLineCreate, adminController.createLine);
 
 /**
  * @swagger
@@ -848,7 +856,7 @@ router.post('/lines/batch', rateLimitStrict, adminController.batchLinesOperation
  *         description: Линия водоснабжения создана
  */
 router.get('/water-lines', adminController.getOptimizedWaterLines);
-router.post('/water-lines', rateLimitStrict, adminController.createWaterLine);
+router.post('/water-lines', rateLimitStrict, validateWaterLineCreate, adminController.createWaterLine);
 
 /**
  * @swagger
@@ -952,7 +960,7 @@ router.post('/water-lines/batch', rateLimitStrict, adminController.batchWaterLin
 // ===============================================
 
 router.get('/cold-water-sources', adminController.getOptimizedColdWaterSources);
-router.post('/cold-water-sources', rateLimitStrict, adminController.createColdWaterSource);
+router.post('/cold-water-sources', rateLimitStrict, validateColdWaterSourceCreate, adminController.createColdWaterSource);
 router.get('/cold-water-sources/:id', validateIdParam, adminController.getColdWaterSourceById);
 router.put('/cold-water-sources/:id', rateLimitStrict, validateIdParam, adminController.updateColdWaterSource);
 router.delete('/cold-water-sources/:id', rateLimitStrict, validateIdParam, adminController.deleteColdWaterSource);
@@ -962,7 +970,7 @@ router.delete('/cold-water-sources/:id', rateLimitStrict, validateIdParam, admin
 // ===============================================
 
 router.get('/heat-sources', adminController.getOptimizedHeatSources);
-router.post('/heat-sources', rateLimitStrict, adminController.createHeatSource);
+router.post('/heat-sources', rateLimitStrict, validateHeatSourceCreate, adminController.createHeatSource);
 router.get('/heat-sources/:id', validateIdParam, adminController.getHeatSourceById);
 router.put('/heat-sources/:id', rateLimitStrict, validateIdParam, adminController.updateHeatSource);
 router.delete('/heat-sources/:id', rateLimitStrict, validateIdParam, adminController.deleteHeatSource);

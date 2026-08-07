@@ -243,7 +243,7 @@ describe('Phase 1: 2FA Security Hardening', () => {
 
                 expect(res.status).toHaveBeenCalledWith(401);
                 expect(res.json).toHaveBeenCalledWith(
-                    expect.objectContaining({ message: 'Temporary token has already been used' })
+                    expect.objectContaining({ error: expect.objectContaining({ message: 'Temporary token has already been used' }) })
                 );
                 expect(next).not.toHaveBeenCalled();
             });
@@ -272,7 +272,7 @@ describe('Phase 1: 2FA Security Hardening', () => {
                 expect(res.set).toHaveBeenCalledWith('Retry-After', '30');
                 expect(res.status).toHaveBeenCalledWith(503);
                 expect(res.json).toHaveBeenCalledWith(
-                    expect.objectContaining({ message: 'Service temporarily unavailable' })
+                    expect.objectContaining({ error: expect.objectContaining({ message: 'Service temporarily unavailable' }) })
                 );
                 expect(next).not.toHaveBeenCalled();
             });

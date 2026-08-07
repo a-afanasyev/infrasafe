@@ -1,4 +1,5 @@
 const analyticsService = require('../services/analyticsService');
+const { sendError } = require('../utils/apiResponse');
 
 class AnalyticsController {
 
@@ -8,10 +9,7 @@ class AnalyticsController {
             const { transformerId } = req.params;
 
             if (!transformerId) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'ID трансформатора обязателен'
-                });
+                return sendError(res, 400, 'ID трансформатора обязателен');
             }
 
             const loadData = await analyticsService.getTransformerLoad(transformerId);
@@ -100,10 +98,7 @@ class AnalyticsController {
             const { latitude, longitude, radius } = req.query;
 
             if (!latitude || !longitude) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Координаты latitude и longitude обязательны'
-                });
+                return sendError(res, 400, 'Координаты latitude и longitude обязательны');
             }
 
             const lat = parseFloat(latitude);
@@ -112,10 +107,7 @@ class AnalyticsController {
 
             // [R2-16] Include radius in the guard — a NaN radius would reach pg (500).
             if (isNaN(lat) || isNaN(lng) || isNaN(radiusMeters)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Некорректные координаты или радиус'
-                });
+                return sendError(res, 400, 'Некорректные координаты или радиус');
             }
 
             const transformers = await analyticsService.findTransformersInRadius(lat, lng, radiusMeters);
@@ -147,10 +139,7 @@ class AnalyticsController {
 
             // [R2-16] Reject non-numeric query params before they reach pg (500).
             if (Number.isNaN(maxDistance) || Number.isNaN(limitCount)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'max_distance и limit должны быть числами'
-                });
+                return sendError(res, 400, 'max_distance и limit должны быть числами');
             }
 
             const buildings = await analyticsService.findNearestBuildings(
@@ -201,10 +190,7 @@ class AnalyticsController {
 
             // [R2-16] isNaN first — a NaN slips through `< 1 || > 168` (both false).
             if (Number.isNaN(forecastHours) || forecastHours < 1 || forecastHours > 168) { // Максимум неделя
-                return res.status(400).json({
-                    success: false,
-                    message: 'Количество часов должно быть от 1 до 168'
-                });
+                return sendError(res, 400, 'Количество часов должно быть от 1 до 168');
             }
 
             const forecast = await analyticsService.getPeakLoadForecast(transformerId, forecastHours);
@@ -305,10 +291,7 @@ class AnalyticsController {
             const { thresholds } = req.body;
 
             if (!thresholds || typeof thresholds !== 'object') {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Некорректные данные порогов'
-                });
+                return sendError(res, 400, 'Некорректные данные порогов');
             }
 
             analyticsService.updateThresholds(thresholds);

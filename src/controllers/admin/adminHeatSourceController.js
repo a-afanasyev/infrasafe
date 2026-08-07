@@ -4,6 +4,7 @@ const { createError } = require('../../utils/helpers');
 const { buildPaginatedList } = require('../../utils/adminQueryBuilder');
 const { buildUpdateQuery } = require('../../utils/dynamicUpdateBuilder');
 const HeatSource = require('../../models/HeatSource');
+const { sendSuccess } = require('../../utils/apiResponse');
 
 /**
  * Admin heat-source operations: optimized list, full CRUD.
@@ -25,7 +26,10 @@ const LIST_CONFIG = {
 async function getOptimizedHeatSources(req, res, next) {
     try {
         const result = await buildPaginatedList(pool, LIST_CONFIG, req);
-        res.json(result);
+        // [AR-4] Раньше уходило `{data, pagination}` без `success` — пятая форма
+        // конверта, которую потребитель узнавал по отсутствию ключа. Изменение
+        // аддитивное: путь чтения `body.data` на фронте не меняется.
+        sendSuccess(res, result.data, { pagination: result.pagination });
     } catch (error) {
         logger.error(`Error in getOptimizedHeatSources: ${error.message}`);
         next(createError('Internal server error', 500));

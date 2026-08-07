@@ -4,6 +4,7 @@ const logger = require('../utils/logger');
 const authService = require('../services/authService');
 // [P1-2] Read access/refresh tokens from cookies if header/body absent.
 const { extractAccessToken, extractRefreshToken } = require('../utils/authCookies');
+const { sendError } = require('../utils/apiResponse');
 
 // KISS-003: promisified jwt.verify — single try/catch catches all errors
 const verifyJwt = promisify(jwt.verify);
@@ -24,10 +25,7 @@ function mapUserToReqUser(user) {
 // to retry rather than treat this as an auth failure or a bug.
 function sendBlacklistUnavailable(res) {
     res.set('Retry-After', '30');
-    return res.status(503).json({
-        success: false,
-        message: 'Service temporarily unavailable'
-    });
+    return sendError(res, 503, 'Service temporarily unavailable');
 }
 
 // Проверка JWT токена с проверкой черного списка
@@ -37,28 +35,19 @@ const authenticateJWT = async (req, res, next) => {
         const token = extractAccessToken(req);
 
         if (!token) {
-            return res.status(401).json({
-                success: false,
-                message: 'Access token is missing'
-            });
+            return sendError(res, 401, 'Access token is missing');
         }
 
         // Проверка токена на черном списке
         const isBlacklisted = await authService.isTokenBlacklisted(token);
         if (isBlacklisted) {
             logger.warn(`Попытка использования токена из черного списка`);
-            return res.status(401).json({
-                success: false,
-                message: 'Token has been revoked'
-            });
+            return sendError(res, 401, 'Token has been revoked');
         }
 
         if (!process.env.JWT_SECRET) {
             logger.error('JWT_SECRET is not defined in environment variables');
-            return res.status(500).json({
-                success: false,
-                message: 'Internal server configuration error'
-            });
+            return sendError(res, 500, 'Internal server configuration error');
         }
 
         const decoded = await verifyJwt(token, process.env.JWT_SECRET, {
@@ -76,10 +65,7 @@ const authenticateJWT = async (req, res, next) => {
         // NO scope.
         if (decoded.scope) {
             logger.warn(`Scoped token (scope=${decoded.scope}) rejected on access-token route`);
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid or expired token'
-            });
+            return sendError(res, 401, 'Invalid or expired token');
         }
 
         // H-1/H-2: uncached PK read — a lockout or deactivation must be
@@ -87,34 +73,22 @@ const authenticateJWT = async (req, res, next) => {
         // 5-min cache.
         const user = await authService.getUserForAuth(decoded.user_id);
         if (!user) {
-            return res.status(401).json({
-                success: false,
-                message: 'User not found'
-            });
+            return sendError(res, 401, 'User not found');
         }
 
         // H-2: deactivated user — generic message, do not leak account state.
         if (user.is_active === false) {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid or expired token'
-            });
+            return sendError(res, 401, 'Invalid or expired token');
         }
 
         // Phase 13: reject tokens issued before the user's most recent password change
         if (authService._isIssuedBeforeCutoff(decoded, user)) {
             logger.warn(`Stale token rejected for user ${user.user_id} — issued before password change`);
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid or expired token'
-            });
+            return sendError(res, 401, 'Invalid or expired token');
         }
 
         if (user.account_locked_until && new Date(user.account_locked_until) > new Date()) {
-            return res.status(401).json({
-                success: false,
-                message: 'Account is locked'
-            });
+            return sendError(res, 401, 'Account is locked');
         }
 
         req.user = mapUserToReqUser(user);
@@ -126,16 +100,10 @@ const authenticateJWT = async (req, res, next) => {
         }
         if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
             logger.warn(`Неудачная попытка аутентификации: ${error.message}`);
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid or expired token'
-            });
+            return sendError(res, 401, 'Invalid or expired token');
         }
         logger.error(`Ошибка middleware аутентификации: ${error.message}`);
-        return res.status(500).json({
-            success: false,
-            message: 'Internal server error'
-        });
+        return sendError(res, 500, 'Internal server error');
     }
 };
 
@@ -143,10 +111,7 @@ const authenticateJWT = async (req, res, next) => {
 const isAdmin = (req, res, next) => {
     if (!req.user || req.user.role !== 'admin') {
         logger.warn(`Попытка доступа к админ-ресурсу без достаточных прав: ${req.originalUrl}, пользователь: ${req.user?.username || 'anonymous'}`);
-        return res.status(403).json({
-            success: false,
-            message: 'Requires admin privileges'
-        });
+        return sendError(res, 403, 'Requires admin privileges');
     }
     next();
 };
@@ -158,27 +123,18 @@ const authenticateRefresh = async (req, res, next) => {
         const refreshToken = extractRefreshToken(req);
 
         if (!refreshToken) {
-            return res.status(400).json({
-                success: false,
-                message: 'Refresh token is required'
-            });
+            return sendError(res, 400, 'Refresh token is required');
         }
 
         const isBlacklisted = await authService.isTokenBlacklisted(refreshToken);
         if (isBlacklisted) {
             logger.warn(`Попытка использования refresh токена из черного списка`);
-            return res.status(401).json({
-                success: false,
-                message: 'Refresh token has been revoked'
-            });
+            return sendError(res, 401, 'Refresh token has been revoked');
         }
 
         if (!process.env.JWT_REFRESH_SECRET) {
             logger.error('JWT_REFRESH_SECRET is not defined in environment variables');
-            return res.status(500).json({
-                success: false,
-                message: 'Internal server configuration error'
-            });
+            return sendError(res, 500, 'Internal server configuration error');
         }
 
         const decoded = await verifyJwt(refreshToken, process.env.JWT_REFRESH_SECRET, {
@@ -191,43 +147,28 @@ const authenticateRefresh = async (req, res, next) => {
         // type:'refresh'; reject anything else verified with this secret.
         if (decoded.type !== 'refresh') {
             logger.warn(`Refresh token missing type:'refresh' claim rejected`);
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid or expired refresh token'
-            });
+            return sendError(res, 401, 'Invalid or expired refresh token');
         }
 
         // H-1/H-2: uncached PK read — see authenticateJWT.
         const user = await authService.getUserForAuth(decoded.user_id);
         if (!user) {
-            return res.status(401).json({
-                success: false,
-                message: 'User not found'
-            });
+            return sendError(res, 401, 'User not found');
         }
 
         // H-2: deactivated user — generic message, do not leak account state.
         if (user.is_active === false) {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid or expired refresh token'
-            });
+            return sendError(res, 401, 'Invalid or expired refresh token');
         }
 
         // Phase 13: reject refresh tokens issued before the user's password change
         if (authService._isIssuedBeforeCutoff(decoded, user)) {
             logger.warn(`Stale refresh token rejected for user ${user.user_id}`);
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid or expired refresh token'
-            });
+            return sendError(res, 401, 'Invalid or expired refresh token');
         }
 
         if (user.account_locked_until && new Date(user.account_locked_until) > new Date()) {
-            return res.status(401).json({
-                success: false,
-                message: 'Account is locked'
-            });
+            return sendError(res, 401, 'Account is locked');
         }
 
         req.user = mapUserToReqUser(user);
@@ -239,16 +180,10 @@ const authenticateRefresh = async (req, res, next) => {
         }
         if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
             logger.warn(`Неудачная попытка обновления токена: ${error.message}`);
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid or expired refresh token'
-            });
+            return sendError(res, 401, 'Invalid or expired refresh token');
         }
         logger.error(`Ошибка middleware refresh токена: ${error.message}`);
-        return res.status(500).json({
-            success: false,
-            message: 'Internal server error'
-        });
+        return sendError(res, 500, 'Internal server error');
     }
 };
 
@@ -321,19 +256,13 @@ const authenticateTempToken = async (req, res, next) => {
         const { tempToken } = req.body;
 
         if (!tempToken) {
-            return res.status(400).json({
-                success: false,
-                message: 'Temporary token is required'
-            });
+            return sendError(res, 400, 'Temporary token is required');
         }
 
         // Check if tempToken has already been used
         const isBlacklisted = await authService.isTokenBlacklisted(tempToken);
         if (isBlacklisted) {
-            return res.status(401).json({
-                success: false,
-                message: 'Temporary token has already been used'
-            });
+            return sendError(res, 401, 'Temporary token has already been used');
         }
 
         const decoded = await authService.verifyTempToken(tempToken);
@@ -345,10 +274,7 @@ const authenticateTempToken = async (req, res, next) => {
             return sendBlacklistUnavailable(res);
         }
         logger.warn(`Invalid temp token: ${error.message}`);
-        return res.status(401).json({
-            success: false,
-            message: 'Invalid or expired temporary token'
-        });
+        return sendError(res, 401, 'Invalid or expired temporary token');
     }
 };
 

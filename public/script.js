@@ -280,7 +280,11 @@ document.addEventListener('DOMContentLoaded', async function () {
                             const errorJson = window.safeJsonParser 
                                 ? window.safeJsonParser.parseString(errorText)
                                 : JSON.parse(errorText);
-                            errorMessage = errorJson.message || errorJson.error || errorMessage;
+                            // [AR-4] через общий разбор: `error` в каноне — объект,
+                            // и прежняя лесенка подставляла в текст «[object Object]».
+                            errorMessage = window.ApiError
+                                ? window.ApiError.extractApiError(errorJson, errorMessage)
+                                : errorMessage;
                         } catch (e) {
                             // Если не JSON, используем текст ошибки (ограниченный)
                             if (errorText) {
@@ -2071,6 +2075,19 @@ document.addEventListener('DOMContentLoaded', async function () {
         if (el) { el.textContent = msg; el.style.display = 'block'; }
     }
 
+    // [AR-4] Разбор конверта ошибки для модалки входа с карты.
+    //
+    // Здесь оставалась лесенка `data.message || data.error`, и после канонизации
+    // она ломалась ровно там, где текст нужнее всего: лимитер теперь отдаёт
+    // `error` ОБЪЕКТОМ, `message` наверху нет — и оператор, упёршийся в 429 при
+    // входе, видел «[object Object]» вместо причины. Ошибки самого authController
+    // пока в старой форме (`{error:'строка'}`), общий разбор понимает и её.
+    //
+    // Откат на запасной текст, а не голый вызов: эти места внутри try/catch, где
+    // исключение подменило бы причину на «Ошибка подключения».
+    const mapErrorText = (body, fallback) =>
+        window.ApiError ? window.ApiError.extractApiError(body, fallback) : fallback;
+
     function hideMapErrors() {
         ['map-login-error', 'map-2fa-error', 'map-setup-error'].forEach(id => {
             const el = document.getElementById(id);
@@ -2143,13 +2160,13 @@ document.addEventListener('DOMContentLoaded', async function () {
                         showMapLoginStep('setup');
                         document.getElementById('map-confirm-code').focus();
                     } else {
-                        showMapError('map-login-error', setupData.message || 'Ошибка настройки 2FA');
+                        showMapError('map-login-error', mapErrorText(setupData, 'Ошибка настройки 2FA'));
                     }
                 } else if (response.ok && data.success) {
                     // No 2FA path — user без 2FA, server already issued the auth cookies.
                     await completeMapLogin(data);
                 } else {
-                    showMapError('map-login-error', data.message || data.error || 'Неверные учетные данные');
+                    showMapError('map-login-error', mapErrorText(data, 'Неверные учетные данные'));
                 }
             } catch (err) {
                 showMapError('map-login-error', 'Ошибка подключения к серверу');
@@ -2176,7 +2193,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 if (res.ok && data.success) {
                     await completeMapLogin(data);
                 } else {
-                    showMapError('map-2fa-error', data.message || data.error || 'Неверный код');
+                    showMapError('map-2fa-error', mapErrorText(data, 'Неверный код'));
                     document.getElementById('map-2fa-code').value = '';
                     document.getElementById('map-2fa-code').focus();
                 }
@@ -2209,7 +2226,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 if (res.ok && data.success) {
                     await completeMapLogin(data);
                 } else {
-                    showMapError('map-setup-error', data.message || data.error || 'Неверный код');
+                    showMapError('map-setup-error', mapErrorText(data, 'Неверный код'));
                     document.getElementById('map-confirm-code').value = '';
                     document.getElementById('map-confirm-code').focus();
                 }

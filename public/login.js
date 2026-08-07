@@ -93,7 +93,7 @@
                     // [R2-12] Shared POST-JSON boilerplate; branching unchanged.
                     const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.login, { username, password });
 
-                    if (!res.ok) throw new Error(data.message || data.error || 'Ошибка авторизации');
+                    if (!res.ok) throw new Error(ApiError.extractApiError(data, 'Ошибка авторизации'));
 
                     if (data.requires2FA) {
                         // 2FA enabled — show code input
@@ -138,7 +138,7 @@
 
                 try {
                     const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.verify2fa, { tempToken: this.tempToken, code });
-                    if (!res.ok) throw new Error(data.message || data.error || 'Неверный код');
+                    if (!res.ok) throw new Error(ApiError.extractApiError(data, 'Неверный код'));
                     this.completeLogin(data);
                 } catch (err) {
                     this.showError('totp-error-container', normalizeError(err.message));
@@ -154,7 +154,7 @@
         async loadSetup() {
             try {
                 const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.setup2fa, { tempToken: this.tempToken });
-                if (!res.ok) throw new Error(data.message || data.error || 'Ошибка настройки 2FA');
+                if (!res.ok) throw new Error(ApiError.extractApiError(data, 'Ошибка настройки 2FA'));
 
                 // [R2-12] QR data-URI validation single-sourced in AuthFlow — a
                 // security check (gates img.src); it must not drift between the
@@ -185,7 +185,7 @@
 
                 try {
                     const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.confirm2fa, { tempToken: this.tempToken, code });
-                    if (!res.ok) throw new Error(data.message || data.error || 'Неверный код');
+                    if (!res.ok) throw new Error(ApiError.extractApiError(data, 'Неверный код'));
                     this.completeLogin(data);
                 } catch (err) {
                     this.showError('setup-error-container', normalizeError(err.message));

@@ -1,13 +1,10 @@
-const { body, param, validationResult } = require('express-validator');
-
-// Обработка результатов валидации
-const handleValidationErrors = (req, res, next) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-    }
-    next();
-};
+const { body, param } = require('express-validator');
+// [AR-4] Канонический ответ на ошибку валидации живёт отдельным модулем —
+// он общий с entityValidators.js, и держать его здесь значило замкнуть цикл.
+const { handleValidationErrors } = require('./validationResultHandler');
+// [AR-10] Схемы остальных сущностей живут в entityValidators.js и
+// реэкспортируются отсюда: точка подключения у маршрутов остаётся одна.
+const entityValidators = require('./entityValidators');
 
 // Валидация для создания/обновления здания
 const validateBuildingCreate = [
@@ -20,29 +17,7 @@ const validateBuildingCreate = [
     handleValidationErrors
 ];
 
-// Функция для проверки XSS.
-// SEC-10: заменён прежний паттерн с вложенным квантификатором
-// (/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/) — он давал
-// катастрофический backtracking (ReDoS, ~2.2s на 15k символов).
-// Все паттерны ниже линейны по времени и не содержат вложенных квантификаторов:
-// детектируем сам опасный токен (открывающий тег / javascript: / on-handler),
-// а не полностью сбалансированную пару тегов. Контракт truthy/falsy сохранён —
-// функция возвращает true только если ни один опасный токен не найден.
-const XSS_PATTERNS = [
-    /<\s*script\b/i,   // открывающий тег <script (с возможным пробелом)
-    /<\s*iframe\b/i,
-    /<\s*object\b/i,
-    /<\s*embed\b/i,
-    /javascript:/i,
-    /\bon\w+\s*=/i      // inline event-handler, напр. onerror=, onload=
-];
-
-const isXSSFree = (value) => {
-    if (typeof value !== 'string') {
-        return true;
-    }
-    return !XSS_PATTERNS.some(pattern => pattern.test(value));
-};
+const { isXSSFree } = require('./xssGuard');
 
 // Валидация для создания/обновления контроллера
 const validateControllerCreate = [
@@ -94,5 +69,7 @@ module.exports = {
     validateControllerCreate,
     validateIdParam,
     validateIntParam,
-    isXSSFree
+    handleValidationErrors,
+    isXSSFree,
+    ...entityValidators
 };

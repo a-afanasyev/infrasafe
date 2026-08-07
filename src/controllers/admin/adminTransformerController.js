@@ -5,6 +5,7 @@ const { buildPaginatedList } = require('../../utils/adminQueryBuilder');
 const { buildUpdateQuery } = require('../../utils/dynamicUpdateBuilder');
 const adminService = require('../../services/adminService');
 const Transformer = require('../../models/Transformer');
+const { sendSuccess } = require('../../utils/apiResponse');
 
 /**
  * Admin transformer operations: optimized list, full CRUD, batch ops.
@@ -37,7 +38,10 @@ const LIST_CONFIG = {
 async function getOptimizedTransformers(req, res, next) {
     try {
         const result = await buildPaginatedList(pool, LIST_CONFIG, req);
-        res.json(result);
+        // [AR-4] Раньше уходило `{data, pagination}` без `success` — пятая форма
+        // конверта, которую потребитель узнавал по отсутствию ключа. Изменение
+        // аддитивное: путь чтения `body.data` на фронте не меняется.
+        sendSuccess(res, result.data, { pagination: result.pagination });
     } catch (error) {
         logger.error(`Error in getOptimizedTransformers: ${error.message}`);
         next(createError('Internal server error', 500));

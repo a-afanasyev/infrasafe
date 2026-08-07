@@ -29,12 +29,17 @@ const { isValidDirection, isValidStatus, isValidEntityType } = require('../../..
 const ukIntegrationService = require('../../../src/services/ukIntegrationService');
 const IntegrationLog = require('../../../src/models/IntegrationLog');
 const AlertRule = require('../../../src/models/AlertRule');
-const { handlers } = require('../../../src/routes/integrationRoutes');
+// [AR-12] Обработчики переехали в контроллерный слой; роут-файл теперь
+// только карта маршрутов.
+const handlers = require('../../../src/controllers/integrationController');
 
 function createMockReqRes(body = {}, query = {}, params = {}) {
     const req = { body, query, params, user: { role: 'admin' } };
     const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
-    return { req, res };
+    // [AR-12] next нужен всем обработчикам: непредвиденная ошибка теперь
+    // пробрасывается туда, а не превращается в собственную 500.
+    const next = jest.fn();
+    return { req, res, next };
 }
 
 describe('integrationRoutes handlers', () => {
@@ -54,8 +59,8 @@ describe('integrationRoutes handlers', () => {
             };
             ukIntegrationService.getConfig.mockResolvedValue(mockConfig);
 
-            const { req, res } = createMockReqRes();
-            await handlers.getConfig(req, res);
+            const { req, res, next } = createMockReqRes();
+            await handlers.getConfig(req, res, next);
 
             expect(ukIntegrationService.getConfig).toHaveBeenCalledTimes(1);
             expect(res.json).toHaveBeenCalledWith({ success: true, data: mockConfig });
@@ -65,11 +70,12 @@ describe('integrationRoutes handlers', () => {
         test('returns 500 when getConfig throws', async () => {
             ukIntegrationService.getConfig.mockRejectedValue(new Error('DB error'));
 
-            const { req, res } = createMockReqRes();
-            await handlers.getConfig(req, res);
+            const { req, res, next } = createMockReqRes();
+            await handlers.getConfig(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
-            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
+            // [AR-12] Ошибка уходит в errorHandler через next, а не отвечается здесь.
+            expect(next).toHaveBeenCalledWith(expect.any(Error));
+            expect(res.status).not.toHaveBeenCalledWith(500);
         });
     });
 
@@ -82,8 +88,8 @@ describe('integrationRoutes handlers', () => {
             ukIntegrationService.updateConfig.mockResolvedValue(undefined);
             ukIntegrationService.getConfig.mockResolvedValue(updatedConfig);
 
-            const { req, res } = createMockReqRes({ uk_integration_enabled: 'true' });
-            await handlers.updateConfig(req, res);
+            const { req, res, next } = createMockReqRes({ uk_integration_enabled: 'true' });
+            await handlers.updateConfig(req, res, next);
 
             expect(ukIntegrationService.updateConfig).toHaveBeenCalledWith({ uk_integration_enabled: 'true' });
             expect(ukIntegrationService.getConfig).toHaveBeenCalledTimes(1);
@@ -99,23 +105,27 @@ describe('integrationRoutes handlers', () => {
                 new Error('Cannot update this setting via API')
             );
 
-            const { req, res } = createMockReqRes({ uk_webhook_secret: 'new-secret' });
-            await handlers.updateConfig(req, res);
+            const { req, res, next } = createMockReqRes({ uk_webhook_secret: 'new-secret' });
+            await handlers.updateConfig(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(400);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({ success: false, message: expect.stringContaining('Cannot update this setting') })
+                expect.objectContaining({
+                    success: false,
+                    error: expect.objectContaining({ message: expect.stringContaining('Cannot update this setting') })
+                })
             );
         });
 
         test('returns 500 on unexpected error', async () => {
             ukIntegrationService.updateConfig.mockRejectedValue(new Error('DB connection lost'));
 
-            const { req, res } = createMockReqRes({ uk_api_url: 'https://example.com' });
-            await handlers.updateConfig(req, res);
+            const { req, res, next } = createMockReqRes({ uk_api_url: 'https://example.com' });
+            await handlers.updateConfig(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
-            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
+            // [AR-12] Ошибка уходит в errorHandler через next, а не отвечается здесь.
+            expect(next).toHaveBeenCalledWith(expect.any(Error));
+            expect(res.status).not.toHaveBeenCalledWith(500);
         });
     });
 
@@ -133,11 +143,11 @@ describe('integrationRoutes handlers', () => {
             const mockResult = { logs: [{ id: 1 }, { id: 2 }], total: 2 };
             IntegrationLog.findAll.mockResolvedValue(mockResult);
 
-            const { req, res } = createMockReqRes(
+            const { req, res, next } = createMockReqRes(
                 {},
                 { page: '2', limit: '10', direction: 'from_uk', status: 'success' }
             );
-            await handlers.getLogs(req, res);
+            await handlers.getLogs(req, res, next);
 
             expect(IntegrationLog.findAll).toHaveBeenCalledWith(
                 expect.objectContaining({ page: 2, limit: 10, direction: 'from_uk', status: 'success' })
@@ -148,21 +158,23 @@ describe('integrationRoutes handlers', () => {
         test('returns 500 when findAll throws', async () => {
             IntegrationLog.findAll.mockRejectedValue(new Error('DB error'));
 
-            const { req, res } = createMockReqRes({}, {});
-            await handlers.getLogs(req, res);
+            const { req, res, next } = createMockReqRes({}, {});
+            await handlers.getLogs(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
-            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
+            // [AR-12] Ошибка уходит в errorHandler через next, а не отвечается здесь.
+            expect(next).toHaveBeenCalledWith(expect.any(Error));
+            expect(res.status).not.toHaveBeenCalledWith(500);
         });
 
         it('rejects invalid direction filter with 400', async () => {
             isValidDirection.mockReturnValue(false);
             const req = { query: { direction: 'INVALID' } };
             const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
-            await handlers.getLogs(req, res);
+            const next = jest.fn();
+            await handlers.getLogs(req, res, next);
             expect(res.status).toHaveBeenCalledWith(400);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({ message: 'Invalid direction filter' })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'Invalid direction filter' }) })
             );
         });
 
@@ -170,7 +182,8 @@ describe('integrationRoutes handlers', () => {
             isValidStatus.mockReturnValue(false);
             const req = { query: { status: 'hacked' } };
             const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
-            await handlers.getLogs(req, res);
+            const next = jest.fn();
+            await handlers.getLogs(req, res, next);
             expect(res.status).toHaveBeenCalledWith(400);
         });
 
@@ -178,27 +191,30 @@ describe('integrationRoutes handlers', () => {
             isValidEntityType.mockReturnValue(false);
             const req = { query: { entity_type: 'user' } };
             const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
-            await handlers.getLogs(req, res);
+            const next = jest.fn();
+            await handlers.getLogs(req, res, next);
             expect(res.status).toHaveBeenCalledWith(400);
         });
 
         it('rejects invalid date_from with 400', async () => {
             const req = { query: { date_from: 'not-a-date' } };
             const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
-            await handlers.getLogs(req, res);
+            const next = jest.fn();
+            await handlers.getLogs(req, res, next);
             expect(res.status).toHaveBeenCalledWith(400);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({ message: 'Invalid date_from format' })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'Invalid date_from format' }) })
             );
         });
 
         it('rejects invalid date_to with 400', async () => {
             const req = { query: { date_to: 'xyz' } };
             const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
-            await handlers.getLogs(req, res);
+            const next = jest.fn();
+            await handlers.getLogs(req, res, next);
             expect(res.status).toHaveBeenCalledWith(400);
             expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({ message: 'Invalid date_to format' })
+                expect.objectContaining({ error: expect.objectContaining({ message: 'Invalid date_to format' }) })
             );
         });
     });
@@ -211,8 +227,8 @@ describe('integrationRoutes handlers', () => {
             const mockLog = { id: 5, status: 'success', direction: 'inbound' };
             IntegrationLog.findById.mockResolvedValue(mockLog);
 
-            const { req, res } = createMockReqRes({}, {}, { id: '5' });
-            await handlers.getLogById(req, res);
+            const { req, res, next } = createMockReqRes({}, {}, { id: '5' });
+            await handlers.getLogById(req, res, next);
 
             expect(IntegrationLog.findById).toHaveBeenCalledWith(5);
             expect(res.json).toHaveBeenCalledWith({ success: true, data: mockLog });
@@ -221,8 +237,8 @@ describe('integrationRoutes handlers', () => {
         test('returns 404 when log is not found', async () => {
             IntegrationLog.findById.mockResolvedValue(null);
 
-            const { req, res } = createMockReqRes({}, {}, { id: '999' });
-            await handlers.getLogById(req, res);
+            const { req, res, next } = createMockReqRes({}, {}, { id: '999' });
+            await handlers.getLogById(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(404);
             expect(res.json).toHaveBeenCalledWith(
@@ -241,8 +257,8 @@ describe('integrationRoutes handlers', () => {
             IntegrationLog.updateStatus.mockResolvedValue({ id: 3, status: 'pending' });
             IntegrationLog.incrementRetry.mockResolvedValue({ id: 3, retry_count: 1 });
 
-            const { req, res } = createMockReqRes({}, {}, { id: '3' });
-            await handlers.retryLog(req, res);
+            const { req, res, next } = createMockReqRes({}, {}, { id: '3' });
+            await handlers.retryLog(req, res, next);
 
             expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(3, 'pending');
             expect(IntegrationLog.incrementRetry).toHaveBeenCalledWith(3);
@@ -255,8 +271,8 @@ describe('integrationRoutes handlers', () => {
             IntegrationLog.updateStatus.mockResolvedValue({ id: 7, status: 'pending' });
             IntegrationLog.incrementRetry.mockResolvedValue({ id: 7, retry_count: 2 });
 
-            const { req, res } = createMockReqRes({}, {}, { id: '7' });
-            await handlers.retryLog(req, res);
+            const { req, res, next } = createMockReqRes({}, {}, { id: '7' });
+            await handlers.retryLog(req, res, next);
 
             expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(7, 'pending');
             expect(res.json).toHaveBeenCalledWith({ success: true, message: 'Marked for retry' });
@@ -266,8 +282,8 @@ describe('integrationRoutes handlers', () => {
             const mockLog = { id: 10, status: 'success' };
             IntegrationLog.findById.mockResolvedValue(mockLog);
 
-            const { req, res } = createMockReqRes({}, {}, { id: '10' });
-            await handlers.retryLog(req, res);
+            const { req, res, next } = createMockReqRes({}, {}, { id: '10' });
+            await handlers.retryLog(req, res, next);
 
             expect(IntegrationLog.updateStatus).not.toHaveBeenCalled();
             expect(IntegrationLog.incrementRetry).not.toHaveBeenCalled();
@@ -278,8 +294,8 @@ describe('integrationRoutes handlers', () => {
         test('returns 404 when log entry does not exist', async () => {
             IntegrationLog.findById.mockResolvedValue(null);
 
-            const { req, res } = createMockReqRes({}, {}, { id: '404' });
-            await handlers.retryLog(req, res);
+            const { req, res, next } = createMockReqRes({}, {}, { id: '404' });
+            await handlers.retryLog(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(404);
         });
@@ -296,8 +312,8 @@ describe('integrationRoutes handlers', () => {
             ];
             AlertRule.findAll.mockResolvedValue(mockRules);
 
-            const { req, res } = createMockReqRes();
-            await handlers.getRules(req, res);
+            const { req, res, next } = createMockReqRes();
+            await handlers.getRules(req, res, next);
 
             expect(AlertRule.findAll).toHaveBeenCalledTimes(1);
             expect(res.json).toHaveBeenCalledWith({ success: true, data: mockRules });
@@ -306,11 +322,12 @@ describe('integrationRoutes handlers', () => {
         test('returns 500 when findAll throws', async () => {
             AlertRule.findAll.mockRejectedValue(new Error('DB error'));
 
-            const { req, res } = createMockReqRes();
-            await handlers.getRules(req, res);
+            const { req, res, next } = createMockReqRes();
+            await handlers.getRules(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(500);
-            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
+            // [AR-12] Ошибка уходит в errorHandler через next, а не отвечается здесь.
+            expect(next).toHaveBeenCalledWith(expect.any(Error));
+            expect(res.status).not.toHaveBeenCalledWith(500);
         });
     });
 });

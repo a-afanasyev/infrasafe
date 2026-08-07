@@ -72,7 +72,8 @@ describe('Security Tests', () => {
             for (const ep of protectedEndpoints) {
                 const response = await request(app)[ep.method](ep.path);
                 expect(response.status).toBe(401);
-                expect(response.body).toHaveProperty('message');
+                // [AR-4] Канон: текст ошибки живёт в error.message, а не на верхнем уровне.
+            expect(response.body.error).toHaveProperty('message');
             }
         });
 
@@ -82,7 +83,8 @@ describe('Security Tests', () => {
                 .set('Authorization', 'Bearer invalid-token');
 
             expect(response.status).toBe(401);
-            expect(response.body).toHaveProperty('message');
+            // [AR-4] Канон: текст ошибки живёт в error.message, а не на верхнем уровне.
+            expect(response.body.error).toHaveProperty('message');
         });
 
         test('Истекший JWT токен отклоняется', async () => {

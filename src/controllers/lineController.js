@@ -1,6 +1,7 @@
 const Line = require('../models/Line');
 const logger = require('../utils/logger');
 const { validatePagination } = require('../utils/queryValidation');
+const { sendError } = require('../utils/apiResponse');
 
 // Получить все линии
 const getAllLines = async (req, res, next) => {
@@ -37,10 +38,7 @@ const getLineById = async (req, res, next) => {
         const line = await Line.findById(id);
 
         if (!line) {
-            return res.status(404).json({
-                success: false,
-                error: 'Line not found'
-            });
+            return sendError(res, 404, 'Line not found');
         }
 
         return res.status(200).json({
@@ -76,10 +74,7 @@ const updateLine = async (req, res, next) => {
         const line = await Line.update(id, req.body);
 
         if (!line) {
-            return res.status(404).json({
-                success: false,
-                error: 'Line not found'
-            });
+            return sendError(res, 404, 'Line not found');
         }
 
         return res.status(200).json({
@@ -100,10 +95,7 @@ const deleteLine = async (req, res, next) => {
         const line = await Line.delete(id);
 
         if (!line) {
-            return res.status(404).json({
-                success: false,
-                error: 'Line not found'
-            });
+            return sendError(res, 404, 'Line not found');
         }
 
         return res.status(200).json({

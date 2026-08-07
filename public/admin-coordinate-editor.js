@@ -347,14 +347,9 @@ class CoordinateEditor {
             const result = await response.json();
 
             if (!response.ok || result.success === false) {
-                // API envelope: { success:false, error: { message, status, stack } }
-                // or legacy: { error: '...string...' }. Extract a readable message.
-                const errMsg =
-                    (result && result.error && typeof result.error === 'object' && result.error.message) ||
-                    (typeof result.error === 'string' && result.error) ||
-                    result.message ||
-                    `HTTP ${response.status}`;
-                throw new Error(errMsg);
+                // [AR-4] Разбор форм конверта вынесен в общий ApiError —
+                // здесь он повторял ту же лесенку, что и ещё в двух десятках мест.
+                throw new Error(ApiError.extractApiError(result, `HTTP ${response.status}`));
             }
 
             showToast('✅ Координаты успешно обновлены!', 'success');

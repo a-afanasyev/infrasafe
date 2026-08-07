@@ -17,6 +17,7 @@
 const crypto = require('crypto');
 const metrics = require('./metrics');
 const logger = require('../utils/logger');
+const { sendError } = require('../utils/apiResponse');
 
 const METRICS_PATH = '/internal/metrics';
 const TOKEN_ENV = 'INTERNAL_METRICS_TOKEN';
@@ -63,15 +64,12 @@ function mountInternalMetrics(app) {
         // requireServiceToken (H-4), который спит до настройки: там речь о
         // совместимости с УК, здесь — о раскрытии операционной картины.
         if (!expected) {
-            return res.status(503).json({
-                success: false,
-                message: `Metrics endpoint disabled: ${TOKEN_ENV} is not set`
-            });
+            return sendError(res, 503, `Metrics endpoint disabled: ${TOKEN_ENV} is not set`);
         }
 
         const provided = extractBearer(req.headers.authorization);
         if (!provided || !tokenMatches(expected, provided)) {
-            return res.status(401).json({ success: false, message: 'Unauthorized' });
+            return sendError(res, 401, 'Unauthorized');
         }
 
         try {
@@ -84,7 +82,7 @@ function mountInternalMetrics(app) {
             // Скрейп не должен ронять процесс; Prometheus сам отметит
             // up{job="infrasafe_app"}=0, и это уже алертится (blackbox.yml).
             logger.error(`metrics: скрейп не удался: ${error.message}`);
-            res.status(500).json({ success: false, message: 'Metrics collection failed' });
+            sendError(res, 500, 'Metrics collection failed');
         }
     });
 }

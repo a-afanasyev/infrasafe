@@ -37,6 +37,7 @@ const ENTRIES = [
     // [Sprint 10 PR-5] UK rules client-side validation bounds
     'public/utils/ukRulesValidation.js',
     // [code-review batch] coordinate-integrity guard (prevents NaN→null wipe)
+    'public/utils/apiError.js',
     'public/utils/coordValidation.js',
     // [UK-URGENCY remnant] UK deep-link builder + reopen-meta passthrough
     'public/utils/ukLinkBuilder.js',
