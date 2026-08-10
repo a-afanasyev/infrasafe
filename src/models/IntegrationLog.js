@@ -159,6 +159,41 @@ class IntegrationLog {
      * @param {number} id - The log entry ID
      * @returns {Promise<Object>} - Updated log entry
      */
+    /**
+     * [AR-11] Пометить запись к повтору: статус в 'pending' и счётчик +1
+     * ОДНИМ запросом.
+     *
+     * `retryLog` в контроллере делал это двумя автокоммитами — `updateStatus`,
+     * затем `incrementRetry`. Между ними существовало окно, в котором строка
+     * уже 'pending', а счётчик ещё старый: параллельный обработчик мог взять её
+     * в работу повторно, а падение между вызовами оставляло счётчик
+     * рассинхронизированным навсегда.
+     *
+     * Транзакция здесь была бы лишней: обе правки — по одной и той же строке
+     * одной таблицы, и один UPDATE атомарен по определению. Отдельный метод, а
+     * не связка в контроллере, — потому что «пометить к повтору» это одна
+     * операция предметной области, а не две технические.
+     *
+     * @param {number} id
+     * @returns {Promise<Object|null>} обновлённая строка или null
+     */
+    static async markForRetry(id) {
+        try {
+            const { rows } = await db.query(
+                `UPDATE integration_log
+                SET status = 'pending', retry_count = retry_count + 1
+                WHERE id = $1
+                RETURNING *`,
+                [id]
+            );
+            logger.info(`Marked integration log ${id} for retry`);
+            return rows.length ? rows[0] : null;
+        } catch (error) {
+            logger.error(`Error in IntegrationLog.markForRetry: ${error.message}`);
+            throw error;
+        }
+    }
+
     static async incrementRetry(id) {
         try {
             const { rows } = await db.query(

@@ -21,12 +21,16 @@ jest.mock('../../../src/utils/logger', () => ({
 }));
 jest.mock('../../../src/utils/webhookValidation', () => ({
     isValidUUID: jest.fn(),
-    isValidRequestEvent: jest.fn()
+    isValidRequestEvent: jest.fn(),
+    // [L-6] Домен события здания теперь проверяется на входе, а не в сервисе.
+    // Без этой строки мок отдавал undefined, вызов падал TypeError, и любой
+    // building-тест получал 500 вместо ожидаемого 400.
+    isValidBuildingEvent: jest.fn()
 }));
 
 const request = require('supertest');
 const express = require('express');
-const { isValidUUID, isValidRequestEvent } = require('../../../src/utils/webhookValidation');
+const { isValidUUID, isValidRequestEvent, isValidBuildingEvent } = require('../../../src/utils/webhookValidation');
 const ukIntegrationService = require('../../../src/services/ukIntegrationService');
 const webhookRoutes = require('../../../src/routes/webhookRoutes');
 
@@ -46,6 +50,7 @@ describe('webhookRoutes — POST /request', () => {
         ukIntegrationService.verifyWebhookSignature.mockResolvedValue(true);
         isValidUUID.mockReturnValue(true);
         isValidRequestEvent.mockReturnValue(true);
+        isValidBuildingEvent.mockReturnValue(true);
     });
 
     afterAll(() => {

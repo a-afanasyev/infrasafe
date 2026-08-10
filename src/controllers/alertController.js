@@ -230,8 +230,24 @@ class AlertController {
     // Получение статистики алертов
     static async getAlertStatistics(req, res, next) {
         try {
-            const { days } = req.query;
-            const period = days ? parseInt(days) : 7;
+            // [CO-7] `parseInt('abc')` даёт NaN, и обе проверки границ на нём
+            // ложны — мусор проходил насквозь и уезжал в SQL вместо 400.
+            // Тот же урок уже записан в `integrationController.js:183`
+            // (`isNaN(id)`); здесь он просто не был применён.
+            //
+            // Пустая строка (`?days=`) считается ОТСУТСТВУЮЩИМ значением, а не
+            // мусором: это незаполненное поле фильтра, ронять на нём запрос
+            // незачем.
+            const raw = typeof req.query.days === 'string' ? req.query.days.trim() : req.query.days;
+            let period = 7;
+            if (raw !== undefined && raw !== null && raw !== '') {
+                // `/^\d+$/` вместо parseInt: последний съедает хвост («7дней» → 7)
+                // и принимает дробное с экспонентой. Здесь допустимо только целое.
+                if (!/^\d+$/.test(String(raw))) {
+                    return sendError(res, 400, 'Параметр days должен быть целым числом от 1 до 365');
+                }
+                period = parseInt(raw, 10);
+            }
 
             if (period < 1 || period > 365) {
                 return sendError(res, 400, 'Период должен быть от 1 до 365 дней');

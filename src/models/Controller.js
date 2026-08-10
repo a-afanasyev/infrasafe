@@ -2,6 +2,27 @@ const db = require('../config/database');
 const { createError } = require('../utils/helpers');
 const logger = require('../utils/logger');
 
+// [L-7] Домен статуса контроллера. В БД CHECK'а на `controllers.status` НЕТ
+// (проверено на живой схеме — у таблицы ни одного check-constraint), а
+// `create` писал присланное значение как есть. Практически оба входа прикрыты
+// валидатором маршрута и сервисом, но на admin-пути отказ прилетал 500-й:
+// «сервер упал» вместо «такого статуса не бывает».
+//
+// Приём тот же, что у `WaterLine.assertValidStatus` (M-12): whitelist в модели,
+// потому что это последний рубеж перед SQL и единственный общий для всех путей.
+const ALLOWED_CONTROLLER_STATUSES = ['online', 'offline', 'maintenance'];
+
+function assertValidControllerStatus(status) {
+    // undefined/null означает «не задан» — дефолт поставит БД.
+    if (status === undefined || status === null) return;
+    if (!ALLOWED_CONTROLLER_STATUSES.includes(status)) {
+        throw createError(
+            `Invalid status: allowed values are ${ALLOWED_CONTROLLER_STATUSES.join(', ')}`,
+            400
+        );
+    }
+}
+
 class Controller {
     /**
      * Получить все контроллеры с пагинацией и сортировкой
@@ -95,6 +116,7 @@ class Controller {
     static async create(controllerData) {
         try {
             const { serial_number, vendor, model, building_id, status } = controllerData;
+            assertValidControllerStatus(status);   // [L-7]
 
             const { rows } = await db.query(
                 `INSERT INTO controllers
@@ -108,6 +130,9 @@ class Controller {
             return rows[0];
         } catch (error) {
             logger.error(`Error in Controller.create: ${error.message}`);
+            // [L-7] Собственная 400 не должна схлопнуться в 500 — тот же приём,
+            // что в Line/WaterLine/createCrudModel.
+            if (error.statusCode) throw error;
             throw createError(`Failed to create controller: ${error.message}`, 500);
         }
     }
@@ -121,6 +146,7 @@ class Controller {
     static async update(id, controllerData) {
         try {
             const { serial_number, vendor, model, building_id, status } = controllerData;
+            assertValidControllerStatus(status);   // [L-7]
 
             const { rows } = await db.query(
                 `UPDATE controllers
@@ -139,6 +165,7 @@ class Controller {
             return rows[0];
         } catch (error) {
             logger.error(`Error in Controller.update: ${error.message}`);
+            if (error.statusCode) throw error;   // [L-7]
             throw createError(`Failed to update controller: ${error.message}`, 500);
         }
     }
@@ -151,6 +178,13 @@ class Controller {
      */
     static async updateStatus(id, status) {
         try {
+            // [L-7] Единственный путь, где статус — ВЕСЬ смысл вызова.
+            // Здесь `undefined` пропускать нельзя: он затёр бы колонку в NULL.
+            if (status === undefined || status === null) {
+                throw createError('status is required', 400);
+            }
+            assertValidControllerStatus(status);
+
             const { rows } = await db.query(
                 `UPDATE controllers
                 SET status = $1
@@ -166,6 +200,7 @@ class Controller {
             return rows.length ? rows[0] : null;
         } catch (error) {
             logger.error(`Error in Controller.updateStatus: ${error.message}`);
+            if (error.statusCode) throw error;   // [L-7]
             throw createError(`Failed to update controller status: ${error.message}`, 500);
         }
     }
@@ -213,3 +248,7 @@ class Controller {
 }
 
 module.exports = Controller;
+// [L-7] Дополняем дефолтный экспорт, не заменяя его — приём тот же, что в
+// WaterLine: `Controller` остаётся callable как `require('../models/Controller')`.
+module.exports.ALLOWED_CONTROLLER_STATUSES = ALLOWED_CONTROLLER_STATUSES;
+module.exports.assertValidControllerStatus = assertValidControllerStatus;
