@@ -6,9 +6,17 @@ const { validateSearchString } = require('../utils/queryValidation');
 
 // [AUD-009] Columns writable on update (matches the prior hand-rolled set —
 // installation_date is create-only, kept that way).
+// [AR-3(б)] `installation_date` добавлен при переводе admin-контроллера на
+// модель: его белый список эту колонку разрешал, а модель — нет, и подмена без
+// этой строки молча лишила бы админку возможности править дату ввода в работу.
+//
+// Колонки из AUD-039 (`address`, `voltage_primary`, `voltage_secondary`,
+// `maintenance_contact`, `notes`) сюда СОЗНАТЕЛЬНО не добавлены: конструктор их
+// читает, но ни один путь записи их не разрешал и до переноса. Расширение
+// поверхности записи — отдельное решение, а не побочный эффект рефактора.
 const TRANSFORMER_UPDATE_COLUMNS = [
     'name', 'power_kva', 'voltage_kv', 'latitude', 'longitude',
-    'location', 'status', 'manufacturer', 'model',
+    'location', 'status', 'manufacturer', 'model', 'installation_date',
 ];
 
 class Transformer {

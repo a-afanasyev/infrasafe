@@ -223,9 +223,14 @@ describe('AdminColdWaterSourceController', () => {
 
             await updateColdWaterSource(req, res, next);
 
+            // [AR-3(б)] Пустое тело по-прежнему 400 — изменилась только
+            // формулировка: белый список колонок переехал в модель, и текст
+            // теперь называет сущность («No valid fields to update heat
+            // source») вместо безличного «No fields to update». Сообщение
+            // никто не разбирает: фронт показывает его как есть.
             expect(next).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    message: expect.stringContaining('No fields'),
+                    message: expect.stringContaining('fields to update'),
                     statusCode: 400
                 })
             );

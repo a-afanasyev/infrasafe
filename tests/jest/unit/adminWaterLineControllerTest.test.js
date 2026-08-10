@@ -151,13 +151,14 @@ describe('AdminWaterLineController', () => {
             await createWaterLine(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(201);
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    success: true,
-                    data: mockResult,
-                    message: 'Water line created successfully'
-                })
-            );
+            // [AR-3(б)] Ответ собирает модель. На проводе разница —
+            // пропала колонка `geom` и появился `connected_buildings: []`;
+            // поля-`undefined` в JSON не сериализуются. Сверяем содержимое.
+            const payload = res.json.mock.calls[0][0];
+            expect(payload.success).toBe(true);
+            expect(payload.message).toBe('Water line created successfully');
+            expect(payload.data).toMatchObject(mockResult);
+            expect(payload.data).not.toHaveProperty('geom');
         });
 
         test('returns 400 when name is missing', async () => {
@@ -206,17 +207,20 @@ describe('AdminWaterLineController', () => {
     describe('getWaterLineById', () => {
         test('returns water line when found', async () => {
             req.params.id = '1';
-            const mockLine = { line_id: 1, name: 'WL-1', connected_buildings_count: '2' };
+            const mockLine = { line_id: 1, name: 'WL-1', connected_buildings: ['Дом 5'] };
             db.query.mockResolvedValue({ rows: [mockLine] });
 
             await getWaterLineById(req, res, next);
 
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    success: true,
-                    data: mockLine
-                })
-            );
+            // [AR-3(б)] Детальная карточка идёт через `WaterLine.findById` — тот
+            // же LEFT JOIN, но отдаёт ИМЕНА связанных зданий, а не их счётчик.
+            // Прежний `connected_buildings_count` во фронте не читался; здесь он
+            // фигурировал лишь как эхо мока, то есть тест описывал форму запроса,
+            // а не чьё-то ожидание. Счётчик остался в листинге.
+            const payload = res.json.mock.calls[0][0];
+            expect(payload.success).toBe(true);
+            expect(payload.data).toMatchObject({ line_id: 1, name: 'WL-1' });
+            expect(payload.data.connected_buildings).toEqual(['Дом 5']);
         });
 
         test('calls next with 404 when not found', async () => {
@@ -252,13 +256,10 @@ describe('AdminWaterLineController', () => {
 
             await updateWaterLine(req, res, next);
 
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    success: true,
-                    data: mockUpdated,
-                    message: 'Water line updated successfully'
-                })
-            );
+            const payload = res.json.mock.calls[0][0];
+            expect(payload.success).toBe(true);
+            expect(payload.message).toBe('Water line updated successfully');
+            expect(payload.data).toMatchObject(mockUpdated);
         });
 
         test('calls next with 400 when no fields to update', async () => {
@@ -269,7 +270,9 @@ describe('AdminWaterLineController', () => {
 
             expect(next).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    message: expect.stringContaining('No fields'),
+                    // [AR-3(б)] Формулировка стала называть сущность
+                    // («No valid fields to update transformer»); статус тот же.
+                    message: expect.stringContaining('fields to update'),
                     statusCode: 400
                 })
             );
