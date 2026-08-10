@@ -49,6 +49,15 @@ const ENTRIES = [
     // Должен грузиться ПЕРЕД script.js / map-layers-control.js / admin.js —
     // они читают window.BrandTokens при отрисовке.
     'public/utils/brandTokens.js',
+    // [DE-8, фаза 1 из 2] Три последних первосторонних JS, собиравшихся мимо
+    // esbuild. Сейчас это ТОЛЬКО расширение: dist получает файлы, а HTML
+    // по-прежнему грузит исходники. Переключение HTML на dist — отдельный
+    // релиз, потому что `update-production.sh` делает `git merge` (строка 253)
+    // РАНЬШЕ, чем публикует dist (строка 291): HTML, сославшийся на ещё не
+    // разложенный бандл, дал бы окно с 404 на странице входа.
+    'public/login.js',
+    'public/theme-toggle.js',
+    'public/api-config.js',
 ].map(f => path.join(projectRoot, f));
 
 const sharedOptions = {

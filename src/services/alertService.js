@@ -876,26 +876,13 @@ class InfrastructureAlertService {
         return alertGates.checkPersistenceGate(alertData, rule, sinceTimestamp);
     }
 
-    // [AUD-001 PR-B] Verify-mode persistence gate. Unlike the legacy gate
-    // (which only counts anomalous samples + MIN(timestamp) and ignores healthy
-    // samples between them), this measures a CONTINUOUS fault that holds NOW:
-    //   lastHealthy = MAX(timestamp) of a healthy sample after observationSince
-    //   faultStart  = MIN(timestamp) of an anomalous sample AFTER lastHealthy
-    //   allow iff  ≥2 anomalous samples since faultStart  AND
-    //              (lastFault − faultStart) ≥ min_persistence_seconds
-    // Counting from faultStart (not observationSince) means post-resolve
-    // silence is NOT charged as fault time, and an "anomaly → healthy → anomaly"
-    // sequence restarts the clock. Clamp `timestamp > observationSince` keeps
-    // pre-resolve telemetry out. Returns { allowed, reason }.
-    // [AUD-012] delegate-only → alert/alertGates.
-    async _checkVerifyPersistenceGate(alertData, rule, sinceTimestamp) {
-        return alertGates.checkVerifyPersistenceGate(alertData, rule, sinceTimestamp);
-    }
-
-    // [AUD-012] delegate-only → alert/alertGates.
-    _evaluateVerifyFaultWindow(label, row, minSeconds) {
-        return alertGates.evaluateVerifyFaultWindow(label, row, minSeconds);
-    }
+    // [CO-8] Здесь стояли делегаторы `_checkVerifyPersistenceGate` и
+    // `_evaluateVerifyFaultWindow` вместе с копией описания verify-гейта.
+    // У обоих не было ни одного вызова и ни одного spy в тестах — то есть
+    // правило сплита AUD-012 («делегатор остаётся там, где на него смотрит
+    // тест») их и не требовало. Описание verify-гейта не потеряно: оно слово
+    // в слово лежит в `alert/alertGates.js:140-152`, рядом с реализацией,
+    // и здесь было вторым экземпляром — то есть ровно тем, что расходится.
 
     // [AUD-012] delegate-only → alert/alertGates. (Spied by tests.)
     async _checkAffectedBuildingsGate(alertData, rule) {

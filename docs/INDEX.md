@@ -22,6 +22,7 @@
 
 ### Источник правды и обзорные документы
 
+- **[BACKLOG.md](BACKLOG.md)** — 🎯 **единый беклог** (10.08.2026): всё открытое из обоих аудитов, сведено и перепроверено. Отменяет `audit/sprint-11-backlog.md` и локальный `AUDIT_REPORT.md` как рабочие очереди
 - **[SOT.md](SOT.md)** — Single Source of Truth (896 строк): архитектура, API-матрица, деплой, тех-стек
 - **[audit-implementation-plan.md](audit-implementation-plan.md)** — Phase-based план рефакторинга/аудита (12 фаз, P0-P3)
 - **[audit-report-2026-04-17.md](audit-report-2026-04-17.md)** — последний quality-аудит (62 findings)
