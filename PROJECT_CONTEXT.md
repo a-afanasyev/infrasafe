@@ -52,11 +52,14 @@ infrasafe/                            # Root — v1.0.1
 │   │   └── adminService.js            # Batch admin operations
 │   ├── models/                        # Direct SQL через pg Pool, без ORM (16 файлов)
 │   │   ├── Building.js                # +external_id, +uk_deleted_at, syncFromUK()
-│   │   ├── Controller.js, Metric.js
-│   │   ├── Alert.js, AlertType.js, AlertRule.js, AlertRequestMap.js
-│   │   ├── Transformer.js, PowerTransformer.js, Line.js
+│   │   ├── Controller.js, Metric.js, MapLayerCounts.js
+│   │   ├── User.js, AccountLockout.js       # [AR-3] весь SQL по users — здесь
+│   │   ├── AlertRule.js, AlertRuleChange.js, AlertRequestMap.js
+│   │   ├── AlertSuppression.js, AlertVerification.js
+│   │   ├── Transformer.js, Line.js          # power_transformers дропнут (037)
 │   │   ├── ColdWaterSource.js, HeatSource.js, WaterLine.js, WaterSupplier.js
-│   │   ├── IntegrationConfig.js, IntegrationLog.js
+│   │   ├── IntegrationConfig.js, IntegrationLog.js, UkOutbox.js, UkRequest.js
+│   │   ├── factories/createCrudModel.js
 │   ├── middleware/
 │   │   ├── auth.js                    # Default-deny JWT + PUBLIC_ROUTES allowlist
 │   │   ├── correlationId.js           # x-correlation-id header
