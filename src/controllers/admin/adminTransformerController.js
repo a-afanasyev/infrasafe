@@ -1,8 +1,7 @@
 const pool = require('../../config/database');
 const logger = require('../../utils/logger');
-const { createError } = require('../../utils/helpers');
+const { createError, toClientError } = require('../../utils/helpers');
 const { buildPaginatedList } = require('../../utils/adminQueryBuilder');
-const { buildUpdateQuery } = require('../../utils/dynamicUpdateBuilder');
 const adminService = require('../../services/adminService');
 const Transformer = require('../../models/Transformer');
 const { sendSuccess } = require('../../utils/apiResponse');
@@ -44,7 +43,7 @@ async function getOptimizedTransformers(req, res, next) {
         sendSuccess(res, result.data, { pagination: result.pagination });
     } catch (error) {
         logger.error(`Error in getOptimizedTransformers: ${error.message}`);
-        next(createError('Internal server error', 500));
+        next(toClientError(error));
     }
 }
 
@@ -56,75 +55,53 @@ async function createTransformer(req, res, next) {
             return next(createError('Name, power_kva and voltage_kv are required', 400));
         }
 
-        const query = `
-            INSERT INTO transformers (name, power_kva, voltage_kv)
-            VALUES ($1, $2, $3)
-            RETURNING *
-        `;
-        const result = await pool.query(query, [name, power_kva, voltage_kv]);
+        // [AR-3(б)] Через модель. Она принимает и остальные необязательные
+        // колонки, но admin-форма шлёт только эти три — поведение не меняется.
+        const created = await Transformer.create({ name, power_kva, voltage_kv });
 
         res.status(201).json({
             success: true,
-            data: result.rows[0],
+            data: created,
             message: 'Transformer created successfully'
         });
     } catch (error) {
         logger.error(`Error in createTransformer: ${error.message}`);
-        next(createError('Internal server error', 500));
+        next(toClientError(error));
     }
 }
 
 async function getTransformerById(req, res, next) {
     try {
         const { id } = req.params;
-        const result = await pool.query(
-            'SELECT * FROM transformers WHERE transformer_id = $1',
-            [id]
-        );
+        const transformer = await Transformer.findById(id);
 
-        if (result.rows.length === 0) {
+        if (!transformer) {
             return next(createError('Transformer not found', 404));
         }
-        res.json({ success: true, data: result.rows[0] });
+        res.json({ success: true, data: transformer });
     } catch (error) {
         logger.error(`Error in getTransformerById: ${error.message}`);
-        next(createError('Internal server error', 500));
+        next(toClientError(error));
     }
 }
 
-const TRANSFORMER_UPDATE_FIELDS = [
-    'name', 'power_kva', 'voltage_kv',
-    'location', 'latitude', 'longitude', 'manufacturer', 'model', 'status',
-    'installation_date',
-];
-
+// [AR-3(б)] Белый список колонок — в модели (TRANSFORMER_UPDATE_COLUMNS).
 async function updateTransformer(req, res, next) {
     try {
         const { id } = req.params;
-        let query, params;
-        try {
-            ({ query, params } = buildUpdateQuery(
-                'transformers', 'transformer_id', id, req.body, TRANSFORMER_UPDATE_FIELDS
-            ));
-        } catch (e) {
-            if (e.message === 'No valid fields to update') {
-                return next(createError('No fields to update', 400));
-            }
-            throw e;
-        }
+        const updated = await Transformer.update(id, req.body);
 
-        const result = await pool.query(query, params);
-        if (result.rows.length === 0) {
+        if (!updated) {
             return next(createError('Transformer not found', 404));
         }
         res.json({
             success: true,
-            data: result.rows[0],
+            data: updated,
             message: 'Transformer updated successfully'
         });
     } catch (error) {
         logger.error(`Error in updateTransformer: ${error.message}`);
-        next(createError('Internal server error', 500));
+        next(toClientError(error));
     }
 }
 
@@ -141,7 +118,7 @@ async function deleteTransformer(req, res, next) {
         res.json({ success: true, message: 'Transformer deleted successfully' });
     } catch (error) {
         logger.error(`Error in deleteTransformer: ${error.message}`);
-        next(createError('Internal server error', 500));
+        next(toClientError(error));
     }
 }
 
@@ -181,7 +158,7 @@ async function batchTransformersOperation(req, res, next) {
         });
     } catch (error) {
         logger.error(`Error in batchTransformersOperation: ${error.message}`);
-        next(createError('Internal server error', 500));
+        next(toClientError(error));
     }
 }
 

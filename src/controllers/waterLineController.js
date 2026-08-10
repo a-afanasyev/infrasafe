@@ -1,6 +1,9 @@
 const WaterLine = require('../models/WaterLine');
 const logger = require('../utils/logger');
 const { sendError, sendNotFound } = require('../utils/apiResponse');
+// [CO-10] Предикат жил здесь и в adminWaterLineController байт-в-байт. Теперь
+// один на оба — в utils/helpers, рядом с createError, который эти ошибки и родил.
+const { isClientError } = require('../utils/helpers');
 
 /**
  * [AUD-010] Water-line HTTP handlers, extracted from the inline route file so
@@ -16,9 +19,6 @@ const { sendError, sendNotFound } = require('../utils/apiResponse');
  * до клиента как есть — иначе whitelist выглядит как 500. Пробрасываем ТОЛЬКО
  * 4xx: 5xx из модели содержит внутренний текст и обязан схлопываться в generic.
  */
-
-const isClientError = (error) =>
-    Number.isInteger(error?.statusCode) && error.statusCode >= 400 && error.statusCode < 500;
 
 async function getAllWaterLines(req, res) {
     try {

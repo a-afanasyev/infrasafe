@@ -137,9 +137,17 @@ function createCrudModel(config) {
 
         static async create(data) {
             try {
+                // [AR-3(б)] Значение по умолчанию может быть функцией — она
+                // вычисляется на КАЖДУЮ вставку. Без этого колонка, у которой в
+                // БД `NOT NULL` и нет `DEFAULT` (а таковы `id` у обоих
+                // источников), получала `null` и INSERT падал 500-й. Держать
+                // генератор одним значением в конфиге нельзя: вторая запись
+                // упёрлась бы в UNIQUE.
                 const values = createColumns.map(col => {
                     if (data[col] !== undefined) return data[col];
-                    if (defaults[col] !== undefined) return defaults[col];
+                    const fallback = defaults[col];
+                    if (typeof fallback === 'function') return fallback();
+                    if (fallback !== undefined) return fallback;
                     return null;
                 });
                 const placeholders = createColumns.map((_, i) => `$${i + 1}`).join(', ');

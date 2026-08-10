@@ -134,19 +134,25 @@ describe('AdminTransformerController', () => {
     describe('createTransformer', () => {
         test('creates and returns 201 with valid data', async () => {
             req.body = { name: 'TP-200', power_kva: 630, voltage_kv: 10, building_id: 1 };
-            const mockResult = { transformer_id: 1, ...req.body };
-            db.query.mockResolvedValue({ rows: [mockResult] });
+            db.query.mockResolvedValue({ rows: [{ transformer_id: 1, name: 'TP-200', power_kva: 630, voltage_kv: 10 }] });
 
             await createTransformer(req, res, next);
 
             expect(res.status).toHaveBeenCalledWith(201);
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    success: true,
-                    data: mockResult,
-                    message: 'Transformer created successfully'
-                })
-            );
+            // [AR-3(б)] Ответ теперь собирает модель, а не сырая строка БД.
+            // Практическая разница на проводе: добавились `primary_buildings` /
+            // `backup_buildings` (пустые массивы) и пропала колонка `geom` —
+            // бинарь PostGIS, который никто не читал. Остальные поля-`undefined`
+            // при сериализации в JSON исчезают. Поэтому проверяем содержимое, а
+            // не тождество объекта: полное равенство здесь фиксировало бы форму
+            // ORM-обёртки, а не контракт эндпоинта.
+            const payload = res.json.mock.calls[0][0];
+            expect(payload.success).toBe(true);
+            expect(payload.message).toBe('Transformer created successfully');
+            expect(payload.data).toMatchObject({
+                transformer_id: 1, name: 'TP-200', power_kva: 630, voltage_kv: 10
+            });
+            expect(payload.data).not.toHaveProperty('geom');
         });
 
         test('returns 400 when name is missing', async () => {
@@ -200,12 +206,11 @@ describe('AdminTransformerController', () => {
 
             await getTransformerById(req, res, next);
 
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    success: true,
-                    data: mockTransformer
-                })
-            );
+            // [AR-3(б)] Ответ собирает модель — сверяем содержимое, а не
+            // тождество объекта (см. комментарий в createTransformer).
+            const payload = res.json.mock.calls[0][0];
+            expect(payload.success).toBe(true);
+            expect(payload.data).toMatchObject(mockTransformer);
         });
 
         test('calls next with 404 when not found', async () => {
@@ -241,13 +246,10 @@ describe('AdminTransformerController', () => {
 
             await updateTransformer(req, res, next);
 
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    success: true,
-                    data: mockUpdated,
-                    message: 'Transformer updated successfully'
-                })
-            );
+            const payload = res.json.mock.calls[0][0];
+            expect(payload.success).toBe(true);
+            expect(payload.message).toBe('Transformer updated successfully');
+            expect(payload.data).toMatchObject(mockUpdated);
         });
 
         test('calls next with 400 when no fields to update', async () => {
@@ -258,7 +260,9 @@ describe('AdminTransformerController', () => {
 
             expect(next).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    message: expect.stringContaining('No fields'),
+                    // [AR-3(б)] Формулировка стала называть сущность
+                    // («No valid fields to update transformer»); статус тот же.
+                    message: expect.stringContaining('fields to update'),
                     statusCode: 400
                 })
             );

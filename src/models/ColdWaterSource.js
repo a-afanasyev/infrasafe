@@ -12,6 +12,7 @@
  * preserves whatever value the caller passes.
  */
 
+const { randomUUID } = require('crypto');
 const { createCrudModel } = require('./factories/createCrudModel');
 
 const FIELDS = [
@@ -28,5 +29,10 @@ module.exports = createCrudModel({
     fields: FIELDS,
     createColumns: FIELDS,      // includes id (caller-provided UUID)
     updateColumns: FIELDS.filter(f => f !== 'id'),
-    defaults: { status: 'active' },
+    // [AR-3(б)] `id` — NOT NULL без DEFAULT в БД, а фабрика подставляла null
+    // всему, чего нет во входных данных. Из-за этого POST /api/cold-water-sources
+    // падал 500-й на любом теле без `id` — а взять его клиенту неоткуда.
+    // Admin-путь работал лишь потому, что генерировал UUID сам, сырым SQL;
+    // теперь генерация живёт здесь, и оба пути ведут себя одинаково.
+    defaults: { id: () => randomUUID(), status: 'active' },
 });

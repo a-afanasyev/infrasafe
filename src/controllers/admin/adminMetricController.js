@@ -1,6 +1,6 @@
 const pool = require('../../config/database');
 const logger = require('../../utils/logger');
-const { createError } = require('../../utils/helpers');
+const { createError, toClientError } = require('../../utils/helpers');
 const { buildPaginatedList } = require('../../utils/adminQueryBuilder');
 const adminService = require('../../services/adminService');
 const { sendSuccess } = require('../../utils/apiResponse');
@@ -33,7 +33,7 @@ async function getOptimizedMetrics(req, res, next) {
         sendSuccess(res, result.data, { pagination: result.pagination });
     } catch (error) {
         logger.error(`Error in getOptimizedMetrics: ${error.message}`);
-        next(createError('Internal server error', 500));
+        next(toClientError(error));
     }
 }
 

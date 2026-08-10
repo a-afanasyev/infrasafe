@@ -1,8 +1,11 @@
 const pool = require('../../config/database');
 const logger = require('../../utils/logger');
-const { createError } = require('../../utils/helpers');
+const { createError, toClientError } = require('../../utils/helpers');
 const { buildPaginatedList } = require('../../utils/adminQueryBuilder');
-const { buildUpdateQuery } = require('../../utils/dynamicUpdateBuilder');
+const WaterLine = require('../../models/WaterLine');
+// [AR-3(б)] `assertValidStatus` остался нужен ТОЛЬКО пакетной операции
+// update_status: она пишет напрямую (модель не умеет bulk), и без явной
+// проверки whitelist M-12 на этом пути обходился бы.
 const { WATER_LINE_STATUS, assertValidStatus } = require('../../models/WaterLine');
 const { sendSuccess } = require('../../utils/apiResponse');
 
@@ -22,9 +25,6 @@ const { sendSuccess } = require('../../utils/apiResponse');
  * пропускают наружу ТОЛЬКО 4xx: 5xx схлопывается в generic 500, чтобы не
  * утёк внутренний текст ошибки.
  */
-
-const isClientError = (error) =>
-    Number.isInteger(error?.statusCode) && error.statusCode >= 400 && error.statusCode < 500;
 
 const LIST_CONFIG = {
     table: 'water_lines',
@@ -59,7 +59,7 @@ async function getOptimizedWaterLines(req, res, next) {
         sendSuccess(res, result.data, { pagination: result.pagination });
     } catch (error) {
         logger.error(`Error in getOptimizedWaterLines: ${error.message}`);
-        next(createError('Internal server error', 500));
+        next(toClientError(error));
     }
 }
 
@@ -75,103 +75,72 @@ async function createWaterLine(req, res, next) {
         if (!name || !diameter_mm || !material) {
             return next(createError('Name, diameter_mm, and material are required', 400));
         }
-        assertValidStatus(status);   // [M-12]
+        // [AR-3(б)] Явный вызов assertValidStatus отсюда убран: `WaterLine.create`
+        // делает его сам (M-12), и ручной импорт проверки в контроллер был именно
+        // тем симптомом, из-за которого пункт заведён. Ответ не меняется — 400
+        // с тем же текстом, просто рождённый на слой ниже.
 
-        const query = `
-            INSERT INTO water_lines (name, description, diameter_mm, material, pressure_bar, installation_date, status,
-                latitude_start, longitude_start, latitude_end, longitude_end, main_path, branches)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            RETURNING *
-        `;
-        const result = await pool.query(query, [
+        // [AR-3(б)] Через модель. Сериализацию jsonb она делает сама
+        // (WATER_LINE_JSON_COLUMNS) — здесь этого знания больше нет.
+        const created = await WaterLine.create({
             name, description, diameter_mm, material, pressure_bar, installation_date, status,
-            latitude_start, longitude_start, latitude_end, longitude_end,
-            main_path ? JSON.stringify(main_path) : null,
-            branches ? JSON.stringify(branches) : '[]'
-        ]);
+            latitude_start, longitude_start, latitude_end, longitude_end, main_path, branches
+        });
 
         res.status(201).json({
             success: true,
-            data: result.rows[0],
+            data: created,
             message: 'Water line created successfully'
         });
     } catch (error) {
         logger.error(`Error in createWaterLine: ${error.message}`);
-        if (isClientError(error)) return next(error);
-        next(createError('Internal server error', 500));
+        next(toClientError(error));
     }
 }
 
 async function getWaterLineById(req, res, next) {
     try {
         const { id } = req.params;
-        const query = `
-            SELECT wl.*,
-                   COUNT(DISTINCT b.building_id) as connected_buildings_count,
-                   ARRAY_AGG(DISTINCT b.name) FILTER (WHERE b.name IS NOT NULL) as connected_buildings
-            FROM water_lines wl
-            LEFT JOIN buildings b ON (wl.line_id = b.cold_water_line_id OR wl.line_id = b.hot_water_line_id)
-            WHERE wl.line_id = $1
-            GROUP BY wl.line_id
-        `;
-        const result = await pool.query(query, [id]);
+        // [AR-3(б)] `WaterLine.findById` делает тот же LEFT JOIN и отдаёт
+        // `connected_buildings`. Поле `connected_buildings_count` уходит из
+        // ответа ДЕТАЛЬНОЙ карточки. Во фронте оно не читается ни разу
+        // (`grep connected_buildings_count public/` — пусто); единственная
+        // ссылка была в юнит-тесте, и та лишь повторяла форму прежнего
+        // запроса, а не проверяла чьё-то ожидание. Длина массива имён даёт
+        // то же число. В ЛИСТИНГЕ счётчик остаётся — там он считается
+        // агрегатом по всей выборке и его убирать незачем.
+        const waterLine = await WaterLine.findById(id);
 
-        if (result.rows.length === 0) {
+        if (!waterLine) {
             return next(createError('Water line not found', 404));
         }
-        res.json({ success: true, data: result.rows[0] });
+        res.json({ success: true, data: waterLine });
     } catch (error) {
         logger.error(`Error in getWaterLineById: ${error.message}`);
-        next(createError('Internal server error', 500));
+        next(toClientError(error));
     }
 }
 
-const WATER_LINE_UPDATE_FIELDS = [
-    'name', 'description', 'diameter_mm', 'material', 'pressure_bar',
-    'installation_date', 'status',
-    'latitude_start', 'longitude_start', 'latitude_end', 'longitude_end',
-    'main_path', 'branches',
-];
-
+// [AR-3(б)] Здесь были: свой белый список колонок, своя сериализация jsonb и
+// свой вызов assertValidStatus. Всё три переехали в модель — она и раньше
+// делала ровно это для обычного `PUT /api/water-lines/:id`. Двойной путь
+// записи в `water_lines`, с которого начинался пункт, закрыт.
 async function updateWaterLine(req, res, next) {
     try {
         const { id } = req.params;
+        const updated = await WaterLine.update(id, req.body);
 
-        assertValidStatus(req.body.status);   // [M-12]
-
-        // Pre-transform JSONB-bound fields so the builder can treat them
-        // as plain strings. Keeping this here preserves the existing DB
-        // contract (store stringified JSON) without leaking it into the
-        // generic builder.
-        const fields = { ...req.body };
-        if (fields.main_path !== undefined) fields.main_path = JSON.stringify(fields.main_path);
-        if (fields.branches  !== undefined) fields.branches  = JSON.stringify(fields.branches);
-
-        let query, params;
-        try {
-            ({ query, params } = buildUpdateQuery(
-                'water_lines', 'line_id', id, fields, WATER_LINE_UPDATE_FIELDS
-            ));
-        } catch (e) {
-            if (e.message === 'No valid fields to update') {
-                return next(createError('No fields to update', 400));
-            }
-            throw e;
-        }
-
-        const result = await pool.query(query, params);
-        if (result.rows.length === 0) {
+        if (!updated) {
             return next(createError('Water line not found', 404));
         }
         res.json({
             success: true,
-            data: result.rows[0],
+            data: updated,
             message: 'Water line updated successfully'
         });
     } catch (error) {
         logger.error(`Error in updateWaterLine: ${error.message}`);
-        if (isClientError(error)) return next(error);
-        next(createError('Internal server error', 500));
+        next(toClientError(error));
     }
 }
 
@@ -179,23 +148,25 @@ async function deleteWaterLine(req, res, next) {
     try {
         const { id } = req.params;
 
-        // Dependency check — intentionally preserved, not refactored.
+        // [AR-3(б)] Проверка связанных зданий ОСТАЁТСЯ здесь намеренно: она
+        // спрашивает `buildings`, а не `water_lines`, и перенос её в модель
+        // добавил бы этот запрет обычному `DELETE /api/water-lines/:id`, где
+        // его сегодня нет. Менять поведение чужого маршрута под предлогом
+        // рефактора admin-пути неправильно — это отдельное решение.
         const checkQuery = 'SELECT COUNT(*) FROM buildings WHERE cold_water_line_id = $1 OR hot_water_line_id = $1';
         const checkResult = await pool.query(checkQuery, [id]);
         if (parseInt(checkResult.rows[0].count) > 0) {
             return next(createError('Cannot delete water line: it has connected buildings', 400));
         }
 
-        const query = 'DELETE FROM water_lines WHERE line_id = $1 RETURNING *';
-        const result = await pool.query(query, [id]);
-
-        if (result.rows.length === 0) {
+        const deleted = await WaterLine.delete(id);
+        if (!deleted) {
             return next(createError('Water line not found', 404));
         }
         res.json({ success: true, message: 'Water line deleted successfully' });
     } catch (error) {
         logger.error(`Error in deleteWaterLine: ${error.message}`);
-        next(createError('Internal server error', 500));
+        next(toClientError(error));
     }
 }
 
@@ -245,8 +216,7 @@ async function batchWaterLinesOperation(req, res, next) {
         });
     } catch (error) {
         logger.error(`Error in batchWaterLinesOperation: ${error.message}`);
-        if (isClientError(error)) return next(error);
-        next(createError('Internal server error', 500));
+        next(toClientError(error));
     }
 }
 

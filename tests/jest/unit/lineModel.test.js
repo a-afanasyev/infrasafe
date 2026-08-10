@@ -126,10 +126,28 @@ describe('Line Model', () => {
             expect(result).toBeDefined();
             expect(result.line_id).toBe(1);
             expect(result.name).toBe('Line Alpha');
-            expect(db.query).toHaveBeenCalledWith(
-                'SELECT * FROM lines WHERE line_id = $1',
-                [1]
-            );
+
+            // [AR-3(б)] Раньше здесь сверялась побайтовая строка SQL, и любое
+            // изменение запроса роняло тест, ничего не говоря о поведении.
+            // Проверяем то, что действительно важно: идентификатор уходит
+            // параметром (а не склейкой), и имя трансформатора подтягивается
+            // LEFT JOIN'ом — именно за ним запрос сюда и переехал из
+            // admin-контроллера.
+            const [sql, params] = db.query.mock.calls[0];
+            expect(params).toEqual([1]);
+            expect(sql).toMatch(/FROM lines l/);
+            expect(sql).toMatch(/LEFT JOIN transformers/);
+            expect(sql).toMatch(/WHERE l\.line_id = \$1/);
+        });
+
+        test('подтягивает имя трансформатора в поле transformer_name', async () => {
+            db.query.mockResolvedValue({
+                rows: [{ ...mockRow, transformer_name: 'ТП-Олмазор-1' }]
+            });
+
+            const result = await Line.findById(1);
+
+            expect(result.transformer_name).toBe('ТП-Олмазор-1');
         });
 
         test('returns null when not found', async () => {

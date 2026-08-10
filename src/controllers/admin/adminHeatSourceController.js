@@ -1,8 +1,7 @@
 const pool = require('../../config/database');
 const logger = require('../../utils/logger');
-const { createError } = require('../../utils/helpers');
+const { createError, toClientError } = require('../../utils/helpers');
 const { buildPaginatedList } = require('../../utils/adminQueryBuilder');
-const { buildUpdateQuery } = require('../../utils/dynamicUpdateBuilder');
 const HeatSource = require('../../models/HeatSource');
 const { sendSuccess } = require('../../utils/apiResponse');
 
@@ -32,7 +31,7 @@ async function getOptimizedHeatSources(req, res, next) {
         sendSuccess(res, result.data, { pagination: result.pagination });
     } catch (error) {
         logger.error(`Error in getOptimizedHeatSources: ${error.message}`);
-        next(createError('Internal server error', 500));
+        next(toClientError(error));
     }
 }
 
@@ -48,77 +47,55 @@ async function createHeatSource(req, res, next) {
             return next(createError('Name, latitude, longitude, and source_type are required', 400));
         }
 
-        const query = `
-            INSERT INTO heat_sources
-            (id, name, address, latitude, longitude, source_type, capacity_mw,
-             fuel_type, installation_date, status, maintenance_contact, notes)
-            VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            RETURNING *
-        `;
-        const result = await pool.query(query, [
+        // [AR-3(б)] Через модель, а не сырым INSERT. UUID генерирует модель.
+        const created = await HeatSource.create({
             name, address, latitude, longitude, source_type, capacity_mw,
             fuel_type, installation_date, status, maintenance_contact, notes
-        ]);
+        });
 
         res.status(201).json({
             success: true,
-            data: result.rows[0],
+            data: created,
             message: 'Heat source created successfully'
         });
     } catch (error) {
         logger.error(`Error in createHeatSource: ${error.message}`);
-        next(createError('Internal server error', 500));
+        next(toClientError(error));
     }
 }
 
 async function getHeatSourceById(req, res, next) {
     try {
         const { id } = req.params;
-        const result = await pool.query('SELECT * FROM heat_sources WHERE id = $1', [id]);
+        const source = await HeatSource.findById(id);
 
-        if (result.rows.length === 0) {
+        if (!source) {
             return next(createError('Heat source not found', 404));
         }
-        res.json({ success: true, data: result.rows[0] });
+        res.json({ success: true, data: source });
     } catch (error) {
         logger.error(`Error in getHeatSourceById: ${error.message}`);
-        next(createError('Internal server error', 500));
+        next(toClientError(error));
     }
 }
 
-const HEAT_UPDATE_FIELDS = [
-    'name', 'address', 'latitude', 'longitude', 'source_type',
-    'capacity_mw', 'fuel_type', 'installation_date',
-    'status', 'maintenance_contact', 'notes',
-];
-
+// [AR-3(б)] Белый список колонок переехал в модель (`updateColumns`) —
+// см. adminColdWaterSourceController.
 async function updateHeatSource(req, res, next) {
     try {
         const { id } = req.params;
-        let query, params;
-        try {
-            ({ query, params } = buildUpdateQuery(
-                'heat_sources', 'id', id, req.body, HEAT_UPDATE_FIELDS
-            ));
-        } catch (e) {
-            if (e.message === 'No valid fields to update') {
-                return next(createError('No fields to update', 400));
-            }
-            throw e;
-        }
-
-        const result = await pool.query(query, params);
-        if (result.rows.length === 0) {
+        const updated = await HeatSource.update(id, req.body);
+        if (!updated) {
             return next(createError('Heat source not found', 404));
         }
         res.json({
             success: true,
-            data: result.rows[0],
+            data: updated,
             message: 'Heat source updated successfully'
         });
     } catch (error) {
         logger.error(`Error in updateHeatSource: ${error.message}`);
-        next(createError('Internal server error', 500));
+        next(toClientError(error));
     }
 }
 
@@ -133,7 +110,7 @@ async function deleteHeatSource(req, res, next) {
         res.json({ success: true, message: 'Heat source deleted successfully' });
     } catch (error) {
         logger.error(`Error in deleteHeatSource: ${error.message}`);
-        next(createError('Internal server error', 500));
+        next(toClientError(error));
     }
 }
 

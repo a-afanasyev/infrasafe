@@ -19,12 +19,23 @@ class Line {
         this.voltage_kv = data.voltage_kv;
         this.length_km = data.length_km;
         this.transformer_id = data.transformer_id;
+        // [AR-3(б)] Асимметрия, обнаруженная при переводе admin-контроллеров на
+        // модель: эти четыре колонки ЕСТЬ в LINE_WRITABLE_COLUMNS, то есть модель
+        // умела их записывать — но не отдавала обратно. Создав линию с
+        // координатами через `Line.create`, вызывающий получал объект без них
+        // и не мог отличить «не сохранилось» от «не показано».
+        this.latitude_start = data.latitude_start;
+        this.longitude_start = data.longitude_start;
+        this.latitude_end = data.latitude_end;
+        this.longitude_end = data.longitude_end;
         this.main_path = data.main_path;
         this.branches = data.branches;
         this.cable_type = data.cable_type;
         this.commissioning_year = data.commissioning_year;
         this.created_at = data.created_at;
         this.updated_at = data.updated_at;
+        // Присутствует только у findById (LEFT JOIN); у остальных путей undefined.
+        this.transformer_name = data.transformer_name;
     }
 
     // Получить все линии с пагинацией
@@ -94,10 +105,18 @@ class Line {
     }
 
     // Получить линию по ID
+    // [AR-3(б)] JOIN с трансформатором перенесён сюда из admin-контроллера:
+    // без него подмена сырого запроса на модель убрала бы `transformer_name`
+    // из ответа детальной карточки. Для остальных вызывающих поле аддитивное.
+    // Тот же приём уже применён в `WaterLine.findById` (там подтягиваются
+    // связанные здания), так что «модель — только плоский CRUD» здесь не догма.
     static async findById(id) {
         try {
             const { rows } = await db.query(
-                'SELECT * FROM lines WHERE line_id = $1',
+                `SELECT l.*, t.name AS transformer_name
+                 FROM lines l
+                 LEFT JOIN transformers t ON l.transformer_id = t.transformer_id
+                 WHERE l.line_id = $1`,
                 [id]
             );
 
