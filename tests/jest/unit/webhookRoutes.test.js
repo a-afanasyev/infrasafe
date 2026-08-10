@@ -14,9 +14,14 @@ jest.mock('../../../src/utils/logger', () => ({
     debug: jest.fn()
 }));
 jest.mock('../../../src/utils/webhookValidation', () => ({
-    isValidUUID: jest.fn()
+    isValidUUID: jest.fn(),
+    // [L-6] Домен события здания проверяется теперь на входе. Частичный мок
+    // модуля — мина для каждого следующего импорта: отсутствующая функция даёт
+    // не «не проверили», а TypeError и 500 на ровном месте.
+    isValidBuildingEvent: jest.fn(),
+    isValidRequestEvent: jest.fn()
 }));
-const { isValidUUID } = require('../../../src/utils/webhookValidation');
+const { isValidUUID, isValidBuildingEvent, isValidRequestEvent } = require('../../../src/utils/webhookValidation');
 
 const ukIntegrationService = require('../../../src/services/ukIntegrationService');
 const webhookRoutes = require('../../../src/routes/webhookRoutes');
@@ -134,6 +139,8 @@ describe('webhookRoutes', () => {
             }));
             app.use('/', webhookRoutes);
             isValidUUID.mockReturnValue(true); // default: valid UUID
+            isValidBuildingEvent.mockReturnValue(true);
+            isValidRequestEvent.mockReturnValue(true);
         });
 
         it('calls handleBuildingWebhook for building events', async () => {

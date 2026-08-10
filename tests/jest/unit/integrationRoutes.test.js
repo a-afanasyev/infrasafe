@@ -9,7 +9,8 @@ jest.mock('../../../src/models/IntegrationLog', () => ({
     findAll: jest.fn(),
     findById: jest.fn(),
     updateStatus: jest.fn(),
-    incrementRetry: jest.fn()
+    incrementRetry: jest.fn(),
+    markForRetry: jest.fn()   // [AR-11]
 }));
 jest.mock('../../../src/models/AlertRule', () => ({ findAll: jest.fn() }));
 jest.mock('../../../src/middleware/auth', () => ({ isAdmin: (req, res, next) => next() }));
@@ -254,27 +255,27 @@ describe('integrationRoutes handlers', () => {
         test('marks a failed entry as pending and increments retry', async () => {
             const mockLog = { id: 3, status: 'failed' };
             IntegrationLog.findById.mockResolvedValue(mockLog);
-            IntegrationLog.updateStatus.mockResolvedValue({ id: 3, status: 'pending' });
-            IntegrationLog.incrementRetry.mockResolvedValue({ id: 3, retry_count: 1 });
+            IntegrationLog.markForRetry.mockResolvedValue({ id: 3, status: 'pending', retry_count: 1 });
 
             const { req, res, next } = createMockReqRes({}, {}, { id: '3' });
             await handlers.retryLog(req, res, next);
 
-            expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(3, 'pending');
-            expect(IntegrationLog.incrementRetry).toHaveBeenCalledWith(3);
+            // [AR-11] Один вызов вместо двух автокоммитов: статус и счётчик
+            // меняются одним UPDATE, окна рассинхронизации больше нет.
+            expect(IntegrationLog.markForRetry).toHaveBeenCalledWith(3);
+            expect(IntegrationLog.updateStatus).not.toHaveBeenCalled();
             expect(res.json).toHaveBeenCalledWith({ success: true, message: 'Marked for retry' });
         });
 
         test('marks an error entry as pending and increments retry', async () => {
             const mockLog = { id: 7, status: 'error' };
             IntegrationLog.findById.mockResolvedValue(mockLog);
-            IntegrationLog.updateStatus.mockResolvedValue({ id: 7, status: 'pending' });
-            IntegrationLog.incrementRetry.mockResolvedValue({ id: 7, retry_count: 2 });
+            IntegrationLog.markForRetry.mockResolvedValue({ id: 7, status: 'pending', retry_count: 2 });
 
             const { req, res, next } = createMockReqRes({}, {}, { id: '7' });
             await handlers.retryLog(req, res, next);
 
-            expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(7, 'pending');
+            expect(IntegrationLog.markForRetry).toHaveBeenCalledWith(7);
             expect(res.json).toHaveBeenCalledWith({ success: true, message: 'Marked for retry' });
         });
 

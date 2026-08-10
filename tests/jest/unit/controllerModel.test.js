@@ -24,7 +24,7 @@ describe('Controller Model', () => {
         model: 'S7-1200',
         building_id: 10,
         building_name: 'Building A',
-        status: 'active',
+        status: 'online',
         created_at: '2024-01-01',
         updated_at: '2024-01-01'
     };
@@ -132,20 +132,20 @@ describe('Controller Model', () => {
                 vendor: 'Siemens',
                 model: 'S7-1200',
                 building_id: 10,
-                status: 'active'
+                status: 'online'
             });
 
             expect(result).toBeDefined();
             expect(result.controller_id).toBe(1);
             expect(db.query.mock.calls[0][0]).toContain('INSERT INTO controllers');
-            expect(db.query.mock.calls[0][1]).toEqual(['SN-001', 'Siemens', 'S7-1200', 10, 'active']);
+            expect(db.query.mock.calls[0][1]).toEqual(['SN-001', 'Siemens', 'S7-1200', 10, 'online']);
         });
 
         test('throws on database error', async () => {
             db.query.mockRejectedValue(new Error('duplicate'));
 
             await expect(
-                Controller.create({ serial_number: 'X', vendor: 'V', model: 'M', building_id: 1, status: 'active' })
+                Controller.create({ serial_number: 'X', vendor: 'V', model: 'M', building_id: 1, status: 'online' })
             ).rejects.toThrow('Failed to create controller');
         });
     });
@@ -160,19 +160,19 @@ describe('Controller Model', () => {
                 vendor: 'Siemens',
                 model: 'S7-1200',
                 building_id: 10,
-                status: 'active'
+                status: 'online'
             });
 
             expect(result.serial_number).toBe('SN-002');
             expect(db.query.mock.calls[0][0]).toContain('UPDATE controllers');
-            expect(db.query.mock.calls[0][1]).toEqual(['SN-002', 'Siemens', 'S7-1200', 10, 'active', 1]);
+            expect(db.query.mock.calls[0][1]).toEqual(['SN-002', 'Siemens', 'S7-1200', 10, 'online', 1]);
         });
 
         test('returns null when not found', async () => {
             db.query.mockResolvedValue({ rows: [] });
 
             const result = await Controller.update(999, {
-                serial_number: 'X', vendor: 'V', model: 'M', building_id: 1, status: 'active'
+                serial_number: 'X', vendor: 'V', model: 'M', building_id: 1, status: 'online'
             });
 
             expect(result).toBeNull();
@@ -182,27 +182,27 @@ describe('Controller Model', () => {
             db.query.mockRejectedValue(new Error('DB error'));
 
             await expect(
-                Controller.update(1, { serial_number: 'X', vendor: 'V', model: 'M', building_id: 1, status: 'active' })
+                Controller.update(1, { serial_number: 'X', vendor: 'V', model: 'M', building_id: 1, status: 'online' })
             ).rejects.toThrow('Failed to update controller');
         });
     });
 
     describe('updateStatus', () => {
         test('updates status and returns controller', async () => {
-            const updated = { ...mockRow, status: 'inactive' };
+            const updated = { ...mockRow, status: 'offline' };
             db.query.mockResolvedValue({ rows: [updated] });
 
-            const result = await Controller.updateStatus(1, 'inactive');
+            const result = await Controller.updateStatus(1, 'offline');
 
-            expect(result.status).toBe('inactive');
+            expect(result.status).toBe('offline');
             expect(db.query.mock.calls[0][0]).toContain('UPDATE controllers');
-            expect(db.query.mock.calls[0][1]).toEqual(['inactive', 1]);
+            expect(db.query.mock.calls[0][1]).toEqual(['offline', 1]);
         });
 
         test('returns null when not found', async () => {
             db.query.mockResolvedValue({ rows: [] });
 
-            const result = await Controller.updateStatus(999, 'inactive');
+            const result = await Controller.updateStatus(999, 'offline');
 
             expect(result).toBeNull();
         });
@@ -210,7 +210,7 @@ describe('Controller Model', () => {
         test('throws on database error', async () => {
             db.query.mockRejectedValue(new Error('DB error'));
 
-            await expect(Controller.updateStatus(1, 'inactive')).rejects.toThrow('Failed to update controller status');
+            await expect(Controller.updateStatus(1, 'offline')).rejects.toThrow('Failed to update controller status');
         });
     });
 

@@ -191,8 +191,10 @@ const handlers = {
             if (log.status !== 'error' && log.status !== 'failed') {
                 return sendError(res, 400, `Cannot retry log entry with status '${log.status}'. Only 'error' or 'failed' entries can be retried.`);
             }
-            await IntegrationLog.updateStatus(id, 'pending');
-            await IntegrationLog.incrementRetry(id);
+            // [AR-11] Было два автокоммита подряд: сперва статус, потом счётчик.
+            // Между ними строка уже 'pending', а счётчик ещё старый — окно, в
+            // которое параллельный обработчик мог взять запись повторно.
+            await IntegrationLog.markForRetry(id);
             return res.json({ success: true, message: 'Marked for retry' });
         } catch (error) {
             logger.error(`integrationController.retryLog error: ${error.message}`);

@@ -20,7 +20,7 @@
 
 const ukIntegrationService = require('../services/ukIntegrationService');
 const logger = require('../utils/logger');
-const { isValidUUID, isValidRequestEvent } = require('../utils/webhookValidation');
+const { isValidUUID, isValidRequestEvent, isValidBuildingEvent } = require('../utils/webhookValidation');
 
 /**
  * POST /api/webhooks/uk/building — события зданий от УК.
@@ -33,8 +33,21 @@ async function handleBuilding(req, res) {
             return res.status(400).json({ success: false, message: 'Invalid or missing event_id' });
         }
 
+        // [L-6] Здесь проверялось только «строка и не пусто», а домен события —
+        // уже в сервисе, где неизвестное значение падало 500-й. У соседнего
+        // обработчика `/request` асимметрично: он зовёт `isValidRequestEvent`
+        // прямо здесь. `isValidBuildingEvent` был экспортирован и не вызывался
+        // ни разу. Интегратору на той стороне 500 не говорит ничего — 400 с
+        // перечнем допустимых значений говорит всё.
         if (!event || typeof event !== 'string') {
             return res.status(400).json({ success: false, message: 'Missing required field: event' });
+        }
+
+        if (!isValidBuildingEvent(event)) {
+            return res.status(400).json({
+                success: false,
+                message: `Unknown event: ${event}. Allowed: building.created, building.updated, building.deleted`
+            });
         }
 
         if (!building || typeof building !== 'object' || typeof building.id === 'undefined') {
