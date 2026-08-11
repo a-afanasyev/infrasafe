@@ -261,6 +261,16 @@ if (require.main === module) {
             } catch (e) {
                 logger.error('Alert verification drain worker failed to start:', e);
             }
+
+            // [AR-21] Перевод молчащих контроллеров в offline. Логика
+            // существовала с самого начала, но вызывалась ТОЛЬКО из
+            // admin-эндпоинта, то есть руками. Пока телеметрии нет, дыра
+            // невидима; она проявится в первый день после подключения железа.
+            try {
+                require('./services/controllerStatusScheduler').start();
+            } catch (e) {
+                logger.error('Controller status scheduler failed to start:', e);
+            }
         })
         .catch((error) => {
             logger.error(`Ошибка инициализации базы данных: ${error.message}`);
@@ -291,6 +301,7 @@ const gracefulShutdown = async (signal, exitCode = 0) => {
     try { await require('./services/mvRefreshService').stop(); } catch (e) { logger.error('MV scheduler stop error:', e.message); }
     try { await require('./services/uk/ukOutboxService').stop(); } catch (e) { logger.error('UK outbox stop error:', e.message); }
     try { await require('./services/alertVerificationService').stop(); } catch (e) { logger.error('Alert verification stop error:', e.message); }
+    try { await require('./services/controllerStatusScheduler').stop(); } catch (e) { logger.error('Controller status scheduler stop error:', e.message); }
 
     // [Sprint 4] Close Redis after all consumers (rate-limiter / cache /
     // dedup) have stopped issuing commands.

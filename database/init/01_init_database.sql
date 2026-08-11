@@ -843,7 +843,10 @@ SELECT
 
     COUNT(DISTINCT b.building_id) as buildings_count,
     COUNT(DISTINCT c.controller_id) as controllers_count,
-    COUNT(DISTINCT CASE WHEN c.status = 'active' THEN c.controller_id END) as active_controllers_count,
+    -- [042] 'online', а не 'active': 'active' — из домена статуса ТРАНСФОРМАТОРА
+    -- (строка 120 этого файла), у контроллера такого значения нет, и счётчик
+    -- поэтому всегда возвращал 0. Домен закреплён CHECK'ом в миграции 042.
+    COUNT(DISTINCT CASE WHEN c.status = 'online' THEN c.controller_id END) as active_controllers_count,
 
     AVG(COALESCE(m.electricity_ph1, 0) + COALESCE(m.electricity_ph2, 0) + COALESCE(m.electricity_ph3, 0)) as avg_total_voltage,
     AVG(COALESCE(m.amperage_ph1, 0) + COALESCE(m.amperage_ph2, 0) + COALESCE(m.amperage_ph3, 0)) as avg_total_amperage,
