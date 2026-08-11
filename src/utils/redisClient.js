@@ -21,6 +21,31 @@ let client = null;
 let connectionAttempted = false;
 let healthy = false;
 
+/**
+ * [M-7/M-11] Опубликовать состояние Redis метрикой.
+ *
+ * Флаг `healthy` живёт здесь и здесь же меняется во всех трёх переходах —
+ * значит и сигнал наружу должен рождаться здесь, а не у каждого потребителя
+ * отдельно. Так деградация видна независимо от того, кто первым напоролся:
+ * лимитер, кэш или дедуп вебхуков.
+ *
+ * Лог гасится флагом, чтобы не залить вывод, — и потому после рестарта повод
+ * узнать о деградации исчезал вовсе. Метрика описывает СОСТОЯНИЕ, а не событие:
+ * правило `infrasafe_redis_degraded == 1` горит, пока проблема не устранена.
+ *
+ * require внутри функции намеренно: `observability/metrics` тянет
+ * `config/database`, и статический импорт здесь завязал бы клиент Redis на
+ * готовность БД при загрузке модуля.
+ */
+function noteHealth(degraded) {
+    try {
+        require('../observability/metrics').setRedisDegraded(degraded);
+    } catch (err) {
+        // Наблюдаемость не имеет права ломать работу с Redis.
+        logger.debug(`Redis: не удалось выставить метрику деградации: ${err.message}`);
+    }
+}
+
 function getRedisUrl() {
     const url = process.env.REDIS_URL;
     return typeof url === 'string' && url.trim() ? url.trim() : null;
@@ -55,6 +80,7 @@ function init() {
 
         client.on('ready', () => {
             healthy = true;
+            noteHealth(false);
             logger.info('Redis: connection ready');
         });
         client.on('error', (err) => {
@@ -63,9 +89,11 @@ function init() {
                 healthy = false;
                 logger.warn(`Redis: connection error — degraded mode (in-memory fallback): ${err.message}`);
             }
+            noteHealth(true);
         });
         client.on('end', () => {
             healthy = false;
+            noteHealth(true);
         });
         client.on('reconnecting', () => {
             // No log — reconnects can be frequent under load.

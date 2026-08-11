@@ -18,6 +18,11 @@ const REDIS_KEY_PREFIX_SD = 'slowdown:';
 // so operators see the degradation instead of it passing unnoticed.
 let _redisDegradedLogged = false;
 function noteRedisDegraded(err) {
+    // [M-7/M-11] Метрику `infrasafe_redis_degraded` выставляет `utils/redisClient`
+    // — там живёт сам флаг здоровья с обоими переходами, и оттуда сигнал
+    // покрывает всех потребителей Redis (лимитер, кэш, дедуп вебхуков), а не
+    // только этот файл. Дублировать вызов здесь значило бы завести второй
+    // источник истины для одного состояния.
     if (!_redisDegradedLogged) {
         _redisDegradedLogged = true;
         logger.warn(`Rate limiter: Redis error — degraded to per-process in-memory store (limits become per-replica): ${err && err.message ? err.message : err}`);

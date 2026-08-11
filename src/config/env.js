@@ -1,6 +1,8 @@
 require('dotenv').config();
 
 const logger = require('../utils/logger');
+// [AR-9] Грамматика значений живёт отдельно от политики «что обязательно».
+const envSchema = require('./envSchema');
 
 const REQUIRED_VARS = [
     'DB_HOST',
@@ -30,6 +32,15 @@ const PRODUCTION_REQUIRED_VARS = [
     'INFRASAFE_WEBHOOK_SECRET',
     'TELEMETRY_HMAC_SECRET',
     'UK_INVENTORY_TOKEN',
+    // [M-7/M-11] На Redis держатся лимитер, кэш и дедуп вебхуков. Без него они
+    // молча падают на per-process Map: счётчики перестают быть общими, и узнать
+    // об этом можно было только по одной строке в логе. Обе площадки переменную
+    // уже задают (проверено 10.08.2026) — то есть повышение до обязательной
+    // никого не ломает, а фиксирует уже сложившийся факт.
+    //
+    // Как и остальные повышения из PR-6: значение обязано СТОЯТЬ на хосте до
+    // выката этого кода, иначе старт превращается в краш-петлю.
+    'REDIS_URL',
 ];
 
 // [SEC-12] NODE_ENV gates the security posture (Helmet CSP, Swagger exposure).
@@ -64,6 +75,21 @@ function validateEnv() {
 
     if (missing.length > 0) {
         const message = `Missing required environment variables: ${missing.join(', ')}`;
+        logger.error(message);
+        throw new Error(message);
+    }
+
+    // [AR-9] Наличие проверено выше — теперь значения. Раньше этого шага не
+    // было вовсе: `DB_POOL_MAX=twenty` давал `parseInt → NaN`, приложение
+    // СТАРТОВАЛО, и опечатка проявлялась под нагрузкой через час.
+    //
+    // Падаем сразу и перечисляем ВСЕ найденные ошибки, а не первую: оператор,
+    // правящий `.env` на проде, должен увидеть весь список за один заход, а не
+    // ловить их по одной через рестарт.
+    const valueErrors = envSchema.validate(process.env);
+    if (valueErrors.length > 0) {
+        const message =
+            `Invalid environment variable values:\n  - ${valueErrors.join('\n  - ')}`;
         logger.error(message);
         throw new Error(message);
     }
