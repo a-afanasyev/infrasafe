@@ -28,6 +28,10 @@ function setValidProdEnv() {
     process.env.INFRASAFE_WEBHOOK_SECRET = 'infrasafe-webhook-secret-0123456789';
     process.env.TELEMETRY_HMAC_SECRET = 'telemetry-secret-0123456789abcdef-XY';
     process.env.UK_INVENTORY_TOKEN = 'uk-inventory-token-0123456789abcdef';
+    // [M-7/M-11] Redis повышен до обязательного в production: на нём лимитер,
+    // кэш и дедуп вебхуков, и их тихая деградация в per-process Map опаснее
+    // явного отказа старта.
+    process.env.REDIS_URL = 'redis://redis:6379/0';
 }
 
 describe('validateEnv — NODE_ENV assertion (SEC-12)', () => {

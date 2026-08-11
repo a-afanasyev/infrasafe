@@ -101,6 +101,26 @@ const telemetryLastReceived = new client.Gauge({
     registers: [registry]
 });
 
+/**
+ * [M-7/M-11] Признак того, что общие хранилища работают НЕ через Redis.
+ *
+ * Лимитер, кэш и дедуп вебхуков при ошибке Redis прозрачно падают на
+ * per-process Map. Прозрачность и есть проблема: лимит «10 за 15 минут»
+ * незаметно превращается в «10×N», где N — число реплик, а дедуп вебхуков
+ * перестаёт быть общим. До сих пор об этом сообщала ОДНА строка в логе, и то
+ * единожды за жизнь процесса (`_redisDegradedLogged`) — то есть после рестарта
+ * повод узнать исчезал.
+ *
+ * Gauge, а не счётчик: важно текущее состояние, а не число переходов. 1 —
+ * деградировали, 0 — работаем через Redis. Правило тревоги строится тривиально:
+ * `infrasafe_redis_degraded == 1`.
+ */
+const redisDegraded = new client.Gauge({
+    name: 'infrasafe_redis_degraded',
+    help: '1 — общие хранилища деградировали на per-process память вместо Redis, 0 — норма',
+    registers: [registry]
+});
+
 const expectedControllers = new client.Gauge({
     name: 'infrasafe_expected_controllers',
     help: 'Активных контроллеров, от которых ожидается телеметрия (гейт для правила staleness)',
@@ -198,6 +218,14 @@ function markVerificationTick(unixSeconds = Math.floor(Date.now() / 1000)) {
 }
 
 /**
+ * [M-7/M-11] Отметить состояние общих хранилищ.
+ * @param {boolean} degraded true — работаем на per-process памяти
+ */
+function setRedisDegraded(degraded) {
+    redisDegraded.set(degraded ? 1 : 0);
+}
+
+/**
  * Метрики процесса (heap, event-loop lag, GC). Вызывается ЯВНО из server.js,
  * а не при загрузке модуля: иначе каждый юнит-тест, косвенно требующий
  * metrics.js, поднимал бы сборщики и таймеры.
@@ -220,9 +248,10 @@ module.exports = {
     incCircuitBreakerOpened,
     incOutboxDead,
     markVerificationTick,
+    setRedisDegraded,
     enableDefaultMetrics,
     resetForTests,
     // экспортируется для тестов и для явности контракта
     BREAKER_STATE_VALUE,
-    _gauges: { telemetryLastReceived, expectedControllers, outboxPending }
+    _gauges: { telemetryLastReceived, expectedControllers, outboxPending, redisDegraded }
 };
