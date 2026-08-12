@@ -33,6 +33,7 @@ npm test                    # All Jest tests
 npm run test:unit           # Unit tests (tests/jest/unit/)
 npm run test:integration    # Integration tests (tests/jest/integration/)
 npm run test:security       # Security tests (tests/jest/security/)
+npm run test:db             # [R2-24] Tests against a REAL Postgres (tests/jest/db/)
 npm run test:coverage       # With coverage report
 npm run test:watch          # Watch mode
 
@@ -107,7 +108,19 @@ psql postgresql://postgres:postgres@localhost:5435/infrasafe
 #                        the admin "Правила эскалации" panel. Wrap-around across New Year is the MAIN
 #                        case, not an edge case (heating season 10-15..04-15) — see checkSeasonGate.
 #                        CHECKs on format and on pairing (one field without the other is rejected).
-#                        Expand-only)
+#                        Expand-only),
+#                    042 controllers.status domain (AR-21, 2026-08-11: CHECK online|offline|maintenance +
+#                        DROP/CREATE mv_transformer_load_realtime with `c.status = 'online'` — the view
+#                        counted `'active'`, a value from the TRANSFORMER domain, so
+#                        active_controllers_count was ALWAYS 0. CONTRACT, ships after the model-side
+#                        whitelist so the rollback image already rejects out-of-domain values),
+#                    043 users.sessions_revoked_at (M-6, 2026-08-12: mass session-revocation cutoff.
+#                        Pairs with 016's password_changed_at — `_isIssuedBeforeCutoff` takes the MAX of
+#                        the two, so the revocation reaches all three middleware branches, refresh and
+#                        2FA temp tokens at once. Timestamp rather than `token_version`: `iat` is in
+#                        every token by spec, a new claim would need an answer for already-issued
+#                        tokens that lack it. NULL = no cutoff = today's behaviour → expand-only,
+#                        the migration itself changes nothing)
 ```
 
 ### Migration runner (AUD-002, PR-1a)
@@ -403,6 +416,18 @@ ALERT_VERIFICATION_TICK_MS=15000       # Drain interval (clamped [5000, 60000])
 - Unit tests: `tests/jest/unit/` — services, controllers, models, middleware, UK integration, totpService, AccountLockout, EventBus, factories, plus Sprint 10: `AlertVerification.test.js`, `AlertSuppression.test.js`, `alertVerificationService.test.js`, `alertService.persistenceGate.test.js`, `alertService.resolveAlert.test.js`, `alertService.reopen.test.js`, `AlertRule.update.test.js`.
 - Integration tests: `tests/jest/integration/` (API, default-deny auth)
 - Security tests: `tests/jest/security/` (SQL injection, XSS, general security)
+- **DB tests**: `tests/jest/db/` — **real Postgres**, no DB mock (`npm run test:db`, own CI step in
+  job `test`; excluded from default `npm test` via `testPathIgnorePatterns`). [R2-24] Everything that
+  lives INSIDE SQL goes here — arithmetic, type casts, CTEs, column names — because a mocked
+  `src/config/database` only compares substrings of the query text and cannot fail on any of it.
+  The suite does NOT skip when the DB is unreachable (skip-on-unavailable is the false-green this
+  harness exists to prevent) and refuses to start unless `DB_NAME` looks like a test database.
+  New tests take their DDL from the canonical `database/init/*.sql` / `database/migrations/*.sql`
+  by regex rather than restating it, so the test cannot drift from the schema the way the query did.
+  Motivation, in order: AUD-039 (`find_nearest` contract), R2-24 (`AccountLockout` arithmetic at
+  100% line coverage), and `updateControllersStatusByActivity`, which wrote to a non-existent
+  `controllers.updated_at` and therefore NEVER worked — surfaced only when the AR-21 scheduler
+  first called it on prod.
 - E2E tests: `tests/jest/e2e/` — real Docker containers, no mocks — run via `npm run test:e2e`
 - E2E requires running Docker containers; excluded from default `npm test` via testPathIgnorePatterns
 - **E2E auth (task #150, 2026-06-13)**: harness is **cookie + mandatory-2FA** aware. `globalSetup.js` resets the

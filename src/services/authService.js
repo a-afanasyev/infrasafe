@@ -11,6 +11,17 @@ const AccountLockout = require('../models/AccountLockout');
 // Phase 13: clock-skew tolerance for JWT-cutoff comparison
 const JWT_CUTOFF_SKEW_MS = 5000;
 
+// [M-6] Окно добросовестной гонки при реплее refresh-токена. Повтор в его
+// пределах — почти наверняка две вкладки, обновляющие токен одновременно, или
+// ретрай после потерянного ответа; за такое нельзя выкидывать пользователя со
+// всех устройств. Повтор позже — почти наверняка кража.
+//
+// Плата за окно названа честно: вор, успевший повторить токен за первые
+// секунды, массового отзыва избежит. Сам токен он всё равно не разменяет
+// (401), а альтернатива — регулярные разлогины на ровном месте, то есть
+// защита, которую отключат первой же жалобой.
+const REFRESH_REUSE_GRACE_MS = 10_000;
+
 // SEC-11: upper bound (exclusive) for the randomized lockout jitter added on
 // top of the base 15-min window. A few minutes of crypto-random jitter makes
 // the lockout window non-deterministic so it cannot be synchronized against
@@ -316,6 +327,10 @@ class AuthService {
                 );
             } catch (dbError) {
                 if (dbError.code === '23505') { // UNIQUE violation — already consumed
+                    // [M-6] Реплей — сигнал компрометации, а не просто «этот
+                    // токен уже израсходован». Отзываем всё семейство, если
+                    // повтор не укладывается в окно добросовестной гонки.
+                    await this._handleRefreshReuse(decoded.user_id, tokenHash);
                     const error = new Error('Refresh token already used');
                     error.code = 'TOKEN_REUSE';
                     throw error;
@@ -413,16 +428,90 @@ class AuthService {
 
     /**
      * Returns true if the given token was issued strictly before the user's
-     * password_changed_at (with 5 s clock-skew tolerance). Used by auth
-     * middleware and refreshToken to bulk-invalidate every JWT after a
-     * password change without per-token blacklisting.
+     * cutoff (with 5 s clock-skew tolerance). Used by auth middleware,
+     * refreshToken and verifyTempToken to bulk-invalidate every JWT for a user
+     * without per-token blacklisting.
+     *
+     * [M-6] Рубежа два, и берётся ПОЗДНЕЙШИЙ:
+     *   * `password_changed_at` — смена пароля (миграция 016);
+     *   * `sessions_revoked_at` — явный «выйти на всех устройствах» и
+     *     автоматический отзыв при реплее refresh-токена (миграция 043).
+     * Максимум, а не первый непустой: иначе у любого, кто когда-либо менял
+     * пароль, отзыв сессий тихо не срабатывал бы.
      */
     _isIssuedBeforeCutoff(decoded, user) {
-        if (!user.password_changed_at) return false;
+        const cutoffs = [user.password_changed_at, user.sessions_revoked_at]
+            .filter(Boolean)
+            .map((value) => new Date(value).getTime())
+            .filter((ms) => Number.isFinite(ms));
+        if (cutoffs.length === 0) return false;
         if (typeof decoded.iat !== 'number') return true;
-        const issuedAtMs = decoded.iat * 1000;
-        const cutoffMs = new Date(user.password_changed_at).getTime() - JWT_CUTOFF_SKEW_MS;
-        return issuedAtMs < cutoffMs;
+        const cutoffMs = Math.max(...cutoffs) - JWT_CUTOFF_SKEW_MS;
+        return decoded.iat * 1000 < cutoffMs;
+    }
+
+    /**
+     * [M-6] Отозвать все сессии пользователя.
+     *
+     * Ошибку намеренно НЕ глотаем: молчаливый провал означал бы, что
+     * пользователю сказали «выкинули всех», а на деле нет — худший исход из
+     * возможных для этой операции.
+     */
+    async revokeAllSessions(userId, reason = 'manual') {
+        await User.revokeSessions(userId);
+        logger.warn(`Все сессии пользователя user_id=${userId} отозваны (причина: ${reason})`);
+    }
+
+    /**
+     * [M-6] Реакция на реплей refresh-токена.
+     *
+     * Реплей означает, что одним и тем же токеном воспользовались дважды.
+     * При ротации это возможно в двух случаях: токен украден (вор и жертва
+     * гонятся за одной цепочкой) — либо клиент добросовестно отправил запрос
+     * повторно: две вкладки обновляются одновременно, или ретрай после
+     * потерянного ответа.
+     *
+     * Отличить вора от жертвы нельзя, поэтому отзыв выкидывает обоих — это
+     * стандартная плата rotation-схем. Но выкидывать пользователя со всех
+     * устройств из-за гонки вкладок недопустимо, поэтому смотрим, КОГДА
+     * токен был погашен: добросовестная гонка укладывается в секунды.
+     *
+     * Не удалось прочитать отметку — трактуем как кражу: ложный разлогин
+     * лечится входом, пропущенная кража — нет.
+     *
+     * @returns {Promise<boolean>} были ли отозваны сессии
+     */
+    async _handleRefreshReuse(userId, tokenHash) {
+        let elapsedMs = null;
+        try {
+            const { rows } = await db.query(
+                'SELECT blacklisted_at FROM token_blacklist WHERE token_hash = $1',
+                [tokenHash]
+            );
+            if (rows[0] && rows[0].blacklisted_at) {
+                elapsedMs = Date.now() - new Date(rows[0].blacklisted_at).getTime();
+            }
+        } catch (error) {
+            logger.warn(`Реплей refresh: не удалось прочитать blacklisted_at: ${error.message}`);
+        }
+
+        if (elapsedMs !== null && elapsedMs <= REFRESH_REUSE_GRACE_MS) {
+            logger.warn(
+                `Реплей refresh для user_id=${userId} в пределах окна гонки ` +
+                `(${elapsedMs} мс) — сессии не отзываются`
+            );
+            return false;
+        }
+
+        try {
+            await this.revokeAllSessions(userId, 'refresh-token-reuse');
+            return true;
+        } catch (error) {
+            // Клиент обязан увидеть TOKEN_REUSE, а не ошибку БД: иначе реплей
+            // выглядел бы как временный сбой и клиент бы его повторил.
+            logger.error(`Реплей refresh: отзыв сессий не выполнен: ${error.message}`);
+            return false;
+        }
     }
 
     // Проверка пароля
