@@ -42,7 +42,10 @@ jest.mock('../../../src/services/cacheService', () => ({
 }));
 
 const db = require('../../../src/config/database');
-const bcrypt = require('bcrypt');
+// bcrypt здесь только замокан (jest.mock выше): после переезда SEC-105 в
+// reauthLockout.test.js ни один оставшийся тест этого файла к нему не
+// обращается, поэтому импорта нет — но мок нужен, иначе totpService тянул бы
+// настоящий bcrypt на загрузке модуля.
 const otplib = require('otplib');
 
 describe('Phase 1: 2FA Security Hardening', () => {
@@ -97,74 +100,18 @@ describe('Phase 1: 2FA Security Hardening', () => {
         });
     });
 
-    // ===== SEC-105: verifyPasswordOnly =====
-    describe('SEC-105: verifyPasswordOnly', () => {
-        let authService;
-
-        beforeEach(() => {
-            jest.isolateModules(() => {
-                authService = require('../../../src/services/authService');
-            });
-        });
-
-        test('returns true for correct password', async () => {
-            db.query.mockResolvedValueOnce({
-                rows: [{ password_hash: '$2b$12$correcthash' }]
-            });
-            bcrypt.compare.mockResolvedValueOnce(true);
-
-            const result = await authService.verifyPasswordOnly(1, 'correctPassword');
-            expect(result).toBe(true);
-            expect(db.query).toHaveBeenCalledWith(
-                expect.stringContaining('is_active = true'),
-                [1]
-            );
-        });
-
-        test('returns false for wrong password', async () => {
-            db.query.mockResolvedValueOnce({
-                rows: [{ password_hash: '$2b$12$correcthash' }]
-            });
-            bcrypt.compare.mockResolvedValueOnce(false);
-
-            const result = await authService.verifyPasswordOnly(1, 'wrongPassword');
-            expect(result).toBe(false);
-        });
-
-        test('returns false for non-existent user', async () => {
-            db.query.mockResolvedValueOnce({ rows: [] });
-
-            const result = await authService.verifyPasswordOnly(999, 'anyPassword');
-            expect(result).toBe(false);
-            expect(bcrypt.compare).not.toHaveBeenCalled();
-        });
-
-        test('returns false for user with NULL password_hash', async () => {
-            db.query.mockResolvedValueOnce({
-                rows: [{ password_hash: null }]
-            });
-
-            const result = await authService.verifyPasswordOnly(1, 'anyPassword');
-            expect(result).toBe(false);
-            expect(bcrypt.compare).not.toHaveBeenCalled();
-        });
-
-        test('does NOT call recordFailedAttempt on wrong password', async () => {
-            db.query.mockResolvedValueOnce({
-                rows: [{ password_hash: '$2b$12$hash' }]
-            });
-            bcrypt.compare.mockResolvedValueOnce(false);
-
-            await authService.verifyPasswordOnly(1, 'wrong');
-
-            // Ensure no lockout-related queries were made (only the SELECT)
-            expect(db.query).toHaveBeenCalledTimes(1);
-            expect(db.query).toHaveBeenCalledWith(
-                expect.stringContaining('SELECT password_hash'),
-                [1]
-            );
-        });
-    });
+    // ===== SEC-105 → [M-5]: verifyPasswordOnly заменён на verifyReauthPassword
+    //
+    // Здесь раньше жил тест «does NOT call recordFailedAttempt on wrong
+    // password» — он закреплял решение SEC-105: во вторичных потоках
+    // аутентификации промах не должен трогать счётчик блокировки. Это решение
+    // отменено в [M-5]: оно делало /auth/disable-2fa и /auth/change-password
+    // оракулами пароля, где перебор бесплатен, а тормозит только per-IP
+    // лимитер. Тест удалён намеренно — он утверждал ровно то, что стало
+    // уязвимостью; поведение-преемник покрыто в reauthLockout.test.js.
+    //
+    // Остальное из SEC-105 (само сравнение хеша, отказ при отсутствии
+    // пользователя и при NULL-хеше) там же и сохранено.
 
     // ===== SEC-106: TOTP anti-replay =====
     describe('SEC-106: TOTP anti-replay', () => {
