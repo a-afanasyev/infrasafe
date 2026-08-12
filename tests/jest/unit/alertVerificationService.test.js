@@ -8,7 +8,8 @@
 jest.mock('../../../src/config/database', () => {
     const mockClient = { query: jest.fn(), release: jest.fn() };
     const mockPool = { connect: jest.fn(() => Promise.resolve(mockClient)) };
-    return {
+    const { makeWithTransaction } = jest.requireActual('../helpers/dbMock');
+    const mock = {
         query: jest.fn(),
         getPool: jest.fn(() => mockPool),
         safeRollback: jest.requireActual('../../../src/config/database').safeRollback,
@@ -16,6 +17,9 @@ jest.mock('../../../src/config/database', () => {
         __mockClient: mockClient,
         __mockPool: mockPool
     };
+    // [AR-11] Модуль замокан целиком — новый экспорт отдаём явно.
+    mock.withTransaction = makeWithTransaction(mock);
+    return mock;
 });
 
 jest.mock('../../../src/utils/logger', () => ({

@@ -120,11 +120,59 @@ const releaseClient = (client) => {
     client.release(client[BROKEN_BY_FAILED_ROLLBACK] || undefined);
 };
 
+/**
+ * [AR-11] Выполнить работу в транзакции.
+ *
+ * До этого пять мест писали BEGIN/COMMIT руками, и каждое несло свою копию
+ * защиты отката. Копии появлялись не вместе: R2-22 научил не давать упавшему
+ * ROLLBACK затирать исходную ошибку, CO-2 — помечать клиент, чтобы он не
+ * вернулся в пул с оборванной транзакцией, AR-11 — не глотать сбой отката
+ * молча. Каждый урок приходилось разносить по всем местам вручную. Здесь он
+ * один, и забыть про него нельзя.
+ *
+ * Два режима — потому что мест два вида:
+ *   * без `client` — хелпер сам берёт соединение из пула и сам возвращает;
+ *   * с `client` — работает на ЧУЖОМ соединении и НЕ освобождает его.
+ *     Так устроены воркер верификации (держит клиент под advisory-локом и
+ *     освобождает двумя кадрами выше) и `alertService.resolveAlert`. Освободить
+ *     такой клиент здесь значило бы выдернуть соединение из-под вызывающего.
+ *
+ * Порядок в ветке отказа существенный: сначала откат (он же помечает клиент
+ * при неудаче), потом освобождение — иначе метка не успела бы доехать до
+ * `releaseClient`, и соединение с оборванной транзакцией вернулось бы в пул.
+ *
+ * @param {(client: import('pg').PoolClient) => Promise<any>} fn
+ * @param {{ client?: object, context?: string }} [opts]
+ */
+const withTransaction = async (fn, { client = null, context = 'transaction' } = {}) => {
+    const owned = client === null;
+    // Пул берём через `module.exports.getPool`, а не через локальную функцию.
+    // Разница не косметическая: места, которые этот хелпер заменил, все звали
+    // `db.getPool()`, то есть публичный экспорт, и тесты подменяют именно его
+    // (`jest.spyOn(db, 'getPool')`). Замыкание на локальную ссылку прошло бы
+    // мимо подмены — и мимо любого другого перехвата на границе модуля.
+    const conn = owned ? await module.exports.getPool().connect() : client;
+    try {
+        await conn.query('BEGIN');
+        try {
+            const result = await fn(conn);
+            await conn.query('COMMIT');
+            return result;
+        } catch (error) {
+            await safeRollback(conn, context);
+            throw error;
+        }
+    } finally {
+        if (owned) releaseClient(conn);
+    }
+};
+
 module.exports = {
     init,
     query,
     getPool,
     close,
     safeRollback,
-    releaseClient
+    releaseClient,
+    withTransaction
 };

@@ -58,9 +58,10 @@ class AlertRuleChange {
      */
     static async createBatch(changes) {
         if (!Array.isArray(changes) || changes.length === 0) return [];
-        const client = await db.getPool().connect();
-        try {
-            await client.query('BEGIN');
+        // [AR-11] Транзакция через общий хелпер: BEGIN/COMMIT, откат при
+        // исключении, пометка испорченного клиента и возврат в пул живут
+        // теперь в одном месте (db.withTransaction), а не копией здесь.
+        return db.withTransaction(async (client) => {
             const inserted = [];
             for (const c of changes) {
                 const result = await client.query(
@@ -77,19 +78,11 @@ class AlertRuleChange {
                 );
                 inserted.push(result.rows[0]);
             }
-            await client.query('COMMIT');
             return inserted;
-        } catch (error) {
-            // [R2-22] Guard ROLLBACK: on a dropped connection the ROLLBACK itself
-            // throws and would mask the original error. Swallow it, keep the cause.
-            // [AR-11] Пустой catch заменён: сбой отката теперь логируется, а не
-            // исчезает бесследно. [CO-2] Клиент помечается как испорченный.
-            await db.safeRollback(client, 'AlertRuleChange.createBatch');
+        }, { context: 'AlertRuleChange.createBatch' }).catch((error) => {
             logger.error(`AlertRuleChange.createBatch error: ${error.message}`);
             throw error;
-        } finally {
-            db.releaseClient(client);
-        }
+        });
     }
 
     /**

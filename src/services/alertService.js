@@ -1301,9 +1301,10 @@ class InfrastructureAlertService {
             // Blocking lock — the drain holds it only briefly (one row/tick).
             await client.query('SELECT pg_advisory_lock($1)', [ADVISORY_LOCK_KEY]);
             try {
-                await client.query('BEGIN');
-                try {
-                    const updateResult = await client.query(
+                // [AR-11] Режим «чужое соединение»: клиент взят выше, лок с него
+                // снимается в finally НИЖЕ — то есть уже после COMMIT/ROLLBACK.
+                alert = await db.withTransaction(async (tx) => {
+                    const updateResult = await tx.query(
                         `UPDATE infrastructure_alerts
                          SET status = 'resolved_verifying', resolved_at = NOW(), resolved_by = $2
                          WHERE alert_id = $1 AND status IN ('active', 'acknowledged')
@@ -1314,7 +1315,6 @@ class InfrastructureAlertService {
                         // Race: someone else closed it between SELECT and UPDATE.
                         throw alertNotFound(`Алерт ${alertId} не найден или уже закрыт`);
                     }
-                    alert = updateResult.rows[0];
 
                     await AlertVerification.enqueue({
                         original_alert_id: alertId,
@@ -1325,27 +1325,22 @@ class InfrastructureAlertService {
                         reopen_sequence: nextSequence,
                         run_at: runAt,
                         window_until: windowUntil
-                    }, client);
+                    }, tx);
 
                     if (!current.reopen_chain_id) {
-                        await client.query(
+                        await tx.query(
                             'UPDATE infrastructure_alerts SET reopen_chain_id = $2 WHERE alert_id = $1',
                             [alertId, chainId]
                         );
                     }
                     if (previousUkRequestNumber) {
-                        await client.query(
+                        await tx.query(
                             'UPDATE infrastructure_alerts SET previous_uk_request_number = $2 WHERE alert_id = $1',
                             [alertId, previousUkRequestNumber]
                         );
                     }
-                    await client.query('COMMIT');
-                } catch (err) {
-                    // [CO-2] Помечаем клиент, чтобы он не вернулся в пул с
-                    // оборванной транзакцией — release ниже его уничтожит.
-                    await db.safeRollback(client, `resolveAlert(alert ${alertId})`);
-                    throw err;
-                }
+                    return updateResult.rows[0];
+                }, { client, context: `resolveAlert(alert ${alertId})` });
             } finally {
                 await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]).catch((e) => {
                     logger.warn(`resolveAlert: advisory_unlock failed for alert ${alertId}: ${e.message}`);
