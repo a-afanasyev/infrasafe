@@ -212,6 +212,24 @@ router.post('/logout', authController.logout);
 
 /**
  * @swagger
+ * /auth/revoke-sessions:
+ *   post:
+ *     summary: Выйти на всех устройствах
+ *     description: >
+ *       [M-6] Ставит рубеж, раньше которого любой выданный токен считается
+ *       протухшим. Завершает и текущую сессию — куки очищаются.
+ *     responses:
+ *       200:
+ *         description: Все сессии завершены
+ *       401:
+ *         description: Требуется авторизация
+ */
+// Ограничитель тот же, что у смены пароля: операция редкая, но дорогая по
+// последствиям, и молотить ею не должно быть возможно.
+router.post('/revoke-sessions', passwordChangeLimiter.middleware(), authController.revokeSessions);
+
+/**
+ * @swagger
  * /auth/refresh:
  *   post:
  *     summary: Обновление токенов

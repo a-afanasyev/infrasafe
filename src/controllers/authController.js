@@ -270,6 +270,32 @@ const refreshToken = async (req, res, next) => {
     }
 };
 
+// [M-6] Выйти на всех устройствах.
+//
+// Ставит рубеж `sessions_revoked_at`, раньше которого любой выданный токен
+// считается протухшим. Действует на все три ветки middleware, на refresh и на
+// 2FA-temp-token'ы — они все уже спрашивают один и тот же `_isIssuedBeforeCutoff`.
+//
+// Текущая сессия тоже умирает: «выйти на всех устройствах» включает и это,
+// иначе пользователь, у которого угнали токен, не знал бы наверняка, что
+// именно осталось живым. Поэтому чистим и куки.
+const revokeSessions = async (req, res, next) => {
+    try {
+        const userId = req.user.user_id || req.user.userId;
+
+        await authService.revokeAllSessions(userId, 'user-request');
+        clearAuthCookies(res);
+
+        res.json({
+            success: true,
+            message: 'Все сессии завершены. Войдите заново.'
+        });
+    } catch (error) {
+        logger.error(`Revoke sessions error: ${error.message}`);
+        next(error);
+    }
+};
+
 // Смена пароля
 const changePassword = async (req, res, next) => {
     try {
@@ -465,6 +491,7 @@ module.exports = {
     register,
     getProfile,
     logout,
+    revokeSessions,
     refreshToken,
     changePassword,
     verify2FA,

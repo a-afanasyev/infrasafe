@@ -39,8 +39,11 @@ const CACHE_KEY = (userId) => `auth:user:${userId}`;
 
 // Проекция для решений об аутентификации. Без `password_hash` — он не должен
 // попадать ни в кэш, ни в ответ.
+// [M-6] `sessions_revoked_at` обязан быть здесь: без него cutoff-проверка не
+// увидит отзыв и он останется записью в БД, ни на что не влияющей.
 const AUTH_PROJECTION = `user_id, username, email, role, is_active,
-    account_locked_until, created_at, updated_at, password_changed_at`;
+    account_locked_until, created_at, updated_at, password_changed_at,
+    sessions_revoked_at`;
 
 /**
  * Сбросить кэш строки пользователя.
@@ -170,6 +173,26 @@ async function updatePassword(userId, passwordHash) {
     await invalidateCache(userId);
 }
 
+/**
+ * [M-6] Отозвать все сессии пользователя: выставить рубеж, раньше которого
+ * любой выданный токен считается протухшим (миграция 043).
+ *
+ * Не трогает `password_changed_at` — это разные события, и склеивать их
+ * нельзя: отметку смены пароля показывают в аудите и на ней держится отдельная
+ * проверка 2FA-temp-token'ов.
+ *
+ * Сброс кэша здесь обязателен, а не гигиеничен: решения об аутентификации
+ * читают строку через `getUserForAuth` мимо кэша, но остальные вызывающие
+ * видели бы старое значение до пяти минут.
+ */
+async function revokeSessions(userId) {
+    await db.query(
+        'UPDATE users SET sessions_revoked_at = NOW() WHERE user_id = $1',
+        [userId]
+    );
+    await invalidateCache(userId);
+}
+
 /** Отметить успешный вход. */
 async function updateLastLogin(userId) {
     await db.query('UPDATE users SET last_login = NOW() WHERE user_id = $1', [userId]);
@@ -220,6 +243,7 @@ module.exports = {
     findByEmail,
     create,
     updatePassword,
+    revokeSessions,
     updateLastLogin,
     setTotpSecret,
     enableTotp,
