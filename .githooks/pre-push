@@ -1,0 +1,36 @@
+#!/bin/bash
+#
+# [OPS-003] Не пускать пуш прямо в main.
+#
+# Правило существовало давно, но держалось на внимании: 12.08.2026 я сам отправил
+# в main коммит без ветки и PR, и остановить это было нечему. Настоящий рубеж —
+# защита ветки на стороне GitHub; этот хук лишь говорит об отказе СРАЗУ и на
+# понятном языке, а не отказом сервера после аплоада.
+#
+# Осознанный обход (крайний случай, когда защита ветки временно снята):
+#     git push --no-verify
+#
+set -euo pipefail
+
+PROTECTED='main'
+remote_ref_prefix='refs/heads/'
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+    branch="${remote_ref#"$remote_ref_prefix"}"
+    [ "$branch" = "$PROTECTED" ] || continue
+
+    cat >&2 <<EOF
+❌ Пуш прямо в '$PROTECTED' запрещён.
+
+   Как надо:
+       git switch -c <тип>/<кратко>
+       git push -u origin <ветка>
+       gh pr create
+
+   Почему: в main попадает только то, что прошло проверки на PR. Прямой пуш
+   их минует — именно так 12.08.2026 туда уехал коммит мимо ревью.
+EOF
+    exit 1
+done
+
+exit 0

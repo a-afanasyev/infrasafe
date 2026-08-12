@@ -23,7 +23,32 @@ set -Eeuo pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 
-DEPLOY_ENV="${DEPLOY_ENV:-prod}"
+# [OPS-003] Профиль площадки: переменная окружения → файл `.deploy-env` рядом со
+# скриптом → ОТКАЗ. Молчаливого умолчания больше нет.
+#
+# Раньше здесь стояло `${DEPLOY_ENV:-prod}`, и вызов без переменной означал
+# profk. На .105 это давало не ошибку, а ХУДШЕЕ: деплой шёл до конца, но
+# byte-verify сверял выдачу с profk.uz, не совпадал — и откатывался. Сайт при
+# этом оставался жив, а состояние расползалось: git смержен, образ откачен.
+# Ошибиться так можно только молча, поэтому умолчание убрано: неизвестная
+# площадка — это отказ до первого изменения, а не догадка.
+#
+# `.deploy-env` создаётся на хосте один раз и не хранится в git: он описывает
+# КОНКРЕТНУЮ машину, а не проект.
+if [ -z "${DEPLOY_ENV:-}" ] && [ -f .deploy-env ]; then
+    DEPLOY_ENV="$(tr -d '[:space:]' < .deploy-env)"
+fi
+if [ -z "${DEPLOY_ENV:-}" ]; then
+    cat >&2 <<'NOENV'
+❌ Площадка не задана — деплой остановлен до первого изменения.
+
+   Задайте один раз на этом хосте:
+       echo prod      > .deploy-env   # profk.uz
+       echo infrasafe > .deploy-env   # infrasafe.uz (.105)
+   либо разово:  DEPLOY_ENV=infrasafe ./update-production.sh
+NOENV
+    exit 1
+fi
 case "$DEPLOY_ENV" in
     prod)
         COMPOSE_FILES=(docker-compose.unified.yml docker-compose.profk.yml)

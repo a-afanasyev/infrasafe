@@ -116,8 +116,29 @@ describe('update-production.sh image-source wiring (R2-15)', () => {
 // live prod host (.105, the original infrasafe.uz) — plain docker-compose.unified.yml,
 // no overlay, exactly the pre-R2-15-Phase-A behavior for that host.
 describe('update-production.sh DEPLOY_ENV parameterization (R2-15 Phase A)', () => {
-    test('DEPLOY_ENV defaults to prod (an unset call == DEPLOY_ENV=prod == profk)', () => {
-        expect(SCRIPT).toMatch(/DEPLOY_ENV="\$\{DEPLOY_ENV:-prod\}"/);
+    // [OPS-003] Здесь проверялось обратное: «вызов без переменной == prod».
+    // Это умолчание и было дефектом. На .105 оно давало не ошибку, а худшее:
+    // деплой доходил до конца, byte-verify сверял выдачу с чужим доменом,
+    // не совпадал — и откатывался, оставляя расползшееся состояние (git
+    // смержен, образ откачен). Ошибиться так можно было только молча.
+    test('умолчания по площадке НЕТ — ни явного, ни через :-', () => {
+        expect(SCRIPT).not.toMatch(/DEPLOY_ENV="\$\{DEPLOY_ENV:-\w+\}"/);
+    });
+
+    test('профиль берётся из .deploy-env, когда переменная не задана', () => {
+        // Файл описывает КОНКРЕТНУЮ машину, поэтому он на хосте и вне git.
+        expect(SCRIPT).toMatch(/-f \.deploy-env/);
+        expect(SCRIPT).toMatch(/DEPLOY_ENV="\$\(tr -d '\[:space:\]' < \.deploy-env\)"/);
+    });
+
+    test('без профиля деплой отказывается стартовать', () => {
+        // Отказ обязан быть ДО первого изменения: половинчатый деплой дороже
+        // несостоявшегося.
+        const guardIdx = SCRIPT.indexOf('Площадка не задана');
+        expect(guardIdx).toBeGreaterThan(-1);
+        expect(SCRIPT.slice(guardIdx, guardIdx + 400)).toMatch(/exit 1/);
+        // И раньше, чем скрипт вообще доберётся до git/docker.
+        expect(guardIdx).toBeLessThan(SCRIPT.indexOf('git fetch'));
     });
 
     test('prod selects the profk compose set + profk.uz edge/verify URLs', () => {

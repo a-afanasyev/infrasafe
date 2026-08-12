@@ -451,4 +451,33 @@ ALERT_VERIFICATION_TICK_MS=15000       # Drain interval (clamped [5000, 60000])
 - `alertService` persistence gate only fully implemented for LEAK_DETECTED+controller path (SQL aggregation on `metrics`). Other types fail-open in v1, pending rolling-window metric aggregations.
 - **LEAK auto-trigger now live (B-005-LEAK, 2026-05-26)**: `metricService.createMetric` эмитит `alertEvents.LEAK_CHECK` после `leak_sensor=true` insert; `alertService.checkLeak(controllerId)` listener → persistence-gated `createAlert` → UK pipeline. End-to-end ~5 сек в проде verified. **VOLTAGE + HEATING auto-trigger ТОЖЕ live** (B-005 Sprint 11): `metricService` эмитит `VOLTAGE_CHECK` при любом non-null фазном напряжении (`metricService.js:242`) и `HEATING_CHECK` при `hot_water_in_temp` → listeners `checkVoltage`/`checkHeating`. Voltage-пороги: warn 198-242, crit 180-260; persistence WARNING=60s / CRITICAL=10s. **VOLTAGE escalate-in-place LIVE (AUD-006, 2026-06-12, migration 035):** WARNING→CRITICAL обновляет тот же `alert_id` in-place (UPDATE severity + реактивация + immediate notification) вместо drop'а; UK-нотификация эскалации (`alert.escalated`) gated `UK_ESCALATION_NOTIFY` (default off, dormant до подтверждения УК). Прод-synthetic verified (controller 2: alert_id сохранён WARNING→CRITICAL). Cooldown gotcha (commit `e15436f`): для checkLeak/checkVoltage/checkHeating bump `lastChecks` ТОЛЬКО на success — gate denial должен оставлять cooldown unset, иначе persistence-gate маскируется до конца cooldown window'а.
 
+## Enforced rules (OPS-003, 2026-08-12)
+
+Эти правила существовали давно и держались на внимании. 12.08.2026 стало видно,
+что этого мало: коммит уехал прямо в `main` мимо PR, а деплой на .105 без
+`DEPLOY_ENV` откатился, потому что сверял выдачу с чужим доменом. Теперь они
+**исполняются**, а не декларируются.
+
+**Коммиты и ветки**
+- `main` защищён на стороне GitHub: прямой push отклоняется, merge только через
+  PR, обязательны проверки `Lint`, `Tests & Coverage`, `E2E (Docker stack)`,
+  `Secret scan (gitleaks)`, `npm audit`, `Docker image`, `Analyze JavaScript/TypeScript`.
+  `enforce_admins` включён — правило действует и на владельца, иначе оно не
+  правило. Снять на время аварии:
+  `gh api -X DELETE repos/a-afanasyev/infrasafe/branches/main/protection`.
+- Локальные хуки в `.githooks/` (подключаются автоматически через `postinstall`
+  → `npm run hooks:install`): `pre-push` отклоняет пуш в `main`, `commit-msg`
+  требует формат `<тип>[(область)]: описание`. Хуки — не рубеж, а быстрый ответ:
+  настоящий рубеж на сервере. Осознанный обход — `--no-verify`.
+
+**Выкатка**
+- `update-production.sh` больше НЕ имеет умолчания по площадке. Профиль берётся
+  из `DEPLOY_ENV`, иначе из файла `.deploy-env` в корне репозитория на хосте
+  (gitignored — он описывает машину, а не проект), иначе деплой отказывается
+  стартовать до первого изменения. Молчаливое `prod` на .105 давало не ошибку,
+  а худшее: деплой доходил до конца и откатывался на byte-verify, оставляя
+  расползшееся состояние (git смержен, образ откачен).
+- На хостах: `/opt/infrasafe/.deploy-env` = `prod`,
+  `/home/infrasafe/infrasafe/.deploy-env` = `infrasafe`.
+
 NEVER delete the project directory or run rm -rf in the project root.
