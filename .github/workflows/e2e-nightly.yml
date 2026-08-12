@@ -1,12 +1,39 @@
-name: E2E Nightly
+# Имя файла осталось e2e-nightly.yml, чтобы не рвать историю прогонов; сам
+# workflow больше не только ночной — см. [R2-14] ниже.
+name: E2E (PR + nightly)
 
 # [#150] Real-container E2E: brings up the full dev stack (app + PostGIS + frontend)
-# and runs the cookie/2FA-aware E2E suite against the live API. Kept OUT of the
-# per-push CI (slow, Docker-heavy) — runs nightly + on demand.
+# and runs the cookie/2FA-aware E2E suite against the live API.
+#
+# [R2-14] Теперь гоняется И НА PR, не только по расписанию.
+#
+# Исходный довод «медленно и тяжело по докеру» не подтвердился: прогоны занимают
+# 2–3 минуты (замерено по восьми ночным запускам 05–12.08.2026) — дешевле, чем
+# job `Docker image` в основном CI, который и так собирает образ на каждом PR.
+#
+# А цена отсутствия проверки на PR измерена ровно один раз и точно: 12.08.2026
+# правка M-5 (учёт неверного пароля в блокировке аккаунта) изменила ответ
+# /auth/change-password с 429 на 401 и уронила E2E. Merge был в 04:31 UTC,
+# ночной прогон поймал это в 04:43, а до тех пор main стоял с падающим E2E, и
+# заметил бы это только следующий человек, запустивший его руками. На PR
+# падение было бы видно ДО мержа.
 on:
   schedule:
     - cron: '0 3 * * *' # 03:00 UTC daily
+  pull_request:
+    branches: [main]
   workflow_dispatch: {}
+
+# Новый пуш в PR отменяет предыдущий прогон — очередь не копится. Прогоны по
+# расписанию и ручные НЕ отменяются: у них своя группа по run_id, поэтому
+# отменять там нечего (ночной прогон на main не должен умирать от того, что
+# кто-то открыл PR).
+concurrency:
+  group: >-
+    e2e-${{ github.event_name == 'pull_request'
+      && format('pr-{0}', github.event.pull_request.number)
+      || format('run-{0}', github.run_id) }}
+  cancel-in-progress: true
 
 jobs:
   e2e:
