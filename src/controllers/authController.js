@@ -4,7 +4,7 @@ const totpService = require('../services/totpService');
 const logger = require('../utils/logger');
 // [P1-2] HttpOnly cookie helpers — emit alongside the existing body
 // fields so the client transition can land in a follow-up PR.
-const { setAuthCookies, clearAuthCookies, extractRefreshToken } = require('../utils/authCookies');
+const { setAuthCookies, setTempCookie, clearAuthCookies, extractRefreshToken } = require('../utils/authCookies');
 
 // Логин пользователя
 const login = async (req, res, next) => {
@@ -21,24 +21,28 @@ const login = async (req, res, next) => {
         const user = await authService.authenticateUser(username, password);
 
         // Проверяем, нужна ли 2FA
+        // [M-4] Промежуточный токен уезжает в HttpOnly-куку и БОЛЬШЕ НЕ
+        // возвращается в теле: в теле он был читаем скриптом на странице —
+        // ровно то, от чего access/refresh увели в P1-2.
+        //
+        // Старый закэшированный JS это переживает: он читает `data.tempToken`,
+        // получает undefined, отправляет тело без него, а middleware берёт
+        // токен из куки, которую браузер шлёт сам.
         if (user.totp_enabled) {
-            // 2FA включена — выдаём временный токен для второго шага
-            const tempToken = authService.generateTempToken(user);
+            setTempCookie(res, authService.generateTempToken(user));
             return res.json({
                 success: true,
                 requires2FA: true,
-                tempToken,
                 message: 'Please enter your 2FA code'
             });
         }
 
         // Для админов без настроенного 2FA — принудительная настройка
         if (user.role === 'admin') {
-            const tempToken = authService.generateTempToken(user);
+            setTempCookie(res, authService.generateTempToken(user));
             return res.json({
                 success: true,
                 requires2FASetup: true,
-                tempToken,
                 message: '2FA setup required for admin accounts'
             });
         }
@@ -396,6 +400,11 @@ const setup2FA = async (req, res, next) => {
             success: true,
             qrCodeUrl: setup.qrCodeUrl,
             secret: setup.secret,
+            // [M-4, expand-остаток] Коды здесь БОЛЬШЕ НЕ НУЖНЫ: фронт получает их
+            // на confirm-2fa. Поле оставлено на одну выкладку, потому что старый
+            // закэшированный бандл делает `data.recoveryCodes.join('\n')` и упал
+            // бы с TypeError, исчезни оно сразу. Убрать отдельным PR, когда
+            // новый бандл разойдётся по браузерам (contract-шаг).
             recoveryCodes: setup.recoveryCodes,
             message: 'Scan QR code with your authenticator app, then confirm with a code'
         });
@@ -415,7 +424,12 @@ const confirm2FA = async (req, res, next) => {
             return res.status(400).json({ error: 'TOTP code is required to confirm setup' });
         }
 
-        await totpService.confirmSetup(user.user_id, code);
+        // [M-4] Коды восстановления выдаются ЗДЕСЬ, а не на шаге setup: только
+        // сейчас человек доказал, что аутентификатор у него в руках, и только
+        // сейчас 2FA действительно включена. На setup они показывались до
+        // подтверждения и, поскольку generateSetup идемпотентен, повторялись
+        // при каждом обновлении страницы.
+        const recoveryCodes = await totpService.confirmSetup(user.user_id, code);
 
         // SEC-101: blacklist tempToken so it cannot be reused
         if (req.tempToken) {
@@ -426,12 +440,16 @@ const confirm2FA = async (req, res, next) => {
         const tokens = authService.generateTokens(user);
 
         // [P1-2] HttpOnly cookies are the auth delivery mechanism.
+        // [M-4] Он же снимает временную куку 2FA.
         setAuthCookies(res, tokens);
 
-        // [1A-FU2-S-M2] No token spread — cookies only.
+        // [1A-FU2-S-M2] No token spread — cookies only. Коды восстановления —
+        // исключение по природе: их обязан прочитать человек, в HttpOnly-куке
+        // они бессмысленны. Показываются ровно один раз.
         res.json({
             success: true,
             message: '2FA enabled successfully',
+            recoveryCodes,
             user: {
                 id: user.user_id,
                 username: user.username,

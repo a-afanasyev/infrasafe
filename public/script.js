@@ -2057,17 +2057,21 @@ document.addEventListener('DOMContentLoaded', async function () {
         loginBackdrop.addEventListener('click', hideLoginModal);
     }
 
-    // --- 2FA state for map login modal ---
-    let mapTempToken = null;
+    // [M-4] Отдельного состояния для промежуточного токена больше нет: он
+    // живёт в HttpOnly-куке и в JS не попадает.
 
     function showMapLoginStep(step) {
         document.getElementById('map-login-form').style.display = step === 'login' ? 'block' : 'none';
         document.getElementById('map-2fa-form').style.display = step === '2fa' ? 'block' : 'none';
         document.getElementById('map-2fa-setup').style.display = step === 'setup' ? 'block' : 'none';
+        // [M-4] Шага может не быть в старой закэшированной разметке — не падаем.
+        const recovery = document.getElementById('map-2fa-recovery');
+        if (recovery) recovery.style.display = step === 'recovery' ? 'block' : 'none';
         const title = document.getElementById('map-login-title');
         if (step === 'login') title.textContent = 'Вход в систему';
         if (step === '2fa') title.textContent = 'Двухфакторная аутентификация';
         if (step === 'setup') title.textContent = 'Настройка 2FA';
+        if (step === 'recovery') title.textContent = '2FA включена';
     }
 
     function showMapError(containerId, msg) {
@@ -2105,7 +2109,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         // the user must still see they're logged in.
         hideLoginModal();
         showMapLoginStep('login');
-        mapTempToken = null;
         updateAuthButton();
         if (window.mapLayersControl) window.mapLayersControl.handleAuthChange(true);
         showToast('Вы вошли в систему', 'success');
@@ -2134,19 +2137,21 @@ document.addEventListener('DOMContentLoaded', async function () {
                 // [R2-12] Shared POST-JSON boilerplate; branching unchanged.
                 const { res: response, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.login, { username, password });
 
-                // Order matters: /api/auth/login returns `{success:true, requires2FA:true, tempToken}`
+                // Order matters: /api/auth/login returns `{success:true, requires2FA:true}`
                 // for admin accounts — checking `data.success` first would close the modal
                 // before the 2FA step, leaving the user without an HttpOnly cookie. Check the
                 // 2FA branches first so that `data.success` is only treated as a terminal
                 // login when neither 2FA flag is present.
+                //
+                // [M-4] Промежуточный токен больше не приходит в теле — он в
+                // HttpOnly-куке, которую браузер шлёт сам. Порядок проверок
+                // при этом НЕ меняется: он и раньше был про флаги, а не про токен.
                 if (response.ok && data.requires2FA) {
-                    mapTempToken = data.tempToken;
                     showMapLoginStep('2fa');
                     document.getElementById('map-2fa-code').focus();
                 } else if (response.ok && data.requires2FASetup) {
-                    mapTempToken = data.tempToken;
                     // Fetch QR setup
-                    const { res: setupRes, data: setupData } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.setup2fa, { tempToken: mapTempToken });
+                    const { res: setupRes, data: setupData } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.setup2fa, {});
                     if (setupRes.ok) {
                         // [R2-12] QR validation single-sourced in AuthFlow (security
                         // check gating img.src; must not drift from login.js).
@@ -2156,7 +2161,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                         }
                         document.getElementById('map-qr-img').src = String(setupData.qrCodeUrl);
                         document.getElementById('map-qr-secret').textContent = setupData.secret;
-                        document.getElementById('map-recovery-codes').textContent = setupData.recoveryCodes.join('\n');
                         showMapLoginStep('setup');
                         document.getElementById('map-confirm-code').focus();
                     } else {
@@ -2188,7 +2192,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             btn.disabled = true;
             hideMapErrors();
             try {
-                const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.verify2fa, { tempToken: mapTempToken, code });
+                const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.verify2fa, { code });
                 // [1A-FU2-S-M2] success marker is `data.success` (cookies set).
                 if (res.ok && data.success) {
                     await completeMapLogin(data);
@@ -2205,7 +2209,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         });
         document.getElementById('map-2fa-back').addEventListener('click', (e) => {
             e.preventDefault();
-            mapTempToken = null;
             showMapLoginStep('login');
         });
     }
@@ -2221,9 +2224,22 @@ document.addEventListener('DOMContentLoaded', async function () {
             btn.disabled = true;
             hideMapErrors();
             try {
-                const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.confirm2fa, { tempToken: mapTempToken, code });
+                const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.confirm2fa, { code });
                 // [1A-FU2-S-M2] success marker is `data.success` (cookies set).
                 if (res.ok && data.success) {
+                    // [M-4] Коды восстановления приходят ЗДЕСЬ и ровно один раз.
+                    // Показываем их и ждём явного «сохранил» — закрыть модалку
+                    // сразу значило бы отдать пользователю 2FA без запасных
+                    // ключей, перевыпустить которые ему нечем.
+                    const codesEl = document.getElementById('map-recovery-codes');
+                    const doneBtn = document.getElementById('map-recovery-done');
+                    if (Array.isArray(data.recoveryCodes) && data.recoveryCodes.length && codesEl && doneBtn) {
+                        codesEl.textContent = data.recoveryCodes.join('\n');
+                        showMapLoginStep('recovery');
+                        doneBtn.addEventListener('click', () => { void completeMapLogin(data); }, { once: true });
+                        doneBtn.focus();
+                        return;
+                    }
                     await completeMapLogin(data);
                 } else {
                     showMapError('map-setup-error', mapErrorText(data, 'Неверный код'));

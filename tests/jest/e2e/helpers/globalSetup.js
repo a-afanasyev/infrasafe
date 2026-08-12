@@ -8,7 +8,9 @@
  *   1. Tokens are HttpOnly cookies now — NOT echoed in the response body
  *      ([1A-FU2-S-M2]) — so body.accessToken is always undefined.
  *   2. Admin login is gated behind mandatory TOTP 2FA — a plain login returns
- *      { requires2FA | requires2FASetup, tempToken }, never tokens.
+ *      { requires2FA | requires2FASetup }, never tokens. [M-4] The temp token
+ *      itself is an HttpOnly cookie too — carried between 2FA steps as a
+ *      Cookie header, since supertest does not keep a cookie jar.
  *
  * So we now: (a) reset the admin's 2FA in the DB for re-runnability (the secret is
  * AES-encrypted, so we can't seed a known one — we must drive setup→confirm and
@@ -77,16 +79,25 @@ async function adminCookies() {
     return cookies;
   }
 
-  const { tempToken } = login.body;
+  // [M-4] Промежуточный токен больше не приходит в теле — он в HttpOnly-куке.
+  // Браузер отправлял бы её сам; supertest этого не делает, поэтому тащим
+  // Cookie-заголовок с шага на шаг руками, ровно как для access/refresh ниже.
+  const tempCookie = cookieHeader(login.headers['set-cookie']);
+  if (!tempCookie) {
+    throw new Error('[e2e setup] login returned no temp cookie for the 2FA step');
+  }
+
   const setup = await request(BASE).post('/api/auth/setup-2fa').set('Origin', ORIGIN)
-    .send({ tempToken });
+    .set('Cookie', tempCookie)
+    .send({});
   if (setup.status !== 200 || !setup.body.secret) {
     throw new Error(`[e2e setup] setup-2fa failed (${setup.status})`);
   }
 
   const code = String(otplib.generateSync({ secret: setup.body.secret }));
   const confirm = await request(BASE).post('/api/auth/confirm-2fa').set('Origin', ORIGIN)
-    .send({ tempToken, code });
+    .set('Cookie', tempCookie)
+    .send({ code });
   if (confirm.status !== 200) {
     throw new Error(`[e2e setup] confirm-2fa failed (${confirm.status}): ${JSON.stringify(confirm.body)}`);
   }

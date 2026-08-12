@@ -3,7 +3,7 @@ const { promisify } = require('util');
 const logger = require('../utils/logger');
 const authService = require('../services/authService');
 // [P1-2] Read access/refresh tokens from cookies if header/body absent.
-const { extractAccessToken, extractRefreshToken } = require('../utils/authCookies');
+const { extractAccessToken, extractRefreshToken, extractTempToken } = require('../utils/authCookies');
 const { sendError } = require('../utils/apiResponse');
 
 // KISS-003: promisified jwt.verify — single try/catch catches all errors
@@ -253,7 +253,8 @@ const optionalAuth = async (req, res, next) => {
 // SEC-101: check blacklist to prevent tempToken reuse after successful 2FA verification
 const authenticateTempToken = async (req, res, next) => {
     try {
-        const { tempToken } = req.body;
+        // [M-4] Кука вперёд, тело — запасной путь на время выкладки.
+        const tempToken = extractTempToken(req);
 
         if (!tempToken) {
             return sendError(res, 400, 'Temporary token is required');

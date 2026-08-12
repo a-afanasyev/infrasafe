@@ -122,9 +122,16 @@ describe('AuthController', () => {
 
             await authController.login(req, res, next);
 
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({ requires2FASetup: true, tempToken: 'temp-token' })
+            // [M-4] Токен теперь ТОЛЬКО в HttpOnly-куке. Проверяем и то, что
+            // он выставлен, и то, что в теле его больше нет — второе важнее:
+            // именно наличие в теле делало его читаемым скриптом.
+            expect(res.cookie).toHaveBeenCalledWith(
+                'temp_token', 'temp-token', expect.objectContaining({ httpOnly: true })
             );
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({ requires2FASetup: true })
+            );
+            expect(res.json.mock.calls[0][0].tempToken).toBeUndefined();
         });
 
         test('returns requires2FA for user with 2FA enabled', async () => {
@@ -136,9 +143,13 @@ describe('AuthController', () => {
 
             await authController.login(req, res, next);
 
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({ requires2FA: true, tempToken: 'temp-token-2fa' })
+            expect(res.cookie).toHaveBeenCalledWith(
+                'temp_token', 'temp-token-2fa', expect.objectContaining({ httpOnly: true })
             );
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({ requires2FA: true })
+            );
+            expect(res.json.mock.calls[0][0].tempToken).toBeUndefined();
         });
 
         test('returns 401 for INVALID_CREDENTIALS error', async () => {

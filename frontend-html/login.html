@@ -293,11 +293,6 @@
                 <code id="totp-secret-display" style="font-size:14px;"></code>
             </div>
 
-            <div id="recovery-codes-block" style="background:#fff3cd; padding:15px; border-radius:5px; margin-bottom:20px; text-align:left;">
-                <strong style="color:#856404;">Коды восстановления (сохраните!):</strong>
-                <pre id="recovery-codes-display" style="margin:10px 0 0; font-size:13px; color:#856404;"></pre>
-            </div>
-
             <form id="confirm-totp-form">
                 <div class="form-group">
                     <label for="confirm-code">Введите код из приложения для подтверждения:</label>
@@ -309,6 +304,24 @@
                     <button type="submit" class="login-btn" id="confirm-button">Активировать 2FA</button>
                 </div>
             </form>
+        </div>
+
+        <!-- [M-4] Коды восстановления показываются ПОСЛЕ подтверждения, а не на
+             шаге настройки: раньше их выдавали до того, как 2FA включилась, и
+             при каждом обновлении страницы повторяли те же самые. Отдельный шаг
+             с явной кнопкой — чтобы нельзя было проскочить экран, не увидев их:
+             перевыпустить коды пользователю нечем. -->
+        <div id="recovery-codes-step" style="display:none">
+            <h2 style="font-size:1.1rem; margin-bottom:10px;">2FA включена</h2>
+            <div style="background:#fff3cd; padding:15px; border-radius:5px; margin-bottom:20px; text-align:left;">
+                <strong style="color:#856404;">Коды восстановления — сохраните их сейчас</strong>
+                <p style="margin:8px 0 0; font-size:0.85rem; color:#856404;">
+                    Показываются один раз. Каждый код срабатывает единожды и
+                    заменяет код из приложения, если доступ к нему потерян.
+                </p>
+                <pre id="recovery-codes-display" style="margin:10px 0 0; font-size:13px; color:#856404;"></pre>
+            </div>
+            <button type="button" class="login-btn" id="recovery-codes-done">Я сохранил коды — продолжить</button>
         </div>
 
         <div class="login-info">

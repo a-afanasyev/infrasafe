@@ -259,7 +259,12 @@ describe('totpService — confirmSetup', () => {
             .mockResolvedValueOnce({ rows: [] });
         otplib.verifySync = jest.fn().mockReturnValue({ valid: true });
 
-        await expect(totpService.confirmSetup(1, '123456')).resolves.toBe(true);
+        // [M-4] confirmSetup теперь ВОЗВРАЩАЕТ коды восстановления: это
+        // единственный момент, когда их показывают, — 2FA уже включена и
+        // человек доказал, что аутентификатор у него в руках.
+        const codes = await totpService.confirmSetup(1, '123456');
+        expect(Array.isArray(codes)).toBe(true);
+        expect(codes.length).toBeGreaterThan(0);
 
         const enableCall = db.query.mock.calls[1];
         expect(enableCall[0]).toMatch(/UPDATE users SET totp_enabled = true/);
@@ -319,7 +324,9 @@ describe('totpService — confirmSetup', () => {
         db.query
             .mockResolvedValueOnce({ rows: [{ totp_secret: encryptedSecret, totp_enabled: false }] })
             .mockResolvedValueOnce({ rows: [] });
-        await expect(totpService.confirmSetup(userA, code)).resolves.toBe(true);
+        // [M-4] Возврат — массив кодов, а не true; тест здесь про анти-реплей,
+        // поэтому проверяем лишь то, что первый вызов прошёл.
+        await expect(totpService.confirmSetup(userA, code)).resolves.toEqual(expect.any(Array));
 
         // Second call: same user + same code. confirmSetup will re-read the
         // row (we return totp_enabled=false again — simulating a caller that
