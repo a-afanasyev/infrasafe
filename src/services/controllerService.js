@@ -288,7 +288,16 @@ class ControllerService {
                     LEFT JOIN latest_metrics lm ON c.controller_id = lm.controller_id
                 )
                 UPDATE controllers c
-                SET status = sc.new_status, updated_at = NOW()
+                -- [AR-21 follow-up] Здесь было ", updated_at = NOW()". Столбца
+                -- updated_at у controllers нет — ни в 01_init_database.sql, ни
+                -- на одной из площадок, — поэтому запрос падал при КАЖДОМ
+                -- вызове. Пока единственным входом была admin-кнопка, которую
+                -- никто не нажимал, это было незаметно; планировщик волны E
+                -- вскрыл поломку на первом же тике на проде.
+                -- Столбец не заводим: его никто не читает, а «когда контроллер
+                -- в последний раз подавал признаки жизни» уже отвечает
+                -- last_heartbeat.
+                SET status = sc.new_status
                 FROM status_calc sc
                 WHERE c.controller_id = sc.controller_id
                   AND c.status IS DISTINCT FROM sc.new_status
