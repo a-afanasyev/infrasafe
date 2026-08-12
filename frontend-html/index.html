@@ -134,10 +134,6 @@
                 <div style="background:#f5f5f5; padding:8px; border-radius:5px; margin-bottom:10px; word-break:break-all; font-size:12px;">
                     <span style="color:#999;">Ключ:</span> <code id="map-qr-secret"></code>
                 </div>
-                <div style="background:#fff3cd; padding:10px; border-radius:5px; margin-bottom:12px; font-size:12px;">
-                    <strong style="color:#856404;">Коды восстановления:</strong>
-                    <pre id="map-recovery-codes" style="margin:6px 0 0; color:#856404;"></pre>
-                </div>
                 <form id="map-confirm-2fa-form">
                     <div class="map-login-field">
                         <label for="map-confirm-code">Код из приложения</label>
@@ -148,6 +144,19 @@
                     <div id="map-setup-error" class="map-login-error" style="display:none;"></div>
                     <button type="submit" class="map-login-submit" id="map-confirm-submit">Активировать 2FA</button>
                 </form>
+            </div>
+
+            <!-- [M-4] Коды восстановления — ПОСЛЕ подтверждения, а не на экране
+                 настройки: раньше их показывали до включения 2FA и повторяли при
+                 каждом обновлении. Отдельный шаг с явной кнопкой, чтобы модалка
+                 не закрылась раньше, чем пользователь их сохранил. -->
+            <div id="map-2fa-recovery" style="display:none;">
+                <div style="background:#fff3cd; padding:10px; border-radius:5px; margin-bottom:12px; font-size:12px;">
+                    <strong style="color:#856404;">Коды восстановления — сохраните сейчас</strong>
+                    <p style="margin:6px 0 0; color:#856404;">Показываются один раз. Каждый срабатывает единожды.</p>
+                    <pre id="map-recovery-codes" style="margin:6px 0 0; color:#856404;"></pre>
+                </div>
+                <button type="button" class="map-login-submit" id="map-recovery-done">Я сохранил коды — продолжить</button>
             </div>
         </div>
     </div>

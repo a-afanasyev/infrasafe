@@ -60,7 +60,6 @@
 
     class LoginHandler {
         constructor() {
-            this.tempToken = null;
             this.initializeForm();
             this.initializeTOTPForm();
             this.initializeSetupForm();
@@ -96,13 +95,13 @@
                     if (!res.ok) throw new Error(ApiError.extractApiError(data, 'Ошибка авторизации'));
 
                     if (data.requires2FA) {
-                        // 2FA enabled — show code input
-                        this.tempToken = data.tempToken;
+                        // [M-4] Промежуточный токен больше не приходит в теле —
+                        // он в HttpOnly-куке, которую браузер шлёт сам. Хранить
+                        // и пересылать его руками теперь нечего и незачем.
                         this.showStep('totp-form');
                         document.getElementById('totp-code').focus();
                     } else if (data.requires2FASetup) {
                         // Admin needs 2FA setup — fetch QR
-                        this.tempToken = data.tempToken;
                         await this.loadSetup();
                     } else {
                         // No 2FA — direct login
@@ -117,8 +116,7 @@
 
             document.getElementById('back-to-login').addEventListener('click', (e) => {
                 e.preventDefault();
-                this.tempToken = null;
-                this.showStep('login-form');
+                    this.showStep('login-form');
                 document.getElementById('username').focus();
             });
         }
@@ -137,7 +135,7 @@
                 this.clearAll();
 
                 try {
-                    const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.verify2fa, { tempToken: this.tempToken, code });
+                    const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.verify2fa, { code });
                     if (!res.ok) throw new Error(ApiError.extractApiError(data, 'Неверный код'));
                     this.completeLogin(data);
                 } catch (err) {
@@ -153,7 +151,7 @@
         // --- Step 2b: 2FA setup ---
         async loadSetup() {
             try {
-                const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.setup2fa, { tempToken: this.tempToken });
+                const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.setup2fa, {});
                 if (!res.ok) throw new Error(ApiError.extractApiError(data, 'Ошибка настройки 2FA'));
 
                 // [R2-12] QR data-URI validation single-sourced in AuthFlow — a
@@ -164,7 +162,6 @@
                 }
                 document.getElementById('qr-code-img').src = String(data.qrCodeUrl);
                 document.getElementById('totp-secret-display').textContent = data.secret;
-                document.getElementById('recovery-codes-display').textContent = data.recoveryCodes.join('\n');
                 this.showStep('totp-setup');
                 document.getElementById('confirm-code').focus();
             } catch (err) {
@@ -184,8 +181,17 @@
                 document.getElementById('confirm-button').disabled = true;
 
                 try {
-                    const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.confirm2fa, { tempToken: this.tempToken, code });
+                    const { res, data } = await AuthFlow.postJson(AuthFlow.AUTH_ENDPOINTS.confirm2fa, { code });
                     if (!res.ok) throw new Error(ApiError.extractApiError(data, 'Неверный код'));
+                    // [M-4] Коды восстановления приходят ЗДЕСЬ — один раз, в
+                    // момент реального включения 2FA. Показываем и ждём явного
+                    // подтверждения, что пользователь их сохранил: уйти со
+                    // страницы, не увидев их, значит остаться без запасных
+                    // ключей навсегда.
+                    if (Array.isArray(data.recoveryCodes) && data.recoveryCodes.length) {
+                        this.showRecoveryCodes(data.recoveryCodes, () => this.completeLogin(data));
+                        return;
+                    }
                     this.completeLogin(data);
                 } catch (err) {
                     this.showError('setup-error-container', normalizeError(err.message));
@@ -218,9 +224,35 @@
         }
 
         showStep(stepId) {
-            ['login-form', 'totp-form', 'totp-setup'].forEach(id => {
-                document.getElementById(id).style.display = id === stepId ? 'block' : 'none';
+            ['login-form', 'totp-form', 'totp-setup', 'recovery-codes-step'].forEach(id => {
+                const el = document.getElementById(id);
+                // [1A-FU2-C-L3] Null-guard: шаги подключены не на каждой странице,
+                // а падение здесь оборвало бы весь поток входа.
+                if (el) el.style.display = id === stepId ? 'block' : 'none';
             });
+        }
+
+        /**
+         * [M-4] Показать коды восстановления и дождаться явного подтверждения.
+         *
+         * Отдельный шаг, а не строчка на экране настройки: коды приходят один
+         * раз, перевыпустить их пользователю нечем, поэтому проскочить экран
+         * незамеченным нельзя. `textContent` (не innerHTML) — коды приходят с
+         * сервера, но подставлять их как разметку незачем.
+         */
+        showRecoveryCodes(codes, onDone) {
+            const display = document.getElementById('recovery-codes-display');
+            const button = document.getElementById('recovery-codes-done');
+            if (!display || !button) {
+                // Разметка старая (кэш браузера) — не запирать пользователя на
+                // несуществующем шаге: 2FA уже включена, вход состоялся.
+                onDone();
+                return;
+            }
+            display.textContent = codes.join('\n');
+            button.addEventListener('click', onDone, { once: true });
+            this.showStep('recovery-codes-step');
+            button.focus();
         }
 
         setLoading(btnId, loadingId, on) {

@@ -17,7 +17,11 @@
 
 const COOKIE_NAMES = Object.freeze({
     access: 'access_token',
-    refresh: 'refresh_token'
+    refresh: 'refresh_token',
+    // [M-4] Промежуточный токен 2FA. До этого он ездил в теле ответа логина и
+    // обратно в теле каждого шага — то есть был читаем скриптом на странице,
+    // ровно как access/refresh до P1-2.
+    temp: 'temp_token'
 });
 
 // Default lifetimes mirror authService defaults. We use generous
@@ -26,6 +30,10 @@ const COOKIE_NAMES = Object.freeze({
 // Max-Age just prevents zombie cookies hanging around for years.
 const ACCESS_TOKEN_MAX_AGE_MS = 60 * 60 * 1000;            // 1h
 const REFRESH_TOKEN_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;  // 7d
+// [M-4] Совпадает с expiresIn самого temp-токена (authService.generateTempToken).
+// Кука, пережившая токен, — только мусор в браузере: сервер её всё равно
+// отвергнет, а пользователь получит невнятную ошибку вместо чистого повтора.
+const TEMP_TOKEN_MAX_AGE_MS = 5 * 60 * 1000;               // 5m
 
 // [1A-FU-C-L1] `secure` flag must be ON behind staging TLS too.
 // Staging environments often run NODE_ENV=development with nginx
@@ -55,7 +63,21 @@ function baseOpts() {
     };
 }
 
+// [M-4] Выставить куку промежуточного токена 2FA.
+function setTempCookie(res, tempToken) {
+    if (!tempToken) return;
+    res.cookie(COOKIE_NAMES.temp, tempToken, {
+        ...baseOpts(),
+        maxAge: TEMP_TOKEN_MAX_AGE_MS
+    });
+}
+
 function setAuthCookies(res, { accessToken, refreshToken } = {}) {
+    // [M-4] Полные токены выдаются только когда 2FA-поток завершён, поэтому
+    // временная кука снимается здесь, а не в каждом терминальном контроллере:
+    // так её нельзя забыть снять на новом пути. Снятие несуществующей куки
+    // безвредно, поэтому вызов безусловный (в том числе на refresh).
+    res.clearCookie(COOKIE_NAMES.temp, baseOpts());
     if (accessToken) {
         res.cookie(COOKIE_NAMES.access, accessToken, {
             ...baseOpts(),
@@ -76,6 +98,7 @@ function clearAuthCookies(res) {
     const opts = baseOpts();
     res.clearCookie(COOKIE_NAMES.access, opts);
     res.clearCookie(COOKIE_NAMES.refresh, opts);
+    res.clearCookie(COOKIE_NAMES.temp, opts);
 }
 
 // [P1-2 / 1A-FU-S-L4] Extraction helpers used by middleware.
@@ -120,12 +143,34 @@ function extractRefreshToken(req) {
     return null;
 }
 
+/**
+ * [M-4] Промежуточный токен 2FA: кука вперёд, тело — запасной путь.
+ *
+ * Тело остаётся читаемым для скрипта на странице, поэтому приоритет у куки.
+ * Сам путь через тело держится ТОЛЬКО на время выкладки: у пользователя с
+ * открытой вкладкой JS закэширован и ещё шлёт токен в теле. Убрать его —
+ * отдельный PR, после того как новый бандл разойдётся.
+ */
+function extractTempToken(req) {
+    if (req.cookies && typeof req.cookies[COOKIE_NAMES.temp] === 'string'
+        && req.cookies[COOKIE_NAMES.temp].length > 0) {
+        return req.cookies[COOKIE_NAMES.temp];
+    }
+    if (req.body && typeof req.body.tempToken === 'string' && req.body.tempToken.length > 0) {
+        return req.body.tempToken;
+    }
+    return null;
+}
+
 module.exports = {
     COOKIE_NAMES,
     ACCESS_TOKEN_MAX_AGE_MS,
     REFRESH_TOKEN_MAX_AGE_MS,
+    TEMP_TOKEN_MAX_AGE_MS,
     setAuthCookies,
+    setTempCookie,
     clearAuthCookies,
     extractAccessToken,
-    extractRefreshToken
+    extractRefreshToken,
+    extractTempToken
 };

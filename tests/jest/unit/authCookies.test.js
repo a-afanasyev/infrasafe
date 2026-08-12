@@ -7,7 +7,7 @@
  *   - extractAccessToken: header > cookie > null
  *   - extractRefreshToken: body > cookie > null
  *   - login / verify2FA / confirm2FA / refresh emit Set-Cookie
- *   - logout clears both cookies
+ *   - logout clears all three cookies (access/refresh + [M-4] temp)
  *   - middleware accepts a token delivered via cookie alone
  */
 
@@ -125,9 +125,12 @@ describe('[P1-2] authCookies utility', () => {
     });
 
     describe('clearAuthCookies', () => {
-        test('clears both names with matching attributes (browser-accept condition)', () => {
+        test('clears all three names with matching attributes (browser-accept condition)', () => {
             clearAuthCookies(res);
-            expect(res.clearCookie).toHaveBeenCalledTimes(2);
+            // [M-4] Третья кука — temp_token: выход обязан снимать и её,
+            // иначе брошенный на полпути 2FA-поток оставлял бы живой
+            // предъявительский токен ещё на пять минут.
+            expect(res.clearCookie).toHaveBeenCalledTimes(3);
             // path + sameSite + secure + httpOnly must match the SET to clear
             const accessClearOpts = res.clearCookie.mock.calls.find(c => c[0] === COOKIE_NAMES.access)[1];
             expect(accessClearOpts).toMatchObject({
@@ -365,7 +368,8 @@ describe('[P1-2] controllers emit cookies on token-issuing endpoints', () => {
         await authController.logout(req, res, jest.fn());
 
         expect(res.status).toHaveBeenCalledWith(400);
-        expect(res.clearCookie).toHaveBeenCalledTimes(2);
+        // [M-4] +temp_token: см. clearAuthCookies.
+        expect(res.clearCookie).toHaveBeenCalledTimes(3);
     });
 
     test('logout accepts access token from cookie when header missing', async () => {
@@ -381,6 +385,7 @@ describe('[P1-2] controllers emit cookies on token-issuing endpoints', () => {
         await authController.logout(req, res, jest.fn());
 
         expect(authService.logout).toHaveBeenCalledWith('cookie-access-tok');
-        expect(res.clearCookie).toHaveBeenCalledTimes(2);
+        // [M-4] +temp_token: см. clearAuthCookies.
+        expect(res.clearCookie).toHaveBeenCalledTimes(3);
     });
 });

@@ -193,6 +193,29 @@ async function confirmSetup(userId, code) {
 
     await User.enableTotp(userId);
 
+    // [M-4] Коды восстановления показываются ЗДЕСЬ — один раз, в момент, когда
+    // 2FA действительно включилась. Берём отложенный при setup открытый набор.
+    let plainRecoveryCodes = null;
+    try {
+        const cached = await cacheService.get(recoverySetupCacheKey(userId));
+        if (Array.isArray(cached) && cached.length) {
+            plainRecoveryCodes = cached;
+        }
+    } catch (err) {
+        logger.error(`Failed to read pending recovery codes for user ${userId}: ${err.message}`);
+    }
+
+    // Кэш мог протухнуть между setup и confirm (или Redis моргнул). Тогда
+    // выпускаем свежий набор ПРЯМО СЕЙЧАС и перезаписываем хэши: отдать
+    // пользователю пустоту нельзя — способа перевыпустить коды у него нет,
+    // и он остался бы с 2FA без единого запасного ключа.
+    if (!plainRecoveryCodes) {
+        logger.warn(`Pending recovery codes lost for user ${userId} — issuing a fresh set at confirm`);
+        plainRecoveryCodes = generateRecoveryCodes();
+        const hashed = await hashRecoveryCodes(plainRecoveryCodes);
+        await User.setRecoveryCodes(userId, JSON.stringify(hashed));
+    }
+
     // SEC-28: the pending plaintext recovery codes are no longer needed once
     // 2FA is enabled — drop them from cache to minimise exposure.
     try {
@@ -202,7 +225,7 @@ async function confirmSetup(userId, code) {
     }
 
     logger.info(`TOTP 2FA enabled for user ${userId}`);
-    return true;
+    return plainRecoveryCodes;
 }
 
 async function verifyCode(userId, code) {

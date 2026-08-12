@@ -26,6 +26,11 @@ const logger = require('../utils/logger');
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+// [M-4] Шаги, на которых временная кука 2FA работает как учётные данные.
+// Список закрытый: на всех прочих маршрутах она ничего не аутентифицирует, и
+// расширять его без нужды нельзя.
+const TEMP_TOKEN_PATHS = new Set(['/auth/verify-2fa', '/auth/setup-2fa', '/auth/confirm-2fa']);
+
 // Mirror src/utils/authCookies.js extractAccessToken: a cookie counts only when
 // it is a non-empty STRING. cookie-parser can turn `j:{...}` into an object —
 // a truthy check would wrongly treat that as cookie-auth and block a valid
@@ -50,9 +55,15 @@ function csrfOriginGuard(req, res, next) {
     const path = normalizePath(req.path);
     // access cookie authenticates every route; refresh cookie is an auth
     // credential ONLY for /auth/refresh (it rotates both cookies there).
+    //
+    // [M-4] Временная кука 2FA — тоже учётные данные, но только на трёх шагах
+    // потока. Формально sameSite=strict уже не даёт браузеру отправить её с
+    // чужого origin, но access/refresh точно так же strict и всё равно
+    // проверяются здесь: guard — второй рубеж, а не замена первому.
     const cookieAuth =
         hasCookie(req, COOKIE_NAMES.access) ||
-        (path === '/auth/refresh' && hasCookie(req, COOKIE_NAMES.refresh));
+        (path === '/auth/refresh' && hasCookie(req, COOKIE_NAMES.refresh)) ||
+        (TEMP_TOKEN_PATHS.has(path) && hasCookie(req, COOKIE_NAMES.temp));
 
     if (!cookieAuth) {
         return next();

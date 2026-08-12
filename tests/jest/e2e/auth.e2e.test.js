@@ -20,8 +20,11 @@ describe('E2E: Auth Flow', () => {
     expect(res.status).toBe(200);
     // Admin always goes through 2FA — either verify (configured) or setup.
     expect(res.body.requires2FA || res.body.requires2FASetup).toBe(true);
-    expect(res.body).toHaveProperty('tempToken');
+    // [M-4] Промежуточный токен уехал в HttpOnly-куку: в теле его быть НЕ
+    // должно, а Set-Cookie на него — должен.
+    expect(res.body).not.toHaveProperty('tempToken');
     expect(res.body).not.toHaveProperty('accessToken');
+    expect((res.headers['set-cookie'] || []).join(';')).toMatch(/temp_token=/);
   });
 
   test('POST /api/auth/login — wrong password returns 401', async () => {
@@ -190,7 +193,20 @@ describe('E2E: POST /api/auth/change-password', () => {
     expect(resp.body.error || resp.body.message).toMatch(/минимум 8|строчные|заглавн/);
   });
 
-  test('rate-limits after 5 attempts within 15 min', async () => {
+  // [M-5] Пять неверных попыток блокируют АККАУНТ, а не только адрес.
+  //
+  // До M-5 проверка текущего пароля не считалась в блокировке, и шестую попытку
+  // отбивал per-IP лимитер — этот тест ждал 429. Теперь на пятой попытке
+  // срабатывает блокировка аккаунта, и шестой запрос отвергает уже
+  // auth-middleware: 401 ещё до маршрута.
+  //
+  // Следствие названо прямо, потому что оно ощутимо: пять опечаток в своём же
+  // текущем пароле выкидывают пользователя из приложения на ~15 минут (плюс
+  // джиттер). Это та самая плата за закрытие бесплатного оракула пароля —
+  // порог тот же, что и на форме входа, отдельного заводить не стали. Лимитер
+  // по IP никуда не делся, но на этом маршруте его теперь опережает более
+  // сильная защита.
+  test('пять неверных попыток блокируют аккаунт, шестая отвергается middleware', async () => {
     const rlUsername = `pwtest_rl_${Date.now()}`;
     const rlPwd = 'TestPass123';
     await registerUser(rlUsername, rlPwd);
@@ -204,6 +220,9 @@ describe('E2E: POST /api/auth/change-password', () => {
       codes.push(r.status);
     }
     expect(codes.slice(0, 5).every((c) => c === 400)).toBe(true);
-    expect(codes[5]).toBe(429);
+    // 401 — блокировка аккаунта (M-5). 429 — лимитер по IP, если порядок
+    // сработавших защит когда-нибудь изменится. Оба ответа означают «дальше
+    // подбирать нельзя»; чего быть НЕ должно — это очередной 400.
+    expect([401, 429]).toContain(codes[5]);
   });
 });
