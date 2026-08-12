@@ -265,10 +265,10 @@ class Building {
             throw createError('Invalid building ID', 400);
         }
 
-        const client = await db.getPool().connect();
+        // [AR-11] Транзакция через общий хелпер — откат, пометка испорченного
+        // клиента и возврат в пул живут в одном месте (db.withTransaction).
         try {
-            await client.query('BEGIN');
-
+            const result = await db.withTransaction(async (client) => {
             // [Sprint 10 PR-1.5] Legacy `alerts` table dropped (migration 028);
             // no equivalent cleanup needed for it. Active alerts live in
             // `infrastructure_alerts` — handled below.
@@ -298,7 +298,8 @@ class Building {
                 [id]
             );
 
-            await client.query('COMMIT');
+            return result;
+            }, { context: 'Building.deleteCascade' });
 
             if (result.rows.length) {
                 logger.info(`Cascade-deleted building ${id} with all related data`);
@@ -306,15 +307,8 @@ class Building {
 
             return result.rows.length ? result.rows[0] : null;
         } catch (error) {
-            // [AUD-030] Guard ROLLBACK so a broken connection can't mask the
-            // original error. [CO-2] safeRollback дополнительно помечает клиент,
-            // чтобы releaseClient уничтожил соединение, а не вернул его в пул
-            // с оборванной транзакцией.
-            await db.safeRollback(client, 'Building.deleteCascade');
             logger.error(`Error in Building.deleteCascade: ${error.message}`);
             throw createError(`Failed to cascade-delete building: ${error.message}`, 500);
-        } finally {
-            db.releaseClient(client);
         }
     }
 

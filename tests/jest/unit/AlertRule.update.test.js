@@ -3,12 +3,17 @@ jest.mock('../../../src/config/database', () => {
     // [CO-2] safeRollback/releaseClient берём настоящие: они несут контракт
     // «упавший ROLLBACK ⇒ соединение уничтожается», и подделка его бы скрыла.
     const actual = jest.requireActual('../../../src/config/database');
-    return {
+    const { makeWithTransaction } = jest.requireActual('../helpers/dbMock');
+    const mock = {
         query: jest.fn(),
         getPool: jest.fn(),
         safeRollback: actual.safeRollback,
         releaseClient: actual.releaseClient
     };
+    // [AR-11] Модуль замокан целиком, поэтому новый экспорт надо отдать явно —
+    // настоящий замкнут на реальный getPool и в тестах взять соединение не сможет.
+    mock.withTransaction = makeWithTransaction(mock);
+    return mock;
 });
 
 jest.mock('../../../src/utils/logger', () => ({

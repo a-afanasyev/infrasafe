@@ -6,12 +6,16 @@
 jest.mock('../../../src/config/database', () => {
     // [CO-2] Настоящие safeRollback/releaseClient — см. dbTransactionHelpers.test.js.
     const actual = jest.requireActual('../../../src/config/database');
-    return {
+    const { makeWithTransaction } = jest.requireActual('../helpers/dbMock');
+    const mock = {
         query: jest.fn(),
         getPool: jest.fn(),
         safeRollback: actual.safeRollback,
         releaseClient: actual.releaseClient
     };
+    // [AR-11] Модуль замокан целиком — новый экспорт отдаём явно.
+    mock.withTransaction = makeWithTransaction(mock);
+    return mock;
 });
 
 // Mock logger

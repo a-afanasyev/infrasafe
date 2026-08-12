@@ -200,4 +200,41 @@ const setupQueryMock = (db) => {
     });
 };
 
-module.exports = { setupQueryMock, makeUser, getTestPasswordHash };
+/**
+ * [AR-11] Реализация `withTransaction` для сьютов, которые мокают модуль
+ * `src/config/database` ЦЕЛИКОМ.
+ *
+ * Почему нельзя взять настоящую через `jest.requireActual`: она замкнута на
+ * `getPool` РЕАЛЬНОГО модуля, а сьют мокает свой — соединение пришло бы не то
+ * (точнее, никакое: реальный пул в тестах не инициализирован).
+ *
+ * Это единственная копия на всё test-land, и она намеренно тривиальна: её
+ * работа — сделать BEGIN/COMMIT наблюдаемыми на замоканном клиенте, не более.
+ * Содержательные гарантии (откат при исключении, сохранение исходной ошибки
+ * при упавшем ROLLBACK, уничтожение испорченного соединения) проверяются на
+ * НАСТОЯЩЕЙ реализации в tests/jest/unit/withTransaction.test.js — здесь они
+ * лишь воспроизведены, чтобы поведение сьютов совпадало с боевым.
+ *
+ * @param {object} dbMock — объект мока с `getPool`, `safeRollback`, `releaseClient`
+ */
+function makeWithTransaction(dbMock) {
+    return async (fn, { client = null, context = 'transaction' } = {}) => {
+        const owned = client === null;
+        const conn = owned ? await dbMock.getPool().connect() : client;
+        try {
+            await conn.query('BEGIN');
+            try {
+                const result = await fn(conn);
+                await conn.query('COMMIT');
+                return result;
+            } catch (error) {
+                await dbMock.safeRollback(conn, context);
+                throw error;
+            }
+        } finally {
+            if (owned) dbMock.releaseClient(conn);
+        }
+    };
+}
+
+module.exports = { setupQueryMock, makeUser, getTestPasswordHash, makeWithTransaction };

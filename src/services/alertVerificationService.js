@@ -285,19 +285,15 @@ class AlertVerificationService {
         // the whole unit (it was a no-op under autocommit). Any VERIFY_* /
         // ALERT_ENGINEER_REQUIRED emit is deferred until AFTER COMMIT so a
         // checker never reacts to state that gets rolled back.
-        let pendingEmit = null;
-        await executor.query('BEGIN');
-        try {
-            pendingEmit = await this._processDue(executor);
-            await executor.query('COMMIT');
-        } catch (err) {
-            // [CO-2] Откат идёт по `executor`, а соединение освобождает кадр
-            // двумя уровнями выше (_tick). Отметка живёт на самом объекте
-            // клиента, поэтому доезжает до releaseClient и там уничтожает
-            // соединение с оборванной транзакцией.
-            await db.safeRollback(executor, 'alertVerificationService drain');
-            throw err;
-        }
+        // [AR-11] Транзакция через общий хелпер, режим «чужое соединение»:
+        // `executor` держит кадр двумя уровнями выше (_tick) под advisory-локом
+        // и сам же его освобождает. Хелпер поэтому НЕ вызывает release —
+        // выдернуть соединение из-под чужого кадра нельзя. Пометка испорченного
+        // клиента живёт на самом объекте и доезжает до releaseClient там.
+        const pendingEmit = await db.withTransaction(
+            () => this._processDue(executor),
+            { client: executor, context: 'alertVerificationService drain' }
+        );
 
         if (pendingEmit) {
             alertEvents.emit(pendingEmit.event, pendingEmit.payload);
@@ -707,26 +703,27 @@ class AlertVerificationService {
                 return;
             }
             try {
-                await client.query('BEGIN');
-                try {
-                    const pending = await AlertVerification.findPendingByChainId(reopenChainId, client);
-                    if (!pending) {
-                        logger.debug(`alertVerificationService: ALERT_REOPENED chain ${reopenChainId} has no pending verification`);
-                        await client.query('COMMIT');
-                        return;
-                    }
+                // [AR-11] Режим «чужое соединение»: клиент взят выше под
+                // advisory-локом, лок снимается в finally НИЖЕ — то есть уже
+                // после COMMIT/ROLLBACK, порядок сохранён.
+                const reopened = await db.withTransaction(async (tx) => {
+                    const pending = await AlertVerification.findPendingByChainId(reopenChainId, tx);
+                    if (!pending) return null;
                     // [B-020] finalize-FIRST then markReopened — now atomic via
                     // the transaction (either both land or neither).
                     if (pending.original_alert_id) {
-                        await this._finalizeAlertStatus(pending.original_alert_id, 'resolved', client);
+                        await this._finalizeAlertStatus(pending.original_alert_id, 'resolved', tx);
                     }
-                    await AlertVerification.markReopened(pending.id, alertId, client);
-                    await client.query('COMMIT');
-                    logger.info(`alertVerificationService: verification ${pending.id} → reopened (new alert_id=${alertId}, chain=${reopenChainId})`);
-                } catch (err) {
-                    // [CO-2] Клиент помечается, releaseClient его уничтожит.
-                    await db.safeRollback(client, 'alertVerificationService ALERT_REOPENED');
-                    throw err;
+                    await AlertVerification.markReopened(pending.id, alertId, tx);
+                    return pending;
+                }, { client, context: 'alertVerificationService ALERT_REOPENED' });
+
+                // Логи — после коммита: сообщать об изменении, которое может
+                // быть откачено, нельзя.
+                if (!reopened) {
+                    logger.debug(`alertVerificationService: ALERT_REOPENED chain ${reopenChainId} has no pending verification`);
+                } else {
+                    logger.info(`alertVerificationService: verification ${reopened.id} → reopened (new alert_id=${alertId}, chain=${reopenChainId})`);
                 }
             } finally {
                 await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]).catch((err) => {

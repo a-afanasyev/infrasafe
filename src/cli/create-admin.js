@@ -53,11 +53,11 @@ async function createAdmin({ username, email, password }) {
     authService.validateUserData({ username, email, password });
 
     await db.init();
-    const client = await db.getPool().connect();
     try {
-        // BEGIN must precede the advisory-xact-lock: in autocommit a
-        // pg_advisory_xact_lock would release at the end of its own statement.
-        await client.query('BEGIN');
+        // [AR-11] Транзакция через общий хелпер. BEGIN он выдаёт ПЕРВЫМ, а
+        // advisory-xact-lock берётся уже внутри — порядок сохранён: в
+        // autocommit такой лок отпустило бы в конце собственного оператора.
+        return await db.withTransaction(async (client) => {
         await client.query('SELECT pg_advisory_xact_lock($1)', [ADMIN_BOOTSTRAP_LOCK_KEY]);
 
         // 1. Is there already an admin?
@@ -67,7 +67,7 @@ async function createAdmin({ username, email, password }) {
         if (adminRes.rows.length > 0) {
             const existing = adminRes.rows[0];
             if (existing.username === username && existing.email === email) {
-                await client.query('COMMIT');
+                // Возврат из колбэка = успешное завершение: COMMIT выдаст хелпер.
                 return {
                     status: 'already-exists',
                     user: {
@@ -124,15 +124,9 @@ async function createAdmin({ username, email, password }) {
              RETURNING user_id, username, email, role, is_active`,
             [username, email, passwordHash]
         );
-        await client.query('COMMIT');
         return { status: 'created', user: insertRes.rows[0] };
-    } catch (err) {
-        // [CO-2] Единый приём отката: логирует сбой и помечает клиент, чтобы
-        // releaseClient уничтожил соединение вместо возврата в пул.
-        await db.safeRollback(client, 'create-admin');
-        throw err;
+        }, { context: 'create-admin' });
     } finally {
-        db.releaseClient(client);
         await db.close();
     }
 }
