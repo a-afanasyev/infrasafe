@@ -20,7 +20,8 @@
     "migrate:test": "bash tests/migrate/run-migrate-tests.sh",
     "build:frontend": "node build/esbuild.config.mjs",
     "build:frontend:watch": "node build/esbuild.config.mjs --watch",
-    "postinstall": "npm run build:frontend"
+    "hooks:install": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
+    "postinstall": "npm run hooks:install && npm run build:frontend"
   },
   "keywords": [
     "monitoring",

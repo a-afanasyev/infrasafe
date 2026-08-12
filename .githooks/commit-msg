@@ -1,0 +1,45 @@
+#!/bin/bash
+#
+# [OPS-003] Формат сообщения коммита: <тип>[(область)][!]: описание
+#
+# Типы взяты из принятого в проекте набора и не расширяются молча — иначе
+# соглашение перестаёт что-либо значить.
+#
+# Пропускаются: merge- и revert-коммиты (их текст формирует git), fixup!/squash!
+# (их съест rebase), и пустые сообщения (коммит и так прервётся).
+#
+# Осознанный обход:  git commit --no-verify
+#
+set -euo pipefail
+
+msg_file="$1"
+first_line="$(head -n1 "$msg_file")"
+
+# Комментарии и пустые строки в начале — не тело сообщения.
+case "$first_line" in
+    ''|'#'*) exit 0 ;;
+    Merge*|Revert*|'fixup!'*|'squash!'*) exit 0 ;;
+esac
+
+TYPES='feat|fix|refactor|docs|test|chore|perf|ci|build|style'
+
+if printf '%s' "$first_line" | grep -Eq "^($TYPES)(\([a-z0-9._/-]+\))?!?: .+"; then
+    exit 0
+fi
+
+cat >&2 <<EOF
+❌ Сообщение коммита не по формату.
+
+   Строка:  $first_line
+
+   Ожидается:  <тип>[(область)]: описание
+   Типы:       $TYPES
+
+   Примеры:
+       fix(auth): считать промах пароля в блокировке аккаунта
+       docs(backlog): зафиксировать OPS-002
+       refactor(db)!: убрать db.getPool из моделей
+
+   Обойти осознанно:  git commit --no-verify
+EOF
+exit 1
