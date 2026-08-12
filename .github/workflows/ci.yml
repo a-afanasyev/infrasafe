@@ -54,6 +54,12 @@ jobs:
       - run: npm ci
       - name: Run unit and integration tests with coverage
         run: npm run test:coverage
+      # [R2-24] Тесты против настоящего Postgres. Сервис `postgres` выше был
+      # поднят и до этого, но ни один jest-тест к нему не обращался — весь
+      # доступ к БД мокался. Здесь проверяется SQL, который мок проверить не
+      # может: арифметика счётчика блокировки и перенос лока на users.
+      - name: Run database tests against real Postgres
+        run: npm run test:db
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v7

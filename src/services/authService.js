@@ -364,24 +364,18 @@ class AuthService {
     // Смена пароля
     async changePassword(userId, currentPassword, newPassword) {
         try {
-            const user = await this.findUserById(userId);
-            if (!user) {
-                const error = new Error('Пользователь не найден');
-                error.code = 'USER_NOT_FOUND';
-                throw error;
-            }
-
-            // Fetch password_hash separately (not cached by findUserById for security)
-            const currentHash = await User.getPasswordHash(userId);
-            if (currentHash == null) {
-                const error = new Error('Пользователь не найден');
-                error.code = 'USER_NOT_FOUND';
-                throw error;
-            }
-
-            // Проверяем текущий пароль
-            const isCurrentPasswordValid = await this.verifyPassword(currentPassword, currentHash);
-            if (!isCurrentPasswordValid) {
+            // [M-5] Проверка текущего пароля идёт через общий reauth-путь:
+            // раньше здесь был свой `verifyPassword` без счётчика попыток, то
+            // есть второй бесплатный оракул пароля рядом с disable-2fa. Он же
+            // отвергает заблокированный аккаунт — до этой правки владелец
+            // украденного токена мог сменить пароль во время блокировки.
+            const verdict = await this.verifyReauthPassword(userId, currentPassword);
+            if (!verdict.ok) {
+                if (verdict.reason === 'no_user') {
+                    const error = new Error('Пользователь не найден');
+                    error.code = 'USER_NOT_FOUND';
+                    throw error;
+                }
                 const error = new Error('Неверный текущий пароль');
                 error.code = 'INVALID_CURRENT_PASSWORD';
                 throw error;
@@ -714,13 +708,62 @@ class AuthService {
         return false;
     }
 
-    // SEC-105: verify password without affecting lockout counters
-    // For use in secondary auth flows (disable-2fa) where failed attempts
-    // should not lock the account
-    async verifyPasswordOnly(userId, password) {
+    /**
+     * [M-5] Проверка пароля во вторичных потоках аутентификации —
+     * `/auth/disable-2fa` и `/auth/change-password`.
+     *
+     * Заменяет `verifyPasswordOnly` (SEC-105), который намеренно НЕ трогал
+     * счётчик неудачных попыток. Из-за этого оба эндпоинта были оракулами
+     * пароля без счётчика: тормозил только per-IP лимитер, а он снимается
+     * сменой адреса. Предусловие — валидная сессия (оба маршрута под
+     * default-deny JWT), поэтому это не путь входа с улицы; но именно там
+     * подбор ценен: он превращает украденный токен в знание пароля.
+     *
+     * Исходный довод SEC-105 («промах не должен блокировать аккаунт») цену
+     * ошибки оценивал несимметрично: самоблокировка на окно lockout против
+     * бесплатного перебора. Решение обращено сознательно.
+     *
+     * Ключ счётчика — `username`, тот же, что и у формы входа: отдельный ключ
+     * означал бы два независимых ведра и фактически удвоенный лимит.
+     *
+     * @returns {Promise<{ok: true} | {ok: false, reason: 'no_user'|'bad_password'}>}
+     * @throws {Error} code=ACCOUNT_LOCKED — аккаунт заблокирован сейчас.
+     */
+    async verifyReauthPassword(userId, password) {
+        // Uncached: findUserById держит строку 5 минут и для решений об
+        // аутентификации непригоден (H-1/H-2) — за это время блокировка
+        // успела бы «не наступить».
+        const user = await this.getUserForAuth(userId);
+        if (!user || user.is_active === false) {
+            return { ok: false, reason: 'no_user' };
+        }
+
+        // Идентити-ключевая блокировка — та же, что и в authenticateUser.
+        // Обычно сюда не доходит: auth-middleware отвергает запрос раньше,
+        // прочитав тот же столбец. Но между чтением в middleware и этой
+        // строкой блокировка может успеть наступить, и полагаться на чужую
+        // проверку в функции, чья работа — сравнить пароль, неправильно.
+        if (user.account_locked_until && new Date(user.account_locked_until).getTime() > Date.now()) {
+            logger.warn(`Reauth отклонён: аккаунт user_id=${userId} заблокирован`);
+            await this._timingEqualizerDelay();
+            const error = new Error('Аккаунт временно заблокирован. Попробуйте позже.');
+            error.code = 'ACCOUNT_LOCKED';
+            throw error;
+        }
+
         const hash = await User.getActivePasswordHash(userId);
-        if (!hash) return false;
-        return bcrypt.compare(password, hash);
+        if (!hash) {
+            return { ok: false, reason: 'no_user' };
+        }
+
+        const isValid = await bcrypt.compare(password, hash);
+        if (!isValid) {
+            await this.recordFailedAttempt(user.username, userId);
+            return { ok: false, reason: 'bad_password' };
+        }
+
+        await this.clearFailedAttempts(user.username, userId);
+        return { ok: true };
     }
 
     // Очистка просроченных токенов из черного списка

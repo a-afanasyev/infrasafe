@@ -296,6 +296,11 @@ const changePassword = async (req, res, next) => {
         if (error.code === 'INVALID_CURRENT_PASSWORD') {
             return res.status(400).json({ error: error.message });
         }
+        if (error.code === 'ACCOUNT_LOCKED') {
+            // [M-5] Неотличимо от неверного текущего пароля — см. пояснение
+            // в disable2FA ниже и SEC-11 на пути входа.
+            return res.status(400).json({ error: 'Неверный текущий пароль' });
+        }
         if (error.code === 'INVALID_PASSWORD') {
             return res.status(400).json({ error: error.message });
         }
@@ -426,9 +431,10 @@ const disable2FA = async (req, res, next) => {
             return res.status(400).json({ error: 'Password is required to disable 2FA' });
         }
 
-        // SEC-105: verify password without incrementing lockout counter
-        const isPasswordValid = await authService.verifyPasswordOnly(userId, password);
-        if (!isPasswordValid) {
+        // [M-5] Промах здесь считается в блокировке аккаунта — раньше не
+        // считался, и эндпоинт был оракулом пароля без счётчика.
+        const verdict = await authService.verifyReauthPassword(userId, password);
+        if (!verdict.ok) {
             return res.status(401).json({ error: 'Invalid password' });
         }
 
@@ -441,6 +447,13 @@ const disable2FA = async (req, res, next) => {
     } catch (error) {
         if (error.message === 'Admins cannot disable 2FA') {
             return res.status(403).json({ error: error.message });
+        }
+        if (error.code === 'ACCOUNT_LOCKED') {
+            // [M-5] Тот же ответ, что и на неверный пароль. По той же причине,
+            // что и на входе (SEC-11): отдельный статус для блокировки — это
+            // оракул состояния, по которому подбор можно ставить на паузу и
+            // возобновлять. Настоящая причина остаётся в серверном логе.
+            return res.status(401).json({ error: 'Invalid password' });
         }
         logger.error(`Disable 2FA error: ${error.message}`);
         next(error);

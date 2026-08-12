@@ -10,6 +10,7 @@
     "test": "jest",
     "test:unit": "jest tests/jest/unit",
     "test:integration": "jest tests/jest/integration",
+    "test:db": "jest tests/jest/db --testPathIgnorePatterns=/node_modules/ --runInBand",
     "test:security": "jest tests/jest/security",
     "test:smoke": "bash tests/smoke/run-smoke-tests.sh",
     "test:all": "npm run test:unit && npm run test:integration && npm run test:security && npm run test:smoke",
@@ -87,7 +88,8 @@
     ],
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "/tests/jest/e2e/"
+      "/tests/jest/e2e/",
+      "/tests/jest/db/"
     ],
     "collectCoverageFrom": [
       "src/**/*.js",
