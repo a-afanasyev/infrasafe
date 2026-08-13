@@ -137,16 +137,38 @@ else
     }
 fi
 
-# Ordered "<filename>\t<path>" lines for the target commit. discover_js exits 3 on
-# an unsafe filename → pipefail aborts the run.
+# Ordered "<filename>\t<path>\t<oid>" lines for the target commit. discover_js
+# exits 3 on an unsafe filename → pipefail aborts the run. The oid is the key
+# into the batch checksum map below.
 discover_lines() {
     git ls-tree -r -z --format='%(objectname) %(path)' "$MIGRATE_TARGET_COMMIT" -- database/migrations/ \
         | discover_js discover
 }
 
-# sha256 of a blob's content at the target commit. $1 = repo-relative path.
-file_checksum() {
-    git show "$MIGRATE_TARGET_COMMIT:$1" | discover_js checksum
+# [OPS-002] ALL blob checksums in ONE discover_js invocation. The old per-file
+# helper piped each blob через одиночный checksum-сабкоманд — on prod (node
+# only inside the app image) that was one `docker run` per migration: 42
+# sequential container starts made an EMPTY `migrate up` take minutes and look
+# hung. Here the oids from discovery stream through a single
+# `git cat-file --batch`, hashed by one process.
+#   compute_checksum_map "$discovered"  → fills CHECKSUM_MAP ("oid\tsha" lines)
+#   lookup_checksum <oid>               → prints the sha, empty if absent
+CHECKSUM_MAP=""
+compute_checksum_map() {
+    local discovered="$1"
+    if [ -z "$discovered" ]; then CHECKSUM_MAP=""; return 0; fi
+    CHECKSUM_MAP="$(cut -f3 <<< "$discovered" | git cat-file --batch | discover_js checksum-batch)"
+}
+lookup_checksum() {
+    awk -F'\t' -v o="$1" '$1==o{print $2; exit}' <<< "$CHECKSUM_MAP"
+}
+# Guard: an oid missing from the map (discovery/batch desync) must abort — an
+# empty string recorded into schema_migrations would be permanent fake drift.
+require_checksum() {
+    local oid="$1" fn="$2" ck
+    ck="$(lookup_checksum "$oid")"
+    [ -n "$ck" ] || { err "no checksum for $fn (oid $oid) — discovery/batch desync"; return 1; }
+    printf '%s\n' "$ck"
 }
 
 # --- shared guards ---------------------------------------------------------
@@ -226,15 +248,15 @@ cleanup_up() {
 }
 
 # Process one migration under the lock: re-SELECT its recorded checksum, then
-# skip / abort-on-drift / apply+record.
+# skip / abort-on-drift / apply+record. $3 = blob oid (batch-map key).
 process_one() {
-    local fn="$1" path="$2"
+    local fn="$1" path="$2" oid="$3"
     local db_ck file_ck
     db_ck="$(psql_base -tA -v fn="$fn" <<'SQL'
 SELECT checksum FROM schema_migrations WHERE filename = :'fn';
 SQL
 )"
-    file_ck="$(file_checksum "$path")"
+    file_ck="$(require_checksum "$oid" "$fn")" || return 1
     if [ -n "$db_ck" ]; then
         if [ "$db_ck" = "$file_ck" ]; then
             return 0
@@ -262,10 +284,11 @@ cmd_up() {
     acquire_lock
     local discovered
     discovered="$(discover_lines)"
+    compute_checksum_map "$discovered"
     local count=0
-    while IFS=$'\t' read -r fn path; do
+    while IFS=$'\t' read -r fn path oid; do
         [ -z "$fn" ] && continue
-        process_one "$fn" "$path"
+        process_one "$fn" "$path" "$oid"
         count=$((count + 1))
     done <<< "$discovered"
     ok "up: $count migration(s) reconciled (target $(git rev-parse --short "$MIGRATE_TARGET_COMMIT"))"
@@ -292,17 +315,18 @@ cmd_status() {
     failclose_if_no_table
     local discovered db_rows
     discovered="$(discover_lines)"
+    compute_checksum_map "$discovered"
     db_rows="$(db_scalar -c "SELECT filename || E'\t' || checksum FROM schema_migrations ORDER BY filename")"
 
     local applied=0 pending=0 drift=0 dbonly=0
-    while IFS=$'\t' read -r fn path; do
+    while IFS=$'\t' read -r fn path oid; do
         [ -z "$fn" ] && continue
         local db_ck
         db_ck="$(printf '%s\n' "$db_rows" | awk -F'\t' -v f="$fn" '$1==f{print $2}')"
         if [ -z "$db_ck" ]; then
             echo "  pending  $fn"; pending=$((pending + 1))
         else
-            local file_ck; file_ck="$(file_checksum "$path")"
+            local file_ck; file_ck="$(require_checksum "$oid" "$fn")" || return 1
             if [ "$db_ck" = "$file_ck" ]; then
                 applied=$((applied + 1))
             else
@@ -340,15 +364,22 @@ cmd_baseline() {
     fi
     # discovery must be a subset of the frozen allowlist — an extra file means an
     # un-baselined migration exists and must go through 'up', not baseline.
-    discover_lines | cut -f1 | discover_js validate-baseline
+    local discovered
+    discovered="$(discover_lines)"
+    cut -f1 <<< "$discovered" | discover_js validate-baseline
+    compute_checksum_map "$discovered"
 
-    # Build the allowlist INSERT (checksums from target blobs). Filenames come
-    # from the frozen allowlist (no quotes/metachars) and checksums are hex, so
-    # single-quoting is safe.
-    local values="" fn ck
+    # Build the allowlist INSERT (checksums from target blobs, via the batch
+    # map keyed by oid). Filenames come from the frozen allowlist (no
+    # quotes/metachars) and checksums are hex, so single-quoting is safe. An
+    # allowlisted file ABSENT from the target tree is a hard abort — baselining
+    # a migration whose blob we cannot hash would record nothing to verify.
+    local values="" fn oid ck
     while IFS= read -r fn; do
         [ -z "$fn" ] && continue
-        ck="$(file_checksum "database/migrations/$fn")"
+        oid="$(awk -F'\t' -v f="$fn" '$1==f{print $3; exit}' <<< "$discovered")"
+        [ -n "$oid" ] || { err "baseline: allowlisted $fn absent from target tree"; exit 1; }
+        ck="$(require_checksum "$oid" "$fn")" || exit 1
         values="${values}    ('${fn}', '${ck}'),"$'\n'
     done < <(discover_js allowlist)
     values="${values%,$'\n'}"   # strip trailing comma+newline

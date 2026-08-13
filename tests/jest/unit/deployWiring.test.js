@@ -1,15 +1,19 @@
 // PR-1a (AUD-002): structural guard for the migration-runner deploy wiring in
 // update-production.sh. The runner's runtime behavior is e2e-tested in
 // tests/migrate/run-migrate-tests.sh; this test pins the WIRING contract:
-//   * MIGRATE_WIRING_ENABLED defaults to true (PR-1b enabled it after the one-time
-//     prod baseline; PR-1a shipped it off, 1b flipped the default);
-//   * `migrate.sh status` and `migrate.sh up` run ONLY in the enabled branch,
-//     and BEFORE the app switch (Step 4);
-//   * both branches fast-forward with `git merge --ff-only "$TARGET"` (R2-15
-//     moved the shared `git fetch` + target resolution ABOVE the if/else so the
-//     registry image can be pulled once, before either branch);
-//   * the disabled branch does NOT invoke the runner;
+//   * миграции идут БЕЗУСЛОВНО и BEFORE the app switch (Step 4);
+//   * fast-forward строго `git merge --ff-only "$TARGET"` (R2-15: shared
+//     `git fetch` + target resolution живут выше, image pull — один раз);
 //   * the divergence guard and runner-change guard precede `up`.
+//
+// [Новое №5, решение 2026-08-11, снято 13.08] Ветки MIGRATE_WIRING_ENABLED
+// больше НЕТ. До prod-baseline флаг был фазой раскатки (PR-1a выкатил выключенным,
+// PR-1b включил); после baseline он превратился в foot-gun: экспорт переменной
+// молча пропускал схему перед подменой образа — код новый, база старая, и
+// узнаёшь об этом по 500-кам. Легитимного применения не осталось — откат кода
+// без схемы идёт своим путём (rollback-trap восстанавливает ОБРАЗ, миграции
+// roll-forward-only). Прежний тест здесь закреплял наличие ветки — теперь
+// закрепляем её отсутствие.
 //
 // R2-15 additions (image source): APP_IMAGE_SOURCE is validated up front; the
 // registry image is pulled as a PREFLIGHT before `migrate up`; the app switch
@@ -24,29 +28,22 @@ const SCRIPT = fs.readFileSync(
 );
 
 describe('update-production.sh migration wiring', () => {
-    test('MIGRATE_WIRING_ENABLED defaults to true (enabled post-baseline)', () => {
-        expect(SCRIPT).toMatch(/MIGRATE_WIRING_ENABLED="\$\{MIGRATE_WIRING_ENABLED:-true\}"/);
+    test('ветки MIGRATE_WIRING_ENABLED не существует — ни переменной, ни if', () => {
+        expect(SCRIPT).not.toMatch(/MIGRATE_WIRING_ENABLED/);
     });
 
-    test('migrate up/status live inside the enabled branch only', () => {
-        const ifIdx = SCRIPT.indexOf('if [ "$MIGRATE_WIRING_ENABLED" = "true" ]');
-        const elseIdx = SCRIPT.indexOf('else', ifIdx);
-        const fiIdx = SCRIPT.indexOf('\nfi', elseIdx);
-        expect(ifIdx).toBeGreaterThan(-1);
-        expect(elseIdx).toBeGreaterThan(ifIdx);
-
-        const enabledBranch = SCRIPT.slice(ifIdx, elseIdx);
-        const disabledBranch = SCRIPT.slice(elseIdx, fiIdx);
-
-        expect(enabledBranch).toMatch(/bash scripts\/migrate\.sh status/);
-        expect(enabledBranch).toMatch(/bash scripts\/migrate\.sh up/);
-        // legacy path must NOT invoke the runner
-        expect(disabledBranch).not.toMatch(/migrate\.sh/);
-        // R2-15: both branches fast-forward with `git merge --ff-only "$TARGET"`
-        // (the shared `git fetch` now lives above the if/else). The legacy branch
-        // no longer runs `git pull` (that would re-fetch and bypass the target pin).
-        expect(disabledBranch).toMatch(/git merge --ff-only "\$TARGET"/);
-        expect(disabledBranch).not.toMatch(/git pull/);
+    test('migrate status и up выполняются безусловно, up — до ff-merge', () => {
+        const statusIdx = SCRIPT.indexOf('bash scripts/migrate.sh status');
+        const upIdx = SCRIPT.indexOf('bash scripts/migrate.sh up');
+        const mergeIdx = SCRIPT.indexOf('git merge --ff-only "$TARGET"');
+        expect(statusIdx).toBeGreaterThan(-1);
+        expect(upIdx).toBeGreaterThan(statusIdx);
+        // схема ДО кода: сначала up, затем ff-merge рабочей копии
+        expect(mergeIdx).toBeGreaterThan(upIdx);
+        // и никакого ИСПОЛНЯЕМОГО git pull в обход закреплённого target
+        // (в комментариях скрипт легитимно упоминает git pull — про бинд-маунты)
+        const executable = SCRIPT.split('\n').filter((l) => !/^\s*#/.test(l));
+        expect(executable.filter((l) => /\bgit pull\b/.test(l))).toEqual([]);
     });
 
     test('schema is applied before the app switch (Step 4)', () => {
