@@ -396,16 +396,12 @@ const setup2FA = async (req, res, next) => {
         // The same tempToken must remain valid for the subsequent confirm2FA call.
         // Blacklisting happens in confirm2FA and verify2FA (terminal operations).
 
+        // [M-4-contract] Коды восстановления здесь не отдаются: единственная
+        // точка выдачи — confirm-2fa, когда 2FA действительно включилась.
         res.json({
             success: true,
             qrCodeUrl: setup.qrCodeUrl,
             secret: setup.secret,
-            // [M-4, expand-остаток] Коды здесь БОЛЬШЕ НЕ НУЖНЫ: фронт получает их
-            // на confirm-2fa. Поле оставлено на одну выкладку, потому что старый
-            // закэшированный бандл делает `data.recoveryCodes.join('\n')` и упал
-            // бы с TypeError, исчезни оно сразу. Убрать отдельным PR, когда
-            // новый бандл разойдётся по браузерам (contract-шаг).
-            recoveryCodes: setup.recoveryCodes,
             message: 'Scan QR code with your authenticator app, then confirm with a code'
         });
     } catch (error) {

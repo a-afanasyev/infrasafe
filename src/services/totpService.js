@@ -158,10 +158,11 @@ async function generateSetup(userId, username) {
 
     logger.info(`TOTP setup initiated for user ${userId}`);
 
+    // [M-4-contract] Открытые коды из setup не возвращаются: до confirm'а они
+    // живут только в кэше (депозит выше), наружу их отдаёт confirmSetup.
     return {
         qrCodeUrl: qrCodeDataUrl,
-        secret,
-        recoveryCodes: plainRecoveryCodes
+        secret
     };
 }
 

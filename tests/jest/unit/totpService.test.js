@@ -130,8 +130,11 @@ describe('totpService — generateSetup', () => {
         const result = await totpService.generateSetup(42, 'alice');
 
         expect(result.qrCodeUrl).toMatch(/^data:image\/png;base64,/);
-        expect(result.recoveryCodes).toHaveLength(8);
         expect(typeof result.secret).toBe('string');
+        // [M-4-contract] Открытые коды из generateSetup не возвращаются вовсе:
+        // наружу они уходят один раз на confirmSetup, а до того живут только
+        // в кэше. Возврат из setup был бы соблазном снова отдать их в HTTP.
+        expect(result).not.toHaveProperty('recoveryCodes');
 
         const [sql, params] = db.query.mock.calls[1];
         expect(sql).toMatch(/UPDATE users SET totp_secret = \$1, recovery_codes = \$2 WHERE user_id = \$3/);
@@ -179,6 +182,12 @@ describe('totpService — generateSetup idempotency', () => {
         expect(second.secret).toBe(first.secret);
     });
 
+    // [M-4-contract] generateSetup больше не возвращает открытые коды, поэтому
+    // стабильность набора наблюдаем там, где он реально живёт до confirm'а —
+    // в аргументах cacheService.set (plaintext-депозит для confirmSetup).
+    const cachedSet = (userId, nth) =>
+        cacheService.set.mock.calls.filter(c => c[0] === `totp:setup:recovery:${userId}`)[nth][1];
+
     test('recovery codes are STABLE on resume when cache hits (SEC-28)', async () => {
         // SEC-28: re-issuing setup within one session (e.g. QR-page refresh)
         // must NOT rotate recovery codes — a user who saved the first set would
@@ -187,29 +196,31 @@ describe('totpService — generateSetup idempotency', () => {
             .mockResolvedValueOnce({ rows: [{ totp_secret: null, totp_enabled: false }] })
             .mockResolvedValueOnce({ rows: [] });
         const first = await totpService.generateSetup(78, 'dave');
+        const firstSet = cachedSet(78, 0);
 
         const encryptedPending = totpService.encrypt(first.secret);
-        cacheService.get.mockResolvedValueOnce(first.recoveryCodes); // cache hit on resume
+        cacheService.get.mockResolvedValueOnce(firstSet); // cache hit on resume
         db.query
             .mockResolvedValueOnce({ rows: [{ totp_secret: encryptedPending, totp_enabled: false }] })
             .mockResolvedValueOnce({ rows: [] });
-        const second = await totpService.generateSetup(78, 'dave');
+        await totpService.generateSetup(78, 'dave');
 
-        expect(second.recoveryCodes).toEqual(first.recoveryCodes);
-        expect(second.recoveryCodes).toHaveLength(8);
+        expect(cachedSet(78, 1)).toEqual(firstSet);
+        expect(firstSet).toHaveLength(8);
     });
 
     test('caches plaintext recovery codes for the setup window (SEC-28)', async () => {
         db.query
             .mockResolvedValueOnce({ rows: [{ totp_secret: null, totp_enabled: false }] })
             .mockResolvedValueOnce({ rows: [] });
-        const result = await totpService.generateSetup(81, 'frank');
+        await totpService.generateSetup(81, 'frank');
 
         expect(cacheService.set).toHaveBeenCalledWith(
             'totp:setup:recovery:81',
-            result.recoveryCodes,
+            expect.arrayContaining([expect.stringMatching(/^[0-9A-F]{4}-[0-9A-F]{4}$/)]),
             expect.objectContaining({ ttl: expect.any(Number) })
         );
+        expect(cachedSet(81, 0)).toHaveLength(8);
     });
 
     test('resume with cache MISS mints a fresh set (graceful fallback, SEC-28)', async () => {
@@ -223,10 +234,10 @@ describe('totpService — generateSetup idempotency', () => {
         db.query
             .mockResolvedValueOnce({ rows: [{ totp_secret: encryptedPending, totp_enabled: false }] })
             .mockResolvedValueOnce({ rows: [] });
-        const second = await totpService.generateSetup(83, 'grace');
+        await totpService.generateSetup(83, 'grace');
 
-        expect(second.recoveryCodes).not.toEqual(first.recoveryCodes);
-        expect(second.recoveryCodes).toHaveLength(8);
+        expect(cachedSet(83, 1)).not.toEqual(cachedSet(83, 0));
+        expect(cachedSet(83, 1)).toHaveLength(8);
     });
 
     test('after 2FA is enabled, a new generateSetup call mints a FRESH secret', async () => {
