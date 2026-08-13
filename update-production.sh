@@ -90,11 +90,14 @@ APP_IMAGE_SOURCE="${APP_IMAGE_SOURCE:-registry}"
 # commit's image (the SHA validated on staging), guarded to stay on-branch.
 DEPLOY_TARGET_COMMIT="${DEPLOY_TARGET_COMMIT:-}"
 
-# [PR-1a/1b / AUD-002] migration-runner wiring — ENABLED (PR-1b, after the one-time
-# prod `migrate.sh baseline` on 2026-06-12). When true the runner applies pending
-# migrations from the fetched target BEFORE the app switch. Override to "false" to
-# fall back to the legacy `git pull --ff-only` with no schema step (escape hatch).
-MIGRATE_WIRING_ENABLED="${MIGRATE_WIRING_ENABLED:-true}"
+# [AUD-002] migration-runner wiring: the runner applies pending migrations from
+# the fetched target BEFORE the app switch — unconditionally. [Новое №5,
+# 2026-08-13] Бывший wiring-флаг удалён (имя — в git-истории PR-1a/1b): он был фазой раскатки
+# (PR-1a выкатил выключенным, PR-1b включил после prod-baseline 2026-06-12), а
+# после baseline превратился в foot-gun — экспортированная переменная молча
+# пропускала схему перед подменой образа (код новый, база старая, диагноз по
+# 500-кам). Откат кода без схемы идёт другим путём: rollback-trap возвращает
+# ОБРАЗ, миграции roll-forward-only.
 export MIGRATE_COMPOSE_FILE="${COMPOSE_FILES[*]}"   # whitespace-joined; migrate.sh splits into -f args
 export MIGRATE_PG_SERVICE="${MIGRATE_PG_SERVICE:-postgres}"
 export MIGRATE_PG_USER="${MIGRATE_PG_USER:-infrasafe_app}"
@@ -256,32 +259,27 @@ if [ "$APP_IMAGE_SOURCE" = "registry" ]; then
     ok "  ✅ env preflight passed"
 fi
 
-if [ "$MIGRATE_WIRING_ENABLED" = "true" ]; then
-    say "  → schema migrations (runner wiring ENABLED)"
-    # Drift / missing-table guard: status exits non-zero on no schema_migrations
-    # (run baseline first) or on checksum/db-only drift.
-    say "  → migrate status"
-    status_out="$(bash scripts/migrate.sh status)" \
-        || { echo "$status_out"; err "❌ migrate status failed (no schema_migrations, or drift)"; exit 1; }
-    echo "$status_out"
-    pending_n="$(echo "$status_out" | sed -n 's/.*migrate-status: applied=[0-9]* pending=\([0-9]*\).*/\1/p')"
-    # Runner-change deploy-guard: never ship a runner-code change AND pending
-    # migrations in the same release — the runner executes from the OLD checkout,
-    # so a runner change must land in a SEPARATE earlier release.
-    if [ -n "$(git diff --name-only HEAD "$TARGET" -- scripts/migrate.sh scripts/lib/)" ] \
-       && [ "${pending_n:-0}" -gt 0 ]; then
-        err "❌ runner change + ${pending_n} pending migration(s) in one release — split them"
-        exit 1
-    fi
-    say "  → migrate up (schema before code)"
-    bash scripts/migrate.sh up
-    git merge --ff-only "$TARGET"
-    ok "✅ migrated + code at $(git rev-parse --short HEAD) (prev $(git rev-parse --short "$PREV_COMMIT"))"
-else
-    say "  → git merge (migration-runner wiring DISABLED)"
-    git merge --ff-only "$TARGET"
-    ok "✅ code at $(git rev-parse --short HEAD) (prev $(git rev-parse --short "$PREV_COMMIT"))"
+# Schema migrations — unconditional since [Новое №5] (see the note at the top).
+say "  → schema migrations"
+# Drift / missing-table guard: status exits non-zero on no schema_migrations
+# (run baseline first) or on checksum/db-only drift.
+say "  → migrate status"
+status_out="$(bash scripts/migrate.sh status)" \
+    || { echo "$status_out"; err "❌ migrate status failed (no schema_migrations, or drift)"; exit 1; }
+echo "$status_out"
+pending_n="$(echo "$status_out" | sed -n 's/.*migrate-status: applied=[0-9]* pending=\([0-9]*\).*/\1/p')"
+# Runner-change deploy-guard: never ship a runner-code change AND pending
+# migrations in the same release — the runner executes from the OLD checkout,
+# so a runner change must land in a SEPARATE earlier release.
+if [ -n "$(git diff --name-only HEAD "$TARGET" -- scripts/migrate.sh scripts/lib/)" ] \
+   && [ "${pending_n:-0}" -gt 0 ]; then
+    err "❌ runner change + ${pending_n} pending migration(s) in one release — split them"
+    exit 1
 fi
+say "  → migrate up (schema before code)"
+bash scripts/migrate.sh up
+git merge --ff-only "$TARGET"
+ok "✅ migrated + code at $(git rev-parse --short HEAD) (prev $(git rev-parse --short "$PREV_COMMIT"))"
 
 # Step 2 — capture rollback image, then make the target image the local
 # infrasafe-app:latest (registry: retag the preflight-pulled image; build: legacy

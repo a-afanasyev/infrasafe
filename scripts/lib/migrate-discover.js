@@ -8,9 +8,15 @@
 // CLI (invoked by migrate.sh):
 //   git ls-tree -r -z --format='%(objectname) %(path)' <commit> -- database/migrations/ \
 //     | node scripts/lib/migrate-discover.js discover
-//       → emits ordered "<filename>\t<path>" lines; exit 3 on an unsafe filename.
+//       → emits ordered "<filename>\t<path>\t<oid>" lines; exit 3 on an unsafe filename.
 //   <blob bytes on stdin> | node scripts/lib/migrate-discover.js checksum
 //       → emits the sha256 hex of stdin.
+//   <git cat-file --batch stream> | node scripts/lib/migrate-discover.js checksum-batch
+//       → emits "<oid>\t<sha256>" per blob, ONE process for the whole set.
+//       [OPS-002] Раньше суммы считались по одной: на проде node живёт только в
+//       образе, и каждый вызов = отдельный `docker run` — 42 старта контейнера
+//       на пустом `up`. Exit 6 на "missing"/оборванном потоке — посчитать «что
+//       смогли» значило бы записать сумму не того набора.
 //   node scripts/lib/migrate-discover.js validate-baseline   (filenames on stdin, one/line)
 //       → exit 0 if all in allowlist; exit 4 + offenders on stderr otherwise.
 //   node scripts/lib/migrate-discover.js allowlist
@@ -115,6 +121,48 @@ function checksum(content) {
     return crypto.createHash('sha256').update(content).digest('hex');
 }
 
+// [OPS-002] Parse a `git cat-file --batch` stream and return every blob's
+// sha256 in one pass. Record shape per requested object:
+//   "<oid> SP <type> SP <size> LF" + <size> bytes + LF        (present)
+//   "<oid> SP missing LF"                                     (absent)
+// Parsing is SIZE-driven, never line-split: migrations are SQL and contain LFs
+// (and, in principle, any byte) — splitting on newlines would hash the wrong
+// slice and record a wrong checksum forever.
+function checksumBatch(buf) {
+    const out = [];
+    let pos = 0;
+    while (pos < buf.length) {
+        const lf = buf.indexOf(0x0a, pos);
+        if (lf === -1) {
+            throw new MigrationDiscoveryError('cat-file batch stream truncated: no header LF');
+        }
+        const header = buf.toString('utf8', pos, lf);
+        if (header.trim() === '') { pos = lf + 1; continue; }
+        const parts = header.split(' ');
+        if (parts.length === 2 && parts[1] === 'missing') {
+            throw new MigrationDiscoveryError(`blob missing from repository: ${parts[0]}`);
+        }
+        if (parts.length !== 3) {
+            throw new MigrationDiscoveryError(`unrecognized cat-file batch header: ${header}`);
+        }
+        const [oid, , sizeStr] = parts;
+        const size = Number(sizeStr);
+        if (!Number.isInteger(size) || size < 0) {
+            throw new MigrationDiscoveryError(`bad blob size in batch header: ${header}`);
+        }
+        const start = lf + 1;
+        const end = start + size;
+        if (end > buf.length) {
+            throw new MigrationDiscoveryError(
+                `cat-file batch stream truncated: ${oid} declares ${size} bytes, got ${buf.length - start}`
+            );
+        }
+        out.push({ oid, sha256: checksum(buf.subarray(start, end)) });
+        pos = end + 1; // skip the trailing LF after the content
+    }
+    return out;
+}
+
 // discoveredFilenames: ordered list of filenames found at the baseline target.
 // Returns { ok, unknown } — unknown = any not in the frozen allowlist.
 function validateBaseline(discoveredFilenames) {
@@ -160,13 +208,26 @@ async function main(argv) {
                 process.stderr.write(`${e.message}\n`);
                 return 3;
             }
-            process.stdout.write(discovered.map((d) => `${d.filename}\t${d.path}`).join('\n'));
+            process.stdout.write(discovered.map((d) => `${d.filename}\t${d.path}\t${d.oid}`).join('\n'));
             if (discovered.length) process.stdout.write('\n');
             return 0;
         }
         case 'checksum': {
             const buf = await readStdin();
             process.stdout.write(`${checksum(buf)}\n`);
+            return 0;
+        }
+        case 'checksum-batch': {
+            const buf = await readStdin();
+            let rows;
+            try {
+                rows = checksumBatch(buf);
+            } catch (e) {
+                process.stderr.write(`${e.message}\n`);
+                return 6;
+            }
+            process.stdout.write(rows.map((r) => `${r.oid}\t${r.sha256}`).join('\n'));
+            if (rows.length) process.stdout.write('\n');
             return 0;
         }
         case 'validate-baseline': {
@@ -188,7 +249,7 @@ async function main(argv) {
         }
         default:
             process.stderr.write(
-                'usage: migrate-discover.js <discover|checksum|validate-baseline|allowlist>\n'
+                'usage: migrate-discover.js <discover|checksum|checksum-batch|validate-baseline|allowlist>\n'
             );
             return 2;
     }
@@ -198,6 +259,7 @@ module.exports = {
     isValidMigrationPath,
     discover,
     checksum,
+    checksumBatch,
     validateBaseline,
     BASELINE_ALLOWLIST,
     MigrationDiscoveryError,

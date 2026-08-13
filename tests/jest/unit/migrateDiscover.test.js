@@ -123,6 +123,77 @@ describe('migrate-discover', () => {
         });
     });
 
+    // [OPS-002] checksumBatch parses a `git cat-file --batch` stream and returns
+    // every blob's sha256 in ONE pass. Раньше migrate.sh считал суммы по одной:
+    // на проде (node только в образе) это 42 последовательных `docker run` —
+    // минуты на шаге `up`, который выглядел зависшим. Формат записи batch-потока:
+    //   "<oid> SP <type> SP <size> LF <size байт содержимого> LF"
+    // и "<oid> SP missing LF" для несуществующего объекта.
+    describe('checksumBatch (OPS-002)', () => {
+        const { checksumBatch } = require('../../../scripts/lib/migrate-discover');
+
+        const sha = (content) => crypto.createHash('sha256').update(content).digest('hex');
+        const record = (oid, content) => {
+            const body = Buffer.isBuffer(content) ? content : Buffer.from(content);
+            return Buffer.concat([
+                Buffer.from(`${oid} blob ${body.length}\n`),
+                body,
+                Buffer.from('\n'),
+            ]);
+        };
+
+        test('один блоб → его oid и sha256 содержимого', () => {
+            const content = 'BEGIN;\nSELECT 1;\nCOMMIT;\n';
+            const out = checksumBatch(record('a'.repeat(40), content));
+            expect(out).toEqual([{ oid: 'a'.repeat(40), sha256: sha(content) }]);
+        });
+
+        test('несколько блобов — в порядке потока', () => {
+            const buf = Buffer.concat([
+                record('a'.repeat(40), 'first'),
+                record('b'.repeat(40), 'second'),
+                record('c'.repeat(40), 'third'),
+            ]);
+            const out = checksumBatch(buf);
+            expect(out.map((r) => r.oid)).toEqual(['a'.repeat(40), 'b'.repeat(40), 'c'.repeat(40)]);
+            expect(out.map((r) => r.sha256)).toEqual([sha('first'), sha('second'), sha('third')]);
+        });
+
+        test('разбор ведётся ПО РАЗМЕРУ, а не по строкам: LF внутри содержимого не рвёт запись', () => {
+            // Миграция — это SQL: переводы строк в каждой. Наивный split('\n')
+            // дал бы неверную сумму — ровно этот дефект тест и караулит.
+            const content = 'line1\nline2\nccccccccc blob 5\nline4\n';
+            const out = checksumBatch(record('d'.repeat(40), content));
+            expect(out).toEqual([{ oid: 'd'.repeat(40), sha256: sha(content) }]);
+        });
+
+        test('двоичное содержимое хешируется байт-в-байт', () => {
+            const body = Buffer.from([0x00, 0xff, 0x0a, 0x0d, 0x80, 0x00]);
+            const out = checksumBatch(record('e'.repeat(40), body));
+            expect(out[0].sha256).toBe(crypto.createHash('sha256').update(body).digest('hex'));
+        });
+
+        test('"<oid> missing" → исключение, не тихий пропуск', () => {
+            // Отсутствующий блоб при закреплённом коммите — это порча репозитория
+            // или рассинхрон discovery; посчитать «что смогли» значило бы записать
+            // в schema_migrations сумму не того набора.
+            const buf = Buffer.concat([
+                record('a'.repeat(40), 'ok'),
+                Buffer.from(`${'f'.repeat(40)} missing\n`),
+            ]);
+            expect(() => checksumBatch(buf)).toThrow(/missing/);
+        });
+
+        test('оборванный поток (заявлен размер больше фактического) → исключение', () => {
+            const buf = Buffer.from(`${'a'.repeat(40)} blob 100\nshort\n`);
+            expect(() => checksumBatch(buf)).toThrow(/truncated|оборван/i);
+        });
+
+        test('пустой ввод → пустой список (в дереве нет миграций — не ошибка)', () => {
+            expect(checksumBatch(Buffer.alloc(0))).toEqual([]);
+        });
+    });
+
     describe('BASELINE_ALLOWLIST', () => {
         test('has exactly 33 frozen names (003-034 with two 012s)', () => {
             expect(BASELINE_ALLOWLIST).toHaveLength(33);
