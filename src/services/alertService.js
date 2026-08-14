@@ -12,7 +12,7 @@ const analyticsService = require('./analyticsService');
 // [AUD-012] Constants split out (delegate-only). Re-required here so every
 // bare reference in the class body resolves unchanged; the singleton still
 // re-exports COOLDOWN_SUFFIX_BY_TYPE / SEVERITY_RANK at the bottom of the file.
-const { UK_REQUESTS_MAX_PER_ALERT, COOLDOWN_SUFFIX_BY_TYPE, SEVERITY_RANK, ALERT_NOT_FOUND } = require('./alert/alertConstants');
+const { UK_REQUESTS_MAX_PER_ALERT, COOLDOWN_SUFFIX_BY_TYPE, SEVERITY_RANK, ALERT_NOT_FOUND, VERIFY_LOCK_BUSY } = require('./alert/alertConstants');
 // [AUD-012] Pure alertData builders split out (delegate-only).
 const alertDataBuilders = require('./alert/alertDataBuilders');
 // [AUD-012] Stateless read-only SQL helpers split out (delegate-only).
@@ -51,6 +51,14 @@ class InfrastructureAlertService {
         this.dbBreaker = CircuitBreakerFactory.createDatabaseBreaker('AlertsDB', {
             isFailure: (error) => error?.code !== ALERT_NOT_FOUND
         });
+
+        // [AR-16] Ожидание advisory-лока verification-очереди в resolveAlert:
+        // try-лок с ограниченным числом попыток (суммарно ~3 с) вместо
+        // блокирующего pg_advisory_lock, который подвешивал соединение из пула
+        // до statement_timeout при затянувшемся тике воркера. Поля, а не
+        // константы — тесты ужимают ожидание до миллисекунд.
+        this.resolveLockRetries = 15;
+        this.resolveLockRetryMs = 200;
 
         // Phase 4.2 (KISS-008): thresholds come from the shared config module.
         // Local copy kept for updateThresholds() compatibility (runtime overrides).
@@ -1262,13 +1270,36 @@ class InfrastructureAlertService {
     }
 
     /**
+     * [AR-16] Захват advisory-лока verification-очереди: try-лок с паузами
+     * вместо блокирующего вызова. Drain держит лок одну строку за тик, так что
+     * штатно лок берётся с первой попытки; затянувшийся тик воркера раньше
+     * подвешивал это соединение из пула до statement_timeout. Не дождались —
+     * бросаем VERIFY_LOCK_BUSY (контроллер переводит в 503 «повторите»).
+     */
+    async _acquireVerifyLock(client, lockKey, alertId) {
+        for (let attempt = 0; attempt < this.resolveLockRetries; attempt++) {
+            const r = await client.query(
+                'SELECT pg_try_advisory_lock($1) AS locked', [lockKey]
+            );
+            if (r.rows[0] && r.rows[0].locked === true) return;
+            await new Promise((resolve) => setTimeout(resolve, this.resolveLockRetryMs));
+        }
+        const error = new Error(
+            `Очередь верификации занята — resolve алерта ${alertId} не дождался advisory-лока`
+        );
+        error.code = VERIFY_LOCK_BUSY;
+        throw error;
+    }
+
+    /**
      * [B-021 PR3] System-initiated verifying resolve under one checked-out
-     * client: take the verification drain's advisory lock (blocking — we must
-     * complete, unlike the worker which try-locks and skips), then
-     * UPDATE→resolved_verifying + enqueue + chain/uk backfills in ONE
-     * transaction. The lock serialises this against `_drainOne`/`_handleReopen`
-     * on the same chain; the transaction guarantees no orphaned
-     * resolved_verifying alert if the enqueue fails.
+     * client: take the verification drain's advisory lock ([AR-16] try-lock
+     * with bounded retries — we must complete or fail fast, unlike the worker
+     * which try-locks once and skips), then UPDATE→resolved_verifying +
+     * enqueue + chain/uk backfills in ONE transaction. The lock serialises
+     * this against `_drainOne`/`_handleReopen` on the same chain; the
+     * transaction guarantees no orphaned resolved_verifying alert if the
+     * enqueue fails.
      */
     async _resolveVerifying(alertId, userId, current, rule) {
         const { randomUUID } = require('crypto');
@@ -1298,8 +1329,10 @@ class InfrastructureAlertService {
         const client = await db.getPool().connect();
         let alert;
         try {
-            // Blocking lock — the drain holds it only briefly (one row/tick).
-            await client.query('SELECT pg_advisory_lock($1)', [ADVISORY_LOCK_KEY]);
+            // [AR-16] Drain держит лок недолго (одна строка за тик), поэтому
+            // ждём try-локом с короткими паузами; не дождались — типизированный
+            // отказ, а не висящее соединение.
+            await this._acquireVerifyLock(client, ADVISORY_LOCK_KEY, alertId);
             try {
                 // [AR-11] Режим «чужое соединение»: клиент взят выше, лок с него
                 // снимается в finally НИЖЕ — то есть уже после COMMIT/ROLLBACK.

@@ -42,4 +42,9 @@ const SEVERITY_RANK = Object.freeze({ INFO: 0, WARNING: 1, CRITICAL: 2 });
 // модуль констант мокнуть «мимо» нельзя.
 const ALERT_NOT_FOUND = 'ALERT_NOT_FOUND';
 
-module.exports = { UK_REQUESTS_MAX_PER_ALERT, COOLDOWN_SUFFIX_BY_TYPE, SEVERITY_RANK, ALERT_NOT_FOUND };
+// [AR-16] resolve не дождался advisory-лока verification-очереди за отведённые
+// попытки. Транзиентное состояние, а не ошибка данных: контроллер отвечает 503
+// «повторите», а не 500.
+const VERIFY_LOCK_BUSY = 'VERIFY_LOCK_BUSY';
+
+module.exports = { UK_REQUESTS_MAX_PER_ALERT, COOLDOWN_SUFFIX_BY_TYPE, SEVERITY_RANK, ALERT_NOT_FOUND, VERIFY_LOCK_BUSY };

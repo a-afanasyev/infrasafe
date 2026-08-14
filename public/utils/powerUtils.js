@@ -20,6 +20,20 @@ function PU_T(name, fallback) {
 }
 
 /**
+ * [CO-6] Экранирование значения перед вставкой в HTML-строку.
+ * Имена объектов приходят из БД и редактируются в админке — сохранённый
+ * `<img onerror=…>` без экранирования стал бы stored-XSS в попапе карты.
+ *
+ * @param {*} value
+ * @returns {string}
+ */
+function PU_escape(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+}
+
+/**
  * Создать SVG прогресс-бар для маркера трансформатора
  * 
  * @param {number} loadPercent - Процент загрузки (0-100)
@@ -174,7 +188,7 @@ function createOverloadWarning(loadPercent, objectName) {
     
     return `
         <div class="overload-warning" style="color: ${PU_T('--popup-danger', '#c53030')}; background-color: ${PU_T('--overload-surface', '#fff5f5')}; padding: 8px; border-radius: 4px; border-left: 4px solid #fc8181;">
-            <strong>ПЕРЕГРУЗКА!</strong> ${objectName} загружен на ${loadPercent.toFixed(1)}%
+            <strong>ПЕРЕГРУЗКА!</strong> ${PU_escape(objectName)} загружен на ${loadPercent.toFixed(1)}%
         </div>
     `;
 }
