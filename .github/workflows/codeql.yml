@@ -8,6 +8,16 @@ on:
   schedule:
     - cron: '0 3 * * 1'
 
+# [EN-8] Отменяем только устаревшие PR-прогоны. Пуши в main и еженедельный
+# скан — своя группа по run_id: результат анализа на main попадает в
+# security-вкладку, и терять его из-за соседнего события нельзя.
+concurrency:
+  group: >-
+    codeql-${{ github.event_name == 'pull_request'
+      && format('pr-{0}', github.event.pull_request.number)
+      || format('run-{0}', github.run_id) }}
+  cancel-in-progress: true
+
 jobs:
   analyze:
     name: Analyze JavaScript/TypeScript
@@ -18,13 +28,13 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@988661ebb5e81487b3fb31b2185d2856c0a10679   # v4
         with:
           languages: javascript-typescript
           config-file: ./.github/codeql/codeql-config.yml
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@988661ebb5e81487b3fb31b2185d2856c0a10679   # v4
         with:
           category: "/language:javascript-typescript"

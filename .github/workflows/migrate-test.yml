@@ -33,18 +33,28 @@ on:
       - '.github/workflows/migrate-test.yml'
   workflow_dispatch: {}
 
+# [EN-8] Обвязка поднимает эфемерный postgres в Docker — два параллельных
+# прогона на одном PR дерутся за раннер впустую. Отменяем устаревшие
+# PR-прогоны; push/main и ручной запуск идут своей группой по run_id.
+concurrency:
+  group: >-
+    migrate-${{ github.event_name == 'pull_request'
+      && format('pr-{0}', github.event.pull_request.number)
+      || format('run-{0}', github.run_id) }}
+  cancel-in-progress: true
+
 jobs:
   migrate-test:
     name: Migrate Runner E2E
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7
         with:
           # The harness builds a baseline target and dangling commits from git
           # plumbing (read-tree/commit-tree) off HEAD; full history keeps that
           # robust regardless of how deep the referenced objects sit.
           fetch-depth: 0
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020   # v7
         with:
           node-version: 22
       # No `npm ci`: the harness only needs host `node` for the stdlib-only
