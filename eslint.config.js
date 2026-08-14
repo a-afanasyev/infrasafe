@@ -61,7 +61,10 @@ module.exports = [
             'node_modules/',
             'public/dist/',
             'public/libs/',
-            'generator/',
+            // [EN-8] Раньше здесь стоял весь `generator/` — генератор тестовых
+            // данных не проверялся вообще, хотя это исполняемый Node-сервис в
+            // репозитории. Теперь скрыты только его зависимости.
+            'generator/node_modules/',
             'frontend-design/',
             'coverage/',
             'tests/reports/',
@@ -127,6 +130,24 @@ module.exports = [
             'no-control-regex': 'warn',
             'no-extra-semi': 'warn',
             'getter-return': 'warn',
+        },
+    },
+
+    // [EN-8] Генератор тестовых данных — отдельный пакет с `"type": "module"`,
+    // поэтому базовый `sourceType: 'commonjs'` его файлы не разбирал вовсе.
+    // `no-console` здесь выключен осознанно: это консольный сервис, его вывод
+    // и есть консоль (15 вызовов), а `--max-warnings 0` иначе валил бы линт.
+    {
+        files: ['generator/**/*.js'],
+        languageOptions: {
+            sourceType: 'module',
+            globals: {
+                ...globals.node,
+                ...globals.es2022,
+            },
+        },
+        rules: {
+            'no-console': 'off',
         },
     },
 

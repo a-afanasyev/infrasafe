@@ -240,6 +240,5 @@ loadConfig();
 startScheduler();
 
 app.listen(PORT, () => {
-  // eslint-disable-next-line no-console
   console.log(`[generator] service started on port ${PORT}`);
 });

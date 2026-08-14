@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "lint": "eslint src/ public/ tests/ --max-warnings 0",
+    "lint": "eslint src/ public/ tests/ generator/ --max-warnings 0",
     "test": "jest",
     "test:unit": "jest tests/jest/unit",
     "test:integration": "jest tests/jest/integration",
