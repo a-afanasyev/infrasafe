@@ -103,6 +103,35 @@ describe('migrate-discover', () => {
                 'database/migrations/README.md',
             ))).not.toThrow();
         });
+
+        // [AR-15] Номер миграции — ключ порядка применения; дубль 012 обработан
+        // осознанно (два файла заморожены в baseline), но с тех пор ничто не
+        // запрещало появиться новому дублю — и два файла с одним номером
+        // применялись бы в алфавитном, а не задуманном порядке. Историческая
+        // пара — единственное исключение, новые дубли discovery отклоняет.
+        describe('[AR-15] duplicate migration numbers', () => {
+            test('историческая пара 012 по-прежнему проходит', () => {
+                expect(() => discover(entries(
+                    'database/migrations/012_totp_2fa.sql',
+                    'database/migrations/012_fix_materialized_view.sql',
+                ))).not.toThrow();
+            });
+
+            test('новый дубль номера → MigrationDiscoveryError', () => {
+                expect(() => discover(entries(
+                    'database/migrations/044_foo.sql',
+                    'database/migrations/044_bar.sql',
+                ))).toThrow(MigrationDiscoveryError);
+            });
+
+            test('третий файл с номером 012 (вне исторической пары) отклоняется', () => {
+                expect(() => discover(entries(
+                    'database/migrations/012_totp_2fa.sql',
+                    'database/migrations/012_fix_materialized_view.sql',
+                    'database/migrations/012_sneaky.sql',
+                ))).toThrow(MigrationDiscoveryError);
+            });
+        });
     });
 
     describe('checksum', () => {

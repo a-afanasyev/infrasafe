@@ -54,6 +54,10 @@ jest.mock('../../../src/middleware/rateLimiter', () => {
         applyMapDataRateLimit: passThrough,
         rateLimitStrict: passThrough,
         authLimiter: limiterObj,
+        // [L-1] раздельные бакеты auth-эндпоинтов
+        refreshLimiter: limiterObj,
+        twoFaLimiter: limiterObj,
+        disable2faLimiter: limiterObj,
         registerLimiter: limiterObj,
         passwordChangeLimiter: limiterObj,
     };

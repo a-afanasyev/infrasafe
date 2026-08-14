@@ -437,6 +437,40 @@ const authLimiter = new SimpleRateLimiter({
     namespace: 'auth-login'
 });
 
+// [L-1] Раздельные бакеты вместо одного auth:login на шесть эндпоинтов:
+// refresh — фоновый легитимный трафик (офис за одним NAT обновляет токены и
+// съедал бюджет входа), 2FA-шаги — свой потолок брутфорса кодов (полный сетап
+// login→setup→confirm тратил 3-4 попытки из 10 логинных), disable-2fa — узкий
+// бакет парольного оракула (M-5-класс). Дефолты 2FA наследуют
+// RATE_LIMIT_AUTH_MAX, чтобы E2E-обвязка с поднятым лимитом работала без правок.
+const refreshLimiter = new SimpleRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: envMax('RATE_LIMIT_REFRESH_MAX', 60),
+    message: 'Слишком много обновлений сессии. Попробуйте через 15 минут.',
+    keyGenerator: (req) => `auth:refresh:${req.ip || req.connection.remoteAddress}`,
+    namespace: 'auth-refresh'
+});
+
+const twoFaLimiter = new SimpleRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: envMax('RATE_LIMIT_2FA_MAX', envMax('RATE_LIMIT_AUTH_MAX', 10)),
+    message: 'Слишком много попыток 2FA. Попробуйте через 15 минут.',
+    keyGenerator: (req) => `auth:2fa:${req.ip || req.connection.remoteAddress}`,
+    namespace: 'auth-2fa'
+});
+
+const disable2faLimiter = new SimpleRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    message: 'Слишком много попыток отключения 2FA. Попробуйте через 15 минут.',
+    keyGenerator: (req) => {
+        const ip = req.ip || req.connection.remoteAddress;
+        const userId = req.user ? req.user.user_id : 'anonymous';
+        return `auth:disable-2fa:${ip}:${userId}`;
+    },
+    namespace: 'auth-disable-2fa'
+});
+
 const registerLimiter = new SimpleRateLimiter({
     windowMs: 60 * 60 * 1000,
     max: envMax('RATE_LIMIT_REGISTER_MAX', 5),
@@ -556,6 +590,9 @@ function getAllRateLimitStats() {
         uk_inventory: ukInventoryLimiter.getStats(),
         map_data: mapDataLimiter.getStats(),
         auth: authLimiter.getStats(),
+        refresh: refreshLimiter.getStats(),
+        two_fa: twoFaLimiter.getStats(),
+        disable_2fa: disable2faLimiter.getStats(),
         register: registerLimiter.getStats(),
         password_change: passwordChangeLimiter.getStats()
     };
@@ -570,6 +607,9 @@ function resetAllRateLimits() {
     telemetryLimiter.reset();
     ukInventoryLimiter.reset();
     authLimiter.reset();
+    refreshLimiter.reset();
+    twoFaLimiter.reset();
+    disable2faLimiter.reset();
     registerLimiter.reset();
     passwordChangeLimiter.reset();
     logger.info('Все rate limiter\'ы сброшены');
@@ -584,6 +624,9 @@ function destroyAllLimiters() {
     telemetryLimiter.destroy();
     ukInventoryLimiter.destroy();
     authLimiter.destroy();
+    refreshLimiter.destroy();
+    twoFaLimiter.destroy();
+    disable2faLimiter.destroy();
     registerLimiter.destroy();
     passwordChangeLimiter.destroy();
     logger.info('Все rate limiter таймеры остановлены');
@@ -606,6 +649,9 @@ module.exports = {
     // wrappers and rateLimitStrict are the public surface). Consts stay
     // internal — rateLimitStrict still binds adminLimiter below.
     authLimiter,
+    refreshLimiter,
+    twoFaLimiter,
+    disable2faLimiter,
     registerLimiter,
     passwordChangeLimiter,
     rateLimitStrict: adminLimiter.middleware()

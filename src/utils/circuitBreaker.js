@@ -26,6 +26,13 @@ class CircuitBreaker {
             ? options.isFailure
             : () => true;
 
+        // [AR-5] Потолок одновременных проб в HALF_OPEN. 3 — потому что ровно
+        // столько успехов требует onSuccess для закрытия цепи: больший
+        // параллелизм не ускоряет восстановление, а лишь нагружает
+        // восстанавливающийся сервис.
+        this.halfOpenMaxProbes = options.halfOpenMaxProbes || 3;
+        this._halfOpenInFlight = 0;
+
         // Статистика
         this.stats = {
             totalRequests: 0,
@@ -46,17 +53,7 @@ class CircuitBreaker {
         if (this.state === 'OPEN') {
             if (Date.now() < this.nextAttempt) {
                 logger.warn(`${this.name}: Circuit is OPEN, using fallback`);
-
-                if (fallback && typeof fallback === 'function') {
-                    try {
-                        return await fallback();
-                    } catch (fallbackError) {
-                        logger.error(`${this.name}: Fallback failed:`, fallbackError.message);
-                        throw new Error('Сервис временно недоступен', { cause: fallbackError });
-                    }
-                }
-
-                throw new Error('Сервис временно недоступен');
+                return this._rejectWithFallback(fallback);
             } else {
                 // Переходим в полуоткрытое состояние
                 this.state = 'HALF_OPEN';
@@ -64,6 +61,20 @@ class CircuitBreaker {
                 metrics.setCircuitBreakerState(this.name, this.state);   // [AR-2]
                 logger.info(`${this.name}: Переход в состояние HALF_OPEN`);
             }
+        }
+
+        // [AR-5] В HALF_OPEN сервис щупают, а не нагружают: одновременных проб
+        // не больше halfOpenMaxProbes (по умолчанию 3 — столько успехов нужно
+        // onSuccess для закрытия). Раньше все вызовы, скопившиеся за
+        // resetTimeout, шли залпом по только что упавшему бэкенду. Лишние
+        // вызовы обслуживаются как при OPEN — fallback или отказ.
+        const isProbe = this.state === 'HALF_OPEN';
+        if (isProbe) {
+            if (this._halfOpenInFlight >= this.halfOpenMaxProbes) {
+                logger.warn(`${this.name}: HALF_OPEN пробы заняты (${this._halfOpenInFlight}), using fallback`);
+                return this._rejectWithFallback(fallback);
+            }
+            this._halfOpenInFlight++;
         }
 
         try {
@@ -95,7 +106,26 @@ class CircuitBreaker {
             }
 
             throw error;
+        } finally {
+            // [AR-5] Слот пробы освобождается всегда — и на успехе, и на отказе
+            if (isProbe) {
+                this._halfOpenInFlight--;
+            }
         }
+    }
+
+    // [AR-5] Обслуживание вызова, который не идёт по зависимости (OPEN либо
+    // занятые пробы HALF_OPEN): fallback, если он есть, иначе отказ.
+    async _rejectWithFallback(fallback) {
+        if (fallback && typeof fallback === 'function') {
+            try {
+                return await fallback();
+            } catch (fallbackError) {
+                logger.error(`${this.name}: Fallback failed:`, fallbackError.message);
+                throw new Error('Сервис временно недоступен', { cause: fallbackError });
+            }
+        }
+        throw new Error('Сервис временно недоступен');
     }
 
     // [AR-1] Отдельный метод, чтобы падение самого предиката не проглатывало
