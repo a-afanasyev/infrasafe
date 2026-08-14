@@ -2,7 +2,7 @@ const alertService = require('../services/alertService');
 // [R2-23] Код берём из модуля констант, а НЕ с alertService: мок сервиса в тесте
 // оставил бы поле undefined, и любая ошибка без `code` совпала бы по
 // `undefined === undefined`, превратившись в ложный 404.
-const { ALERT_NOT_FOUND } = require('../services/alert/alertConstants');
+const { ALERT_NOT_FOUND, VERIFY_LOCK_BUSY } = require('../services/alert/alertConstants');
 const { validatePagination } = require('../utils/queryValidation');
 // [R2-05] Canonical error envelope { success:false, error:{ message, status } }.
 const { sendError } = require('../utils/apiResponse');
@@ -119,6 +119,11 @@ class AlertController {
             // переформулировка сообщения в сервисе больше не превращает 404 в 500.
             if (error.code === ALERT_NOT_FOUND) {
                 return sendError(res, 404, 'Алерт не найден или уже обработан');
+            }
+            // [AR-16] Транзиентная занятость advisory-лока верификации — 503,
+            // не 500: данные целы, запрос имеет смысл повторить.
+            if (error.code === VERIFY_LOCK_BUSY) {
+                return sendError(res, 503, 'Очередь верификации занята, повторите запрос');
             }
             next(error);
         }

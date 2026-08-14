@@ -533,40 +533,47 @@ class UKAlertForwarder {
 
 const singleton = new UKAlertForwarder();
 
+// [AUD-034] Phase 4.4 UK-failure recording, общий для обоих листенеров ниже:
+// падение доставки дописывается в infrastructure_alerts.data
+// .notification_failures. Тела двух catch-блоков были байт-идентичны и уже
+// начали бы расходиться при первой правке. Сам никогда не бросает —
+// self-handles and logs (вызывающие остаются fire-and-forget).
+async function recordForwardingFailure(alertId, ukError) {
+    logger.error(`Alert ${alertId} UK forwarding failed: ${ukError.message}`);
+    try {
+        const db = require('../../config/database');
+        await db.query(
+            `UPDATE infrastructure_alerts
+             SET data = jsonb_set(
+                 COALESCE(data::jsonb, '{}'::jsonb),
+                 '{notification_failures}',
+                 COALESCE(data::jsonb -> 'notification_failures', '[]'::jsonb)
+                     || $1::jsonb,
+                 true
+             )
+             WHERE alert_id = $2`,
+            [JSON.stringify([{
+                channel: 'uk_integration',
+                error: ukError.message,
+                at: new Date().toISOString(),
+            }]), alertId]
+        );
+    } catch (dbErr) {
+        logger.error(
+            `Failed to record UK forwarding failure for alert ${alertId}: ${dbErr.message}`
+        );
+    }
+}
+
 // Phase 7: subscribe to `alert.created` so alertService can publish alerts
-// without a direct require. Phase 4.4 UK-failure recording (appending to
-// infrastructure_alerts.data.notification_failures) lives inside this
-// listener so alertService stays fire-and-forget. The listener never
-// throws — it self-handles and logs.
+// without a direct require. The listener never throws — it self-handles
+// and logs.
 alertEvents.on(alertEvents.EVENTS.ALERT_CREATED, async ({ alertData, alertId }) => {
     try {
         if (!(await configProxy.isEnabled())) return;
         await singleton.sendAlertToUK({ ...alertData, alert_id: alertId });
     } catch (ukError) {
-        logger.error(`Alert ${alertId} UK forwarding failed: ${ukError.message}`);
-        try {
-            const db = require('../../config/database');
-            await db.query(
-                `UPDATE infrastructure_alerts
-                 SET data = jsonb_set(
-                     COALESCE(data::jsonb, '{}'::jsonb),
-                     '{notification_failures}',
-                     COALESCE(data::jsonb -> 'notification_failures', '[]'::jsonb)
-                         || $1::jsonb,
-                     true
-                 )
-                 WHERE alert_id = $2`,
-                [JSON.stringify([{
-                    channel: 'uk_integration',
-                    error: ukError.message,
-                    at: new Date().toISOString(),
-                }]), alertId]
-            );
-        } catch (dbErr) {
-            logger.error(
-                `Failed to record UK forwarding failure for alert ${alertId}: ${dbErr.message}`
-            );
-        }
+        await recordForwardingFailure(alertId, ukError);
     }
 });
 
@@ -608,30 +615,8 @@ alertEvents.on(alertEvents.EVENTS.ALERT_ENGINEER_REQUIRED, async ({ alertData, a
                 logger.warn(`engineer escalation ack failed for verification ${verificationId}: ${ackErr.message}`));
         }
     } catch (ukError) {
-        logger.error(`Alert ${alertId} UK forwarding failed: ${ukError.message}`);
-        try {
-            const db = require('../../config/database');
-            await db.query(
-                `UPDATE infrastructure_alerts
-                 SET data = jsonb_set(
-                     COALESCE(data::jsonb, '{}'::jsonb),
-                     '{notification_failures}',
-                     COALESCE(data::jsonb -> 'notification_failures', '[]'::jsonb)
-                         || $1::jsonb,
-                     true
-                 )
-                 WHERE alert_id = $2`,
-                [JSON.stringify([{
-                    channel: 'uk_integration',
-                    error: ukError.message,
-                    at: new Date().toISOString(),
-                }]), alertId]
-            );
-        } catch (dbErr) {
-            logger.error(
-                `Failed to record UK forwarding failure for alert ${alertId}: ${dbErr.message}`
-            );
-        }
+        // [AUD-034] общий recordForwardingFailure — см. определение выше
+        await recordForwardingFailure(alertId, ukError);
     }
 });
 

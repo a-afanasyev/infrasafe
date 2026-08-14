@@ -81,6 +81,8 @@ describe('alertService.resolveAlert — Sprint 10 PR-3 system vs manual path', (
     const routeClient = (updateRows) => {
         db.__mockClient.query.mockImplementation((sql) => {
             if (/pg_advisory_unlock/.test(sql)) return Promise.resolve({ rows: [{}] });
+            // [AR-16] try-версия отвечает признаком захвата, не пустой строкой
+            if (/pg_try_advisory_lock/.test(sql)) return Promise.resolve({ rows: [{ locked: true }] });
             if (/pg_advisory_lock/.test(sql)) return Promise.resolve({ rows: [{}] });
             if (/^\s*(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return Promise.resolve({ rows: [] });
             if (/UPDATE\s+infrastructure_alerts\s+SET\s+status/i.test(sql)) {
@@ -162,7 +164,11 @@ describe('alertService.resolveAlert — Sprint 10 PR-3 system vs manual path', (
 
             const calls = clientCalls();
             expect(db.__mockPool.connect).toHaveBeenCalledTimes(1);
-            expect(calls.some((s) => /pg_advisory_lock/.test(s) && !/unlock/.test(s))).toBe(true);
+            // [AR-16] лок берётся try-версией: блокирующий pg_advisory_lock
+            // подвешивал соединение из пула до statement_timeout, если тик
+            // verification-воркера затягивался.
+            expect(calls.some((s) => /pg_try_advisory_lock/.test(s))).toBe(true);
+            expect(calls.some((s) => /pg_advisory_lock/.test(s) && !/try|unlock/.test(s))).toBe(false);
             expect(calls.some((s) => /pg_advisory_unlock/.test(s))).toBe(true);
             expect(calls.some((s) => /^\s*BEGIN/.test(s))).toBe(true);
             expect(calls.some((s) => /^\s*COMMIT/.test(s))).toBe(true);
@@ -182,6 +188,37 @@ describe('alertService.resolveAlert — Sprint 10 PR-3 system vs manual path', (
             expect(calls.some((s) => /^\s*ROLLBACK/.test(s))).toBe(true);
             expect(calls.some((s) => /^\s*COMMIT/.test(s))).toBe(false);
             expect(calls.some((s) => /pg_advisory_unlock/.test(s))).toBe(true);
+            expect(db.__mockClient.release).toHaveBeenCalledTimes(1);
+        });
+
+        test('[AR-16] лок занят после всех попыток → типизированный отказ, соединение отпущено', async () => {
+            process.env.ALERT_VERIFICATION_ENABLED = 'true';
+            db.query.mockResolvedValueOnce({ rows: [baseAlert] });
+            AlertRule.findByTypeAndSeverity.mockResolvedValueOnce(ruleWithVerification);
+            routeClient([{ ...baseAlert, status: 'resolved_verifying' }]);
+            db.__mockClient.query.mockImplementation((sql) => {
+                if (/pg_try_advisory_lock/.test(sql)) return Promise.resolve({ rows: [{ locked: false }] });
+                return Promise.resolve({ rows: [] });
+            });
+            // Ускоряем ожидание: параметры инжектируются, чтобы тест не спал 3 с
+            const prevRetries = alertService.resolveLockRetries;
+            const prevDelay = alertService.resolveLockRetryMs;
+            alertService.resolveLockRetries = 2;
+            alertService.resolveLockRetryMs = 1;
+
+            try {
+                await expect(alertService.resolveAlert(21, null)).rejects.toMatchObject({
+                    code: 'VERIFY_LOCK_BUSY'
+                });
+            } finally {
+                alertService.resolveLockRetries = prevRetries;
+                alertService.resolveLockRetryMs = prevDelay;
+            }
+
+            const calls = clientCalls();
+            // Транзакция не начиналась, снимать нечего
+            expect(calls.some((s) => /^\s*BEGIN/.test(s))).toBe(false);
+            expect(calls.some((s) => /pg_advisory_unlock/.test(s))).toBe(false);
             expect(db.__mockClient.release).toHaveBeenCalledTimes(1);
         });
 

@@ -314,6 +314,10 @@ class CoordinateEditor {
      *     и получал 500.
      */
     async save() {
+        // [Новое №3] Guard от двойного сабмита: PUT асинхронный, форма живая —
+        // двойной Enter отправлял два запроса.
+        if (this._saving) return;
+        this._saving = true;
         try {
             const lat = parseFloat(document.getElementById('edit-latitude').value);
             const lng = parseFloat(document.getElementById('edit-longitude').value);
@@ -367,6 +371,8 @@ class CoordinateEditor {
         } catch (error) {
             console.error('Ошибка при сохранении координат:', error);
             showToast(`Ошибка: ${error.message}`, 'error');
+        } finally {
+            this._saving = false;
         }
     }
 
@@ -374,15 +380,16 @@ class CoordinateEditor {
      * Получение API endpoint по типу объекта
      */
     getAPIEndpoint() {
+        // [Новое №3] Маппинг линий удалён: роут не смонтирован, линии
+        // редактируются своим редактором (infrastructure-line-editor) мимо
+        // этого компонента — запись только вводила в заблуждение.
         const endpoints = {
             'transformer': '/api/transformers',
             'transformers': '/api/transformers',
             'water-source': '/api/cold-water-sources',
             'water-sources': '/api/cold-water-sources',
             'heat-source': '/api/heat-sources',
-            'heat-sources': '/api/heat-sources',
-            'infrastructure-line': '/api/infrastructure-lines',
-            'infrastructure-lines': '/api/infrastructure-lines'
+            'heat-sources': '/api/heat-sources'
         };
 
         return endpoints[this.objectType] || '/api/' + this.objectType;

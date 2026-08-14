@@ -79,8 +79,12 @@ class AnalyticsService {
                 async () => await this._baseTransformerData(transformerId)
             );
 
-            // Сохраняем в кэш
-            await cacheService.setTransformerAnalytics(transformerId, data);
+            // [AR-20] Кэшируем только живые данные: закэшированный fallback
+            // (is_fallback + load_percent 0) продолжал бы отдавать нули до
+            // конца TTL, даже когда MV уже ожил.
+            if (!data.is_fallback) {
+                await cacheService.setTransformerAnalytics(transformerId, data);
+            }
 
             // Автоматическая проверка на алерты (только если данные не fallback)
             if (!data.is_fallback && data.load_percent > 0) {
