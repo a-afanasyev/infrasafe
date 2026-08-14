@@ -14,6 +14,10 @@
  * on both the add (objectId null) and edit (objectId set) paths.
  */
 
+// [CO-10] Редактор спрашивает общий валидатор через window.CoordValidation —
+// в браузере его ставит <script> в admin.html, в jsdom ставим здесь.
+window.CoordValidation = require('../../../../public/utils/coordValidation.js');
+
 const { CoordinateEditor } = require('../../../../public/admin-coordinate-editor.js');
 
 function setCoordInputs(lat, lng) {

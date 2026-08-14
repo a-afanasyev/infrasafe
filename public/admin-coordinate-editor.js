@@ -180,27 +180,20 @@ class CoordinateEditor {
         });
 
         // Синхронизация ввода с картой
-        document.getElementById('edit-latitude').addEventListener('input', (e) => {
-            if (this.map && this.marker) {
-                const lat = parseFloat(e.target.value);
-                const lng = parseFloat(document.getElementById('edit-longitude').value);
-                if (!isNaN(lat) && !isNaN(lng)) {
-                    this.marker.setLatLng([lat, lng]);
-                    this.map.setView([lat, lng]);
-                }
-            }
-        });
+        // [CO-10] Тот же валидатор, что и на сохранении: раньше здесь стоял
+        // свой `isNaN`, и карта прыгала на бессмысленную точку (широта 500),
+        // пока пользователь дописывал число.
+        const syncMarker = () => {
+            if (!this.map || !this.marker) return;
+            const lat = parseFloat(document.getElementById('edit-latitude').value);
+            const lng = parseFloat(document.getElementById('edit-longitude').value);
+            if (!this.validateCoordinates(lat, lng).valid) return;
+            this.marker.setLatLng([lat, lng]);
+            this.map.setView([lat, lng]);
+        };
 
-        document.getElementById('edit-longitude').addEventListener('input', (e) => {
-            if (this.map && this.marker) {
-                const lat = parseFloat(document.getElementById('edit-latitude').value);
-                const lng = parseFloat(e.target.value);
-                if (!isNaN(lat) && !isNaN(lng)) {
-                    this.marker.setLatLng([lat, lng]);
-                    this.map.setView([lat, lng]);
-                }
-            }
-        });
+        document.getElementById('edit-latitude').addEventListener('input', syncMarker);
+        document.getElementById('edit-longitude').addEventListener('input', syncMarker);
     }
 
     /**
@@ -286,22 +279,19 @@ class CoordinateEditor {
      * Валидация координат
      */
     validateCoordinates(lat, lng) {
-        // Проверка что это числа
-        if (isNaN(lat) || isNaN(lng)) {
-            return { valid: false, error: 'Координаты должны быть числами' };
+        // [CO-10] Правила живут в utils/coordValidation.js — том же валидаторе,
+        // которым пользуются все admin-формы. Своя копия здесь уже разошлась с
+        // общей (`isNaN` вместо строгой проверки на конечное число, свой текст
+        // ошибки), а это ровно тот узел, где случался баг стирания координат.
+        //
+        // Валидатор приходит глобалом: в admin.html coordValidation.js стоит
+        // раньше этого файла. Если его всё же нет — отказываем, а не пропускаем:
+        // молча сохранить непроверенную пару опаснее, чем не сохранить вовсе.
+        const validator = typeof window !== 'undefined' ? window.CoordValidation : null;
+        if (!validator) {
+            return { valid: false, error: 'Проверка координат недоступна — обновите страницу' };
         }
-
-        // Проверка диапазона широты
-        if (lat < -90 || lat > 90) {
-            return { valid: false, error: 'Широта должна быть в диапазоне [-90, 90]' };
-        }
-
-        // Проверка диапазона долготы
-        if (lng < -180 || lng > 180) {
-            return { valid: false, error: 'Долгота должна быть в диапазоне [-180, 180]' };
-        }
-
-        return { valid: true };
+        return validator.validateCoordinatePair(lat, lng);
     }
 
     /**
