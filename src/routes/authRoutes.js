@@ -1,7 +1,8 @@
 const express = require('express');
 const authController = require('../controllers/authController');
 const { authenticateRefresh, authenticateTempToken, isAdmin } = require('../middleware/auth');
-const { authLimiter, registerLimiter, passwordChangeLimiter } = require('../middleware/rateLimiter');
+// [L-1] Раздельные бакеты: login / refresh / 2FA / disable-2fa — см. rateLimiter.js
+const { authLimiter, refreshLimiter, twoFaLimiter, disable2faLimiter, registerLimiter, passwordChangeLimiter } = require('../middleware/rateLimiter');
 const router = express.Router();
 
 // [hotfix 2026-05-27] Disable client-side caching for ALL auth routes.
@@ -270,7 +271,7 @@ router.post('/revoke-sessions', passwordChangeLimiter.middleware(), authControll
  *       400:
  *         description: Отсутствует refresh токен
  */
-router.post('/refresh', authLimiter.middleware(), authenticateRefresh, authController.refreshToken);
+router.post('/refresh', refreshLimiter.middleware(), authenticateRefresh, authController.refreshToken);
 
 /**
  * @swagger
@@ -319,11 +320,11 @@ router.post('/refresh', authLimiter.middleware(), authenticateRefresh, authContr
 router.post('/change-password', passwordChangeLimiter.middleware(), authController.changePassword);
 
 // 2FA routes (public — use tempToken for auth, rate limited)
-router.post('/verify-2fa', authLimiter.middleware(), authenticateTempToken, authController.verify2FA);
-router.post('/setup-2fa', authLimiter.middleware(), authenticateTempToken, authController.setup2FA);
-router.post('/confirm-2fa', authLimiter.middleware(), authenticateTempToken, authController.confirm2FA);
+router.post('/verify-2fa', twoFaLimiter.middleware(), authenticateTempToken, authController.verify2FA);
+router.post('/setup-2fa', twoFaLimiter.middleware(), authenticateTempToken, authController.setup2FA);
+router.post('/confirm-2fa', twoFaLimiter.middleware(), authenticateTempToken, authController.confirm2FA);
 
 // Disable 2FA (requires full JWT auth + password confirmation)
-router.post('/disable-2fa', authLimiter.middleware(), authController.disable2FA);
+router.post('/disable-2fa', disable2faLimiter.middleware(), authController.disable2FA);
 
 module.exports = router;

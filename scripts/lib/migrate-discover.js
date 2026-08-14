@@ -114,7 +114,40 @@ function discover(entries) {
         // else: _superseded/* or README.md etc. → ignore
     }
     out.sort((a, b) => (a.filename < b.filename ? -1 : a.filename > b.filename ? 1 : 0));
+    assertUniqueNumbers(out);
     return out;
+}
+
+// [AR-15] Номер миграции — ключ порядка применения. Историческая пара 012
+// (totp_2fa + fix_materialized_view) заморожена в baseline и применяется в
+// алфавитном порядке осознанно; любой НОВЫЙ дубль номера — ошибка: два файла
+// с одним номером применялись бы в алфавитном, а не задуманном порядке, и
+// «уникальный» ключ в разговорах о схеме перестал бы быть уникальным.
+const LEGACY_DUPLICATE_012 = Object.freeze([
+    '012_fix_materialized_view.sql',
+    '012_totp_2fa.sql',
+]);
+
+function assertUniqueNumbers(discovered) {
+    const byNumber = new Map();
+    for (const d of discovered) {
+        const num = d.filename.slice(0, 3);
+        if (!byNumber.has(num)) byNumber.set(num, []);
+        byNumber.get(num).push(d.filename);
+    }
+    for (const [num, files] of byNumber) {
+        if (files.length < 2) continue;
+        const isLegacyPair =
+            num === '012' &&
+            files.length === LEGACY_DUPLICATE_012.length &&
+            files.every((f) => LEGACY_DUPLICATE_012.includes(f));
+        if (!isLegacyPair) {
+            throw new MigrationDiscoveryError(
+                `duplicate migration number ${num}: ${files.join(', ')} — ` +
+                'номер обязан быть уникальным (историческая пара 012 — единственное исключение)'
+            );
+        }
+    }
 }
 
 function checksum(content) {
