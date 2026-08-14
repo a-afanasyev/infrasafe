@@ -48,6 +48,14 @@ afterAll(() => {
     destroyAllLimiters();
 });
 
+// [FLAKE-1] Оба цикловых теста шлют десятки ПОСЛЕДОВАТЕЛЬНЫХ HTTP-запросов
+// (supertest поднимает эфемерный сервер на каждый). В одиночном прогоне это
+// миллисекунды, но в полном прогоне CPU делится между jest-воркерами, и
+// дефолтных 5 с изредка не хватало — сьют падал по таймауту и был зелёным при
+// повторе. Потому явный запас по времени; а потолок второго цикла срезан с 200
+// до квоты (60) + запас: лишние ~140 запросов только растили окно флейка.
+const LIMIT_TEST_TIMEOUT_MS = 15000;
+
 describe('[AR-7] лимитер на /buildings-metrics', () => {
     test('обычная карточная нагрузка проходит без штрафа', async () => {
         const app = buildApp();
@@ -56,19 +64,19 @@ describe('[AR-7] лимитер на /buildings-metrics', () => {
             const res = await request(app).get('/api/buildings-metrics');
             expect(res.status).toBe(200);
         }
-    });
+    }, LIMIT_TEST_TIMEOUT_MS);
 
     test('поток запросов с одного IP упирается в 429', async () => {
         const app = buildApp();
 
         let limited = false;
-        for (let i = 0; i < 200 && !limited; i++) {
+        for (let i = 0; i < 70 && !limited; i++) {
             const res = await request(app).get('/api/buildings-metrics');
             if (res.status === 429) limited = true;
         }
 
         expect(limited).toBe(true);
-    });
+    }, LIMIT_TEST_TIMEOUT_MS);
 
     // Проект использует X-RateLimit-* (см. SimpleRateLimiter.middleware),
     // а не draft-заголовки RateLimit-*; проверяем принятую здесь конвенцию.
