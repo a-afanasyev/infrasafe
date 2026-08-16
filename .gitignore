@@ -153,3 +153,8 @@ trash/
 
 # [OPS-003] Профиль площадки — свойство КОНКРЕТНОЙ машины, не проекта.
 .deploy-env
+
+# Флаги режима обслуживания ProFK (см. nginx.profk.conf, блок «режим
+# обслуживания»). Создаются руками на хосте, состояние площадки — не код.
+frontend-html/.maintenance
+frontend-html/.maintenance-all
