@@ -71,8 +71,26 @@ describe('SEC-22 — /uk/api/ prefix-allowlist + edge rate-limit', () => {
             // — trailing-slash form is correct and intentionally kept.
             '/uk/api/v2/auth/', '/uk/api/v2/registration/', '/uk/api/v2/callcenter/',
             '/uk/api/v2/executor/shifts/', '/uk/api/v2/addresses/', '/uk/api/v2/media/',
+            // Запрос УК 22.08.2026. Group Intake — CRUD реестра Telegram-групп
+            // из веб-дашборда; work-reports — модерация отчётов «до/после»
+            // (на profk стоял с 25.07, сюда перенесён не был). Оба —
+            // bare-вызываемые коллекции, поэтому та же идиома (/|$).
+            '/uk/api/v2/monitored-groups(/|$)',
+            '/uk/api/v2/work-reports(/|$)',
+            // residents — тот же перенос: стоял только на profk с 28.07,
+            // из-за чего раздел «Жители» на infrasafe.uz был сломан.
+            '/uk/api/v2/residents(/|$)',
         ]) {
             expect(conf).toContain(p);
+        }
+    });
+
+    // Голый префикс без границы пустил бы и соседние пути с тем же началом
+    // (/monitored-groups-admin и подобные), которых УК не запрашивали.
+    test('bare-callable prefixes are bounded by (/|$), not open-ended', () => {
+        for (const name of ['monitored-groups', 'work-reports', 'residents', 'requests', 'shifts', 'feedback', 'profile']) {
+            expect(conf).toMatch(new RegExp(`/uk/api/v2/${name}\\(/\\|\\$\\)"\\s+1;`));
+            expect(conf).not.toMatch(new RegExp(`/uk/api/v2/${name}"\\s+1;`));
         }
     });
 
