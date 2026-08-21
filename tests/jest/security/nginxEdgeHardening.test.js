@@ -77,6 +77,9 @@ describe('SEC-22 — /uk/api/ prefix-allowlist + edge rate-limit', () => {
             // bare-вызываемые коллекции, поэтому та же идиома (/|$).
             '/uk/api/v2/monitored-groups(/|$)',
             '/uk/api/v2/work-reports(/|$)',
+            // residents — тот же перенос: стоял только на profk с 28.07,
+            // из-за чего раздел «Жители» на infrasafe.uz был сломан.
+            '/uk/api/v2/residents(/|$)',
         ]) {
             expect(conf).toContain(p);
         }
@@ -85,7 +88,7 @@ describe('SEC-22 — /uk/api/ prefix-allowlist + edge rate-limit', () => {
     // Голый префикс без границы пустил бы и соседние пути с тем же началом
     // (/monitored-groups-admin и подобные), которых УК не запрашивали.
     test('bare-callable prefixes are bounded by (/|$), not open-ended', () => {
-        for (const name of ['monitored-groups', 'work-reports', 'requests', 'shifts', 'feedback', 'profile']) {
+        for (const name of ['monitored-groups', 'work-reports', 'residents', 'requests', 'shifts', 'feedback', 'profile']) {
             expect(conf).toMatch(new RegExp(`/uk/api/v2/${name}\\(/\\|\\$\\)"\\s+1;`));
             expect(conf).not.toMatch(new RegExp(`/uk/api/v2/${name}"\\s+1;`));
         }
