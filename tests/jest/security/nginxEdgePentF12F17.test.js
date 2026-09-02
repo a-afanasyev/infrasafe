@@ -48,6 +48,11 @@ describe.each(Object.entries(CONFS))('%s (%s)', (file, domain) => {
 
     describe('PENT-F12 — произвольный Host не обслуживается', () => {
         const blocks = serverBlocks(conf);
+
+        test('server_names_hash_bucket_size задан явно (на .105 дефолт 32 ронял nginx -t)', () => {
+            const httpLevel = conf.slice(0, conf.search(/^\s{4}server\s*\{/m));
+            expect(httpLevel).toMatch(/^\s*server_names_hash_bucket_size\s+64;/m);
+        });
         const catchAll = blocks.filter((b) => /default_server/.test(b));
         const named = blocks.filter((b) => !/default_server/.test(b) && /listen\s+443\s+ssl;/.test(b));
 
