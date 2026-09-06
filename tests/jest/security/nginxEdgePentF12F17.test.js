@@ -150,6 +150,17 @@ describe.each(Object.entries(CONFS))('%s (%s)', (file, domain) => {
     });
 });
 
+describe('SEC-22 — allowlist /uk/api/ одинаков на обеих площадках', () => {
+    // Дрейф карт уже стоил месяца сломанного раздела «Жители» на infrasafe.uz
+    // (residents стоял только на profk). УК шлют заявки на оба домена сразу —
+    // разный набор ключей означает, что одну площадку забыли.
+    const keys = (name) => (load(name).match(/"~\^\/uk\/api\/[^"]+"/g) || []).sort();
+
+    test('наборы ключей map $uk_api_allowed совпадают', () => {
+        expect(keys('nginx.profk.conf')).toEqual(keys('nginx.production.conf'));
+    });
+});
+
 describe('PENT-F14 — файл security.txt (один на оба домена)', () => {
     const txt = fs.readFileSync(path.join(root, 'frontend-html/.well-known/security.txt'), 'utf8');
 
