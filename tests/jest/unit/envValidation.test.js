@@ -14,6 +14,16 @@ const { validateEnv } = require('../../../src/config/env');
 // missing-vars check rather than exercising what they mean to test.
 function setValidProdEnv() {
     process.env.NODE_ENV = 'production';
+    // [изоляция] Исходящую тройку УК гасим ЗДЕСЬ, а не в отдельных блоках.
+    // Она не входит в «валидное prod-окружение», но протекает из локального
+    // .env разработчика через dotenv: с поднятой локальной связкой
+    // UK_USE_WEBHOOK_SENDER=true переводил сценарий «sender выключен» в
+    // ветку hard-fail, и два теста падали только на машине, где связка
+    // настроена. В CI переменных нет, поэтому там это не проявлялось.
+    // Каждый тест, которому они нужны, задаёт их явно ниже.
+    delete process.env.UK_USE_WEBHOOK_SENDER;
+    delete process.env.UK_API_URL;
+    delete process.env.UK_API_ALLOWED_HOSTS;
     process.env.DB_HOST = 'db';
     process.env.DB_PORT = '5432';
     process.env.DB_NAME = 'infrasafe';

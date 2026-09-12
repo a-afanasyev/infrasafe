@@ -97,6 +97,21 @@ services:
       # webhooks toward the real UK endpoint when a developer flips
       # uk_integration_enabled in the admin UI.
       - UK_USE_WEBHOOK_SENDER=${UK_USE_WEBHOOK_SENDER:-false}
+      # Секреты вебхуков УК. Направления РАЗНЫЕ и путать их нельзя:
+      #   INFRASAFE_WEBHOOK_SECRET — которым УК подписывает входящие к нам
+      #                              (/api/webhooks/uk/*); им же мы проверяем.
+      #   UK_WEBHOOK_SECRET        — которым МЫ подписываем исходящие в УК.
+      # Значения не здесь, а в .env (он gitignored) — файл остаётся переносимым,
+      # а без них верификация фейлится ЗАКРЫТО (401), что и нужно по умолчанию.
+      - INFRASAFE_WEBHOOK_SECRET=${INFRASAFE_WEBHOOK_SECRET:-}
+      - UK_WEBHOOK_SECRET=${UK_WEBHOOK_SECRET:-}
+      # Куда шлём исходящие. Пусто → клиент отвечает skip и ничего не отправляет.
+      # Для локальной связки со стеком УК: UK_API_URL=http://host.docker.internal:8085
+      # (путь /api/v2/webhooks/infrasafe/alert клиент дописывает сам — нужен голый origin).
+      - UK_API_URL=${UK_API_URL:-}
+      # [R2-19] SSRF-allowlist хостов, список через запятую. При
+      # UK_USE_WEBHOOK_SENDER=true это HARD FAIL на старте, если не задан.
+      - UK_API_ALLOWED_HOSTS=${UK_API_ALLOWED_HOSTS:-}
       # [AUD-024] Redis is OFF by default in dev (empty URL → in-memory
       # fallbacks for rate-limiter / cache / webhook-dedup, single-replica).
       # To exercise the Redis-backed code paths locally, start the optional
