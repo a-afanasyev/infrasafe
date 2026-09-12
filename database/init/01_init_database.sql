@@ -214,6 +214,14 @@ CREATE TABLE IF NOT EXISTS water_measurement_points (
 -- ===============================================
 
 -- Таблица электрических трансформаторов (legacy)
+-- [INIT-SCHEMA-PT] НЕ УДАЛЯТЬ, несмотря на то что миграция 037 эту таблицу
+-- дропает. Она здесь не рудимент, а ИСТОЧНИК ДАННЫХ для миграции 036: та
+-- переносит строки в каноническую `transformers` запросом `FROM
+-- power_transformers` без защиты от отсутствия таблицы, а миграции неизменяемы
+-- (roll-forward only, сверка контрольных сумм) — поправить 036 задним числом
+-- нельзя. Уберёте отсюда — свежий bootstrap упадёт на 036 с «relation does not
+-- exist», а четыре засеянных трансформатора (02_seed_data.sql) пропадут.
+-- Связь сторожит tests/jest/unit/initSchemaPowerTransformers.test.js.
 CREATE TABLE IF NOT EXISTS power_transformers (
     id varchar(50) PRIMARY KEY,
     name varchar(100) NOT NULL,

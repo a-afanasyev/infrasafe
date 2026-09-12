@@ -73,6 +73,10 @@ INSERT INTO public.heat_sources (id, name, address, latitude, longitude, source_
 
 
 --
+-- [INIT-SCHEMA-PT] Эти четыре строки — не мусор: миграция 036 переносит их в
+-- каноническую `transformers`, после чего 037 дропает саму таблицу. То есть
+-- именно отсюда на свежем bootstrap берутся трансформаторы Фараби-1/2,
+-- Олмазор-1 и Шифонур-1. Подробности — у CREATE TABLE в 01_init_database.sql.
 -- Data for Name: power_transformers; Type: TABLE DATA; Schema: public; Owner: -
 --
 
