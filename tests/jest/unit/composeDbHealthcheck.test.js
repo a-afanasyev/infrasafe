@@ -79,6 +79,32 @@ describe('[init-race] postgres healthcheck probes over TCP, not the unix socket'
         expect(violations.map((v) => `${v.file} › ${v.service}: ${v.cmd}`)).toEqual([]);
     });
 
+    test('service-контейнеры в CI-workflow проверяются так же', () => {
+        // В CI база поднимается с нуля КАЖДЫЙ прогон, то есть init-фаза есть
+        // всегда — там сокетная проба опаснее, чем в compose, где том обычно
+        // уже существует. `options: >-` — свёрнутый скаляр: комментарий внутри
+        // него уехал бы в строку аргументов докера, поэтому пояснение стоит над
+        // ключом, а рубеж — здесь.
+        const wfDir = path.join(ROOT, '.github/workflows');
+        const probes = [];
+        for (const file of fs.readdirSync(wfDir).filter((f) => /\.ya?ml$/.test(f))) {
+            const doc = yaml.load(fs.readFileSync(path.join(wfDir, file), 'utf8')) || {};
+            for (const [jobName, job] of Object.entries(doc.jobs || {})) {
+                for (const [svcName, svc] of Object.entries((job && job.services) || {})) {
+                    const opts = (svc && svc.options) || '';
+                    const m = /--health-cmd\s+"([^"]+)"|--health-cmd\s+(\S+)/.exec(opts);
+                    if (!m) continue;
+                    const cmd = m[1] || m[2];
+                    if (!/\bpg_isready\b/.test(cmd)) continue;
+                    probes.push({ where: `${file} › ${jobName} › ${svcName}`, cmd });
+                }
+            }
+        }
+
+        expect(probes.length).toBeGreaterThan(0);
+        expect(probes.filter((p) => !hasExplicitHost(p.cmd)).map((p) => `${p.where}: ${p.cmd}`)).toEqual([]);
+    });
+
     test('у каждой такой проверки задан start_period', () => {
         // Вторая половина фикса, без неё первая делает хуже: честный TCP-гейт
         // краснеет во время initdb, и без окна прогрева контейнер успевает стать
