@@ -28,6 +28,12 @@
  * turn it into a configurable ORM-lite, against the project's "models execute SQL
  * directly (no ORM)" architecture. So: use this factory for a new flat-column
  * lookup table; hand-roll anything with filters, jsonb, geometry, or joins.
+ *
+ * [AR-3(в)] Это соглашение теперь не только описано, но и сторожится:
+ * tests/jest/unit/crudFactoryBoundary.test.js роняет сборку, если новая модель
+ * написала все пять методов CRUD руками и в её SQL нет НИ ОДНОГО признака
+ * сложности из абзаца выше. Прочитать этот docblock автор новой модели может и
+ * не успеть — файл, в который он смотрит, другой.
  */
 
 const db = require('../../config/database');
