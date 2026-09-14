@@ -249,6 +249,83 @@ class WaterLine {
         }
     }
 
+    /**
+     * [AR-3(б)] Здания, подключённые к любой из перечисленных линий.
+     *
+     * Отдельный метод, а НЕ проверка внутри `delete`/`deleteMany`: запрет на
+     * удаление линии с потребителями сегодня действует только на admin-пути, и
+     * втягивание его в модель навесило бы тот же запрет обычному
+     * `DELETE /api/water-lines/:id`, где его нет. Это отдельное продуктовое
+     * решение, а не довесок к переносу SQL из контроллера.
+     *
+     * @param {Array<number>} lineIds
+     * @returns {Promise<Array<number>>} id связанных зданий (без дублей)
+     */
+    static async findConnectedBuildingIds(lineIds) {
+        try {
+            const { rows } = await db.query(
+                `SELECT DISTINCT building_id FROM buildings
+                 WHERE cold_water_line_id = ANY($1) OR hot_water_line_id = ANY($1)`,
+                [lineIds]
+            );
+            return rows.map((row) => row.building_id);
+        } catch (error) {
+            logger.error(`Error in WaterLine.findConnectedBuildingIds: ${error.message}`);
+            throw createError(`Failed to fetch buildings connected to water lines: ${error.message}`, 500);
+        }
+    }
+
+    /**
+     * [AR-3(б)] Пакетное удаление.
+     *
+     * Вызывающий обязан сам решить, что делать со связанными зданиями:
+     * `buildings` ссылается на `water_lines` внешними ключами без `ON DELETE`,
+     * поэтому удаление связанной линии здесь упадёт ошибкой БД.
+     *
+     * @param {Array<number>} lineIds
+     * @returns {Promise<Array<number>>} id фактически удалённых линий
+     */
+    static async deleteMany(lineIds) {
+        try {
+            const { rows } = await db.query(
+                'DELETE FROM water_lines WHERE line_id = ANY($1) RETURNING line_id',
+                [lineIds]
+            );
+            if (rows.length) {
+                logger.info(`Deleted water lines: ${rows.map((row) => row.line_id).join(', ')}`);
+            }
+            return rows.map((row) => row.line_id);
+        } catch (error) {
+            logger.error(`Error in WaterLine.deleteMany: ${error.message}`);
+            throw createError(`Failed to delete water lines: ${error.message}`, 500);
+        }
+    }
+
+    /**
+     * [AR-3(б)] Пакетная смена статуса.
+     *
+     * [M-12] Проверка домена стоит ЗДЕСЬ, а не у вызывающего: пока она жила в
+     * контроллере, whitelist держался на том, вспомнит ли автор следующего
+     * пакетного пути её позвать.
+     *
+     * @param {Array<number>} lineIds
+     * @param {string} status
+     * @returns {Promise<Array<number>>} id обновлённых линий
+     */
+    static async updateStatusMany(lineIds, status) {
+        assertValidStatus(status);   // [M-12]
+        try {
+            const { rows } = await db.query(
+                'UPDATE water_lines SET status = $1, updated_at = NOW() WHERE line_id = ANY($2) RETURNING line_id',
+                [status, lineIds]
+            );
+            return rows.map((row) => row.line_id);
+        } catch (error) {
+            logger.error(`Error in WaterLine.updateStatusMany: ${error.message}`);
+            throw createError(`Failed to update water line statuses: ${error.message}`, 500);
+        }
+    }
+
     static async findSuppliersForLine(lineId) {
         try {
             const { rows } = await db.query(

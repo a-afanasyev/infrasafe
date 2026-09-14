@@ -31,6 +31,13 @@ describe('AdminWaterLineController', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        // [AR-3(б)] `clearAllMocks` чистит вызовы, но НЕ очередь
+        // `mockResolvedValueOnce`. Тест, который возвращается раньше, чем
+        // израсходовал свою очередь, оставляет хвост следующему — и падает уже
+        // ДРУГОЙ тест, на первый взгляд без причины. Ровно это и случилось при
+        // переносе SQL в модель: одна изменившаяся форма ответа уронила четыре
+        // теста в трёх describe. Очередь сбрасываем явно.
+        db.query.mockReset();
         req = { params: {}, query: {}, body: {} };
         res = {
             status: jest.fn().mockReturnThis(),
@@ -318,9 +325,11 @@ describe('AdminWaterLineController', () => {
     describe('deleteWaterLine', () => {
         test('deletes and returns success when no connected buildings', async () => {
             req.params.id = '1';
+            // [AR-3(б)] Проверка связанных зданий теперь SELECT'ит building_id,
+            // а не COUNT(*) — пустой rows означает «потребителей нет».
             db.query
-                .mockResolvedValueOnce({ rows: [{ count: '0' }] }) // check query
-                .mockResolvedValueOnce({ rows: [{ line_id: 1 }] }); // delete query
+                .mockResolvedValueOnce({ rows: [] })               // findConnectedBuildingIds
+                .mockResolvedValueOnce({ rows: [{ line_id: 1 }] }); // WaterLine.delete
 
             await deleteWaterLine(req, res, next);
 
@@ -334,7 +343,7 @@ describe('AdminWaterLineController', () => {
 
         test('calls next with 400 when connected buildings exist', async () => {
             req.params.id = '1';
-            db.query.mockResolvedValueOnce({ rows: [{ count: '2' }] });
+            db.query.mockResolvedValueOnce({ rows: [{ building_id: 5 }, { building_id: 7 }] });
 
             await deleteWaterLine(req, res, next);
 
@@ -349,8 +358,8 @@ describe('AdminWaterLineController', () => {
         test('calls next with 404 when water line not found', async () => {
             req.params.id = '999';
             db.query
-                .mockResolvedValueOnce({ rows: [{ count: '0' }] })
-                .mockResolvedValueOnce({ rows: [] });
+                .mockResolvedValueOnce({ rows: [] })   // связанных зданий нет
+                .mockResolvedValueOnce({ rows: [] });  // линии с таким id нет
 
             await deleteWaterLine(req, res, next);
 
@@ -370,7 +379,7 @@ describe('AdminWaterLineController', () => {
     });
 
     describe('batchWaterLinesOperation', () => {
-        test('batch delete calls pool.query with correct params', async () => {
+        test('batch delete отдаёт число удалённых линий', async () => {
             req.body = { action: 'delete', ids: [1, 2, 3] };
             db.query
                 .mockResolvedValueOnce({ rows: [] }) // check connected buildings

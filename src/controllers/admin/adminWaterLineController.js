@@ -3,10 +3,7 @@ const logger = require('../../utils/logger');
 const { createError, toClientError } = require('../../utils/helpers');
 const { buildPaginatedList } = require('../../utils/adminQueryBuilder');
 const WaterLine = require('../../models/WaterLine');
-// [AR-3(б)] `assertValidStatus` остался нужен ТОЛЬКО пакетной операции
-// update_status: она пишет напрямую (модель не умеет bulk), и без явной
-// проверки whitelist M-12 на этом пути обходился бы.
-const { WATER_LINE_STATUS, assertValidStatus } = require('../../models/WaterLine');
+const { WATER_LINE_STATUS } = require('../../models/WaterLine');
 const { sendSuccess } = require('../../utils/apiResponse');
 
 /**
@@ -17,13 +14,17 @@ const { sendSuccess } = require('../../utils/apiResponse');
  * a small pre-pass to JSON.stringify the main_path / branches JSONB
  * fields before handing over to buildUpdateQuery.
  *
- * Delete keeps its custom pre-check for connected buildings (gotcha
- * noted in the Phase 5 plan — not refactored).
+ * [AR-3(б)] SQL здесь не пишется: пакетные операции и проверка связанных
+ * зданий ушли в модель (`WaterLine.deleteMany` / `updateStatusMany` /
+ * `findConnectedBuildingIds`). Сама проверка осталась ветвлением КОНТРОЛЛЕРА,
+ * а не частью delete в модели: запрет на удаление линии с потребителями
+ * действует только на admin-пути, и втягивание его в модель навесило бы тот же
+ * запрет обычному `DELETE /api/water-lines/:id`, где его сегодня нет.
  *
  * [M-12] `status` пишется тремя путями этого файла (create / update /
- * batch update_status) — каждый проверяется assertValidStatus. Catch-блоки
- * пропускают наружу ТОЛЬКО 4xx: 5xx схлопывается в generic 500, чтобы не
- * утёк внутренний текст ошибки.
+ * batch update_status) — домен проверяется assertValidStatus внутри модели на
+ * всех трёх. Catch-блоки пропускают наружу ТОЛЬКО 4xx: 5xx схлопывается в
+ * generic 500, чтобы не утёк внутренний текст ошибки.
  */
 
 const LIST_CONFIG = {
@@ -148,14 +149,10 @@ async function deleteWaterLine(req, res, next) {
     try {
         const { id } = req.params;
 
-        // [AR-3(б)] Проверка связанных зданий ОСТАЁТСЯ здесь намеренно: она
-        // спрашивает `buildings`, а не `water_lines`, и перенос её в модель
-        // добавил бы этот запрет обычному `DELETE /api/water-lines/:id`, где
-        // его сегодня нет. Менять поведение чужого маршрута под предлогом
-        // рефактора admin-пути неправильно — это отдельное решение.
-        const checkQuery = 'SELECT COUNT(*) FROM buildings WHERE cold_water_line_id = $1 OR hot_water_line_id = $1';
-        const checkResult = await pool.query(checkQuery, [id]);
-        if (parseInt(checkResult.rows[0].count) > 0) {
+        // [AR-3(б)] Проверка связанных зданий остаётся ветвлением ЭТОГО пути —
+        // см. шапку файла. В модель ушёл только запрос.
+        const connected = await WaterLine.findConnectedBuildingIds([id]);
+        if (connected.length > 0) {
             return next(createError('Cannot delete water line: it has connected buildings', 400));
         }
 
@@ -181,28 +178,24 @@ async function batchWaterLinesOperation(req, res, next) {
         let result;
         switch (action) {
             case 'delete': {
-                const checkQuery = 'SELECT building_id FROM buildings WHERE cold_water_line_id = ANY($1) OR hot_water_line_id = ANY($1)';
-                const checkResult = await pool.query(checkQuery, [ids]);
-                if (checkResult.rows.length > 0) {
+                const connected = await WaterLine.findConnectedBuildingIds(ids);
+                if (connected.length > 0) {
                     return next(createError('Cannot delete water lines: some have connected buildings', 400));
                 }
-                const deleteQuery = 'DELETE FROM water_lines WHERE line_id = ANY($1) RETURNING line_id';
-                result = await pool.query(deleteQuery, [ids]);
+                result = await WaterLine.deleteMany(ids);
                 break;
             }
             case 'update_status': {
                 if (!data || !data.status) {
                     return next(createError('status is required for update_status action', 400));
                 }
-                assertValidStatus(data.status);   // [M-12]
-                const updateStatusQuery = 'UPDATE water_lines SET status = $1, updated_at = NOW() WHERE line_id = ANY($2) RETURNING line_id';
-                result = await pool.query(updateStatusQuery, [data.status, ids]);
+                // [M-12] Домен проверяет сама модель.
+                result = await WaterLine.updateStatusMany(ids, data.status);
                 break;
             }
             case 'set_maintenance': {
-                // [M-12] Значение — из общего домена, параметром, а не литералом.
-                const maintenanceQuery = 'UPDATE water_lines SET status = $1, updated_at = NOW() WHERE line_id = ANY($2) RETURNING line_id';
-                result = await pool.query(maintenanceQuery, [WATER_LINE_STATUS.MAINTENANCE, ids]);
+                // [M-12] Значение — из общего домена, а не литералом.
+                result = await WaterLine.updateStatusMany(ids, WATER_LINE_STATUS.MAINTENANCE);
                 break;
             }
             default:
@@ -212,7 +205,7 @@ async function batchWaterLinesOperation(req, res, next) {
         res.json({
             success: true,
             message: `Batch ${action} completed`,
-            affected: result.rows.length
+            affected: result.length
         });
     } catch (error) {
         logger.error(`Error in batchWaterLinesOperation: ${error.message}`);
