@@ -184,11 +184,25 @@ services:
       # Инициализация БД
       - ./database/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres && psql -U postgres -d infrasafe -c 'SELECT 1;'"]
+      # [init-race] pg_isready обязан идти по TCP (-h 127.0.0.1), а не по unix-сокету.
+      # На ЧИСТОМ томе entrypoint поднимает ВРЕМЕННЫЙ сервер с `listen_addresses=''`
+      # (только сокет), чтобы прогнать initdb + database/init/*.sql. Сокетная проверка
+      # в это окно зеленеет, compose по `depends_on: service_healthy` пропускает app
+      # вперёд, и тот получает ECONNREFUSED на 5432 — а nodemon после краша ждёт
+      # правки файла и сам не встаёт. У временного сервера TCP-слушателя нет вообще,
+      # поэтому гейт детерминирован (ср. вероятностный «два успеха подряд» в
+      # tests/migrate/run-migrate-tests.sh:129 — там та же гонка).
+      # psql намеренно оставлен на сокете: он проверяет, что БД реально отвечает на
+      # запрос, и не требует пароля.
+      test: ["CMD-SHELL", "pg_isready -U postgres -d infrasafe -h 127.0.0.1 && psql -U postgres -d infrasafe -c 'SELECT 1;'"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      # start_period должен покрывать initdb + все init-скрипты (~7 с локально, на
+      # холодной машине заметно дольше): пока он идёт, красные проверки не капают в
+      # retries. Иначе честный TCP-гейт стал бы хуже гонки — контейнер помечался бы
+      # unhealthy и compose ронял весь `up` с «dependency failed to start».
+      start_period: 60s
     networks:
       - infrasafe-dev
     restart: unless-stopped

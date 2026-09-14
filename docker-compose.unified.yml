@@ -190,10 +190,17 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./database.sql:/docker-entrypoint-initdb.d/database.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U infrasafe_app -d infrasafe"]
+      # [init-race] TCP, не unix-сокет — см. развёрнутый комментарий в
+      # docker-compose.dev.yml. На существующем томе (обычная выкатка) init-фазы нет
+      # и проверка зеленеет сразу; разница проявляется только на fresh-bootstrap
+      # (staging, DR, E2E-nightly), где сокетная проверка отпускала app в
+      # ECONNREFUSED. start_period закрывает окно initdb + database.sql, чтобы
+      # контейнер не успел стать unhealthy и не уронил `up` целиком.
+      test: ["CMD-SHELL", "pg_isready -U infrasafe_app -d infrasafe -h 127.0.0.1"]
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 60s
     # [B-016] postgres lives on infrasafe-network — the shared app↔DB bus and the
     # network the prod container actually runs in. The earlier `leaflet-network`
     # declaration was drift vs runtime (app reaches the DB over infrasafe-network,

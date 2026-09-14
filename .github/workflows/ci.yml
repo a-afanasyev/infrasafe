@@ -44,8 +44,16 @@ jobs:
           POSTGRES_DB: infrasafe_test
         ports:
           - 5432:5432
+        # [init-race] health-cmd пробует TCP, а не unix-сокет: во время initdb
+        # временный сервер postgres слушает ТОЛЬКО сокет, поэтому сокетная
+        # проверка зеленеет посреди инициализации и шаги стартуют раньше, чем БД
+        # начинает принимать соединения (тот же дефект, что в compose —
+        # tests/jest/unit/composeDbHealthcheck.test.js). Здесь он опаснее: CI
+        # поднимает базу с нуля КАЖДЫЙ прогон, то есть init-фаза есть всегда.
+        # Комментарий стоит НАД `options:` намеренно — внутри `>-` он попал бы в
+        # строку аргументов докера как текст, а не как комментарий.
         options: >-
-          --health-cmd "pg_isready -U postgres"
+          --health-cmd "pg_isready -U postgres -d infrasafe_test -h 127.0.0.1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
