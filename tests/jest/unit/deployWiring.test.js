@@ -27,6 +27,94 @@ const SCRIPT = fs.readFileSync(
     'utf8'
 );
 
+const YAML = require('js-yaml');
+
+const CI_WORKFLOW = YAML.load(fs.readFileSync(
+    path.resolve(__dirname, '../../../.github/workflows/ci.yml'),
+    'utf8'
+));
+
+// Код скрипта без строк-комментариев: проверка «строка присутствует» иначе
+// проходит и на ЗАКОММЕНТИРОВАННОЙ строке. Поймано мутацией: `# trap on_exit
+// EXIT` удовлетворял наивной регулярке, то есть рубеж не заметил бы снятия
+// ловушки — ровно та слабость текстовых проверок, о которой говорит A-16.
+const SCRIPT_CODE = SCRIPT
+    .split('\n')
+    .filter((line) => !/^\s*#/.test(line))
+    .join('\n');
+
+// [A-09/A-13/A-14] Рубежи на гарантии выкатки. Аудит 08.09.2026 показал, что
+// все три обещания были декларациями: откат не выполнялся на двух поздних
+// отказах, `nginx -t` проверял не тот файл, а образ публиковался мимо проверок.
+//
+// Проверки здесь СТРУКТУРНЫЕ — они ловят откат правки, но не доказывают
+// поведение. Поведение `nginx -t -c` проверено на живом контейнере (битый
+// конфиг → exit 1, прежняя проверка на том же контейнере → exit 0), а
+// репетиция отката на площадке остаётся отдельным шагом: staging'а нет.
+describe('[A-09] откат срабатывает на ЛЮБОМ выходе, а не только на ERR', () => {
+    test('ловушка стоит и на EXIT', () => {
+        // `trap ... ERR` не срабатывает ни на явный `exit 1`, ни на команду в
+        // `||`-списке — а оба поздних отказа выходят именно так.
+        expect(SCRIPT_CODE).toMatch(/trap\s+on_exit\s+EXIT/);
+        expect(SCRIPT_CODE).toMatch(/trap\s+rollback\s+ERR/);
+    });
+
+    test('точка успеха снимает обе ловушки и помечает выкатку состоявшейся', () => {
+        const okIdx = SCRIPT_CODE.indexOf('DEPLOY_OK=1');
+        expect(okIdx).toBeGreaterThan(-1);
+        expect(SCRIPT_CODE.slice(okIdx)).toMatch(/trap\s+-\s+EXIT/);
+        // Уборка образов идёт ПОСЛЕ снятия ловушек: падение ретеншена не
+        // должно откатывать успешный релиз.
+        expect(SCRIPT_CODE.indexOf('image retention')).toBeGreaterThan(okIdx);
+    });
+
+    test('поздние отказы (nginx -t, edge smoke) остаются в зоне действия ловушки', () => {
+        const switchIdx = SCRIPT_CODE.indexOf('Step 4: switch app to new image');
+        const okIdx = SCRIPT_CODE.indexOf('DEPLOY_OK=1');
+        for (const marker of ['NOT reloading (edge keeps old config)', 'edge health failed']) {
+            const idx = SCRIPT_CODE.indexOf(marker);
+            expect(idx).toBeGreaterThan(switchIdx);
+            expect(idx).toBeLessThan(okIdx);
+        }
+    });
+});
+
+describe('[A-13] nginx -t проверяет тот конфиг, с которым запущен мастер', () => {
+    test('путь берётся из запущенного процесса, а не угадывается', () => {
+        expect(SCRIPT_CODE).toMatch(/proc\/1\/cmdline/);
+        expect(SCRIPT_CODE).toMatch(/nginx_test=\(nginx -t -c "\$nginx_conf"\)/);
+    });
+
+    test('reload идёт с тем же конфигом, что и проверка', () => {
+        expect(SCRIPT_CODE).toMatch(/nginx_reload=\(nginx -c "\$nginx_conf" -s reload\)/);
+    });
+
+    test('мастер без -c не ломает выкатку — проверяется стоковый конфиг', () => {
+        // Отказ здесь был бы хуже дефекта: запуск без -c это корректная
+        // конфигурация, просто не наша.
+        expect(SCRIPT_CODE).toMatch(/nginx_test=\(nginx -t\)/);
+    });
+});
+
+describe('[A-14] образ публикуется только после обязательных проверок', () => {
+    test('job docker-image зависит от lint/test/audit/gitleaks', () => {
+        const needs = CI_WORKFLOW.jobs['docker-image'].needs;
+        expect(needs).toEqual(expect.arrayContaining(['lint', 'test', 'audit', 'gitleaks']));
+    });
+
+    test('имя job\'а не менялось — на него ссылается защита ветки', () => {
+        // Required-check матчится по строке; переименование заблокировало бы
+        // мерж всех открытых PR.
+        expect(CI_WORKFLOW.jobs['docker-image'].name).toBe('Docker image (SEC-14/15 immutable app)');
+    });
+
+    test('публикация по-прежнему ограничена push в main', () => {
+        const steps = CI_WORKFLOW.jobs['docker-image'].steps;
+        const push = steps.find((st) => /Tag \+ push/i.test(st.name || ''));
+        expect(push.if).toMatch(/refs\/heads\/main/);
+    });
+});
+
 describe('update-production.sh migration wiring', () => {
     test('ветки MIGRATE_WIRING_ENABLED не существует — ни переменной, ни if', () => {
         expect(SCRIPT).not.toMatch(/MIGRATE_WIRING_ENABLED/);
