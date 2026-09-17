@@ -126,11 +126,30 @@ const authenticateRefresh = async (req, res, next) => {
             return sendError(res, 400, 'Refresh token is required');
         }
 
-        const isBlacklisted = await authService.isTokenBlacklisted(refreshToken);
-        if (isBlacklisted) {
-            logger.warn(`Попытка использования refresh токена из черного списка`);
-            return sendError(res, 401, 'Refresh token has been revoked');
-        }
+        // [A-02] Проверка чёрного списка здесь осталась, но БОЛЬШЕ НЕ РЕШАЕТ.
+        //
+        // Она тут стояла — и делала недостижимым весь смысл M-6: реплей
+        // refresh-токена обязан отзывать семейство сессий (вор, обменявший
+        // украденный токен первым, иначе живёт со своей парой до истечения
+        // семи суток), но middleware отдавал 401 РАНЬШЕ, чем дело доходило до
+        // атомарного consume в сервисе, и `_handleRefreshReuse` не звался
+        // никогда. Обработчик существовал, был покрыт тестами — и не работал.
+        //
+        // Решение принимает сервис (`authService.refreshTokens`): INSERT в
+        // token_blacklist ловит повтор по UNIQUE и разбирает ПРИЧИНУ (миграция
+        // 044) — отзыв только для 'rotation', для логаута и 2FA-шагов обычная
+        // 401. Двух мест, решающих одно и то же, здесь быть не должно: именно
+        // раздвоение и спрятало дефект.
+        //
+        // Access-токены это не затрагивает: их ветки проверяют список как и
+        // раньше, у них нет ротации и нечему вступать в противоречие.
+        //
+        // Вызов сохранён ради ДОСТУПНОСТИ (H-5): когда проверка не может
+        // выполниться, она бросает BLACKLIST_UNAVAILABLE, и refresh обязан
+        // ответить 503 с Retry-After, а не 500 из глубины сервиса. Поэтому
+        // исключение по-прежнему обрабатывается ниже, а вот вердикт «да, в
+        // списке» теперь просто передаётся дальше.
+        await authService.isTokenBlacklisted(refreshToken);
 
         if (!process.env.JWT_REFRESH_SECRET) {
             logger.error('JWT_REFRESH_SECRET is not defined in environment variables');

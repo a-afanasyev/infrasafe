@@ -218,7 +218,11 @@ class AuthService {
         return jwt.sign(
             { user_id: user.user_id, username: user.username, role: user.role, scope: '2fa' },
             this.jwt2faSecret,
-            { expiresIn: '5m', issuer: 'infrasafe-api', audience: 'infrasafe-client' }
+            // [A-02-jti] см. generateTokens: без jti два входа в одну секунду
+            // дают один и тот же temp-токен, и погашение первого (шаг 2FA
+            // терминальный) ломает второй — честный логин получает «уже
+            // использован».
+            { expiresIn: '5m', issuer: 'infrasafe-api', audience: 'infrasafe-client', jwtid: crypto.randomUUID() }
         );
     }
 
@@ -266,10 +270,20 @@ class AuthService {
                 role: user.role
             };
 
+            // [A-02-jti] `jti` делает каждый выпуск уникальной СТРОКОЙ.
+            // Без него payload refresh-токена — это `{user_id, type}` плюс
+            // `iat`/`exp` в СЕКУНДАХ, то есть два выпуска в пределах одной
+            // секунды дают побайтово одинаковый токен. Чёрный список ключуется
+            // по хэшу строки, поэтому такой «новый» токен рождался уже
+            // погашенным — а после A-02 повтор им отзывает ВСЕ сессии
+            // пользователя. Совпадение по секунде не должно выглядеть кражей.
+            // Наблюдалось вживую и на temp-токенах («Temporary token has
+            // already been used» на честном логине).
             const accessToken = jwt.sign(payload, this.jwtSecret, {
                 expiresIn: this.jwtExpiresIn,
                 issuer: 'infrasafe-api',
-                audience: 'infrasafe-client'
+                audience: 'infrasafe-client',
+                jwtid: crypto.randomUUID()
             });
 
             const refreshToken = jwt.sign(
@@ -278,7 +292,8 @@ class AuthService {
                 {
                     expiresIn: this.refreshTokenExpiresIn,
                     issuer: 'infrasafe-api',
-                    audience: 'infrasafe-client'
+                    audience: 'infrasafe-client',
+                    jwtid: crypto.randomUUID()
                 }
             );
 
@@ -320,9 +335,13 @@ class AuthService {
             // Atomic consume: blacklist first, fail if already consumed (UNIQUE on token_hash)
             const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
             try {
+                // [A-02] `reason='rotation'` отличает израсходованный при
+                // ротации токен от погашенного логаутом: отзыв всего семейства
+                // сессий — ответ на КРАЖУ, и вешать его на обычный выход
+                // нельзя (миграция 044).
                 await db.query(
-                    `INSERT INTO token_blacklist (token_hash, expires_at, blacklisted_at)
-                     VALUES ($1, to_timestamp($2), NOW())`,
+                    `INSERT INTO token_blacklist (token_hash, expires_at, blacklisted_at, reason)
+                     VALUES ($1, to_timestamp($2), NOW(), 'rotation')`,
                     [tokenHash, decoded.exp]
                 );
             } catch (dbError) {
@@ -367,7 +386,7 @@ class AuthService {
     // Выход из системы (добавление токена в черный список)
     async logout(token) {
         try {
-            await this.blacklistToken(token);
+            await this.blacklistToken(token, 'logout');
             logger.info('Пользователь вышел из системы');
             return { message: 'Выход выполнен успешно' };
         } catch (error) {
@@ -483,16 +502,36 @@ class AuthService {
      */
     async _handleRefreshReuse(userId, tokenHash) {
         let elapsedMs = null;
+        let reason = null;
         try {
             const { rows } = await db.query(
-                'SELECT blacklisted_at FROM token_blacklist WHERE token_hash = $1',
+                'SELECT blacklisted_at, reason FROM token_blacklist WHERE token_hash = $1',
                 [tokenHash]
             );
             if (rows[0] && rows[0].blacklisted_at) {
                 elapsedMs = Date.now() - new Date(rows[0].blacklisted_at).getTime();
             }
+            if (rows[0]) reason = rows[0].reason;
         } catch (error) {
-            logger.warn(`Реплей refresh: не удалось прочитать blacklisted_at: ${error.message}`);
+            logger.warn(`Реплей refresh: не удалось прочитать строку списка: ${error.message}`);
+        }
+
+        // [A-02] Отзыв семейства — ответ на КРАЖУ, а не на любое повторное
+        // предъявление. Токен, погашенный ЛОГАУТОМ или 2FA-шагом, предъявлен
+        // повторно обычным клиентом: это 401, но выкидывать человека со всех
+        // устройств за то, что он вышел на одном, нельзя.
+        //
+        // `reason IS NULL` — строки, записанные ДО миграции 044. Для них
+        // поведение остаётся прежним (решает отметка времени ниже): менять его
+        // здесь значило бы молча развернуть уже принятое решение «неизвестность
+        // трактуем как кражу — ложный разлогин чинится входом, пропущенная
+        // кража нет». Окно ограничено сроком жизни refresh-токена.
+        if (reason && reason !== 'rotation') {
+            logger.warn(
+                `Повтор токена, погашенного не ротацией (reason=${reason}), для user_id=${userId} ` +
+                '— сессии не отзываются'
+            );
+            return false;
         }
 
         if (elapsedMs !== null && elapsedMs <= REFRESH_REUSE_GRACE_MS) {
@@ -685,7 +724,13 @@ class AuthService {
     }
 
     // Добавление токена в черный список
-    async blacklistToken(token) {
+    /**
+     * @param {string} token
+     * @param {'logout'|'temp-token'|'manual'} [reason] — зачем гасим. На отзыв
+     *   семейства сессий влияет только 'rotation', который ставит сама ротация
+     *   (см. refreshTokens); всё, что гасится здесь, семейство не трогает.
+     */
+    async blacklistToken(token, reason = 'manual') {
         try {
             const decoded = jwt.decode(token);
             if (!decoded || typeof decoded.exp !== 'number') {
@@ -705,8 +750,9 @@ class AuthService {
                 try {
                     const expiresAt = new Date(expiry);
                     await db.query(
-                        'INSERT INTO token_blacklist (token_hash, expires_at) VALUES ($1, $2) ON CONFLICT (token_hash) DO NOTHING',
-                        [tokenHash, expiresAt]
+                        `INSERT INTO token_blacklist (token_hash, expires_at, reason)
+                         VALUES ($1, $2, $3) ON CONFLICT (token_hash) DO NOTHING`,
+                        [tokenHash, expiresAt, reason]
                     );
                 } catch (dbError) {
                     logger.error(`Ошибка сохранения токена в БД: ${dbError.message}`);

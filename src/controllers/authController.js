@@ -217,7 +217,7 @@ const logout = async (req, res, next) => {
 
             if (ownsRefresh) {
                 try {
-                    await authService.blacklistToken(refresh);
+                    await authService.blacklistToken(refresh, 'logout');
                 } catch (refreshErr) {
                     logger.warn(`logout: refresh token blacklist failed: ${refreshErr.message}`);
                 }
@@ -358,7 +358,7 @@ const verify2FA = async (req, res, next) => {
 
         // SEC-101: blacklist tempToken so it cannot be reused
         if (req.tempToken) {
-            await authService.blacklistToken(req.tempToken);
+            await authService.blacklistToken(req.tempToken, 'temp-token');
         }
 
         // Генерация полных токенов
@@ -429,7 +429,7 @@ const confirm2FA = async (req, res, next) => {
 
         // SEC-101: blacklist tempToken so it cannot be reused
         if (req.tempToken) {
-            await authService.blacklistToken(req.tempToken);
+            await authService.blacklistToken(req.tempToken, 'temp-token');
         }
 
         // 2FA активирована — выдаём полные токены

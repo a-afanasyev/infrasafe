@@ -330,16 +330,26 @@ describe('Auth Middleware', () => {
             );
         });
 
-        test('returns 401 when refresh token is blacklisted', async () => {
+        test('[A-02] погашенный refresh НЕ отбивается здесь — решает сервис', async () => {
+            // Раньше middleware отвечал 401 прямо тут, и из-за этого обработчик
+            // реюза в сервисе (отзыв всего семейства сессий, M-6) не вызывался
+            // по обычному HTTP-пути НИКОГДА. Теперь вердикт списка не
+            // прерывает цепочку: повтор ловит атомарный consume в
+            // `refreshTokens`, который отличает ротацию от логаута по
+            // `token_blacklist.reason` (миграция 044).
             req.body = { refreshToken: 'blacklisted-token' };
             authService.isTokenBlacklisted.mockResolvedValue(true);
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
+                cb(null, { user_id: 1, type: 'refresh' });
+            });
+            authService.getUserForAuth.mockResolvedValue(mockUser);
 
             await authenticateRefresh(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(401);
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({ error: expect.objectContaining({ message: 'Refresh token has been revoked' }) })
-            );
+            expect(next).toHaveBeenCalled();
+            expect(res.status).not.toHaveBeenCalledWith(401);
+            // Проверка всё ещё выполняется — ради 503-контракта H-5 ниже.
+            expect(authService.isTokenBlacklisted).toHaveBeenCalledWith('blacklisted-token');
         });
 
         // H-5: same 503 contract as authenticateJWT.
