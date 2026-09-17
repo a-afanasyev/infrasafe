@@ -182,11 +182,32 @@ class UKRequestProcessor {
                     //   - never downgrade a terminal mapping on a stale
                     //     non-terminal snapshot (else a closed request pops
                     //     back into the map counters as "active").
-                    logger.debug(
-                        `handleRequestWebhook: reconcile no-op for request ` +
-                        `${safeLogValue(ukRequest.request_number)} (mapping ${mapping.id} ` +
-                        `status=${safeLogValue(mapping.status)}, uk_status=${safeLogValue(ukStatus)})`
-                    );
+                    // [A-04] ...но «no-op» здесь был слишком широким. ARM
+                    // помечается `resolved` ДО асинхронного resolveAlert, а тот
+                    // на ошибке БД или VERIFY_LOCK_BUSY только пишет в лог.
+                    // Reconcile после этого видел маппинг уже в целевом статусе
+                    // и молчал — алерт оставался `active` НАВСЕГДА, verification
+                    // и reopen не запускались никогда.
+                    //
+                    // Признак незавершённости — сам алерт: если УК считает
+                    // заявку закрытой, а алерт всё ещё открыт, повторяем.
+                    const needsRetry = TERMINAL_STATUSES.includes(ukStatus)
+                        && ARM_TERMINAL_STATUSES.includes(mapping.status)
+                        && await this._isAlertStillOpen(mapping.infrasafe_alert_id);
+                    if (needsRetry) {
+                        deferredResolveAlertId = mapping.infrasafe_alert_id;
+                        logger.info(
+                            `handleRequestWebhook: reconcile повторяет resolve для алерта ` +
+                            `${mapping.infrasafe_alert_id} — маппинг ${mapping.id} уже терминальный, ` +
+                            `а алерт остался открытым`
+                        );
+                    } else {
+                        logger.debug(
+                            `handleRequestWebhook: reconcile no-op for request ` +
+                            `${safeLogValue(ukRequest.request_number)} (mapping ${mapping.id} ` +
+                            `status=${safeLogValue(mapping.status)}, uk_status=${safeLogValue(ukStatus)})`
+                        );
+                    }
                 } else {
                     // Update mapping status
                     const newStatus = TERMINAL_STATUSES.includes(ukStatus) ? 'resolved' : 'active';
@@ -227,6 +248,37 @@ class UKRequestProcessor {
             }
             logger.error(`handleRequestWebhook error: ${error.message}`);
             throw error;
+        }
+    }
+    /**
+     * [A-04] Открыт ли ещё алерт. Единственный признак того, что прошлый
+     * resolveAlert не доехал.
+     *
+     * Прямой запрос, а не через модель: таблицы `infrastructure_alerts` модели
+     * не имеет вовсе (весь её SQL живёт в alertService и alertForwarder), а
+     * тянуть сюда alertService нельзя — шина событий существует именно для
+     * того, чтобы этой зависимости не было.
+     *
+     * Неизвестность (ошибка чтения) трактуется как «не повторять»: сбойное
+     * чтение иначе превратилось бы в шторм повторов на каждом цикле reconcile.
+     * Молчать при этом нельзя — отсюда предупреждение в лог.
+     */
+    async _isAlertStillOpen(alertId) {
+        if (alertId == null) return false;
+        try {
+            const db = require('../../config/database');
+            const result = await db.query(
+                `SELECT status FROM infrastructure_alerts
+                 WHERE alert_id = $1 AND status IN ('active', 'acknowledged')`,
+                [alertId]
+            );
+            return !!(result && result.rows && result.rows.length > 0);
+        } catch (error) {
+            logger.warn(
+                `handleRequestWebhook: не удалось прочитать статус алерта ${alertId} ` +
+                `— повтор resolve пропущен: ${error.message}`
+            );
+            return false;
         }
     }
 }

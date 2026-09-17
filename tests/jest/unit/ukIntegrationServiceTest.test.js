@@ -814,6 +814,11 @@ describe('UKIntegrationService — Phase 3-5', () => {
                     infrasafe_alert_id: 303,
                     status: 'resolved'
                 });
+                // [A-04] Предпосылка стала ЯВНОЙ: «тишина» здесь верна только
+                // для ЗАКРЫТОГО алерта. Если он остался открытым, reconcile
+                // обязан повторить resolve — иначе алерт навсегда `active`.
+                // Пустая выборка = алерт не в открытых статусах.
+                db.query.mockResolvedValue({ rows: [] });
                 const listener = jest.fn();
                 alertEvents.on(alertEvents.EVENTS.UK_REQUEST_RESOLVED, listener);
 
@@ -824,6 +829,78 @@ describe('UKIntegrationService — Phase 3-5', () => {
                 expect(AlertRequestMap.updateStatus).not.toHaveBeenCalled();
                 expect(listener).not.toHaveBeenCalled();
                 expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(10, 'success');
+            });
+
+            // [A-04] Обратный путь: ARM помечается `resolved` ДО асинхронного
+            // resolveAlert, а тот на ошибке БД или VERIFY_LOCK_BUSY только
+            // пишет в лог. Дальше reconcile видит mapping уже в целевом статусе
+            // и делает no-op — то есть алерт остаётся `active` НАВСЕГДА:
+            // verification и reopen не запускаются никогда.
+            //
+            // Признак «не доделано» — сам алерт: если он всё ещё открыт, а УК
+            // считает заявку закрытой, reconcile обязан повторить.
+            it('[A-04] mapping resolved, но алерт ещё открыт → reconcile ПОВТОРЯЕТ resolve', async () => {
+                const alertEvents = require('../../../src/events/alertEvents');
+                AlertRequestMap.findByRequestNumber.mockResolvedValue({
+                    id: 40,
+                    infrasafe_alert_id: 400,
+                    status: 'resolved'
+                });
+                // Алерт 400 всё ещё открыт — прошлый resolveAlert не доехал.
+                db.query.mockResolvedValue({ rows: [{ status: 'active' }] });
+
+                const listener = jest.fn();
+                alertEvents.on(alertEvents.EVENTS.UK_REQUEST_RESOLVED, listener);
+                await service.handleRequestWebhook(reconcilePayload);
+                alertEvents.off(alertEvents.EVENTS.UK_REQUEST_RESOLVED, listener);
+
+                expect(listener).toHaveBeenCalledWith({ alertId: 400 });
+                // Статус маппинга менять не за что — он уже целевой.
+                expect(AlertRequestMap.updateStatus).not.toHaveBeenCalled();
+            });
+
+            it('[A-04] mapping resolved и алерт закрыт → по-прежнему тишина', async () => {
+                // Это ровно тот шум, который убирал review-фикс 2026-07-23:
+                // повторный resolveAlert по давно закрытому алерту.
+                const alertEvents = require('../../../src/events/alertEvents');
+                AlertRequestMap.findByRequestNumber.mockResolvedValue({
+                    id: 41,
+                    infrasafe_alert_id: 401,
+                    status: 'resolved'
+                });
+                // Запрос сам фильтрует `status IN ('active','acknowledged')`,
+                // поэтому «алерт закрыт» — это ПУСТАЯ выборка, а не строка с
+                // другим статусом.
+                db.query.mockResolvedValue({ rows: [] });
+
+                const listener = jest.fn();
+                alertEvents.on(alertEvents.EVENTS.UK_REQUEST_RESOLVED, listener);
+                await service.handleRequestWebhook(reconcilePayload);
+                alertEvents.off(alertEvents.EVENTS.UK_REQUEST_RESOLVED, listener);
+
+                expect(listener).not.toHaveBeenCalled();
+            });
+
+            it('[A-04] статус алерта не прочитался → не повторяем, но говорим в лог', async () => {
+                // Неизвестность трактуется как «не повторять»: иначе сбойное
+                // чтение превратилось бы в шторм повторов на каждом цикле.
+                // Молчать при этом нельзя — отсюда предупреждение.
+                const alertEvents = require('../../../src/events/alertEvents');
+                const logger = require('../../../src/utils/logger');
+                AlertRequestMap.findByRequestNumber.mockResolvedValue({
+                    id: 42,
+                    infrasafe_alert_id: 402,
+                    status: 'resolved'
+                });
+                db.query.mockRejectedValue(new Error('БД недоступна'));
+
+                const listener = jest.fn();
+                alertEvents.on(alertEvents.EVENTS.UK_REQUEST_RESOLVED, listener);
+                await service.handleRequestWebhook(reconcilePayload);
+                alertEvents.off(alertEvents.EVENTS.UK_REQUEST_RESOLVED, listener);
+
+                expect(listener).not.toHaveBeenCalled();
+                expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('402'));
             });
 
             it('status_changed still updates a terminal mapping (guard is reconcile-scoped)', async () => {
