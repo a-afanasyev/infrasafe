@@ -183,7 +183,27 @@ docker compose -f docker-compose.dev.yml up --build -d
 
 # Или единое развертывание
 docker compose -f docker-compose.unified.yml up --build -d
+
+# [A-15] ОБЯЗАТЕЛЬНЫЙ шаг на чистом томе — иначе схема отстанет от кода.
+# database/init/ доводит базу только до миграции 017; всё, что появилось
+# позже (018–043+), применяет раннер. Пропустив его, вы получите стек,
+# который поднимается и тут же шумит ошибками: нет uk_outbox, нет
+# alert_verifications, нет сезонных колонок, а вход ломается на
+# sessions_revoked_at из миграции 043 — колонке, которую читает
+# auth-проекция.
+MIGRATE_COMPOSE_FILE=docker-compose.dev.yml \
+  MIGRATE_PG_USER=postgres \
+  MIGRATE_TARGET_COMMIT=HEAD \
+  ./scripts/migrate.sh up
+
+# Проверить, что ожидающих миграций не осталось:
+MIGRATE_COMPOSE_FILE=docker-compose.dev.yml MIGRATE_PG_USER=postgres \
+  ./scripts/migrate.sh status
 ```
+
+> Шаг не автоматизирован намеренно: раннер исполняет миграции из
+> ЗАКРЕПЛЁННОГО коммита, а не из рабочего дерева, и запускать его молча при
+> каждом `up` значило бы применять схему, которой разработчик не просил.
 
 ### Доступ к приложению
 
