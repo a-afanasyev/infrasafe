@@ -158,7 +158,33 @@ rollback() {
     fi
     exit "$rc"
 }
+# [A-09] Ловушка стоит и на EXIT, а не только на ERR.
+#
+# `trap ... ERR` не срабатывает на ЯВНЫЙ `exit 1` и на команду внутри
+# `||`-списка. Между тем два поздних отказа выходили именно так — `nginx -t`
+# (шаг 6b) и edge smoke (шаг 8), оба уже ПОСЛЕ подмены образа. То есть в
+# единственных двух местах, где откат по-настоящему нужен, он не выполнялся,
+# хотя комментарии его обещали.
+#
+# EXIT ловит любой выход, включая будущие ветки, о которых автор трапа не знал.
+# `DEPLOY_OK` снимает ловушку на успешном пути (ниже), а `rollback` уже
+# идемпотентен: он смотрит на стадии `APP_SWITCHED` / `DIST_PUBLISHED` и сам
+# делает `exit "$rc"`.
+DEPLOY_OK=0
+on_exit() {
+    local rc=$?
+    # Явные if, а не `[ ... ] && exit`: под `set -e` поведение AND-списков —
+    # тонкость, на которую деплой-скрипт опираться не должен.
+    if [ "$DEPLOY_OK" = 1 ]; then
+        exit "$rc"                # успех: дальше только уборка
+    fi
+    if [ "$rc" = 0 ]; then
+        exit 0                    # выход без ошибки до точки успеха — откатывать нечего
+    fi
+    rollback
+}
 trap rollback ERR
+trap on_exit EXIT
 
 # ---------------------------------------------------------------------------
 say "🔄 InfraSafe deploy (env=$DEPLOY_ENV, immutable app + extracted static)"
@@ -325,8 +351,34 @@ DIST_PUBLISHED=1
 # → abort (edge keeps the old, working config; ERR trap rolls the app back).
 if [ -n "$(git diff --name-only "$PREV_COMMIT" HEAD -- nginx-config/)" ]; then
     say "🔁 Step 6b: nginx config changed this release — test + reload edge"
-    if docker compose "${COMPOSE_ARGS[@]}" exec -T nginx nginx -t; then
-        docker compose "${COMPOSE_ARGS[@]}" exec -T nginx nginx -s reload
+    # [A-13] `-c` обязателен: мастер nginx запущен с кастомным конфигом
+    # (nginx.production.conf / nginx.profk.conf / nginx.staging.conf — зависит
+    # от набора compose-файлов), а `nginx -t` без `-c` проверяет стоковый
+    # /etc/nginx/nginx.conf. Проверено на живом контейнере: стоковый файл
+    # валиден всегда, то есть шаг 6b не мог поймать битый конфиг в принципе.
+    #
+    # Путь берём из ЗАПУЩЕННОГО процесса, а не из карты окружений: так проверка
+    # не может разойтись с тем, что реально исполняется. nginx переписывает
+    # argv в один заголовок вида
+    #   `nginx: master process nginx -c /etc/nginx/custom/x.conf -g daemon off;`
+    # поэтому cmdline разбирается как строка, а не по NUL-разделителям.
+    nginx_conf="$(docker compose "${COMPOSE_ARGS[@]}" exec -T nginx sh -c \
+        "tr '\\0' ' ' < /proc/1/cmdline" 2>/dev/null \
+        | sed -n 's/.*-c[[:space:]]\\{1,\\}\\([^[:space:]]\\{1,\\}\\).*/\\1/p' | tr -d '\\r')"
+    if [ -n "$nginx_conf" ]; then
+        say "  → конфиг запущенного мастера: $nginx_conf"
+        nginx_test=(nginx -t -c "$nginx_conf")
+        nginx_reload=(nginx -c "$nginx_conf" -s reload)
+    else
+        # Мастер запущен без -c (стоковый конфиг) — тогда проверять надо именно
+        # его, и отсутствие пути не ошибка. Отказываться от выкатки здесь не за
+        # что: это корректная конфигурация, просто не наша.
+        warn "  → у запущенного nginx нет -c: проверяю стоковый конфиг"
+        nginx_test=(nginx -t)
+        nginx_reload=(nginx -s reload)
+    fi
+    if docker compose "${COMPOSE_ARGS[@]}" exec -T nginx "${nginx_test[@]}"; then
+        docker compose "${COMPOSE_ARGS[@]}" exec -T nginx "${nginx_reload[@]}"
         ok "✅ edge nginx reloaded"
     else
         err "❌ new nginx config failed 'nginx -t' — NOT reloading (edge keeps old config)"; exit 1
@@ -341,7 +393,11 @@ bash scripts/rebuild-frontend.sh verify
 say "🌐 Step 8: edge smoke"
 curl -fsS "$EDGE_HEALTH_URL" >/dev/null && ok "✅ edge healthy" || { err "edge health failed"; exit 1; }
 
+# [A-09] Точка успеха: дальше идёт только уборка, ронять из-за неё выкатку и
+# тем более откатывать её нельзя.
+DEPLOY_OK=1
 trap - ERR
+trap - EXIT
 
 # [R2-15 / OPS-001] Bounded image retention — SUCCESS PATH ONLY (never in the ERR
 # trap; never `prune --all`, which would delete the rollback-tagged image). Pull

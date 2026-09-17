@@ -124,8 +124,25 @@ jobs:
           # tier is used. Add a secret if scan volume requires it.
           # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
+
   docker-image:
+    # [A-14] Публикация образа больше не идёт ПАРАЛЛЕЛЬНО проверкам.
+    #
+    # Все пять job'ов стояли без `needs`, поэтому тег sha-<commit> появлялся в
+    # GHCR независимо от того, прошли ли lint/test/audit/gitleaks, а преflight
+    # деплоя проверяет лишь НАЛИЧИЕ образа: «CI зелёный» и «образ существует» —
+    # разные утверждения, а выкатка опиралась на второе.
+    #
+    # Защита ветки закрывает основную часть риска (push в main возможен только
+    # после семи обязательных проверок), но остаётся окно скоса мержей: два PR
+    # зелёные порознь и сломанные вместе дают на main коммит, чей собственный
+    # прогон ещё идёт или уже упал, — а образ для него всё равно публикуется.
+    #
+    # ВАЖНО: имя job'а менять нельзя. Required-check в защите ветки матчится по
+    # строке `Docker image (SEC-14/15 immutable app)`; переименование заблокирует
+    # мерж всех открытых PR.
     name: Docker image (SEC-14/15 immutable app)
+    needs: [lint, test, audit, gitleaks]
     runs-on: ubuntu-latest
     # [R2-15] packages:write lets the post-verify step push the built image to GHCR
     # (push-to-main only). contents:read is the least-privilege default for checkout.
