@@ -103,6 +103,16 @@ jobs:
       # informational — noisy across the dep tree and not actionable per-PR.
       - name: Audit production deps
         run: npm audit --omit=dev --audit-level=high
+      # [A-22] У генератора СВОЁ дерево зависимостей и свой рантайм-образ: шаг
+      # выше его не видел вовсе. На момент правки там висели три moderate в
+      # `qs` (через express и body-parser) — их не было видно ни в одном
+      # прогоне CI. Порог тот же, что и для основного пакета, чтобы правила не
+      # расходились между двумя деревьями одного репозитория.
+      - name: Audit generator deps
+        working-directory: generator
+        run: |
+          npm ci
+          npm audit --omit=dev --audit-level=high
 
   gitleaks:
     name: Secret scan (gitleaks)
