@@ -189,6 +189,31 @@ describe('[A-14] образ публикуется только после об�
     });
 });
 
+// [A-22] У генератора СВОЁ дерево зависимостей и свой рантайм-образ, а шаг
+// `npm audit` в CI смотрел только на корневой пакет. На момент правки там
+// висели три moderate в `qs` (через express и body-parser), и их не было видно
+// ни в одном прогоне: «CI зелёный» ничего не говорил про генератор.
+describe('[A-22] npm audit покрывает и дерево генератора', () => {
+    const auditSteps = CI_WORKFLOW.jobs.audit.steps;
+
+    test('есть отдельный шаг с рабочим каталогом generator', () => {
+        const step = auditSteps.find((s) => s['working-directory'] === 'generator');
+        expect(step).toBeDefined();
+        expect(step.run).toMatch(/npm ci/);
+        expect(step.run).toMatch(/npm audit/);
+    });
+
+    test('порог тот же, что у основного пакета', () => {
+        // Расхождение порогов между двумя деревьями одного репозитория — это
+        // два разных правила, о которых никто не помнит.
+        const levels = auditSteps
+            .filter((s) => typeof s.run === 'string' && s.run.includes('npm audit'))
+            .map((s) => /--audit-level=(\w+)/.exec(s.run)?.[1]);
+        expect(levels.length).toBe(2);
+        expect(new Set(levels).size).toBe(1);
+    });
+});
+
 describe('update-production.sh migration wiring', () => {
     test('ветки MIGRATE_WIRING_ENABLED не существует — ни переменной, ни if', () => {
         expect(SCRIPT).not.toMatch(/MIGRATE_WIRING_ENABLED/);
