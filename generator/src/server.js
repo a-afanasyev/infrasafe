@@ -145,7 +145,9 @@ app.post('/api/ranges/import', (req, res) => {
         const lp = Math.max(0, Math.min(1, Number(config.leakProbability)));
         
         // Сохраняем конфигурацию
-        setBuildingRange(String(buildingId), {
+        // [A-24] Импорт продолжается, но неудачная запись обязана попасть в
+        // список ошибок ответа, а не потеряться.
+        const persisted = setBuildingRange(String(buildingId), {
           electricity: config.electricity,
           amperage: config.amperage,
           waterPressure: config.waterPressure,
@@ -153,7 +155,11 @@ app.post('/api/ranges/import', (req, res) => {
           environment: config.environment,
           leakProbability: lp
         });
-        
+        if (!persisted) {
+          errors.push(`Здание #${buildingId}: принято в память, но НЕ сохранено на диск`);
+          continue;
+        }
+
         imported++;
       } catch (error) {
         errors.push(`Здание #${buildingId}: ${error.message}`);
@@ -203,7 +209,16 @@ app.post('/api/ranges/:buildingId', (req, res) => {
   // Ограничение leakProbability в [0,1]
   const lp = Math.max(0, Math.min(1, Number(leakProbability)));
 
-  setBuildingRange(buildingId, { electricity, amperage, waterPressure, waterTemp, environment, leakProbability: lp });
+  // [A-24] Подтверждать сохранение можно только по факту записи. Раньше
+  // ошибка записи глоталась в store, и API отвечал успехом на настройки,
+  // которые исчезали при следующем перезапуске.
+  const persisted = setBuildingRange(buildingId, { electricity, amperage, waterPressure, waterTemp, environment, leakProbability: lp });
+  if (!persisted) {
+    return res.status(500).json({
+      success: false,
+      message: 'Диапазоны приняты в память, но НЕ сохранены на диск — см. лог генератора'
+    });
+  }
   return res.json({ success: true, data: getAllRanges() });
 });
 
@@ -218,8 +233,15 @@ app.delete('/api/ranges/:buildingId', (req, res) => {
   }
 
   // Удаляем конфигурацию
-  deleteBuildingRange(buildingId);
-  
+  // [A-24] Тот же контракт, что и при сохранении: успех только по факту записи.
+  const persisted = deleteBuildingRange(buildingId);
+  if (!persisted) {
+    return res.status(500).json({
+      success: false,
+      message: `Конфигурация здания #${buildingId} удалена в памяти, но НЕ сохранена на диск — см. лог генератора`
+    });
+  }
+
   return res.json({ success: true, message: `Конфигурация для здания #${buildingId} удалена`, data: getAllRanges() });
 });
 

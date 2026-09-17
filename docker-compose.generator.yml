@@ -12,8 +12,11 @@ services:
       # зависит от публикации порта.
       - "127.0.0.1:8081:8081"
     volumes:
-      # Персистентность локального файла настроек диапазонов
-      - generator_data:/app/generator-data.json
+      # [A-24] Том монтируется на КАТАЛОГ, а не на файл. Именованный том,
+      # смонтированный на путь файла, Docker создаёт как каталог: existsSync
+      # отвечает true, чтение и запись падают с EISDIR, и настройки молча
+      # пропадали при каждом перезапуске.
+      - generator_data:/app/data
     environment:
       - TZ=Asia/Tashkent
       - NODE_ENV=production
