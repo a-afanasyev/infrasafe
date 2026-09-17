@@ -82,17 +82,78 @@ describe('[A-09] откат срабатывает на ЛЮБОМ выходе,
 describe('[A-13] nginx -t проверяет тот конфиг, с которым запущен мастер', () => {
     test('путь берётся из запущенного процесса, а не угадывается', () => {
         expect(SCRIPT_CODE).toMatch(/proc\/1\/cmdline/);
-        expect(SCRIPT_CODE).toMatch(/nginx_test=\(nginx -t -c "\$nginx_conf"\)/);
+        expect(SCRIPT_CODE).toMatch(/nginx_test=\(nginx -t -c "\$conf"\)/);
     });
 
     test('reload идёт с тем же конфигом, что и проверка', () => {
-        expect(SCRIPT_CODE).toMatch(/nginx_reload=\(nginx -c "\$nginx_conf" -s reload\)/);
+        // Одна и та же переменная в обеих командах — не косметика: разойдясь,
+        // они дали бы «проверил один файл, перезагрузил другой».
+        expect(SCRIPT_CODE).toMatch(/nginx_reload=\(nginx -c "\$conf" -s reload\)/);
     });
 
     test('мастер без -c не ломает выкатку — проверяется стоковый конфиг', () => {
         // Отказ здесь был бы хуже дефекта: запуск без -c это корректная
         // конфигурация, просто не наша.
         expect(SCRIPT_CODE).toMatch(/nginx_test=\(nginx -t\)/);
+    });
+});
+
+// [A-10] Откат возвращал СТАТИКУ, но не HEAD.
+//
+// `git restore --worktree` меняет файлы, оставляя указатель на новом коммите.
+// Отсюда два следствия, и второе хуже первого: рабочее дерево остаётся
+// «грязным» (это уже было записано в памяти как особенность), а ПОВТОРНАЯ
+// выкатка того же SHA видит `Already up to date` и не восстанавливает ничего —
+// новый образ поверх старых HTML/CSS, причём byte-verify это пропускает, потому
+// что сверяет только JS-бандлы. Плюс `nginx-config/` в список четырёх каталогов
+// не входил вовсе: конфиг периметра, перезагруженный на шаге 6b, оставался
+// новым при откаченном приложении.
+describe('[A-10] откат возвращает площадку целиком, а не четыре каталога', () => {
+    const ROLLBACK = SCRIPT_CODE.slice(
+        SCRIPT_CODE.indexOf('rollback() {'),
+        SCRIPT_CODE.indexOf('on_exit() {')
+    );
+
+    test('вырезанный кусок — действительно тело rollback', () => {
+        // Сторож сторожа: если функцию переименуют, срез станет пустым и все
+        // проверки ниже начнут проходить на пустой строке.
+        expect(ROLLBACK.length).toBeGreaterThan(200);
+        expect(ROLLBACK).toMatch(/rolling back/);
+    });
+
+    test('HEAD возвращается вместе с файлами', () => {
+        expect(ROLLBACK).toMatch(/git reset --hard "\$PREV_COMMIT"/);
+    });
+
+    test('узкий restore остался только запасным путём — при грязном дереве', () => {
+        // Он допустим лишь там, где `reset --hard` затёр бы правки оператора;
+        // в этом случае скрипт ОБЯЗАН сказать, что HEAD остался впереди.
+        const narrow = /git restore --source="\$PREV_COMMIT"/;
+        if (narrow.test(ROLLBACK)) {
+            expect(ROLLBACK).toMatch(/WORKTREE_CLEAN/);
+            expect(ROLLBACK).toMatch(/HEAD/);
+        }
+        expect(SCRIPT_CODE).toMatch(/WORKTREE_CLEAN=/);
+    });
+
+    test('конфиг периметра возвращается, если шаг 6b его перезагружал', () => {
+        expect(SCRIPT_CODE).toMatch(/NGINX_RELOADED=1/);
+        expect(ROLLBACK).toMatch(/NGINX_RELOADED/);
+    });
+
+    test('nginx-команды разрешаются ОДНОЙ функцией — и на шаге 6b, и в откате', () => {
+        // Иначе разрешение пути расходится между прямым и обратным путём, а
+        // расхождение здесь означает reload не того конфига (см. A-13).
+        expect(SCRIPT_CODE).toMatch(/resolve_nginx_cmds\(\)\s*\{/);
+        const calls = SCRIPT_CODE.match(/^\s*resolve_nginx_cmds$/gm) || [];
+        expect(calls.length).toBeGreaterThanOrEqual(2);
+    });
+
+    test('чистота дерева снимается ДО слияния, иначе она уже не о том', () => {
+        const cleanIdx = SCRIPT_CODE.indexOf('WORKTREE_CLEAN=');
+        const mergeIdx = SCRIPT_CODE.indexOf('git merge --ff-only');
+        expect(cleanIdx).toBeGreaterThan(-1);
+        expect(cleanIdx).toBeLessThan(mergeIdx);
     });
 });
 
