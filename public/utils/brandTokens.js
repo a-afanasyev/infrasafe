@@ -137,6 +137,11 @@
             case 'leak':     fill = token('--st-info'); break;
             case 'critical': fill = token('--st-crit'); break;
             case 'public':   fill = token('--st-public'); break;
+            // [A-07] Устаревшие данные красятся как «нет данных» — намеренно:
+            // отдельный цвет завёл бы состояние, которого нет ни в легенде, ни
+            // в кластерах. Ветка явная, чтобы это было решением, а не
+            // следствием default'а.
+            case 'stale':    fill = token('--st-offline'); break;
             default:         fill = token('--st-offline'); break;
         }
 

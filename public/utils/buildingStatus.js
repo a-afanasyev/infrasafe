@@ -35,11 +35,68 @@
     // Давления ГВС: не ниже 1 на входе И на выходе.
     const HOT_WATER_MIN = 1;
 
+    // [A-07] Порог, после которого показания перестают считаться текущими.
+    // Ровно тот же, по которому контроллер помечается `offline`
+    // (`controllerService.statusTimeout` = 10 минут). Расхождение дало бы окно,
+    // в котором карта и статус контроллера противоречат друг другу.
+    const STALE_AFTER_MS = 10 * 60 * 1000;
+
+    // Поля, наличие любого из которых означает «телеметрия приходила».
+    // Прежде признаком служило ОДНО поле — electricity_ph1, — поэтому пакет с
+    // одним лишь датчиком протечки не доходил до классификации вовсе.
+    const METRIC_FIELDS = [
+        'electricity_ph1', 'electricity_ph2', 'electricity_ph3',
+        'amperage_ph1', 'amperage_ph2', 'amperage_ph3',
+        'cold_water_pressure', 'cold_water_temp',
+        'hot_water_in_pressure', 'hot_water_out_pressure',
+        'hot_water_in_temp', 'hot_water_out_temp',
+        'air_temp', 'humidity', 'leak_sensor',
+    ];
+
+    // Контроллер считается сообщающим только в этом статусе. `offline` и
+    // `maintenance` одинаково означают, что показания историчны.
+    const REPORTING_STATUS = 'online';
+
     const isPhaseOk = (value) => value > PHASE_MIN && value < PHASE_MAX;
 
-    /** Телеметрия вообще пришла? Анонимная выдача не содержит метрик. */
+    /**
+     * Телеметрия вообще приходила? Анонимная выдача метрик не содержит.
+     *
+     * [A-07] Считается по ЛЮБОМУ полю метрики и по наличию отметки времени
+     * (её даёт LATERAL-join строки метрик). Прежняя проверка смотрела только на
+     * `electricity_ph1`, и частичный пакет — например, сработавший датчик
+     * протечки без фазных напряжений — классификацию не проходил.
+     */
     function hasMetrics(item) {
-        return item.electricity_ph1 !== undefined && item.electricity_ph1 !== null;
+        if (!item) return false;
+        if (item.timestamp !== undefined && item.timestamp !== null) return true;
+        return METRIC_FIELDS.some((field) => item[field] !== undefined && item[field] !== null);
+    }
+
+    /**
+     * Возраст показаний в миллисекундах, или `null`, если отметки времени нет.
+     * Возраст НЕ выдумывается: отсутствие отметки — это «неизвестно», а не ноль.
+     */
+    function dataAgeMs(item, now) {
+        const raw = item && item.timestamp;
+        if (raw === undefined || raw === null) return null;
+        const ts = new Date(raw).getTime();
+        if (Number.isNaN(ts)) return null;
+        return (now === undefined || now === null ? Date.now() : now) - ts;
+    }
+
+    /**
+     * Показаниям нельзя верить как текущим: они старше порога, контроллер не
+     * сообщает, или отметки времени нет вовсе (судить не о чем, а объявлять
+     * свежими нельзя).
+     */
+    function isStale(item, now) {
+        if (!item) return true;
+        const status = item.controller_status;
+        if (status !== undefined && status !== null && status !== REPORTING_STATUS) return true;
+        const age = dataAgeMs(item, now);
+        if (age === null) return true;
+        return age > STALE_AFTER_MS;
     }
 
     /** ГВС подключена к дому (то, что редактируется в админке). */
@@ -95,13 +152,22 @@
     }
 
     /**
-     * Статус маркера: 'leak' | 'ok' | 'critical' | 'warning' | 'no' | 'public'.
-     * Порядок веток сохранён — протечка перекрывает всё остальное.
+     * Статус маркера: 'leak' | 'ok' | 'critical' | 'warning' | 'stale' | 'no' |
+     * 'public'.
+     *
+     * [A-07] Проверка актуальности идёт ПЕРЕД всеми оценками показаний — иначе
+     * любая ветка ниже выдаёт суждение по числам, которым может быть три
+     * месяца. Порядок остальных веток сохранён: протечка перекрывает всё
+     * остальное среди СВЕЖИХ данных.
+     *
+     * @param {Object} item
+     * @param {number} [now] — «сейчас» в миллисекундах (инжектируется в тестах)
      */
-    function classifyStatus(item) {
+    function classifyStatus(item, now) {
         if (!hasMetrics(item)) {
             return item.has_controller ? 'public' : 'no';
         }
+        if (isStale(item, now)) return 'stale';
         if (item.leak_sensor === true) return 'leak';
         if (isElectricityOk(item) && isColdWaterOk(item) && isHotWaterOk(item)) return 'ok';
 
@@ -114,7 +180,10 @@
     }
 
     const api = {
+        STALE_AFTER_MS,
         hasMetrics,
+        dataAgeMs,
+        isStale,
         hasHotWater,
         isElectricityOk,
         isColdWaterOk,

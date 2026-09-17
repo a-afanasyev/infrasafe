@@ -687,6 +687,9 @@ document.addEventListener('DOMContentLoaded', async function () {
                 { id: 'industrial-warning-group', title: '⚠ Предупреждение', icon: '⚠', color: T('--st-warn', '#ff9800') },
                 { id: 'industrial-leak-group', title: '💧 Вода в подвале', icon: '💧', color: T('--st-info', '#2196f3') },
                 { id: 'industrial-critical-group', title: '🔴 Авария', icon: '🔴', color: T('--st-crit', '#f44336') },
+                // [A-07] Отдельная группа: «контроллер молчит» — это не то же
+                // самое, что «контроллера нет», и требует действия оператора.
+                { id: 'industrial-stale-group', title: '🕓 Данные устарели', icon: '🕓', color: T('--st-offline', '#9e9e9e') },
                 { id: 'industrial-no-group', title: '⚪ Нет контроллера', icon: '⚪', color: T('--st-offline', '#9e9e9e') }
             ];
             
@@ -766,7 +769,7 @@ document.addEventListener('DOMContentLoaded', async function () {
          * Работает напрямую с window.buildingsData без DOM-клонирования
          */
         updateStatusGroups() {
-            const statusGroups = ['ok', 'warning', 'leak', 'critical', 'no'];
+            const statusGroups = ['ok', 'warning', 'leak', 'critical', 'stale', 'no'];
             const buildingsData = window.buildingsData || [];
 
             statusGroups.forEach(groupId => {
@@ -1301,7 +1304,11 @@ document.addEventListener('DOMContentLoaded', async function () {
                 if (status === 'critical') hasCritical = true;
                 if (status === 'warning') hasWarning = true;
                 if (status === 'ok') hasOk = true;
-                if (status === 'no') hasNoController = true; // Здание без контроллера
+                // [A-07] 'stale' попадает сюда же: и «контроллера нет», и
+                // «контроллер молчит» означают, что данных о доме СЕЙЧАС нет.
+                // Без этой ветки устаревшие дома выпали бы из окраски кластера
+                // молча и он выглядел бы пустым.
+                if (status === 'no' || status === 'stale') hasNoController = true;
             }
 
             // Задаем цвет кластера в зависимости от приоритета статусов
@@ -1468,10 +1475,34 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
     }
 
+    /**
+     * [A-07] Самая свежая отметка телеметрии в ответе, либо null.
+     *
+     * Именно она отвечает на вопрос оператора «насколько это актуально»;
+     * момент HTTP-опроса на него не отвечает вовсе.
+     */
+    function newestDataTimestamp(items) {
+        let newest = null;
+        (items || []).forEach((item) => {
+            if (!item || !item.timestamp) return;
+            const ts = new Date(item.timestamp);
+            if (Number.isNaN(ts.getTime())) return;
+            if (!newest || ts > newest) newest = ts;
+        });
+        return newest;
+    }
+
     // Функция для обновления времени последнего обновления
     function updateLastUpdateTime() {
+        const timeElements = document.getElementsByClassName('update-time');
+
+        // [A-07] Отсутствие отметок — это НЕ «только что». Так выглядит и
+        // анонимная выдача (в ней метрик нет вовсе), и площадка, с которой
+        // телеметрия не приходит.
         if (!lastUpdateTime) {
-            lastUpdateTime = new Date();
+            Array.from(timeElements).forEach(el => {
+                el.textContent = 'нет данных';
+            });
             return;
         }
 
@@ -1484,12 +1515,16 @@ document.addEventListener('DOMContentLoaded', async function () {
         } else if (diff < 3600) {
             const minutes = Math.floor(diff / 60);
             timeText = `${minutes} ${declOfNum(minutes, ['минуту', 'минуты', 'минут'])} назад`;
-        } else {
+        } else if (diff < 86400) {
             const hours = Math.floor(diff / 3600);
             timeText = `${hours} ${declOfNum(hours, ['час', 'часа', 'часов'])} назад`;
+        } else {
+            // [A-07] Сутки и больше — отдельная ветка: «2208 часов назад»
+            // формально верно, но прочитать это невозможно.
+            const days = Math.floor(diff / 86400);
+            timeText = `${days} ${declOfNum(days, ['день', 'дня', 'дней'])} назад`;
         }
 
-        const timeElements = document.getElementsByClassName('update-time');
         Array.from(timeElements).forEach(el => {
             el.textContent = timeText;
         });
@@ -1632,7 +1667,9 @@ document.addEventListener('DOMContentLoaded', async function () {
                     hasLeak = item.leak_sensor === true;
                     leakSensorImage = hasLeak ? 'data/images/leak1.png' : 'data/images/Leak_Green.png';
                 }
-                status = window.BuildingStatus.classifyStatus(item);
+                // [A-07] «Сейчас» передаётся явно: без него ветки ниже судят по
+                // числам, которым может быть три месяца.
+                status = window.BuildingStatus.classifyStatus(item, Date.now());
 
                 // Стиль маркера берётся из токенов темы, а не из литералов:
                 // здесь была отдельная палитра — смесь CSS-ключевых слов
@@ -1724,10 +1761,27 @@ document.addEventListener('DOMContentLoaded', async function () {
                     const coldWaterClass = !item.cold_water_pressure ? "class='blinking-text-red'" : (!isColdWaterOK ? "class='blinking-cell-orange'" : '');
                     const coldWaterPressure = formatValue(item.cold_water_pressure, ' Bar', 'Нет данных');
                     const coldWaterTemp = formatValue(item.cold_water_temp, '°C', 'Нет данных');
-                    
+
+                    // [A-07] Таблица ниже показывает ПОСЛЕДНИЕ сохранённые числа.
+                    // Если они устарели, об этом надо сказать прямо в popup'е:
+                    // иначе оператор читает июньские показания как сегодняшние.
+                    let staleNotice = '';
+                    if (status === 'stale') {
+                        const when = item.timestamp
+                            ? new Date(item.timestamp).toLocaleString('ru-RU')
+                            : 'время неизвестно';
+                        const ctrl = item.controller_status && item.controller_status !== 'online'
+                            ? `, контроллер: ${item.controller_status}`
+                            : '';
+                        staleNotice = `<span style="color: ${T('--st-warn', '#ff9800')}; font-size: 0.85em;">`
+                            + `⚠ Данные устарели — последние показания ${escapeHTML(when)}${escapeHTML(ctrl)}`
+                            + '</span><br>';
+                    }
+
                     popupContent = `
             <div>
                 <strong>${buildingName}</strong><br>
+                ${staleNotice}
                 <table>
                     <!-- Electricity Data -->
                     <tr>
@@ -1892,8 +1946,11 @@ document.addEventListener('DOMContentLoaded', async function () {
             // Скрываем skeleton loader карты
             hideMapSkeleton();
 
-            // Обновляем время последнего обновления
-            lastUpdateTime = new Date();
+            // [A-07] Свежесть считается по САМИМ ДАННЫМ, а не по моменту
+            // опроса. Прежде здесь стояло `new Date()`, поэтому индикатор
+            // говорил «только что» и тогда, когда самая новая телеметрия была
+            // трёхмесячной давности — проверено на боевых данных 17.09.2026.
+            lastUpdateTime = newestDataTimestamp(data);
             updateLastUpdateTime();
 
             // Возвращаем успешный результат
