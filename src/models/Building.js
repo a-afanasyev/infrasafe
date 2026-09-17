@@ -1,6 +1,20 @@
 const db = require('../config/database');
 const { createError } = require('../utils/helpers');
+const { buildUpdateQuery } = require('../utils/dynamicUpdateBuilder');
 const logger = require('../utils/logger');
+
+/**
+ * [A-06] Колонки, которые оператор вправе менять через обновление здания.
+ *
+ * Список тот же, что был в прежнем запросе с фиксированными шестнадцатью
+ * колонками — меняется не набор, а смысл отсутствия поля в теле запроса.
+ */
+const UPDATABLE_FIELDS = [
+    'name', 'address', 'town', 'latitude', 'longitude', 'management_company', 'region',
+    'has_hot_water',
+    'primary_transformer_id', 'backup_transformer_id', 'primary_line_id', 'backup_line_id',
+    'cold_water_line_id', 'hot_water_line_id', 'cold_water_supplier_id', 'hot_water_supplier_id',
+];
 
 class Building {
     /**
@@ -190,33 +204,43 @@ class Building {
     }
 
     /**
-     * Обновить здание
+     * Обновить здание — ЧАСТИЧНО.
+     *
+     * [A-06] Здесь был UPDATE с фиксированными шестнадцатью колонками: поле,
+     * отсутствующее в теле запроса, приходило как `undefined`, драйвер отправлял
+     * его NULL, и колонка очищалась. «Поле не передано» и «поле сброшено» были
+     * одним и тем же, поэтому смена НАЗВАНИЯ здания стирала инфраструктурные
+     * связи — молча, при внешне безобидном действии оператора.
+     *
+     * Теперь в `SET` попадают только переданные ключи. Разница выразима:
+     *   - ключа нет           → колонку не трогаем;
+     *   - ключ со значением   → пишем значение;
+     *   - ключ со значением `null` → СБРАСЫВАЕМ связь (это осознанное действие).
+     *
+     * Пустое тело — ошибка запроса, а не тихий успех: молча вернуть строку
+     * значило бы подтвердить запись, которой не было.
+     *
      * @param {number} id - ID здания
-     * @param {Object} buildingData - Данные для обновления
+     * @param {Object} buildingData - Поля для обновления (частичный набор)
      * @returns {Object|null} Обновленное здание или null
      */
     static async update(id, buildingData) {
-        try {
-            const {
-                name, address, town, latitude, longitude, management_company, region, has_hot_water,
-                primary_transformer_id, backup_transformer_id, primary_line_id, backup_line_id,
-                cold_water_line_id, hot_water_line_id, cold_water_supplier_id, hot_water_supplier_id
-            } = buildingData;
+        const fields = buildingData && typeof buildingData === 'object' ? buildingData : {};
+        const hasUpdatable = Object.entries(fields)
+            .some(([column, value]) => value !== undefined && UPDATABLE_FIELDS.includes(column));
+        if (!hasUpdatable) {
+            throw createError('Нет полей для обновления', 400);
+        }
 
-            const { rows } = await db.query(
-                `UPDATE buildings
-                SET name = $1, address = $2, town = $3, latitude = $4, longitude = $5,
-                    management_company = $6, region = $7, has_hot_water = $8,
-                    primary_transformer_id = $9, backup_transformer_id = $10,
-                    primary_line_id = $11, backup_line_id = $12,
-                    cold_water_line_id = $13, hot_water_line_id = $14,
-                    cold_water_supplier_id = $15, hot_water_supplier_id = $16
-                WHERE building_id = $17
-                RETURNING *`,
-                [name, address, town, latitude, longitude, management_company, region, has_hot_water,
-                 primary_transformer_id, backup_transformer_id, primary_line_id, backup_line_id,
-                 cold_water_line_id, hot_water_line_id, cold_water_supplier_id, hot_water_supplier_id, id]
-            );
+        // Таблица, первичный ключ и белый список здесь — константы, поэтому
+        // остальные проверки построителя отказать не могут; ловить их в
+        // catch значило бы прятать ошибку программиста за ответом 400.
+        const { query, params } = buildUpdateQuery(
+            'buildings', 'building_id', id, fields, UPDATABLE_FIELDS
+        );
+
+        try {
+            const { rows } = await db.query(query, params);
 
             if (!rows.length) {
                 return null;
