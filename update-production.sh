@@ -173,8 +173,18 @@ resolve_nginx_cmds() {
 # Phased, idempotent, best-effort. set +e so a failure mid-rollback doesn't abort
 # the remaining recovery; trap - ERR so we don't recurse. Loud final status.
 rollback() {
-    local rc=$?
-    trap - ERR
+    # [A-09] Статус приходит ПАРАМЕТРОМ, а не через `$?`.
+    #
+    # Найдено репетицией отката на .105 17.09.2026: скрипт после отката
+    # возвращал НОЛЬ. `on_exit` перед вызовом выполняет
+    # `if [ "$rc" = 0 ]; then exit 0; fi`, а у составного `if` с ложным условием
+    # и без `else` статус равен нулю — он и попадал сюда в `local rc=$?`,
+    # затирая настоящую причину отказа. Человек читает «rollback complete» и всё
+    # понимает, а `&&`-цепочка или cron читают успех.
+    local rc="${1:-1}"
+    # Внутри отката ловушка не нужна: мы уже исполняемся из неё, и `exit` ниже
+    # не должен зайти на второй круг.
+    trap - EXIT
     set +e
     local rollback_failed=0
     err "‼️  deploy failed (rc=$rc) — rolling back"
@@ -240,7 +250,7 @@ rollback() {
 # EXIT ловит любой выход, включая будущие ветки, о которых автор трапа не знал.
 # `DEPLOY_OK` снимает ловушку на успешном пути (ниже), а `rollback` уже
 # идемпотентен: он смотрит на стадии `APP_SWITCHED` / `DIST_PUBLISHED` и сам
-# делает `exit "$rc"`.
+# делает `exit "$rc"` — с кодом, который получает ПАРАМЕТРОМ (см. там же).
 DEPLOY_OK=0
 on_exit() {
     local rc=$?
@@ -252,9 +262,13 @@ on_exit() {
     if [ "$rc" = 0 ]; then
         exit 0                    # выход без ошибки до точки успеха — откатывать нечего
     fi
-    rollback
+    rollback "$rc"
 }
-trap rollback ERR
+# [A-09] Ловушка ОДНА. Прежде стояли обе — ERR и EXIT, — и на отказе под `set -e`
+# откат выполнялся ДВАЖДЫ: сначала из ERR, затем из EXIT поверх него. Второй
+# проход и терял код возврата. `set -e` и так доводит любой неперехваченный
+# отказ до выхода, поэтому EXIT покрывает всё, что покрывал ERR, плюс явные
+# `exit` и ветки `||`-списков, ради которых правка и делалась.
 trap on_exit EXIT
 
 # ---------------------------------------------------------------------------
@@ -456,7 +470,6 @@ curl -fsS "$EDGE_HEALTH_URL" >/dev/null && ok "✅ edge healthy" || { err "edge 
 # [A-09] Точка успеха: дальше идёт только уборка, ронять из-за неё выкатку и
 # тем более откатывать её нельзя.
 DEPLOY_OK=1
-trap - ERR
 trap - EXIT
 
 # [R2-15 / OPS-001] Bounded image retention — SUCCESS PATH ONLY (never in the ERR
