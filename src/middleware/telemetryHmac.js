@@ -30,6 +30,7 @@
 
 const crypto = require('crypto');
 const logger = require('../utils/logger');
+const { canonicalizeHexSignature } = require('../utils/hmacSignature');
 const redisClient = require('../utils/redisClient');
 const { sendError } = require('../utils/apiResponse');
 
@@ -92,20 +93,23 @@ async function verifyTelemetrySignature(secret, rawBody, headerValue) {
 
     const expected = crypto.createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex');
 
-    let sigBuf, expBuf;
-    try {
-        sigBuf = Buffer.from(signature, 'hex');
-        expBuf = Buffer.from(expected, 'hex');
-    } catch {
-        return false;
-    }
+    // [A-12] Канонизация ДО декодирования. `Buffer.from(sig, 'hex')` принимает
+    // верхний регистр и молча обрывает разбор на первом не-hex символе, поэтому
+    // `abc…`, `ABC…` и `abc…ZZ` давали одни и те же байты — и три разных ключа
+    // дедупа ниже. Сравниваем и запоминаем ОДНУ форму записи.
+    const canonical = canonicalizeHexSignature(signature, expected);
+    if (canonical === null) return false;
+
+    const sigBuf = Buffer.from(canonical, 'hex');
+    const expBuf = Buffer.from(expected, 'hex');
     if (sigBuf.length !== expBuf.length) return false;
     if (!crypto.timingSafeEqual(sigBuf, expBuf)) return false;
 
     // Replay/nonce dedup — Redis-backed (multi-replica safe) with an
     // in-memory fallback, identical pattern to webhookVerifier.
     const nowMs = Date.now();
-    const sigHash = crypto.createHash('sha256').update(signature).digest('hex');
+    // [A-12] Ключ — от КАНОНИЧЕСКОЙ подписи, а не от исходной строки заголовка.
+    const sigHash = crypto.createHash('sha256').update(canonical).digest('hex');
 
     const client = redisClient.getClient();
     if (client && redisClient.isReady()) {

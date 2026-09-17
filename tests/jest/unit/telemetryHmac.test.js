@@ -141,6 +141,64 @@ describe('telemetryHmac', () => {
             expect(next2).not.toHaveBeenCalled();
         });
 
+        // [A-12] Дедуп ловил ОДНУ запись подписи, а сравнение принимало
+        // несколько. `Buffer.from(sig, 'hex')` в Node мягок: верхний регистр
+        // допустим, а не-hex хвост молча отбрасывается — то есть `ABC…`, `abc…`
+        // и `abc…ZZ` декодируются в ОДНИ И ТЕ ЖЕ байты и одинаково проходят
+        // `timingSafeEqual`. Ключ же дедупа считался по ИСХОДНОЙ строке, поэтому
+        // у каждого написания он свой. Имея один валидный пакет, его можно было
+        // повторять внутри окна свежести сколько угодно раз.
+        const replayVariants = [
+            ['верхний регистр той же подписи', (sig) => sig.toUpperCase()],
+            ['не-hex хвост', (sig) => `${sig}ZZ`],
+            ['смешанный регистр', (sig) => sig.slice(0, 10).toUpperCase() + sig.slice(10)],
+        ];
+
+        test.each(replayVariants)('[A-12] повтор не проходит: %s', async (_label, mutate) => {
+            const t = Math.floor(Date.now() / 1000);
+            const header = sign(t, req.rawBody);
+            req.headers['x-telemetry-signature'] = header;
+
+            await telemetryHmac.verifyTelemetryHmac(req, res, next);
+            expect(next).toHaveBeenCalledTimes(1);
+
+            const sig = header.split('v1=')[1];
+            const req2 = { ...req, headers: { 'x-telemetry-signature': `t=${t},v1=${mutate(sig)}` } };
+            const res2 = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+            const next2 = jest.fn();
+            await telemetryHmac.verifyTelemetryHmac(req2, res2, next2);
+
+            expect(next2).not.toHaveBeenCalled();
+            expect(res2.status).toHaveBeenCalledWith(401);
+        });
+
+        test('[A-12] подпись с не-hex символами отвергается и БЕЗ повтора', async () => {
+            // Хвост отбрасывался молча — значит длина «совпадала» с ожидаемой
+            // уже после декодирования. Проверка формата должна идти до него.
+            const t = Math.floor(Date.now() / 1000);
+            const sig = sign(t, req.rawBody).split('v1=')[1];
+            req.headers['x-telemetry-signature'] = `t=${t},v1=${sig}ZZ`;
+
+            await telemetryHmac.verifyTelemetryHmac(req, res, next);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.status).toHaveBeenCalledWith(401);
+        });
+
+        test('[A-12] верхний регистр по-прежнему ПРИНИМАЕТСЯ как валидная подпись', async () => {
+            // Ужесточать до строгого нижнего регистра нельзя: отправители нам не
+            // подконтрольны, а `hex` — регистронезависимое представление. Задача
+            // была не отвергнуть написание, а свести все написания к одному
+            // ключу дедупа.
+            const t = Math.floor(Date.now() / 1000);
+            const sig = sign(t, req.rawBody).split('v1=')[1];
+            req.headers['x-telemetry-signature'] = `t=${t},v1=${sig.toUpperCase()}`;
+
+            await telemetryHmac.verifyTelemetryHmac(req, res, next);
+
+            expect(next).toHaveBeenCalledTimes(1);
+        });
+
         test('rejects when req.rawBody is missing (400, fail-closed)', async () => {
             const t = Math.floor(Date.now() / 1000);
             req.headers['x-telemetry-signature'] = sign(t, req.rawBody);

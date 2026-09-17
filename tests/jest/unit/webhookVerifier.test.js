@@ -86,6 +86,47 @@ describe('UKWebhookVerifier.verifyWebhookSignature', () => {
         await expect(verifier.verifyWebhookSignature(body, header)).resolves.toBe(false);
     });
 
+    // [A-12] То же, что и в telemetryHmac: сравнение принимало несколько
+    // написаний одной подписи (верхний регистр, молча отброшенный не-hex
+    // хвост), а ключ дедупа считался по ИСХОДНОЙ строке. Один валидный вебхук
+    // от УК можно было повторять внутри окна свежести, меняя лишь написание.
+    test.each([
+        ['верхний регистр той же подписи', (sig) => sig.toUpperCase()],
+        ['не-hex хвост', (sig) => `${sig}ZZ`],
+    ])('[A-12] повтор не проходит: %s', async (_label, mutate) => {
+        const body = '{"event":"ping"}';
+        const t = Math.floor(Date.now() / 1000);
+        const header = sign(t, body);
+        const sig = header.split('v1=')[1];
+
+        await expect(verifier.verifyWebhookSignature(body, header)).resolves.toBe(true);
+        await expect(
+            verifier.verifyWebhookSignature(body, `t=${t},v1=${mutate(sig)}`)
+        ).resolves.toBe(false);
+    });
+
+    test('[A-12] подпись с не-hex символами отвергается и БЕЗ повтора', async () => {
+        const body = '{"event":"ping"}';
+        const t = Math.floor(Date.now() / 1000);
+        const sig = sign(t, body).split('v1=')[1];
+
+        await expect(
+            verifier.verifyWebhookSignature(body, `t=${t},v1=${sig}ZZ`)
+        ).resolves.toBe(false);
+    });
+
+    test('[A-12] верхний регистр по-прежнему ПРИНИМАЕТСЯ как валидная подпись', async () => {
+        // Отправитель нам не подконтролен (бот УК), а hex регистронезависим:
+        // отказ по регистру был бы поломкой совместимости ради чистоты.
+        const body = '{"event":"ping"}';
+        const t = Math.floor(Date.now() / 1000);
+        const sig = sign(t, body).split('v1=')[1];
+
+        await expect(
+            verifier.verifyWebhookSignature(body, `t=${t},v1=${sig.toUpperCase()}`)
+        ).resolves.toBe(true);
+    });
+
     test('rejects when the signature header is missing', async () => {
         await expect(verifier.verifyWebhookSignature('{}', null)).resolves.toBe(false);
     });
