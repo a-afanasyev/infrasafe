@@ -90,7 +90,13 @@
     "testPathIgnorePatterns": [
       "/node_modules/",
       "/tests/jest/e2e/",
-      "/tests/jest/db/"
+      "/tests/jest/db/",
+      "/.claude/worktrees/",
+      "/.deploy/"
+    ],
+    "modulePathIgnorePatterns": [
+      "/.claude/worktrees/",
+      "/.deploy/"
     ],
     "collectCoverageFrom": [
       "src/**/*.js",
