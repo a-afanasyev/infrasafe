@@ -38,15 +38,28 @@ function buildMetricPayload(controllerId, ranges) {
   };
 }
 
+/**
+ * [A-23] Возвращает СВОДКУ, а не голый список результатов.
+ *
+ * Прежде пустой прогон был неотличим от успешного: список результатов пуст —
+ * и вызывающий (эндпоинт `/api/generate/run-once`) отвечал `success: true`.
+ * Именно так выглядел отказ авторизации: зданий с контроллерами ноль, отправок
+ * ноль, ответ бодрый. Теперь в сводке видно, сколько зданий вернул API, у
+ * скольких есть настроенные диапазоны и сколько метрик реально ушло.
+ */
 export async function runOnce() {
   const rangesByBuildingId = getAllRanges();
   const buildings = await getBuildingsWithControllers();
 
   const results = [];
+  let skippedNoRanges = 0;
   for (const b of buildings) {
     const buildingId = String(b.building_id);
     const ranges = rangesByBuildingId[buildingId];
-    if (!ranges) continue;
+    if (!ranges) {
+      skippedNoRanges += 1;
+      continue;
+    }
 
     const payload = buildMetricPayload(b.controller_id, ranges);
     try {
@@ -56,7 +69,23 @@ export async function runOnce() {
       results.push({ buildingId, controllerId: b.controller_id, ok: false, error: e?.message });
     }
   }
-  return results;
+
+  const sent = results.filter(r => r.ok).length;
+  const summary = {
+    buildingsWithControllers: buildings.length,
+    skippedNoRanges,
+    sent,
+    failed: results.length - sent,
+    results
+  };
+  if (buildings.length === 0) {
+    summary.warning = 'API не вернул ни одного здания с контроллером — метрики НЕ отправлялись';
+    console.warn(`[scheduler] ${summary.warning}`);
+  } else if (sent === 0) {
+    summary.warning = 'Ни одна метрика не отправлена: у зданий нет настроенных диапазонов либо отправка падала';
+    console.warn(`[scheduler] ${summary.warning}`);
+  }
+  return summary;
 }
 
 export function startScheduler() {
