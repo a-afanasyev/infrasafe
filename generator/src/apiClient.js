@@ -87,9 +87,23 @@ async function loginIfNeeded() {
   const url = `${base}/auth/login`;
   const resp = await axios.post(url, { username, password });
   const token = resp?.data?.accessToken || resp?.data?.token;
-  
+
   if (!token) {
-    throw new Error('Не удалось получить JWT токен');
+    // [A-23] Раньше здесь была безликая «Не удалось получить JWT токен», и
+    // самая частая причина оставалась неназванной: у администратора вход
+    // двухшаговый (обязательная 2FA), тело ответа несёт requires2FA и tempToken,
+    // а сам доступ выдаётся КУКАМИ. Генератор такого входа не умеет — и должен
+    // сказать об этом прямо, а не выглядеть сломанным.
+    if (resp?.data?.requires2FA || resp?.data?.requires2FASetup) {
+      throw new Error(
+        'Вход требует второго фактора (2FA) — генератор этого не умеет. ' +
+        'Используйте сервисную учётную запись без 2FA или задайте API_STATIC_TOKEN.'
+      );
+    }
+    throw new Error(
+      'В ответе логина нет токена. Если API выдаёт доступ куками, ' +
+      'задайте API_STATIC_TOKEN.'
+    );
   }
   
   // Сохраняем токен и время истечения
@@ -139,9 +153,35 @@ export async function postMetric(metric, isRetry = false) {
   }
 }
 
+/**
+ * [A-23] Список зданий с контроллерами — ТОЛЬКО авторизованно.
+ *
+ * Запрос шёл БЕЗ заголовка авторизации, даже когда токен был задан. На
+ * `/buildings-metrics` стоит optionalAuth, поэтому аноним получает усечённый
+ * DTO — БЕЗ `controller_id`. Фильтр ниже давал пустой список, генератор
+ * рапортовал успех и не отправлял НИЧЕГО. Отказ выглядел как штатная работа.
+ *
+ * Пустой ответ и анонимный ответ теперь различаются: в анонимной проекции поля
+ * `controller_id` нет как ключа (есть `has_controller`), и это отдельная,
+ * называемая ошибка, а не «зданий нет».
+ */
 export async function getBuildingsWithControllers() {
   const base = process.env.API_BASE_URL;
-  const { data } = await axios.get(`${base}/buildings-metrics`);
+  const token = await loginIfNeeded();
+  const { data } = await axios.get(`${base}/buildings-metrics`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
   const buildings = data?.data || data;
-  return Array.isArray(buildings) ? buildings.filter(b => b.controller_id) : [];
+  if (!Array.isArray(buildings)) return [];
+
+  const anonymous = buildings.length > 0
+    && buildings.every(b => !Object.prototype.hasOwnProperty.call(b, 'controller_id'));
+  if (anonymous) {
+    throw new Error(
+      'API вернул анонимную проекцию (без controller_id) — токен не принят. ' +
+      'Проверьте API_STATIC_TOKEN или учётные данные.'
+    );
+  }
+
+  return buildings.filter(b => b.controller_id);
 }

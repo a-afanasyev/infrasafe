@@ -249,7 +249,10 @@ app.delete('/api/ranges/:buildingId', (req, res) => {
 app.post('/api/generate/run-once', async (_req, res) => {
   try {
     const result = await runOnce();
-    res.json({ success: true, result });
+    // [A-23] `success` теперь означает «прогон состоялся», а предупреждение из
+    // сводки едет наружу: пустой прогон выглядел успехом и скрывал отказ
+    // авторизации.
+    res.json({ success: true, result, warning: result.warning || null });
   } catch (e) {
     res.status(500).json({ success: false, message: e?.message || 'Ошибка генерации' });
   }
