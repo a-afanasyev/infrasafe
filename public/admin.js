@@ -14,6 +14,23 @@ function A_T(name, fallback) {
         : fallback;
 }
 
+/**
+ * [A-06] Поля-связи формы редактирования здания: элемент, колонка и подпись.
+ *
+ * Список один на заполнение формы и на сборку тела запроса — раньше эти два
+ * места перечисляли поля порознь, и разойтись они могли молча.
+ */
+const EDIT_BUILDING_LINK_FIELDS = [
+    { elementId: 'edit-building-primary-transformer', idField: 'primary_transformer_id', nameField: 'primary_transformer_name' },
+    { elementId: 'edit-building-backup-transformer', idField: 'backup_transformer_id', nameField: 'backup_transformer_name' },
+    { elementId: 'edit-building-primary-line', idField: 'primary_line_id', nameField: 'primary_line_name' },
+    { elementId: 'edit-building-backup-line', idField: 'backup_line_id', nameField: 'backup_line_name' },
+    { elementId: 'edit-building-cold-water-line', idField: 'cold_water_line_id', nameField: 'cold_water_line_name' },
+    { elementId: 'edit-building-hot-water-line', idField: 'hot_water_line_id', nameField: 'hot_water_line_name' },
+    { elementId: 'edit-building-cold-water-supplier', idField: 'cold_water_supplier_id', nameField: 'cold_water_supplier_name' },
+    { elementId: 'edit-building-hot-water-supplier', idField: 'hot_water_supplier_id', nameField: 'hot_water_supplier_name' },
+];
+
 document.addEventListener("DOMContentLoaded", function () {
     const backendURL = "/api";
 
@@ -1722,18 +1739,19 @@ document.addEventListener("DOMContentLoaded", function () {
             document.getElementById('edit-building-management').value = building.management_company || '';
             document.getElementById('edit-building-hot-water').checked = building.has_hot_water || false;
 
-            // Заполняем dropdown'ы (они должны быть предварительно загружены через loadFormData)
-            // Электроснабжение
-            document.getElementById('edit-building-primary-transformer').value = building.primary_transformer_id || '';
-            document.getElementById('edit-building-backup-transformer').value = building.backup_transformer_id || '';
-            document.getElementById('edit-building-primary-line').value = building.primary_line_id || '';
-            document.getElementById('edit-building-backup-line').value = building.backup_line_id || '';
-            
-            // Водоснабжение
-            document.getElementById('edit-building-cold-water-line').value = building.cold_water_line_id || '';
-            document.getElementById('edit-building-hot-water-line').value = building.hot_water_line_id || '';
-            document.getElementById('edit-building-cold-water-supplier').value = building.cold_water_supplier_id || '';
-            document.getElementById('edit-building-hot-water-supplier').value = building.hot_water_supplier_id || '';
+            // [A-06] Заполняем dropdown'ы. Присваивание `select.value` молча не
+            // срабатывает, если подходящей опции нет, — а справочник мог не
+            // привезти текущую связь. Поэтому сначала ГАРАНТИРУЕМ опцию
+            // (подпись берём из join'а, который отдаёт API), затем выбираем.
+            EDIT_BUILDING_LINK_FIELDS.forEach(({ elementId, idField, nameField }) => {
+                const select = document.getElementById(elementId);
+                if (!select) return;
+                // Снимаем подставленное в прошлый раз: форму открывают много раз
+                // подряд, и записи от предыдущих зданий копились бы в списке.
+                window.BuildingFormPayload.clearInjectedOptions(select);
+                window.BuildingFormPayload.ensureOption(select, building[idField], building[nameField]);
+                select.value = building[idField] || '';
+            });
             
             // Включаем select'ы поставщиков если выбраны линии
             if (building.cold_water_line_id) {
@@ -2358,11 +2376,17 @@ document.addEventListener("DOMContentLoaded", function () {
         try {
             // Загружаем все необходимые данные параллельно
             const authHeaders = {};
+            // [A-06] `limit` обязателен: без него пагинация отдаёт ПЕРВЫЕ ДЕСЯТЬ
+            // (`validatePagination(..., 10)`), и связь здания с одиннадцатым
+            // объектом в справочник не попадала. 200 — потолок валидатора;
+            // остаток, если он когда-нибудь появится, закрывает `ensureOption`
+            // ниже, подставляя текущую связь отдельной опцией.
+            const REFERENCE_LIMIT = 200;
             const [transformersResponse, linesResponse, waterLinesResponse, waterSuppliersResponse] = await Promise.all([
-                fetch('/api/transformers', { headers: authHeaders }).then(r => r.json()),
-                fetch('/api/lines', { headers: authHeaders }).then(r => r.json()),
-                fetch('/api/water-lines', { headers: authHeaders }).then(r => r.json()),
-                fetch('/api/water-suppliers', { headers: authHeaders }).then(r => r.json())
+                fetch(`/api/transformers?limit=${REFERENCE_LIMIT}`, { headers: authHeaders }).then(r => r.json()),
+                fetch(`/api/lines?limit=${REFERENCE_LIMIT}`, { headers: authHeaders }).then(r => r.json()),
+                fetch(`/api/water-lines?limit=${REFERENCE_LIMIT}`, { headers: authHeaders }).then(r => r.json()),
+                fetch(`/api/water-suppliers?limit=${REFERENCE_LIMIT}`, { headers: authHeaders }).then(r => r.json())
             ]);
 
             // Извлекаем массивы данных из ответов API
@@ -3168,33 +3192,27 @@ document.addEventListener("DOMContentLoaded", function () {
             has_hot_water: document.getElementById('edit-building-hot-water').checked
         };
 
-        // [code-review batch] guard NaN coords → null wipe. Building.update uses
-        // fixed-position params (latitude = $4), so a null lands directly on the
-        // column — abort before the PUT instead of erasing the location.
+        // [code-review batch] guard NaN coords → null wipe. Пустое поле даёт
+        // parseFloat('') → NaN → в JSON это null, и координата стирается.
+        // [A-06] Прежнее обоснование ссылалось на фиксированные позиции
+        // параметров в Building.update — их больше нет, обновление частичное.
+        // Проверка от этого не теряет смысла: NaN здесь приходит не из
+        // отсутствия поля, а из ПУСТОГО поля, то есть отправляется явно.
         const bCoord = window.CoordValidation.validateCoordinatePair(data.latitude, data.longitude);
         if (!bCoord.valid) { showToast(bCoord.error, 'error'); return; }
 
-        // Добавляем поля электроснабжения (если выбраны)
-        const primaryTransformer = document.getElementById('edit-building-primary-transformer').value;
-        const backupTransformer = document.getElementById('edit-building-backup-transformer').value;
-        const primaryLine = document.getElementById('edit-building-primary-line').value;
-        const backupLine = document.getElementById('edit-building-backup-line').value;
-        
-        if (primaryTransformer) data.primary_transformer_id = parseInt(primaryTransformer);
-        if (backupTransformer) data.backup_transformer_id = parseInt(backupTransformer);
-        if (primaryLine) data.primary_line_id = parseInt(primaryLine);
-        if (backupLine) data.backup_line_id = parseInt(backupLine);
-        
-        // Добавляем поля водоснабжения (если выбраны)
-        const coldWaterLine = document.getElementById('edit-building-cold-water-line').value;
-        const hotWaterLine = document.getElementById('edit-building-hot-water-line').value;
-        const coldWaterSupplier = document.getElementById('edit-building-cold-water-supplier').value;
-        const hotWaterSupplier = document.getElementById('edit-building-hot-water-supplier').value;
-        
-        if (coldWaterLine) data.cold_water_line_id = parseInt(coldWaterLine);
-        if (hotWaterLine) data.hot_water_line_id = parseInt(hotWaterLine);
-        if (coldWaterSupplier) data.cold_water_supplier_id = parseInt(coldWaterSupplier);
-        if (hotWaterSupplier) data.hot_water_supplier_id = parseInt(hotWaterSupplier);
+        // [A-06] Поля-связи: «не передано» и «сброшено» — РАЗНЫЕ вещи.
+        // Прежде пустой select просто выпадал из тела запроса, а бэкенд писал в
+        // колонку NULL, то есть отсутствие поля означало стирание связи. Теперь
+        // сброс выражается явным null, а незагруженный справочник (ни одной
+        // опции) не отправляется вовсе — сбой загрузки формы больше не может
+        // отвязать здание.
+        const linkSelects = {};
+        EDIT_BUILDING_LINK_FIELDS.forEach(({ elementId, idField }) => {
+            const select = document.getElementById(elementId);
+            if (select) linkSelects[idField] = select;
+        });
+        Object.assign(data, window.BuildingFormPayload.collectLinkFields(linkSelects));
 
         try {
             const response = await fetch(`/api/buildings/${id}`, {

@@ -41,6 +41,8 @@ const ENTRIES = [
     'public/utils/coordValidation.js',
     // [A-08] классификация состояния здания для карты (вынесена из script.js)
     'public/utils/buildingStatus.js',
+    // [A-06] поля-связи формы здания: «не передано» ≠ «сброшено»
+    'public/utils/buildingFormPayload.js',
     // [UK-URGENCY remnant] UK deep-link builder + reopen-meta passthrough
     'public/utils/ukLinkBuilder.js',
     // [R2-10] section-id normalizer + corrected bulk-delete endpoint map
