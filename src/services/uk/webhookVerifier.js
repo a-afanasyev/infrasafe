@@ -25,6 +25,7 @@ const crypto = require('crypto');
 const IntegrationLog = require('../../models/IntegrationLog');
 const logger = require('../../utils/logger');
 const redisClient = require('../../utils/redisClient');
+const { canonicalizeHexSignature } = require('../../utils/hmacSignature');
 
 const WEBHOOK_TIMESTAMP_TOLERANCE_SEC = 300;
 // [P0-2] Retain seen signatures for slightly longer than the timestamp
@@ -122,8 +123,18 @@ class UKWebhookVerifier {
                 .update(`${timestamp}.${rawBody}`)
                 .digest('hex');
 
+            // [A-12] Канонизация ДО декодирования. `Buffer.from(sig, 'hex')`
+            // принимает верхний регистр и молча обрывает разбор на первом
+            // не-hex символе, поэтому `abc…`, `ABC…` и `abc…ZZ` давали одни и те
+            // же байты — и три РАЗНЫХ ключа дедупа ниже. Один валидный вебхук
+            // можно было повторять внутри окна свежести, меняя написание.
+            const canonical = canonicalizeHexSignature(signature, expected);
+            if (canonical === null) {
+                return false;
+            }
+
             // Length-safe comparison
-            const sigBuf = Buffer.from(signature, 'hex');
+            const sigBuf = Buffer.from(canonical, 'hex');
             const expBuf = Buffer.from(expected, 'hex');
             if (sigBuf.length !== expBuf.length) {
                 return false;
@@ -141,7 +152,8 @@ class UKWebhookVerifier {
             // SET NX EX is atomic: returns OK only on first insert, nil
             // otherwise. If Redis is degraded, fall through to Map.
             const nowMs = Date.now();
-            const sigHash = crypto.createHash('sha256').update(signature).digest('hex');
+            // [A-12] Ключ — от КАНОНИЧЕСКОЙ подписи, а не от строки заголовка.
+            const sigHash = crypto.createHash('sha256').update(canonical).digest('hex');
 
             const client = redisClient.getClient();
             if (client && redisClient.isReady()) {
