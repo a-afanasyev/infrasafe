@@ -1605,62 +1605,34 @@ document.addEventListener('DOMContentLoaded', async function () {
                 let leakSensorImage = 'data/images/Leak_Green.png';
                 let status;
 
+                // [A-08] Классификация живёт в public/utils/buildingStatus.js.
+                // Здесь она была написана поверх поля `item.hot_water`, которого
+                // в DTO нет (API отдаёт `has_hot_water`): проверка ГВС всегда
+                // говорила «норма», и дом с нулевыми давлениями светился
+                // зелёным. Внутри обработчика рендера это было непроверяемо —
+                // отсюда вынос в модуль с тестами, а не правка на месте.
                 if (hasMetrics) {
-                    // Авторизованный пользователь — полные данные
-                    // Determine electricity status
                     isPhase1Ok = item.electricity_ph1 > 200 && item.electricity_ph1 < 240;
                     isPhase2Ok = item.electricity_ph2 > 200 && item.electricity_ph2 < 240;
                     isPhase3Ok = item.electricity_ph3 > 200 && item.electricity_ph3 < 240;
-                    isElectricityOK = isPhase1Ok && isPhase2Ok && isPhase3Ok;
+                    isElectricityOK = window.BuildingStatus.isElectricityOk(item);
                     electricityImage = isElectricityOK ? 'data/images/Electricity_Green.png' : 'data/images/Electricity_Red.png';
 
-                    // Determine cold water status
-                    isColdWaterOK = item.cold_water_pressure && item.cold_water_pressure > 1;
+                    isColdWaterOK = window.BuildingStatus.isColdWaterOk(item);
                     coldWaterImage = isColdWaterOK ? 'data/images/Water_Blue.png' : 'data/images/Water_No_Blue.png';
 
-                    // Determine hot water status
-                    isHotWaterOK = item.hot_water !== true ||
-                                   (item.hot_water === true &&
-                                    item.hot_water_in_pressure && item.hot_water_out_pressure &&
-                                    item.hot_water_in_pressure >= 1 && item.hot_water_out_pressure >= 1);
-                    hotWaterImage = (item.hot_water === false)
-                        ? 'data/images/Water_Red.png'
-                        : (isHotWaterOK ? 'data/images/Water_Red.png' : 'data/images/Water_No_Red.png');
+                    isHotWaterOK = window.BuildingStatus.isHotWaterOk(item);
+                    // Water_Red — обычная иконка ГВС (цвет контура, не тревога),
+                    // Water_No_Red — перечёркнутая. Дом без ГВС и исправная ГВС
+                    // дают одну и ту же иконку осознанно.
+                    hotWaterImage = (window.BuildingStatus.hasHotWater(item) && !isHotWaterOK)
+                        ? 'data/images/Water_No_Red.png'
+                        : 'data/images/Water_Red.png';
 
-                    // Определяем статус датчика протечки
                     hasLeak = item.leak_sensor === true;
                     leakSensorImage = hasLeak ? 'data/images/leak1.png' : 'data/images/Leak_Green.png';
-
-                    // Determine marker color based on status
-                    if (hasLeak) {
-                        status = 'leak';
-                    } else if (isElectricityOK && isColdWaterOK && isHotWaterOK) {
-                        status = 'ok';
-                    } else if (item.controller_id && (
-                        ((!item.electricity_ph1 || item.electricity_ph1 <= 0) &&
-                         (!item.electricity_ph2 || item.electricity_ph2 <= 0) &&
-                         (!item.electricity_ph3 || item.electricity_ph3 <= 0)) ||
-                        (!item.cold_water_pressure || item.cold_water_pressure <= 0) ||
-                        (item.hot_water &&
-                         (!item.hot_water_in_pressure || item.hot_water_in_pressure <= 0) &&
-                         (!item.hot_water_out_pressure || item.hot_water_out_pressure <= 0))
-                    )) {
-                        status = 'critical';
-                    } else if (item.controller_id && (
-                        (item.electricity_ph1 > 0 || item.electricity_ph2 > 0 || item.electricity_ph3 > 0) &&
-                        (item.cold_water_pressure && item.cold_water_pressure > 0) &&
-                        (!item.hot_water ||
-                         (item.hot_water_in_pressure && item.hot_water_in_pressure > 0) ||
-                         (item.hot_water_out_pressure && item.hot_water_out_pressure > 0))
-                    )) {
-                        status = 'warning';
-                    } else {
-                        status = 'no';
-                    }
-                } else {
-                    // Анонимный пользователь — только наличие оборудования
-                    status = item.has_controller ? 'public' : 'no';
                 }
+                status = window.BuildingStatus.classifyStatus(item);
 
                 // Стиль маркера берётся из токенов темы, а не из литералов:
                 // здесь была отдельная палитра — смесь CSS-ключевых слов
@@ -1802,8 +1774,8 @@ document.addEventListener('DOMContentLoaded', async function () {
                     </tr>` : `
                     <tr>
                         <td><img src="data/images/Water_Red.png" alt="Hot_Water" style="width: 20px;" /></td>
-                        <td colspan="3" ${item.hot_water !== true ? '' : 'class="blinking-text-red"'}>
-                            <strong>ГВС:</strong> ${item.hot_water !== true ? 'Не подключено' : 'Нет данных'}
+                        <td colspan="3" ${window.BuildingStatus.hasHotWater(item) ? 'class="blinking-text-red"' : ''}>
+                            <strong>ГВС:</strong> ${window.BuildingStatus.hasHotWater(item) ? 'Нет данных' : 'Не подключено'}
                         </td>
                     </tr>`}
 
@@ -1901,7 +1873,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                     hotWaterImage: hotWaterImage,
                     leakSensorImage: leakSensorImage,
                     isColdWaterOK: isColdWaterOK,
-                    hasHotWater: item.hot_water !== false
+                    hasHotWater: window.BuildingStatus.hasHotWater(item)
                 });
             });
 

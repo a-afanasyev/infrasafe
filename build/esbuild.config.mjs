@@ -39,6 +39,8 @@ const ENTRIES = [
     // [code-review batch] coordinate-integrity guard (prevents NaN→null wipe)
     'public/utils/apiError.js',
     'public/utils/coordValidation.js',
+    // [A-08] классификация состояния здания для карты (вынесена из script.js)
+    'public/utils/buildingStatus.js',
     // [UK-URGENCY remnant] UK deep-link builder + reopen-meta passthrough
     'public/utils/ukLinkBuilder.js',
     // [R2-10] section-id normalizer + corrected bulk-delete endpoint map
