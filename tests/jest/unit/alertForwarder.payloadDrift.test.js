@@ -12,7 +12,16 @@
  * JSON в другом месте сломала бы подпись.
  */
 
-jest.mock('../../../src/config/database', () => ({ query: jest.fn() }));
+// [A-03] Намерение и очередь теперь пишутся ОДНОЙ транзакцией, поэтому у
+// двойника БД должен быть withTransaction, исполняющий колбэк. Двойник клиента —
+// тот же объект: в этих сьютах модели замоканы, и SQL никуда не уходит.
+jest.mock('../../../src/config/database', () => {
+    const client = { query: jest.fn() };
+    return {
+        query: jest.fn(),
+        withTransaction: jest.fn(async (fn) => fn(client)),
+    };
+});
 jest.mock('../../../src/utils/logger', () => ({
     info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn()
 }));

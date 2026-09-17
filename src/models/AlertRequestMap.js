@@ -20,10 +20,14 @@ class AlertRequestMap {
         }
     }
 
-    static async create(data) {
+    /**
+     * [A-03] `executor` — необязательный клиент транзакции: запись намерения и
+     * постановка события в очередь должны быть атомарны (см. UkOutbox.enqueue).
+     */
+    static async create(data, executor = db) {
         try {
             const { infrasafe_alert_id, building_external_id, idempotency_key, status = 'pending' } = data;
-            const result = await db.query(
+            const result = await executor.query(
                 `INSERT INTO alert_request_map
                  (infrasafe_alert_id, building_external_id, idempotency_key, status, created_at, updated_at)
                  VALUES ($1, $2, $3, $4, NOW(), NOW())

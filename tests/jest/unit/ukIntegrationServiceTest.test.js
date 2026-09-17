@@ -6,7 +6,16 @@
  * getRequestCounts, getBuildingRequests, invalidateRequestCache.
  */
 
-jest.mock('../../../src/config/database', () => ({ query: jest.fn() }));
+// [A-03] Намерение и очередь теперь пишутся ОДНОЙ транзакцией, поэтому у
+// двойника БД должен быть withTransaction, исполняющий колбэк. Двойник клиента —
+// тот же объект: в этих сьютах модели замоканы, и SQL никуда не уходит.
+jest.mock('../../../src/config/database', () => {
+    const client = { query: jest.fn() };
+    return {
+        query: jest.fn(),
+        withTransaction: jest.fn(async (fn) => fn(client)),
+    };
+});
 jest.mock('../../../src/utils/logger', () => ({
     info: jest.fn(),
     error: jest.fn(),
@@ -306,13 +315,24 @@ describe('UKIntegrationService — Phase 3-5', () => {
 
             await service.sendAlertToUK(alertData);
 
+            // [A-03] Второй аргумент — клиент ТРАНЗАКЦИИ, и это не деталь
+            // вызова: намерение и очередь обязаны писаться атомарно, иначе
+            // падение между ними оставляет активный алерт без заявки в УК
+            // навсегда (дедуп душит повтор, drain отсутствующую строку не
+            // восстанавливает). Проверяем и то, что очередь пишется ТЕМ ЖЕ
+            // клиентом.
             expect(AlertRequestMap.create).toHaveBeenCalledWith(
                 expect.objectContaining({
                     infrasafe_alert_id: 100,
                     building_external_id: 'ext-1',
                     status: 'pending'
-                })
+                }),
+                expect.objectContaining({ query: expect.any(Function) })
             );
+            expect(db.withTransaction).toHaveBeenCalledTimes(1);
+            const armClient = AlertRequestMap.create.mock.calls[0][1];
+            const outboxClient = UkOutbox.enqueue.mock.calls[0][1];
+            expect(outboxClient).toBe(armClient);
             // Sprint 9: payload carries the full Phase 2 alert envelope.
             // category/urgency are NOT in payload — UK derives them from
             // type+severity per O3.

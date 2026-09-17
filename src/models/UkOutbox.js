@@ -35,9 +35,17 @@ class UkOutbox {
      * `null` if a row with the same `event_id` already exists (idempotent
      * retry — caller treats as success).
      *
+     * [A-03] `executor` — необязательный клиент транзакции. Постановка в
+     * очередь обязана происходить в одной транзакции с записью намерения
+     * (`alert_request_map`): иначе падение между двумя записями оставляет
+     * намерение без очереди, и заявка в УК не уходит НИКОГДА — повторный алерт
+     * душит дедуп, а drain-воркер восстанавливать отсутствующую строку не
+     * умеет. Имя параметра — как у `_sweepEngineerNotifications(executor = db)`.
+     *
      * @param {{event_id: string, payload_body: string}} data
+     * @param {{query: Function}} [executor] — клиент транзакции либо пул
      */
-    static async enqueue(data) {
+    static async enqueue(data, executor = db) {
         const { event_id, payload_body } = data;
         if (!event_id || typeof event_id !== 'string') {
             throw new Error('UkOutbox.enqueue: event_id is required');
@@ -46,7 +54,7 @@ class UkOutbox {
             throw new Error('UkOutbox.enqueue: payload_body must be a non-empty string');
         }
         try {
-            const result = await db.query(
+            const result = await executor.query(
                 `INSERT INTO uk_outbox (event_id, payload_body, status, next_attempt_at, created_at)
                  VALUES ($1, $2, 'pending', NOW(), NOW())
                  ON CONFLICT (event_id) DO NOTHING

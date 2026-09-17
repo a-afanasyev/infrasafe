@@ -413,6 +413,9 @@ class UKAlertForwarder {
             // 'pending' — next alert cycle will retry. This is the
             // safe-by-default state for prod until UK Phase 2 lands.
             const senderEnabled = _isWebhookSenderEnabled();
+            // [A-03] Ленивый require — как в остальных методах файла: модуль
+            // грузится до config/database в графе зависимостей.
+            const db = require('../../config/database');
 
             // 3. For each affected building: ensure AlertRequestMap row,
             //    then enqueue an outbox event. The drain worker (see
@@ -432,6 +435,9 @@ class UKAlertForwarder {
 
                     let mapping;
                     let idempotencyKey;
+                    // [A-03] Уже поставлено в очередь той же транзакцией, что
+                    // создала намерение — повторная постановка ниже не нужна.
+                    let alreadyEnqueued = false;
 
                     if (existing && existing.status === 'sent') {
                         logger.debug(`sendAlertToUK: already sent for alert ${alertData.alert_id}, building ${building.building_id}`);
@@ -441,12 +447,61 @@ class UKAlertForwarder {
                         idempotencyKey = existing.idempotency_key;
                     } else {
                         idempotencyKey = crypto.randomUUID();
-                        mapping = await AlertRequestMap.create({
-                            infrasafe_alert_id: alertData.alert_id,
-                            building_external_id: building.external_id,
-                            idempotency_key: idempotencyKey,
-                            status: 'pending'
-                        });
+
+                        // [A-03] Намерение и очередь пишутся ОДНОЙ транзакцией.
+                        //
+                        // Прежде это были две независимые записи: сначала
+                        // `alert_request_map`, затем `uk_outbox`. Падение между
+                        // ними (или отказ второй) оставляло намерение без
+                        // очереди — и заявка в УК не уходила НИКОГДА: повторный
+                        // алерт душит дедуп, а drain-воркер отсутствующую
+                        // строку не восстанавливает. Активная авария молча
+                        // оставалась без тикета.
+                        //
+                        // Тело события считается ДО транзакции: оно зависит
+                        // только от alertData/building/ключа, а держать в
+                        // транзакции лишнюю работу незачем.
+                        const bodyForIntent = senderEnabled
+                            ? this._buildAlertEventBody(alertData, building, idempotencyKey, rule, {})
+                            : null;
+
+                        if (senderEnabled) {
+                            try {
+                                await db.withTransaction(async (client) => {
+                                    mapping = await AlertRequestMap.create({
+                                        infrasafe_alert_id: alertData.alert_id,
+                                        building_external_id: building.external_id,
+                                        idempotency_key: idempotencyKey,
+                                        status: 'pending'
+                                    }, client);
+                                    // Модель гасит 23505 и отдаёт null, но
+                                    // транзакция после этого уже отравлена —
+                                    // выходим наружу и разбираем гонку там.
+                                    if (!mapping) {
+                                        const raceError = new Error('ARM_RACE');
+                                        raceError.armRace = true;
+                                        throw raceError;
+                                    }
+                                    await UkOutbox.enqueue(
+                                        { event_id: idempotencyKey, payload_body: bodyForIntent },
+                                        client
+                                    );
+                                }, { context: 'alert→UK intent' });
+                                alreadyEnqueued = true;
+                            } catch (intentError) {
+                                if (!intentError.armRace) throw intentError;
+                                mapping = null;
+                            }
+                        } else {
+                            // Отправитель спит: очереди нет намеренно, пишем
+                            // только намерение — поведение не менялось.
+                            mapping = await AlertRequestMap.create({
+                                infrasafe_alert_id: alertData.alert_id,
+                                building_external_id: building.external_id,
+                                idempotency_key: idempotencyKey,
+                                status: 'pending'
+                            });
+                        }
 
                         if (!mapping) {
                             const raceWinner = await AlertRequestMap.findByAlertAndBuilding(
@@ -491,7 +546,12 @@ class UKAlertForwarder {
                     // ON CONFLICT DO NOTHING — idempotent enqueue. A null
                     // return here means a previous enqueue with the same
                     // event_id is already in flight; that's success.
-                    await UkOutbox.enqueue({ event_id: idempotencyKey, payload_body: eventBody });
+                    // [A-03] Путь нового намерения ставит событие в очередь в
+                    // своей транзакции выше — сюда доходят только переиспользование
+                    // 'pending'-намерения и победитель гонки.
+                    if (!alreadyEnqueued) {
+                        await UkOutbox.enqueue({ event_id: idempotencyKey, payload_body: eventBody });
+                    }
 
                     // Log enqueue (the actual send + UK response is logged
                     // by ukOutboxService when the drain worker picks it up).
