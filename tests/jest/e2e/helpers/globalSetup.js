@@ -76,7 +76,7 @@ async function adminCookies() {
   if (!login.body.requires2FASetup) {
     const cookies = cookieHeader(login.headers['set-cookie']);
     if (!cookies) throw new Error('[e2e setup] admin login returned no cookies');
-    return cookies;
+    return { cookies, recovery: '' };
   }
 
   // [M-4] Промежуточный токен больше не приходит в теле — он в HttpOnly-куке.
@@ -104,7 +104,13 @@ async function adminCookies() {
 
   const cookies = cookieHeader(confirm.headers['set-cookie']);
   if (!cookies) throw new Error('[e2e setup] confirm-2fa returned no cookies');
-  return cookies;
+
+  // [A-11] Коды восстановления выдаются ровно здесь и больше нигде. Один
+  // откладываем для регрессии на вход по коду восстановления: проверить её
+  // можно только против НАСТОЯЩЕЙ otplib, а в юнит-тестах библиотека подменена
+  // (otplib 13 — ESM, Jest её в CJS не грузит; см. __mocks__/otplib.js).
+  const recovery = (confirm.body.recoveryCodes || [])[0] || '';
+  return { cookies, recovery };
 }
 
 // [R2-01] Registration is now admin-only. The admin cookie (obtained first in
@@ -128,8 +134,12 @@ async function userCookies(adminCookie) {
 }
 
 module.exports = async function globalSetup() {
-  const adminCookie = await adminCookies();
+  const admin = await adminCookies();
+  const adminCookie = admin.cookies;
   process.env.E2E_ADMIN_COOKIE = adminCookie;
+  // [A-11] Один код восстановления — для регрессии входа по нему. Пусто, если
+  // 2FA у админа уже была настроена и шаг setup не выполнялся.
+  process.env.E2E_ADMIN_RECOVERY = admin.recovery || '';
   const user = await userCookies(adminCookie);
   process.env.E2E_USER_COOKIE = user.cookies;
   process.env.E2E_USER_NAME = user.name;

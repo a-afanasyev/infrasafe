@@ -320,9 +320,13 @@ class AuthService {
             // Atomic consume: blacklist first, fail if already consumed (UNIQUE on token_hash)
             const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
             try {
+                // [A-02] `reason='rotation'` отличает израсходованный при
+                // ротации токен от погашенного логаутом: отзыв всего семейства
+                // сессий — ответ на КРАЖУ, и вешать его на обычный выход
+                // нельзя (миграция 044).
                 await db.query(
-                    `INSERT INTO token_blacklist (token_hash, expires_at, blacklisted_at)
-                     VALUES ($1, to_timestamp($2), NOW())`,
+                    `INSERT INTO token_blacklist (token_hash, expires_at, blacklisted_at, reason)
+                     VALUES ($1, to_timestamp($2), NOW(), 'rotation')`,
                     [tokenHash, decoded.exp]
                 );
             } catch (dbError) {
@@ -367,7 +371,7 @@ class AuthService {
     // Выход из системы (добавление токена в черный список)
     async logout(token) {
         try {
-            await this.blacklistToken(token);
+            await this.blacklistToken(token, 'logout');
             logger.info('Пользователь вышел из системы');
             return { message: 'Выход выполнен успешно' };
         } catch (error) {
@@ -483,16 +487,36 @@ class AuthService {
      */
     async _handleRefreshReuse(userId, tokenHash) {
         let elapsedMs = null;
+        let reason = null;
         try {
             const { rows } = await db.query(
-                'SELECT blacklisted_at FROM token_blacklist WHERE token_hash = $1',
+                'SELECT blacklisted_at, reason FROM token_blacklist WHERE token_hash = $1',
                 [tokenHash]
             );
             if (rows[0] && rows[0].blacklisted_at) {
                 elapsedMs = Date.now() - new Date(rows[0].blacklisted_at).getTime();
             }
+            if (rows[0]) reason = rows[0].reason;
         } catch (error) {
-            logger.warn(`Реплей refresh: не удалось прочитать blacklisted_at: ${error.message}`);
+            logger.warn(`Реплей refresh: не удалось прочитать строку списка: ${error.message}`);
+        }
+
+        // [A-02] Отзыв семейства — ответ на КРАЖУ, а не на любое повторное
+        // предъявление. Токен, погашенный ЛОГАУТОМ или 2FA-шагом, предъявлен
+        // повторно обычным клиентом: это 401, но выкидывать человека со всех
+        // устройств за то, что он вышел на одном, нельзя.
+        //
+        // `reason IS NULL` — строки, записанные ДО миграции 044. Для них
+        // поведение остаётся прежним (решает отметка времени ниже): менять его
+        // здесь значило бы молча развернуть уже принятое решение «неизвестность
+        // трактуем как кражу — ложный разлогин чинится входом, пропущенная
+        // кража нет». Окно ограничено сроком жизни refresh-токена.
+        if (reason && reason !== 'rotation') {
+            logger.warn(
+                `Повтор токена, погашенного не ротацией (reason=${reason}), для user_id=${userId} ` +
+                '— сессии не отзываются'
+            );
+            return false;
         }
 
         if (elapsedMs !== null && elapsedMs <= REFRESH_REUSE_GRACE_MS) {
@@ -685,7 +709,13 @@ class AuthService {
     }
 
     // Добавление токена в черный список
-    async blacklistToken(token) {
+    /**
+     * @param {string} token
+     * @param {'logout'|'temp-token'|'manual'} [reason] — зачем гасим. На отзыв
+     *   семейства сессий влияет только 'rotation', который ставит сама ротация
+     *   (см. refreshTokens); всё, что гасится здесь, семейство не трогает.
+     */
+    async blacklistToken(token, reason = 'manual') {
         try {
             const decoded = jwt.decode(token);
             if (!decoded || typeof decoded.exp !== 'number') {
@@ -705,8 +735,9 @@ class AuthService {
                 try {
                     const expiresAt = new Date(expiry);
                     await db.query(
-                        'INSERT INTO token_blacklist (token_hash, expires_at) VALUES ($1, $2) ON CONFLICT (token_hash) DO NOTHING',
-                        [tokenHash, expiresAt]
+                        `INSERT INTO token_blacklist (token_hash, expires_at, reason)
+                         VALUES ($1, $2, $3) ON CONFLICT (token_hash) DO NOTHING`,
+                        [tokenHash, expiresAt, reason]
                     );
                 } catch (dbError) {
                     logger.error(`Ошибка сохранения токена в БД: ${dbError.message}`);

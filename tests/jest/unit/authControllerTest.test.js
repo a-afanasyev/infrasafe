@@ -393,7 +393,10 @@ describe('AuthController', () => {
             await authController.logout(req, res, next);
 
             expect(authService.logout).toHaveBeenCalledWith('access-tok');
-            expect(authService.blacklistToken).toHaveBeenCalledWith('refresh-tok');
+            // [A-02] Причина обязательна: по ней сервис отличает выход от
+            // реплея украденного токена. Без неё логаут читался бы как кража и
+            // отзывал сессии на всех устройствах (миграция 044).
+            expect(authService.blacklistToken).toHaveBeenCalledWith('refresh-tok', 'logout');
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({ success: true })
             );
@@ -419,7 +422,7 @@ describe('AuthController', () => {
             await authController.logout(req, res, next);
 
             expect(authService.logout).toHaveBeenCalledWith('access-tok');
-            expect(authService.blacklistToken).toHaveBeenCalledWith('refresh-tok');
+            expect(authService.blacklistToken).toHaveBeenCalledWith('refresh-tok', 'logout');
             // Logout still completes with 200, not 5xx
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({ success: true })
@@ -449,7 +452,7 @@ describe('AuthController', () => {
 
             await authController.logout(req, res, next);
 
-            expect(authService.blacklistToken).toHaveBeenCalledWith(refresh);
+            expect(authService.blacklistToken).toHaveBeenCalledWith(refresh, 'logout');
         });
 
         test('does NOT blacklist refresh token when sub mismatches actor (HIGH-3 DoS guard)', async () => {
@@ -480,7 +483,7 @@ describe('AuthController', () => {
 
             await authController.logout(req, res, next);
 
-            expect(authService.blacklistToken).toHaveBeenCalledWith('opaque-token');
+            expect(authService.blacklistToken).toHaveBeenCalledWith('opaque-token', 'logout');
         });
     });
 

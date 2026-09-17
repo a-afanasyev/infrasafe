@@ -31,6 +31,7 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const cacheService = require('../services/cacheService');
+const { createError } = require('../utils/helpers');
 
 // Совпадает с ключом, которым пользуется authService (`${cachePrefix}:user:`).
 // Держим строку здесь: раз инвалидация переехала в модель, то и знание о
@@ -200,12 +201,54 @@ async function updateLastLogin(userId) {
 }
 
 /** Записать секрет 2FA и коды восстановления (этап настройки, до подтверждения). */
+/**
+ * [A-01] Записать секрет 2FA. Условие `totp_enabled = false` — часть ЗАПРОСА,
+ * а не проверка вызывающего: сервис читает состояние и пишет двумя шагами, и
+ * между ними существует окно, в котором 2FA успевает включиться. Раньше UPDATE
+ * шёл без условия и `totp_enabled` не трогал, поэтому запись поверх включённой
+ * 2FA выглядела успешной — на этом и держался обход второго фактора.
+ *
+ * Отказ явный (409), а не тихий no-op: молчаливое «ничего не записали» выше по
+ * стеку неотличимо от успеха.
+ */
 async function setTotpSecret(userId, encryptedSecret, recoveryCodes) {
-    await db.query(
-        'UPDATE users SET totp_secret = $1, recovery_codes = $2 WHERE user_id = $3',
+    const { rowCount } = await db.query(
+        `UPDATE users SET totp_secret = $1, recovery_codes = $2
+         WHERE user_id = $3 AND totp_enabled = false`,
         [encryptedSecret, recoveryCodes, userId]
     );
+    if (rowCount === 0) {
+        throw createError('2FA is already enabled for this account', 409);
+    }
     await invalidateCache(userId);
+}
+
+/**
+ * [A-01] Аварийный сброс 2FA по логину — опора CLI `src/cli/reset-2fa.js`.
+ *
+ * Одним запросом, а не тремя, намеренно: снятие секрета и отзыв сессий обязаны
+ * произойти вместе. Промежуточное состояние «2FA снята, а прежние сессии живы»
+ * — это ровно то, чем воспользовался бы угонщик, ради которого сброс и
+ * делается; транзакция в CLI дала бы то же самое, но ценой второго места, где
+ * живёт SQL по `users` (см. границу AR-3а в шапке файла).
+ *
+ * @returns {Promise<{user_id:number, username:string, role:string}|null>}
+ *          null — пользователя с таким логином нет.
+ */
+async function resetTotpByUsername(username) {
+    const { rows } = await db.query(
+        `UPDATE users
+            SET totp_secret = NULL,
+                totp_enabled = false,
+                recovery_codes = NULL,
+                sessions_revoked_at = NOW()
+          WHERE username = $1
+      RETURNING user_id, username, role`,
+        [username]
+    );
+    if (!rows.length) return null;
+    await invalidateCache(rows[0].user_id);
+    return rows[0];
 }
 
 /** Включить 2FA — подтверждение настройки. */
@@ -246,6 +289,7 @@ module.exports = {
     revokeSessions,
     updateLastLogin,
     setTotpSecret,
+    resetTotpByUsername,
     enableTotp,
     setRecoveryCodes,
     disableTotp,

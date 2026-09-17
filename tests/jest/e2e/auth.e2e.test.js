@@ -11,6 +11,63 @@ function hasCookie(res, name) {
 }
 
 describe('E2E: Auth Flow', () => {
+  // [A-01] Регрессия на обход второго фактора — через НАСТОЯЩИЙ роутер.
+  //
+  // Дефект: `/auth/setup-2fa` авторизуется temp-токеном, который выдаётся после
+  // ввода ОДНОГО пароля, а `generateSetup` выдавал включённому аккаунту новый
+  // секрет, не сбрасывая `totp_enabled`. Дальше `verify-2fa` пускал по свежему
+  // OTP — знание пароля заменяло второй фактор целиком.
+  test('[A-01] setup-2fa по password-only temp-токену при включённой 2FA → 409', async () => {
+    const login = await request(BASE_URL)
+      .post('/api/auth/login')
+      .set('Origin', ORIGIN)
+      .send({ username: 'admin', password: 'admin123' });
+
+    // globalSetup оставляет админа с НАСТРОЕННОЙ 2FA.
+    expect(login.body.requires2FA).toBe(true);
+    const tempCookie = (login.headers['set-cookie'] || [])
+      .map((c) => c.split(';')[0]).join('; ');
+
+    const setup = await request(BASE_URL)
+      .post('/api/auth/setup-2fa')
+      .set('Origin', ORIGIN)
+      .set('Cookie', tempCookie)
+      .send({});
+
+    expect(setup.status).toBe(409);
+    expect(setup.body).not.toHaveProperty('secret');
+    expect(setup.body).not.toHaveProperty('qrCodeUrl');
+  });
+
+  // [A-11] Вход по коду восстановления. Здесь работает НАСТОЯЩАЯ otplib: в
+  // юнит-тестах она подменена (ESM-пакет, Jest его в CJS не грузит), и именно
+  // подмена прятала дефект — библиотека на коде вида XXXX-XXXX не отвечает
+  // «неверно», а бросает, и вход заканчивался 500-й.
+  test('[A-11] вход кодом восстановления возвращает сессию, а не 500', async () => {
+    const recovery = process.env.E2E_ADMIN_RECOVERY;
+    if (!recovery) {
+      throw new Error('[A-11] globalSetup не отдал код восстановления — '
+        + 'проверка входа по нему невозможна, прогон недостоверен');
+    }
+
+    const login = await request(BASE_URL)
+      .post('/api/auth/login')
+      .set('Origin', ORIGIN)
+      .send({ username: 'admin', password: 'admin123' });
+    const tempCookie = (login.headers['set-cookie'] || [])
+      .map((c) => c.split(';')[0]).join('; ');
+
+    const verify = await request(BASE_URL)
+      .post('/api/auth/verify-2fa')
+      .set('Origin', ORIGIN)
+      .set('Cookie', tempCookie)
+      .send({ code: recovery });
+
+    expect(verify.status).toBe(200);
+    expect(verify.body.success).toBe(true);
+    expect(hasCookie(verify, 'access_token')).toBe(true);
+  });
+
   test('POST /api/auth/login — admin login requires 2FA (no tokens in body)', async () => {
     const res = await request(BASE_URL)
       .post('/api/auth/login')

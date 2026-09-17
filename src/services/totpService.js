@@ -5,6 +5,7 @@ const bcrypt = require('bcrypt');
 const User = require('../models/User');
 const logger = require('../utils/logger');
 const cacheService = require('./cacheService');
+const { createError } = require('../utils/helpers');
 
 // [AR-3(а)] Здесь был хелпер `invalidateUserCache`, который приходилось звать
 // после КАЖДОГО UPDATE по `users`, иначе логин до пяти минут читал устаревший
@@ -86,6 +87,25 @@ function decrypt(encryptedText) {
     return decrypted;
 }
 
+// [A-11] Форматы, которые вообще могут прийти в verifyCode. TOTP — ровно шесть
+// цифр; код восстановления выдаётся генератором ниже как XXXX-XXXX из hex.
+const TOTP_CODE_RE = /^\d{6}$/;
+const RECOVERY_CODE_RE = /^[0-9A-F]{4}-[0-9A-F]{4}$/i;
+
+/**
+ * [A-11] Обёртка над otplib: библиотека бросает на любом токене вне своего
+ * контракта, а для вызывающего это должно быть «неверный код», а не авария.
+ * Проверка формата стоит выше, эта обёртка — защита от будущих расхождений.
+ */
+function verifyTotpSafely(secret, token) {
+    try {
+        return otplib.verifySync({ secret, token }).valid === true;
+    } catch (error) {
+        logger.warn(`TOTP verify отклонён библиотекой: ${error.message}`);
+        return false;
+    }
+}
+
 function generateRecoveryCodes() {
     const codes = [];
     for (let i = 0; i < RECOVERY_CODE_COUNT; i++) {
@@ -112,7 +132,20 @@ async function generateSetup(userId, username) {
         throw new Error('User not found');
     }
 
-    const isResume = existing.totp_secret && !existing.totp_enabled;
+    // [A-01] Включённой 2FA новый секрет не выдаётся НИКОГДА. Маршрут
+    // `/auth/setup-2fa` авторизуется tempToken'ом, который выдаётся после ввода
+    // одного пароля; пока эта ветка работала, знания пароля хватало, чтобы
+    // подменить секрет (`totp_enabled` при записи не сбрасывался) и войти по
+    // свежему OTP — то есть второй фактор обходился полностью. У владельца при
+    // этом молча переставал работать аутентификатор.
+    //
+    // Легитимный сброс — `src/cli/reset-2fa.js` (доступ к хосту), после него
+    // `totp_enabled=false` и setup снова разрешён.
+    if (existing.totp_enabled) {
+        throw createError('2FA is already enabled for this account', 409);
+    }
+
+    const isResume = Boolean(existing.totp_secret);
 
     let secret;
     if (isResume) {
@@ -241,9 +274,22 @@ async function verifyCode(userId, code) {
         throw new Error('2FA is not enabled for this user');
     }
 
+    // [A-11] Ветка выбирается ПО ФОРМАТУ, до обращения к otplib. Прежний код
+    // отдавал библиотеке всё подряд, а она на не-шестизначном значении не
+    // возвращает «неверно», а БРОСАЕТ (`Token must be 6 digits, got 9`) — то
+    // есть вход по коду восстановления XXXX-XXXX заканчивался 500-й, до
+    // bcrypt-ветки исполнение просто не доходило.
+    const candidate = typeof code === 'string' ? code.trim() : '';
+    const looksLikeTotp = TOTP_CODE_RE.test(candidate);
+    const looksLikeRecovery = RECOVERY_CODE_RE.test(candidate);
+
+    if (!looksLikeTotp && !looksLikeRecovery) {
+        return { valid: false, reason: 'malformed_code' };
+    }
+
     // Try TOTP code first
     const secret = decrypt(user.totp_secret);
-    if (otplib.verifySync({ secret, token: code }).valid) {
+    if (looksLikeTotp && verifyTotpSafely(secret, candidate)) {
         // SEC-106: prevent replay — same code cannot be used twice within 60s
         if (!markCodeUsed(userId, code)) {
             return { valid: false, reason: 'code_already_used' };
@@ -252,7 +298,10 @@ async function verifyCode(userId, code) {
     }
 
     // Try recovery code
-    const normalizedCode = code.toUpperCase().trim();
+    if (!looksLikeRecovery) {
+        return { valid: false };
+    }
+    const normalizedCode = candidate.toUpperCase();
     const recoveryCodes = user.recovery_codes || [];
 
     for (let i = 0; i < recoveryCodes.length; i++) {

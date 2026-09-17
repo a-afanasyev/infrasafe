@@ -36,6 +36,12 @@ const db = require('../../../src/config/database');
 const cacheService = require('../../../src/services/cacheService');
 const totpService = require('../../../src/services/totpService');
 
+// [A-11] Уникальный шестизначный код на вызов: verifyCode отбивает всё, что не
+// похоже на TOTP или на XXXX-XXXX, ещё до обращения к библиотеке, а
+// anti-replay требует, чтобы соседние тесты не переиспользовали одно значение.
+let sixDigitsCounterSeed = 100000;
+const sixDigits = () => String(sixDigitsCounterSeed++).slice(-6).padStart(6, '0');
+
 describe('totpService — encryption primitives', () => {
     beforeEach(() => jest.clearAllMocks());
 
@@ -137,7 +143,12 @@ describe('totpService — generateSetup', () => {
         expect(result).not.toHaveProperty('recoveryCodes');
 
         const [sql, params] = db.query.mock.calls[1];
-        expect(sql).toMatch(/UPDATE users SET totp_secret = \$1, recovery_codes = \$2 WHERE user_id = \$3/);
+        // [A-01] Условие `totp_enabled = false` — часть запроса: без него запись
+        // поверх включённой 2FA проходит, и на этом держался обход второго
+        // фактора. Поведение под настоящим Postgres проверяет
+        // tests/jest/db/totpSecretGuard.db.test.js — здесь закреплена форма.
+        expect(sql).toMatch(/UPDATE users SET totp_secret = \$1, recovery_codes = \$2/);
+        expect(sql).toMatch(/WHERE user_id = \$3 AND totp_enabled = false/);
         // Encrypted secret → iv:tag:ct
         expect(params[0]).toMatch(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/);
         const recoveryHashed = JSON.parse(params[1]);
@@ -240,18 +251,26 @@ describe('totpService — generateSetup idempotency', () => {
         expect(cachedSet(83, 1)).toHaveLength(8);
     });
 
-    test('after 2FA is enabled, a new generateSetup call mints a FRESH secret', async () => {
-        // Pretend the pending secret from a previous setup has been confirmed (totp_enabled=true).
-        // Calling generateSetup again (e.g. after an admin "reset 2FA" action) must NOT keep the
-        // old secret — it should generate a brand-new one.
+    test('[A-01] при ВКЛЮЧЁННОЙ 2FA setup отказывает, а не выдаёт новый секрет', async () => {
+        // Здесь стоял тест с обратным утверждением: «after 2FA is enabled, a new
+        // generateSetup call mints a FRESH secret», оправданный в комментарии
+        // сценарием «после admin reset 2FA». Такого сценария в коде НЕТ:
+        // админского сброса нет вовсе, а `totpService.disable` админам прямо
+        // запрещает снимать 2FA. Зато выдача нового секрета включённому
+        // аккаунту была достижима снаружи: `/auth/setup-2fa` принимает
+        // tempToken, который выдаётся после ввода ОДНОГО пароля, а
+        // `setTotpSecret` не трогал `totp_enabled` — дальше `verify-2fa`
+        // пускал по свежему OTP. Это и есть обход второго фактора (A-01).
+        //
+        // Легитимный путь сброса теперь один — `src/cli/reset-2fa.js`.
         const oldEncrypted = totpService.encrypt('OLDSECRETBASE32');
-        db.query
-            .mockResolvedValueOnce({ rows: [{ totp_secret: oldEncrypted, totp_enabled: true }] })
-            .mockResolvedValueOnce({ rows: [] });
-        const result = await totpService.generateSetup(79, 'erin');
+        db.query.mockResolvedValueOnce({ rows: [{ totp_secret: oldEncrypted, totp_enabled: true }] });
 
-        expect(result.secret).not.toBe('OLDSECRETBASE32');
-        expect(typeof result.secret).toBe('string');
+        await expect(totpService.generateSetup(79, 'erin'))
+            .rejects.toMatchObject({ statusCode: 409 });
+
+        // И ничего не записано: единственный запрос — чтение состояния.
+        expect(db.query).toHaveBeenCalledTimes(1);
     });
 });
 
@@ -364,7 +383,11 @@ describe('totpService — verifyCode', () => {
         });
         otplib.verifySync = jest.fn().mockReturnValue({ valid: true });
 
-        const result = await totpService.verifyCode(10, 'fresh-code-' + Date.now());
+        // [A-11] Код обязан быть ШЕСТИЗНАЧНЫМ: verifyCode теперь выбирает ветку
+        // по формату, а настоящая otplib на произвольной строке бросает
+        // исключение. Прежние значения вроде 'fresh-code-<ts>' проходили только
+        // потому, что verifySync была подменена и принимала что угодно.
+        const result = await totpService.verifyCode(10, sixDigits());
         expect(result).toEqual({ valid: true, method: 'totp' });
     });
 
@@ -375,7 +398,7 @@ describe('totpService — verifyCode', () => {
         });
         otplib.verifySync = jest.fn().mockReturnValue({ valid: true });
 
-        const uniqueCode = 'replay-' + Date.now();
+        const uniqueCode = sixDigits();   // [A-11] формат обязателен
         const first = await totpService.verifyCode(11, uniqueCode);
         const second = await totpService.verifyCode(11, uniqueCode);
         expect(first).toEqual({ valid: true, method: 'totp' });
@@ -409,7 +432,9 @@ describe('totpService — verifyCode', () => {
         });
         otplib.verifySync = jest.fn().mockReturnValue({ valid: false });
 
-        const result = await totpService.verifyCode(13, 'WRONG-CODE');
+        // [A-11] «Неверный код» — это верный ФОРМАТ с неверным значением.
+        // Проверки на мусорный формат живут в totpService.realOtplib.test.js.
+        const result = await totpService.verifyCode(13, sixDigits());
         expect(result).toEqual({ valid: false });
     });
 
@@ -439,7 +464,7 @@ describe('totpService — anti-replay TTL (SEC-26)', () => {
         });
         otplib.verifySync = jest.fn().mockReturnValue({ valid: true });
 
-        const code = 'ttl-window-' + Date.now();
+        const code = sixDigits();   // [A-11] формат обязателен
         const t0 = Date.now();
         const first = await totpService.verifyCode(8200, code);
         expect(first).toEqual({ valid: true, method: 'totp' });
@@ -460,7 +485,7 @@ describe('totpService — anti-replay TTL (SEC-26)', () => {
         });
         otplib.verifySync = jest.fn().mockReturnValue({ valid: true });
 
-        const code = 'ttl-evict-' + Date.now();
+        const code = sixDigits();   // [A-11] формат обязателен
         const t0 = Date.now();
         await totpService.verifyCode(8201, code);
 
