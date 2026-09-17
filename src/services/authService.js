@@ -218,7 +218,11 @@ class AuthService {
         return jwt.sign(
             { user_id: user.user_id, username: user.username, role: user.role, scope: '2fa' },
             this.jwt2faSecret,
-            { expiresIn: '5m', issuer: 'infrasafe-api', audience: 'infrasafe-client' }
+            // [A-02-jti] см. generateTokens: без jti два входа в одну секунду
+            // дают один и тот же temp-токен, и погашение первого (шаг 2FA
+            // терминальный) ломает второй — честный логин получает «уже
+            // использован».
+            { expiresIn: '5m', issuer: 'infrasafe-api', audience: 'infrasafe-client', jwtid: crypto.randomUUID() }
         );
     }
 
@@ -266,10 +270,20 @@ class AuthService {
                 role: user.role
             };
 
+            // [A-02-jti] `jti` делает каждый выпуск уникальной СТРОКОЙ.
+            // Без него payload refresh-токена — это `{user_id, type}` плюс
+            // `iat`/`exp` в СЕКУНДАХ, то есть два выпуска в пределах одной
+            // секунды дают побайтово одинаковый токен. Чёрный список ключуется
+            // по хэшу строки, поэтому такой «новый» токен рождался уже
+            // погашенным — а после A-02 повтор им отзывает ВСЕ сессии
+            // пользователя. Совпадение по секунде не должно выглядеть кражей.
+            // Наблюдалось вживую и на temp-токенах («Temporary token has
+            // already been used» на честном логине).
             const accessToken = jwt.sign(payload, this.jwtSecret, {
                 expiresIn: this.jwtExpiresIn,
                 issuer: 'infrasafe-api',
-                audience: 'infrasafe-client'
+                audience: 'infrasafe-client',
+                jwtid: crypto.randomUUID()
             });
 
             const refreshToken = jwt.sign(
@@ -278,7 +292,8 @@ class AuthService {
                 {
                     expiresIn: this.refreshTokenExpiresIn,
                     issuer: 'infrasafe-api',
-                    audience: 'infrasafe-client'
+                    audience: 'infrasafe-client',
+                    jwtid: crypto.randomUUID()
                 }
             );
 
