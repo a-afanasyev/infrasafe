@@ -5,7 +5,10 @@
 // Coverage:
 // 1. Dedup short-circuit when a VOLTAGE_ANOMALY alert is already active.
 // 2. Cooldown short-circuit when checkVoltage fired successfully recently.
-// 3. Severity is sourced from _classifyVoltageSeverity (CRITICAL > WARNING).
+// 3. [A-05] Уровень берётся из _selectVoltageSeverity — это ВЫСШИЙ уровень,
+//    прошедший свой persistence-gate, а не просто высший из присутствующих в
+//    окне. Здесь селектор замокан: сама логика выбора и понижения проверяется
+//    в alertService.severitySelection.test.js.
 // 4. No-anomaly (classifier returns null) → no createAlert call, cooldown
 //    NOT bumped so the next metric can re-check immediately.
 // 5. createAlert is called with the canonical alertData shape.
@@ -60,8 +63,8 @@ describe('alertService.checkVoltage (B-005 VOLTAGE auto-trigger)', () => {
         alertService.activeAlerts.set('controller:42:VOLTAGE_ANOMALY', {
             alert_id: 99, severity: 'WARNING'
         });
-        const classifySpy = jest.spyOn(alertService, '_classifyVoltageSeverity')
-            .mockResolvedValue('WARNING');
+        const classifySpy = jest.spyOn(alertService, '_selectVoltageSeverity')
+.mockResolvedValue({ severity: 'WARNING', rule: null });
         const createSpy = jest.spyOn(alertService, 'createAlert');
 
         const result = await alertService.checkVoltage(42);
@@ -76,7 +79,7 @@ describe('alertService.checkVoltage (B-005 VOLTAGE auto-trigger)', () => {
 
     test('short-circuits when cooldown is still active', async () => {
         alertService.lastChecks.set('controller:42:voltage_check', Date.now() - 5 * 60 * 1000);
-        const classifySpy = jest.spyOn(alertService, '_classifyVoltageSeverity');
+        const classifySpy = jest.spyOn(alertService, '_selectVoltageSeverity');
         const createSpy = jest.spyOn(alertService, 'createAlert');
 
         const result = await alertService.checkVoltage(42);
@@ -90,7 +93,7 @@ describe('alertService.checkVoltage (B-005 VOLTAGE auto-trigger)', () => {
     });
 
     test('returns null without bumping cooldown when classifier finds no anomaly', async () => {
-        const classifySpy = jest.spyOn(alertService, '_classifyVoltageSeverity')
+        const classifySpy = jest.spyOn(alertService, '_selectVoltageSeverity')
             .mockResolvedValue(null);
         const createSpy = jest.spyOn(alertService, 'createAlert');
 
@@ -106,8 +109,8 @@ describe('alertService.checkVoltage (B-005 VOLTAGE auto-trigger)', () => {
     });
 
     test('calls createAlert with WARNING severity when classifier returns WARNING', async () => {
-        const classifySpy = jest.spyOn(alertService, '_classifyVoltageSeverity')
-            .mockResolvedValue('WARNING');
+        const classifySpy = jest.spyOn(alertService, '_selectVoltageSeverity')
+.mockResolvedValue({ severity: 'WARNING', rule: null });
         const createSpy = jest.spyOn(alertService, 'createAlert')
             .mockResolvedValue({ alert_id: 123 });
 
@@ -128,8 +131,8 @@ describe('alertService.checkVoltage (B-005 VOLTAGE auto-trigger)', () => {
     });
 
     test('calls createAlert with CRITICAL severity when classifier returns CRITICAL', async () => {
-        const classifySpy = jest.spyOn(alertService, '_classifyVoltageSeverity')
-            .mockResolvedValue('CRITICAL');
+        const classifySpy = jest.spyOn(alertService, '_selectVoltageSeverity')
+.mockResolvedValue({ severity: 'CRITICAL', rule: null });
         const createSpy = jest.spyOn(alertService, 'createAlert')
             .mockResolvedValue({ alert_id: 200 });
 
@@ -144,8 +147,8 @@ describe('alertService.checkVoltage (B-005 VOLTAGE auto-trigger)', () => {
     });
 
     test('bumps cooldown only on successful createAlert', async () => {
-        const classifySpy = jest.spyOn(alertService, '_classifyVoltageSeverity')
-            .mockResolvedValue('WARNING');
+        const classifySpy = jest.spyOn(alertService, '_selectVoltageSeverity')
+.mockResolvedValue({ severity: 'WARNING', rule: null });
         const createSpy = jest.spyOn(alertService, 'createAlert')
             .mockResolvedValue({ alert_id: 201 });
 
@@ -161,8 +164,8 @@ describe('alertService.checkVoltage (B-005 VOLTAGE auto-trigger)', () => {
     });
 
     test('does NOT bump cooldown when createAlert returns null (persistence gate denial)', async () => {
-        const classifySpy = jest.spyOn(alertService, '_classifyVoltageSeverity')
-            .mockResolvedValue('WARNING');
+        const classifySpy = jest.spyOn(alertService, '_selectVoltageSeverity')
+.mockResolvedValue({ severity: 'WARNING', rule: null });
         const createSpy = jest.spyOn(alertService, 'createAlert').mockResolvedValue(null);
 
         const result = await alertService.checkVoltage(11);
@@ -176,7 +179,7 @@ describe('alertService.checkVoltage (B-005 VOLTAGE auto-trigger)', () => {
     });
 
     test('swallows errors and returns null without bumping cooldown', async () => {
-        const classifySpy = jest.spyOn(alertService, '_classifyVoltageSeverity')
+        const classifySpy = jest.spyOn(alertService, '_selectVoltageSeverity')
             .mockRejectedValue(new Error('boom'));
         const createSpy = jest.spyOn(alertService, 'createAlert');
 
@@ -197,7 +200,8 @@ describe('alertService.checkVoltage (B-005 VOLTAGE auto-trigger)', () => {
 
         test('an active WARNING worsening to CRITICAL escalates in place (not a new alert)', async () => {
             setActive(42, 'WARNING');
-            const classify = jest.spyOn(alertService, '_classifyVoltageSeverity').mockResolvedValue('CRITICAL');
+            const classify = jest.spyOn(alertService, '_selectVoltageSeverity')
+.mockResolvedValue({ severity: 'CRITICAL', rule: null });
             const create = jest.spyOn(alertService, 'createAlert');
             const escalate = jest.spyOn(alertService, '_escalateAlert')
                 .mockResolvedValue({ outcome: 'escalated', alert: { alert_id: 99, severity: 'CRITICAL', escalated: true } });
@@ -214,7 +218,8 @@ describe('alertService.checkVoltage (B-005 VOLTAGE auto-trigger)', () => {
 
         test('an ACKNOWLEDGED WARNING still escalates to CRITICAL', async () => {
             setActive(42, 'WARNING', 'acknowledged');
-            const classify = jest.spyOn(alertService, '_classifyVoltageSeverity').mockResolvedValue('CRITICAL');
+            const classify = jest.spyOn(alertService, '_selectVoltageSeverity')
+.mockResolvedValue({ severity: 'CRITICAL', rule: null });
             const escalate = jest.spyOn(alertService, '_escalateAlert')
                 .mockResolvedValue({ outcome: 'escalated', alert: { alert_id: 99, severity: 'CRITICAL' } });
 
@@ -227,7 +232,8 @@ describe('alertService.checkVoltage (B-005 VOLTAGE auto-trigger)', () => {
         test('cooldown does NOT block an escalation (escalationPossible bypasses it)', async () => {
             setActive(42, 'WARNING');
             alertService.lastChecks.set('controller:42:voltage_check', Date.now()); // fresh cooldown
-            const classify = jest.spyOn(alertService, '_classifyVoltageSeverity').mockResolvedValue('CRITICAL');
+            const classify = jest.spyOn(alertService, '_selectVoltageSeverity')
+.mockResolvedValue({ severity: 'CRITICAL', rule: null });
             const escalate = jest.spyOn(alertService, '_escalateAlert')
                 .mockResolvedValue({ outcome: 'escalated', alert: { alert_id: 99 } });
 
@@ -240,7 +246,8 @@ describe('alertService.checkVoltage (B-005 VOLTAGE auto-trigger)', () => {
 
         test('outcome=denied (gate/fail-close) → null, no createAlert, cooldown NOT bumped', async () => {
             setActive(42, 'WARNING');
-            const classify = jest.spyOn(alertService, '_classifyVoltageSeverity').mockResolvedValue('CRITICAL');
+            const classify = jest.spyOn(alertService, '_selectVoltageSeverity')
+.mockResolvedValue({ severity: 'CRITICAL', rule: null });
             const create = jest.spyOn(alertService, 'createAlert');
             const escalate = jest.spyOn(alertService, '_escalateAlert').mockResolvedValue({ outcome: 'denied' });
 
@@ -254,7 +261,8 @@ describe('alertService.checkVoltage (B-005 VOLTAGE auto-trigger)', () => {
 
         test('outcome=alreadyCritical → null, cooldown bumped (map synced)', async () => {
             setActive(42, 'WARNING');
-            const classify = jest.spyOn(alertService, '_classifyVoltageSeverity').mockResolvedValue('CRITICAL');
+            const classify = jest.spyOn(alertService, '_selectVoltageSeverity')
+.mockResolvedValue({ severity: 'CRITICAL', rule: null });
             const escalate = jest.spyOn(alertService, '_escalateAlert').mockResolvedValue({ outcome: 'alreadyCritical' });
 
             const result = await alertService.checkVoltage(42);
@@ -266,7 +274,8 @@ describe('alertService.checkVoltage (B-005 VOLTAGE auto-trigger)', () => {
 
         test('outcome=retry → null, cooldown NOT bumped (re-attempt next tick)', async () => {
             setActive(42, 'WARNING');
-            const classify = jest.spyOn(alertService, '_classifyVoltageSeverity').mockResolvedValue('CRITICAL');
+            const classify = jest.spyOn(alertService, '_selectVoltageSeverity')
+.mockResolvedValue({ severity: 'CRITICAL', rule: null });
             const escalate = jest.spyOn(alertService, '_escalateAlert').mockResolvedValue({ outcome: 'retry' });
 
             const result = await alertService.checkVoltage(42);
@@ -278,7 +287,8 @@ describe('alertService.checkVoltage (B-005 VOLTAGE auto-trigger)', () => {
 
         test('outcome=gone → drop stale map entry and create a fresh alert with the policy snapshot', async () => {
             setActive(42, 'WARNING');
-            const classify = jest.spyOn(alertService, '_classifyVoltageSeverity').mockResolvedValue('CRITICAL');
+            const classify = jest.spyOn(alertService, '_selectVoltageSeverity')
+.mockResolvedValue({ severity: 'CRITICAL', rule: null });
             const policy = { id: 7, uk_urgency: 'critical' };
             const escalate = jest.spyOn(alertService, '_escalateAlert').mockResolvedValue({ outcome: 'gone', policy });
             const create = jest.spyOn(alertService, 'createAlert').mockResolvedValue({ alert_id: 500 });
@@ -294,7 +304,8 @@ describe('alertService.checkVoltage (B-005 VOLTAGE auto-trigger)', () => {
 
         test('an active CRITICAL is not escalated again (same/lower rank → null, cooldown bumped)', async () => {
             setActive(42, 'CRITICAL');
-            const classify = jest.spyOn(alertService, '_classifyVoltageSeverity').mockResolvedValue('CRITICAL');
+            const classify = jest.spyOn(alertService, '_selectVoltageSeverity')
+.mockResolvedValue({ severity: 'CRITICAL', rule: null });
             const escalate = jest.spyOn(alertService, '_escalateAlert');
             const create = jest.spyOn(alertService, 'createAlert');
 

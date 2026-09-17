@@ -132,7 +132,8 @@ describe('[FE-119 Phase 2] VOLTAGE_ANOMALY metric context', () => {
     });
 
     test('checkVoltage threads the fetched phase value into metric_value (fresh alert)', async () => {
-        jest.spyOn(alertService, '_classifyVoltageSeverity').mockResolvedValue('WARNING');
+        jest.spyOn(alertService, '_selectVoltageSeverity')
+.mockResolvedValue({ severity: 'WARNING', rule: null });
         jest.spyOn(alertService, '_recentVoltageMetric').mockResolvedValue(189.4);
         jest.spyOn(alertService, '_findActiveAlert').mockResolvedValue(null);
         const createSpy = jest.spyOn(alertService, 'createAlert').mockResolvedValue({ alert_id: 5 });
