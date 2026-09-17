@@ -539,13 +539,16 @@ class InfrastructureAlertService {
                 });
             }
 
-            const severity = await this._classifyVoltageSeverity(controllerId);
-            if (!severity) {
-                // Voltage is currently within both warn and crit bands —
-                // nothing to do. Do not bump cooldown so we can re-check
-                // promptly when the next metric lands.
+            // [A-05] Выбирается высший уровень, ПРОШЕДШИЙ свой gate, а не
+            // высший из присутствующих в окне.
+            const selected = await this._selectVoltageSeverity(controllerId);
+            if (!selected) {
+                // Либо напряжение в обеих полосах, либо ни один уровень не
+                // прошёл свой gate. Кулдаун не взводим — иначе отказ гейта
+                // маскировал бы аварию до конца окна (см. e15436f).
                 return null;
             }
+            const { severity, rule: severityRule } = selected;
 
             // [FE-119 Phase 2] the triggering phase voltage for the UK card —
             // fetched once and threaded into every non-verify build below.
@@ -592,8 +595,14 @@ class InfrastructureAlertService {
             }
 
             // No open alert → create a fresh one.
+            // [A-05] Правило передаётся снимком: между проверкой гейта выше и
+            // вставкой его могли отключить, и повторное чтение дало бы null →
+            // fail-open (тот же приём, что в verify-режиме).
             const alertData = this._buildVoltageAlertData(controllerId, severity, metricValue);
-            const createdAlert = await this.createAlert(alertData);
+            const createdAlert = await this.createAlert(
+                alertData,
+                severityRule ? { ruleSnapshot: severityRule } : {}
+            );
             if (createdAlert) {
                 this.lastChecks.set(checkKey, now);
             }
@@ -618,6 +627,54 @@ class InfrastructureAlertService {
     // [AUD-012] delegate-only → alert/alertQueries.
     async _recentVoltageMetric(controllerId) {
         return alertQueries.recentVoltageMetric(controllerId);
+    }
+
+    // [A-05] delegate-only → alert/alertQueries.
+    async _voltageSeverityCandidates(controllerId, sinceTimestamp = null) {
+        return alertQueries.voltageSeverityCandidates(controllerId, sinceTimestamp);
+    }
+
+    /**
+     * [A-05] Высший уровень, ПРОШЕДШИЙ свой gate.
+     *
+     * Прежде уровень выбирался только по присутствию в окне, и на этом выбор
+     * заканчивался: одиночный критический выброс выбирал CRITICAL, gate
+     * отказывал (нужно минимум два сэмпла), а устойчивые WARNING-сэмплы как
+     * WARNING уже никто не проверял. Тот же выброс продолжал выбирать CRITICAL
+     * все 600 секунд окна — то есть продолжающаяся авария не порождала тревоги.
+     *
+     * Понижение возможно ТОЛЬКО из-за гейта. Отказ по кулдауну или дедупу
+     * означает, что тревога уже есть, и понижение стало бы вторым алертом на ту
+     * же аварию — поэтому гейт спрашивается здесь явно, а не выводится из
+     * `null` от createAlert, который отказывает по нескольким разным причинам.
+     *
+     * Отсутствие правила трактуется как в createAlert: гейтов нет, уровень
+     * принимается. Иначе селектор стал бы строже createAlert и молча душил бы
+     * типы без политики.
+     *
+     * @returns {{severity: string, rule: Object|null}|null}
+     */
+    async _selectVoltageSeverity(controllerId) {
+        const AlertRule = require('../models/AlertRule');
+        const candidates = await this._voltageSeverityCandidates(controllerId);
+
+        for (const severity of candidates) {
+            const rule = await AlertRule.findByTypeAndSeverity('VOLTAGE_ANOMALY', severity);
+            if (!rule) {
+                return { severity, rule: null };
+            }
+            const gate = await this._checkPersistenceGate(
+                this._buildVoltageAlertData(controllerId, severity), rule
+            );
+            if (gate.allowed) {
+                return { severity, rule };
+            }
+            logger.info(
+                `[A-05] VOLTAGE ${severity} не прошёл persistence-gate для контроллера ` +
+                `${controllerId} — ${gate.reason}; пробуем уровень ниже`
+            );
+        }
+        return null;
     }
 
     // [B-005 / Sprint 11] Classify the current voltage condition. Returns

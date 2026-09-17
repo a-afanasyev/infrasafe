@@ -147,7 +147,20 @@ async function recentVoltageMetric(controllerId) {
 // [AUD-001 PR-B] sinceTimestamp (verify mode) clamps the window to
 // post-resolve telemetry: timestamp > GREATEST(NOW() - 600s, observationSince).
 // Without it the 600s lookback would re-classify pre-resolve samples.
-async function classifyVoltageSeverity(controllerId, sinceTimestamp = null) {
+/**
+ * [A-05] ВСЕ уровни, присутствующие в окне, от высшего к низшему.
+ *
+ * Прежде эта функция отдавала один — высший — уровень, и на нём выбор
+ * заканчивался. Дальше persistence-gate отказывал одиночному критическому
+ * выбросу, а устойчивые WARNING-сэмплы как WARNING уже никто не проверял: тот
+ * единственный критический сэмпл оставался в 600-секундном окне и продолжал
+ * выбирать CRITICAL. Реальная авария не порождала тревоги до конца окна.
+ *
+ * Возвращая список, функция оставляет выбор вызывающему: тот берёт высший
+ * уровень, ПРОШЕДШИЙ свой gate (у каждого уровня своё правило и свой
+ * min_persistence_seconds).
+ */
+async function voltageSeverityCandidates(controllerId, sinceTimestamp = null) {
     const { voltage } = sharedThresholds;
     const params = [controllerId, voltage.warn_min, voltage.warn_max, voltage.crit_min, voltage.crit_max];
     let sinceClause = '';
@@ -179,9 +192,18 @@ async function classifyVoltageSeverity(controllerId, sinceTimestamp = null) {
     );
     const warnSamples = parseInt(result.rows[0].warn_samples, 10);
     const critSamples = parseInt(result.rows[0].crit_samples, 10);
-    if (critSamples > 0) return 'CRITICAL';
-    if (warnSamples > 0) return 'WARNING';
-    return null;
+    const candidates = [];
+    if (critSamples > 0) candidates.push('CRITICAL');
+    if (warnSamples > 0) candidates.push('WARNING');
+    return candidates;
+}
+
+// [B-005 / Sprint 11] Совместимый вход: высший уровень, ПРИСУТСТВУЮЩИЙ в окне.
+// Используется verify-режимом, где уровень выбирается по пост-resolve данным, а
+// гейт работает в continuous-fault семантике.
+async function classifyVoltageSeverity(controllerId, sinceTimestamp = null) {
+    const candidates = await voltageSeverityCandidates(controllerId, sinceTimestamp);
+    return candidates.length ? candidates[0] : null;
 }
 
 // [FE-119] Worst (lowest) sub-threshold ГВС temperature in the recent
@@ -222,6 +244,7 @@ async function hasRecentHeatingAnomaly(controllerId) {
 }
 
 module.exports = {
+    voltageSeverityCandidates,
     getTransformerLoadSince,
     latestProfileSampleAnomalous,
     recentVoltageMetric,
