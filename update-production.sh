@@ -108,6 +108,12 @@ APP_SWITCHED=0
 DIST_PUBLISHED=0
 PREV_COMMIT=""
 OLD_IMG=""
+# [A-10] Периметр тоже откатывается: шаг 6b перезагружает nginx НОВЫМ конфигом,
+# и без этого флага откат оставлял старое приложение с новым конфигом периметра.
+NGINX_RELOADED=0
+# [A-10] Было ли дерево чистым ДО слияния. От этого зависит, чем откатывать:
+# `git reset --hard` точен, но затёр бы правки оператора, если они есть.
+WORKTREE_CLEAN=1
 
 say()  { echo -e "${BLUE}$*${NC}"; }
 ok()   { echo -e "${GREEN}$*${NC}"; }
@@ -128,6 +134,42 @@ app_health_wait() {
     return 1
 }
 
+# [A-13] Команды nginx для ЗАПУЩЕННОГО мастера. Одна функция на оба пути — шаг 6b
+# и откат: если разрешение пути разойдётся между ними, откат перезагрузит НЕ ТОТ
+# конфиг, то есть ровно ту ошибку, ради которой A-13 и заводился.
+#
+# `-c` обязателен: мастер запущен с кастомным конфигом (nginx.production.conf /
+# nginx.profk.conf / nginx.staging.conf — зависит от набора compose-файлов), а
+# `nginx -t` без `-c` проверяет стоковый /etc/nginx/nginx.conf. Проверено на
+# живом контейнере: стоковый файл валиден всегда, то есть проверка без `-c` не
+# могла поймать битый конфиг в принципе.
+#
+# Путь берётся из ЗАПУЩЕННОГО процесса, а не из карты окружений: так проверка не
+# может разойтись с тем, что реально исполняется. nginx переписывает argv в один
+# заголовок вида
+#   `nginx: master process nginx -c /etc/nginx/custom/x.conf -g daemon off;`
+# поэтому cmdline разбирается как СТРОКА, а не по NUL-разделителям.
+nginx_test=(nginx -t)
+nginx_reload=(nginx -s reload)
+resolve_nginx_cmds() {
+    local conf
+    conf="$(docker compose "${COMPOSE_ARGS[@]}" exec -T nginx sh -c \
+        "tr '\\0' ' ' < /proc/1/cmdline" 2>/dev/null \
+        | sed -n 's/.*-c[[:space:]]\{1,\}\([^[:space:]]\{1,\}\).*/\1/p' | tr -d '\r')"
+    if [ -n "$conf" ]; then
+        say "  → конфиг запущенного мастера: $conf"
+        nginx_test=(nginx -t -c "$conf")
+        nginx_reload=(nginx -c "$conf" -s reload)
+    else
+        # Мастер запущен без -c (стоковый конфиг) — тогда проверять надо именно
+        # его, и отсутствие пути не ошибка. Отказываться от выкатки здесь не за
+        # что: это корректная конфигурация, просто не наша.
+        warn "  → у запущенного nginx нет -c: проверяю стоковый конфиг"
+        nginx_test=(nginx -t)
+        nginx_reload=(nginx -s reload)
+    fi
+}
+
 # Phased, idempotent, best-effort. set +e so a failure mid-rollback doesn't abort
 # the remaining recovery; trap - ERR so we don't recurse. Loud final status.
 rollback() {
@@ -137,10 +179,39 @@ rollback() {
     local rollback_failed=0
     err "‼️  deploy failed (rc=$rc) — rolling back"
 
-    # tracked static: git pull already updated bind-mounted frontend-html/css/data/public
-    # → restore to PREV_COMMIT (worktree only, not index), else old app + NEW static.
+    # [A-10] Отслеживаемые файлы возвращаются ЦЕЛИКОМ и вместе с HEAD.
+    #
+    # Раньше здесь стоял `git restore --worktree` по четырём каталогам. Он менял
+    # файлы, но оставлял указатель на новом коммите — и повторная выкатка того же
+    # SHA видела `Already up to date`, то есть не восстанавливала НИЧЕГО: новый
+    # образ поверх старой статики. Byte-verify это пропускал, потому что сверяет
+    # только JS-бандлы. `nginx-config/` в те четыре каталога не входил вовсе.
     if [ -n "$PREV_COMMIT" ]; then
-        git restore --source="$PREV_COMMIT" --worktree -- frontend-html css data public || rollback_failed=1
+        if [ "$WORKTREE_CLEAN" = 1 ]; then
+            git reset --hard "$PREV_COMMIT" || rollback_failed=1
+        else
+            # Дерево было грязным ДО выкатки — `reset --hard` затёр бы правки
+            # оператора. Возвращаем то же, что и прежде, но громко говорим, чем
+            # это состояние опасно: следующая выкатка того же SHA будет no-op.
+            warn "  ⚠️  дерево было грязным до выкатки — откатываю только статику"
+            git restore --source="$PREV_COMMIT" --worktree -- frontend-html css data public nginx-config || rollback_failed=1
+            err "  ⚠️  HEAD остался на новом коммите: повторная выкатка того же SHA НЕ восстановит файлы."
+            err "      Разберите локальные правки и сделайте git reset --hard $PREV_COMMIT вручную."
+        fi
+    fi
+    # [A-10] Периметр: если шаг 6b перезагрузил nginx новым конфигом, файлы уже
+    # вернулись выше — осталось заставить мастер перечитать их. Проверка перед
+    # перезагрузкой обязательна: reload с битым конфигом уронил бы живой
+    # периметр, а мы здесь и так в аварии.
+    if [ "$NGINX_RELOADED" = 1 ]; then
+        say "  → возвращаю конфиг периметра"
+        resolve_nginx_cmds
+        if docker compose "${COMPOSE_ARGS[@]}" exec -T nginx "${nginx_test[@]}"; then
+            docker compose "${COMPOSE_ARGS[@]}" exec -T nginx "${nginx_reload[@]}" || rollback_failed=1
+        else
+            err "  ‼️  ПРЕЖНИЙ конфиг nginx не проходит проверку — периметр оставлен как есть"
+            rollback_failed=1
+        fi
     fi
     # dist (gitignored — git restore can't touch it): restore via the staged rollback set.
     [ "$DIST_PUBLISHED" = 1 ] && { bash scripts/rebuild-frontend.sh restore || rollback_failed=1; }
@@ -220,6 +291,17 @@ say "Image source: $APP_IMAGE_SOURCE"
 # Step 1 — resolve target, acquire the image (preflight), then (optional) schema
 # migrations — all BEFORE the app switch.
 PREV_COMMIT="$(git rev-parse HEAD)"
+# [A-10] Снимается ДО слияния: после него «грязь» — это уже результат выкатки, а
+# не состояние площадки. Untracked-файлы не в счёт (на хостах их десятки, все
+# gitignored) — важны только правки ОТСЛЕЖИВАЕМЫХ файлов, потому что именно их
+# затёр бы `git reset --hard` при откате.
+if git diff --quiet HEAD --; then
+    WORKTREE_CLEAN=1
+else
+    WORKTREE_CLEAN=0
+    warn "⚠️  правки отслеживаемых файлов в рабочем дереве — откат будет ЧАСТИЧНЫМ:"
+    git diff --name-only HEAD -- | sed 's/^/     /'
+fi
 # DEPLOY_BRANCH pins the branch to fetch/resolve against — required for cron /
 # detached-HEAD auto-deploy (staging), where `git branch --show-current` is empty
 # or wrong. Defaults to the checked-out branch (current interactive-prod behaviour).
@@ -351,34 +433,12 @@ DIST_PUBLISHED=1
 # → abort (edge keeps the old, working config; ERR trap rolls the app back).
 if [ -n "$(git diff --name-only "$PREV_COMMIT" HEAD -- nginx-config/)" ]; then
     say "🔁 Step 6b: nginx config changed this release — test + reload edge"
-    # [A-13] `-c` обязателен: мастер nginx запущен с кастомным конфигом
-    # (nginx.production.conf / nginx.profk.conf / nginx.staging.conf — зависит
-    # от набора compose-файлов), а `nginx -t` без `-c` проверяет стоковый
-    # /etc/nginx/nginx.conf. Проверено на живом контейнере: стоковый файл
-    # валиден всегда, то есть шаг 6b не мог поймать битый конфиг в принципе.
-    #
-    # Путь берём из ЗАПУЩЕННОГО процесса, а не из карты окружений: так проверка
-    # не может разойтись с тем, что реально исполняется. nginx переписывает
-    # argv в один заголовок вида
-    #   `nginx: master process nginx -c /etc/nginx/custom/x.conf -g daemon off;`
-    # поэтому cmdline разбирается как строка, а не по NUL-разделителям.
-    nginx_conf="$(docker compose "${COMPOSE_ARGS[@]}" exec -T nginx sh -c \
-        "tr '\\0' ' ' < /proc/1/cmdline" 2>/dev/null \
-        | sed -n 's/.*-c[[:space:]]\\{1,\\}\\([^[:space:]]\\{1,\\}\\).*/\\1/p' | tr -d '\\r')"
-    if [ -n "$nginx_conf" ]; then
-        say "  → конфиг запущенного мастера: $nginx_conf"
-        nginx_test=(nginx -t -c "$nginx_conf")
-        nginx_reload=(nginx -c "$nginx_conf" -s reload)
-    else
-        # Мастер запущен без -c (стоковый конфиг) — тогда проверять надо именно
-        # его, и отсутствие пути не ошибка. Отказываться от выкатки здесь не за
-        # что: это корректная конфигурация, просто не наша.
-        warn "  → у запущенного nginx нет -c: проверяю стоковый конфиг"
-        nginx_test=(nginx -t)
-        nginx_reload=(nginx -s reload)
-    fi
+    resolve_nginx_cmds
     if docker compose "${COMPOSE_ARGS[@]}" exec -T nginx "${nginx_test[@]}"; then
         docker compose "${COMPOSE_ARGS[@]}" exec -T nginx "${nginx_reload[@]}"
+        # [A-10] Флаг ПОСЛЕ успешной перезагрузки: до неё периметр всё ещё несёт
+        # прежний конфиг, и возвращать в откате нечего.
+        NGINX_RELOADED=1
         ok "✅ edge nginx reloaded"
     else
         err "❌ new nginx config failed 'nginx -t' — NOT reloading (edge keeps old config)"; exit 1
