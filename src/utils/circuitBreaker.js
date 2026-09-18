@@ -1,3 +1,15 @@
+/**
+ * Circuit breaker для внешних зависимостей (сегодня — analyticsService).
+ *
+ * [A-25] Отсюда удалены четыре API без единого потребителя в проде:
+ * `isAvailable`, `setFailureThreshold`, `setResetTimeout` и фабричный
+ * `createExternalServiceBreaker`. Тесты на них были, потребителей — нет, и
+ * покрытие держало их живыми на вид. Если такой метод снова понадобится, он
+ * должен появляться ВМЕСТЕ с вызовом: правка порога на лету у breaker'а,
+ * который никто не настраивает, — это не расширяемость, а вторая копия
+ * конфигурации.
+ */
+
 const logger = require('./logger');
 // [AR-2] metrics — «листовой» модуль (prom-client + db + logger), поэтому
 // требовать его отсюда безопасно: цикла не возникает.
@@ -220,14 +232,6 @@ class CircuitBreaker {
         };
     }
 
-    // Проверка доступности
-    isAvailable() {
-        if (this.state === 'CLOSED') return true;
-        if (this.state === 'HALF_OPEN') return true;
-        if (this.state === 'OPEN' && Date.now() >= this.nextAttempt) return true;
-        return false;
-    }
-
     // Мониторинг состояния
     startMonitoring() {
         this.monitoringTimer = setInterval(() => {
@@ -256,18 +260,6 @@ class CircuitBreaker {
             this.monitoringTimer = null;
         }
     }
-
-    // Установка нового порога отказов
-    setFailureThreshold(threshold) {
-        this.failureThreshold = threshold;
-        logger.info(`${this.name}: Новый порог отказов: ${threshold}`);
-    }
-
-    // Установка нового timeout для сброса
-    setResetTimeout(timeout) {
-        this.resetTimeout = timeout;
-        logger.info(`${this.name}: Новый timeout для сброса: ${timeout}ms`);
-    }
 }
 
 // Фабрика для создания circuit breaker с предустановленными настройками
@@ -293,15 +285,6 @@ class CircuitBreakerFactory {
             resetTimeout: 60000, // 1 минута
             monitoringInterval: 20000, // 20 секунд
             ...options
-        });
-    }
-
-    static createExternalServiceBreaker(name = 'External Service') {
-        return new CircuitBreaker({
-            name: name,
-            failureThreshold: 2,
-            resetTimeout: 120000, // 2 минуты
-            monitoringInterval: 30000 // 30 секунд
         });
     }
 }
