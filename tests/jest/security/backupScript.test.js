@@ -24,9 +24,24 @@ describe('SEC-16 — backup-database.sh credential hygiene', () => {
         expect(content).not.toMatch(/DB_USER="postgres"/);
     });
 
+    // [A-21] Проверка описывает НАМЕРЕНИЕ, а не написание. Прежняя требовала
+    // буквально `DB_PASSWORD="${DB_PASSWORD:-`, и после того как скрипт стал
+    // обёрткой над database/backup-cron.sh (тот ждёт PGPASSWORD), она упала —
+    // хотя пароль как приходил из окружения, так и приходит. Проверка
+    // намеренно осталась строгой: сузить её до «где-то упомянут PGPASSWORD»
+    // значило бы потерять смысл SEC-16.
     test('reads DB user/password from the environment with safe defaults', () => {
         expect(content).toMatch(/DB_USER="\$\{DB_USER:-/);
-        expect(content).toMatch(/DB_PASSWORD="\$\{DB_PASSWORD:-/);
+        // Пароль берётся из окружения через подстановку с умолчанием —
+        // PGPASSWORD напрямую либо DB_PASSWORD как запасной источник.
+        expect(content).toMatch(/PGPASSWORD="\$\{PGPASSWORD:-\$\{DB_PASSWORD:-/);
+    });
+
+    test('[A-21] пароль не попадает в argv и не печатается', () => {
+        // Скрипт сам pg_dump больше не зовёт, но если однажды вернётся —
+        // пароль не должен уехать в командную строку или в echo.
+        expect(content).not.toMatch(/--password[= ]/);
+        expect(content).not.toMatch(/echo[^\n]*\$\{?(PG)?PASSWORD/);
     });
 
     test('passes the password to pg_dump via PGPASSWORD env (not argv)', () => {

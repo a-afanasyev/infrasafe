@@ -1,112 +1,84 @@
 #!/bin/bash
+#
+# Ручной бэкап базы InfraSafe — тонкая обёртка над database/backup-cron.sh.
+#
+# [A-21] Прежде этот скрипт искал контейнер САМ и делал это угадыванием:
+#
+#     docker ps --filter "ancestor=postgis/postgis:15-3.3" | head -n 1
+#     docker ps --filter "name=postgres"                   | head -n 1
+#
+# На машине с несколькими проектами второй фильтр матчит чужие базы. Проверено
+# на profk 17.09.2026 — там четыре контейнера с `postgres` в имени, и первым
+# идёт `uk-payment-postgres`, платёжная база другого проекта. Сегодня спасает
+# только то, что первый фильтр (по образу) пока однозначен; это везение, а не
+# устройство: достаточно сменить тег образа, и выбор уедет на запасную ветку.
+#
+# Теперь контейнер определяется ДЕТЕРМИНИРОВАННО — спросом у своего compose,
+# а не сканированием хоста. Сам дамп, сжатие, выгрузку и хранение делает
+# database/backup-cron.sh: логика была продублирована, и дубль уже разошёлся —
+# у cron-варианта есть `--clean --if-exists --no-owner --no-privileges`,
+# retention и выгрузка за пределы хоста, у ручного не было ничего из этого.
+#
+# Использование:
+#     ./backup-database.sh
+#     BACKUP_LOCAL_DIR=/tmp/backups ./backup-database.sh
+#
+set -Eeuo pipefail
 
-# Скрипт для создания бэкапа базы данных InfraSafe
-# Автоматически определяет имя контейнера и создает бэкап с временной меткой
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 
-# Цвета для вывода
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m' # No Color
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-echo -e "${YELLOW}🗄️  Создание бэкапа базы данных InfraSafe${NC}"
+echo -e "${YELLOW}🗄️  Бэкап базы данных InfraSafe${NC}"
 echo "================================================="
 
-# Параметры базы данных
-# SEC-16: креды не хардкодим — читаем из окружения (или из env-файла ниже).
-# Опционально подхватываем .env.prod / .env, если они есть рядом со скриптом.
+# SEC-16: креды не хардкодим — читаем из окружения или из env-файла рядом.
 for ENV_FILE in ".env.prod" ".env"; do
     if [ -f "$ENV_FILE" ]; then
         # shellcheck disable=SC1090
         set -a; . "./$ENV_FILE"; set +a
+        echo "  Переменные окружения: $ENV_FILE"
         break
     fi
 done
 
 DB_NAME="${DB_NAME:-infrasafe}"
 DB_USER="${DB_USER:-infrasafe_app}"
-# Пароль нужен только если pg_dump внутри контейнера не использует socket-trust.
-# Передаётся в pg_dump через PGPASSWORD (env), НИКОГДА не через argv.
-DB_PASSWORD="${DB_PASSWORD:-}"
+export DB_NAME DB_USER
+export PGPASSWORD="${PGPASSWORD:-${DB_PASSWORD:-}}"
 
-# Определяем имя контейнера PostgreSQL
-# Пробуем найти контейнер из unified compose
-CONTAINER_NAME=$(docker ps --filter "ancestor=postgis/postgis:15-3.3" --format "{{.Names}}" | head -n 1)
-
-# Если не нашли, пробуем найти по имени сервиса
-if [ -z "$CONTAINER_NAME" ]; then
-    CONTAINER_NAME=$(docker ps --filter "name=postgres" --format "{{.Names}}" | head -n 1)
-fi
-
-# Если все еще не нашли, пробуем через compose
-if [ -z "$CONTAINER_NAME" ]; then
-    # Проверяем, запущен ли unified compose
-    if docker compose -f docker-compose.unified.yml ps postgres 2>/dev/null | grep -q "running"; then
-        CONTAINER_NAME=$(docker compose -f docker-compose.unified.yml ps postgres | tail -n 1 | awk '{print $1}')
+# [A-21] Контейнер — у своего compose, а не у всего хоста. Оператор может
+# задать POSTGRES_CONTAINER явно; это единственный способ обойти определение.
+if [ -z "${POSTGRES_CONTAINER:-}" ]; then
+    COMPOSE_FILE="${BACKUP_COMPOSE_FILE:-docker-compose.unified.yml}"
+    if [ ! -f "$COMPOSE_FILE" ]; then
+        echo -e "${RED}❌ Не найден $COMPOSE_FILE — запускайте из корня репозитория${NC}" >&2
+        exit 1
     fi
-fi
-
-# Если контейнер не найден
-if [ -z "$CONTAINER_NAME" ]; then
-    echo -e "${RED}❌ Ошибка: Контейнер PostgreSQL не найден!${NC}"
-    echo "Убедитесь, что база данных запущена:"
-    echo "  docker compose -f docker-compose.unified.yml up -d postgres"
-    exit 1
-fi
-
-echo -e "${GREEN}✓ Найден контейнер: ${CONTAINER_NAME}${NC}"
-
-# Создаем директорию для бэкапов, если её нет
-BACKUP_DIR="./database/backups"
-mkdir -p "$BACKUP_DIR"
-
-# Генерируем имя файла с временной меткой
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-BACKUP_FILE="${BACKUP_DIR}/infrasafe_backup_${TIMESTAMP}.sql"
-BACKUP_FILE_COMPRESSED="${BACKUP_FILE}.gz"
-
-echo -e "${YELLOW}📦 Создание бэкапа...${NC}"
-
-# Создаем бэкап через pg_dump
-if docker exec -e PGPASSWORD="$DB_PASSWORD" "$CONTAINER_NAME" pg_dump -U "$DB_USER" -d "$DB_NAME" > "$BACKUP_FILE" 2>/dev/null; then
-    # Проверяем размер файла
-    FILE_SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
-    echo -e "${GREEN}✓ Бэкап создан успешно!${NC}"
-    echo -e "  Файл: ${BACKUP_FILE}"
-    echo -e "  Размер: ${FILE_SIZE}"
-    
-    # Сжимаем бэкап
-    echo -e "${YELLOW}🗜️  Сжатие бэкапа...${NC}"
-    if gzip "$BACKUP_FILE"; then
-        COMPRESSED_SIZE=$(du -h "$BACKUP_FILE_COMPRESSED" | cut -f1)
-        echo -e "${GREEN}✓ Бэкап сжат успешно!${NC}"
-        echo -e "  Файл: ${BACKUP_FILE_COMPRESSED}"
-        echo -e "  Размер: ${COMPRESSED_SIZE}"
-    else
-        echo -e "${YELLOW}⚠️  Не удалось сжать бэкап (gzip не установлен)${NC}"
-        echo -e "  Бэкап сохранен без сжатия: ${BACKUP_FILE}"
+    container_id="$(docker compose -f "$COMPOSE_FILE" ps -q postgres 2>/dev/null || true)"
+    if [ -z "$container_id" ]; then
+        echo -e "${RED}❌ Контейнер postgres проекта не запущен ($COMPOSE_FILE).${NC}" >&2
+        echo "   Поднимите стек либо задайте POSTGRES_CONTAINER явно." >&2
+        exit 1
     fi
-    
-    # Показываем информацию о бэкапе
+    POSTGRES_CONTAINER="$(docker inspect --format '{{.Name}}' "$container_id" | sed 's|^/||')"
+fi
+export POSTGRES_CONTAINER
+
+echo "  База:      $DB_NAME"
+echo "  Контейнер: $POSTGRES_CONTAINER"
+echo ""
+
+if bash "$SCRIPT_DIR/database/backup-cron.sh"; then
     echo ""
-    echo -e "${GREEN}📊 Информация о бэкапе:${NC}"
-    echo "  База данных: $DB_NAME"
-    echo "  Контейнер: $CONTAINER_NAME"
-    echo "  Время создания: $(date '+%Y-%m-%d %H:%M:%S')"
-    echo ""
-    echo -e "${GREEN}✅ Бэкап завершен успешно!${NC}"
-    
-    # Показываем последние 5 бэкапов
-    echo ""
-    echo -e "${YELLOW}📋 Последние бэкапы:${NC}"
-    ls -lh "$BACKUP_DIR" | tail -n 6 | awk '{print "  " $9 " (" $5 ")"}'
-    
+    echo -e "${GREEN}✅ Бэкап завершён успешно.${NC}"
+    BACKUP_DIR="${BACKUP_LOCAL_DIR:-/var/backups/infrasafe}"
+    if [ -d "$BACKUP_DIR" ]; then
+        echo -e "${YELLOW}📋 Последние бэкапы (${BACKUP_DIR}):${NC}"
+        ls -lht "$BACKUP_DIR" 2>/dev/null | head -n 6 | awk 'NR>1 {print "  " $9 " (" $5 ")"}'
+    fi
 else
-    echo -e "${RED}❌ Ошибка при создании бэкапа!${NC}"
-    echo "Проверьте:"
-    echo "  1. Контейнер запущен и доступен"
-    echo "  2. Параметры подключения к БД правильные"
-    echo "  3. У вас есть права на запись в директорию $BACKUP_DIR"
+    echo -e "${RED}❌ Бэкап не создан — смотрите сообщение выше.${NC}" >&2
     exit 1
 fi
-
