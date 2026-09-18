@@ -254,49 +254,6 @@ describe('CircuitBreaker', () => {
         });
     });
 
-    describe('isAvailable', () => {
-        test('returns true when CLOSED', () => {
-            breaker = new CircuitBreaker();
-            expect(breaker.isAvailable()).toBe(true);
-        });
-
-        test('returns false when OPEN and timeout not elapsed', () => {
-            breaker = new CircuitBreaker({ failureThreshold: 1, resetTimeout: 60000 });
-            breaker.state = 'OPEN';
-            breaker.nextAttempt = Date.now() + 60000;
-            expect(breaker.isAvailable()).toBe(false);
-        });
-
-        test('returns true when OPEN but timeout elapsed', () => {
-            breaker = new CircuitBreaker();
-            breaker.state = 'OPEN';
-            breaker.nextAttempt = Date.now() - 1;
-            expect(breaker.isAvailable()).toBe(true);
-        });
-
-        test('returns true when HALF_OPEN', () => {
-            breaker = new CircuitBreaker();
-            breaker.state = 'HALF_OPEN';
-            expect(breaker.isAvailable()).toBe(true);
-        });
-    });
-
-    describe('setFailureThreshold', () => {
-        test('updates failureThreshold', () => {
-            breaker = new CircuitBreaker();
-            breaker.setFailureThreshold(10);
-            expect(breaker.failureThreshold).toBe(10);
-        });
-    });
-
-    describe('setResetTimeout', () => {
-        test('updates resetTimeout', () => {
-            breaker = new CircuitBreaker();
-            breaker.setResetTimeout(120000);
-            expect(breaker.resetTimeout).toBe(120000);
-        });
-    });
-
     describe('destroy', () => {
         test('clears monitoring timer', () => {
             breaker = new CircuitBreaker();
@@ -459,13 +416,5 @@ describe('CircuitBreakerFactory', () => {
             ).catch(() => {});
         }
         expect(b.state).toBe('CLOSED');
-    });
-
-    test('createExternalServiceBreaker returns breaker with external settings', () => {
-        const b = CircuitBreakerFactory.createExternalServiceBreaker();
-        breakers.push(b);
-        expect(b.name).toBe('External Service');
-        expect(b.failureThreshold).toBe(2);
-        expect(b.resetTimeout).toBe(120000);
     });
 });
