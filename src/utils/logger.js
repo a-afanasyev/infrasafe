@@ -2,6 +2,8 @@ const winston = require('winston');
 const path = require('path');
 require('winston-daily-rotate-file');
 const { redactLogInfo } = require('./logRedaction');
+const envFlags = require('./envFlags');
+const { buildConsoleFormat } = require('./loggerConsoleFormat');
 
 // [M-17] Вычищаем секреты из метаданных ПЕРЕД сериализацией. Ставится после
 // errors({stack:true}) — стек к этому моменту уже развёрнут — и перед json().
@@ -24,20 +26,16 @@ const logsDir = path.join(__dirname, '../../logs');
 // LOG_CONSOLE_ONLY=true (or 1) to emit to stdout only. Default (unset/anything
 // else) keeps the console + 2 rotating files, so existing single-host prod
 // behaviour is unchanged.
-const consoleOnly = ['true', '1'].includes(
-    String(process.env.LOG_CONSOLE_ONLY ?? '').toLowerCase()
-);
+// [A-18] Через общий парсер булевых флагов — здесь был шестой самодельный.
+const consoleOnly = envFlags.isEnabled('LOG_CONSOLE_ONLY');
 
 // Запись в консоль
 const transports = [
-    new winston.transports.Console({
-        format: winston.format.combine(
-            winston.format.colorize(),
-            winston.format.printf(
-                info => `${info.timestamp} ${info.level}: ${info.message}`
-            )
-        )
-    })
+    // [A-19] Формат живёт в отдельном модуле и проверяется напрямую — см.
+    // loggerConsoleFormat.js. Прежде транспорт печатал только
+    // `timestamp level: message`, и при LOG_CONSOLE_ONLY=true метаданные
+    // исчезали совсем: файловых транспортов в этом режиме нет.
+    new winston.transports.Console({ format: buildConsoleFormat(consoleOnly) })
 ];
 
 if (!consoleOnly) {
