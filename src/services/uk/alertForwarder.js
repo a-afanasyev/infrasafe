@@ -28,6 +28,7 @@ const crypto = require('crypto');
 const AlertRequestMap = require('../../models/AlertRequestMap');
 const UkOutbox = require('../../models/UkOutbox');
 const logger = require('../../utils/logger');
+const envFlags = require('../../utils/envFlags');
 const alertEvents = require('../../events/alertEvents');
 
 const configProxy = require('./configProxy');
@@ -37,10 +38,11 @@ const webhookVerifier = require('./webhookVerifier');
 // When false, sendAlertToUK skips outbox.enqueue entirely (no event lost
 // — AlertRequestMap row stays at 'pending' for the next attempt). Default
 // false until UK Phase 2 lands + secret rotation completes.
-const _isWebhookSenderEnabled = () => {
-    const flag = (process.env.UK_USE_WEBHOOK_SENDER ?? 'false').toString().toLowerCase();
-    return flag === 'true' || flag === '1';
-};
+// [A-18] Через общий парсер. Здесь дефекта НЕ было — оба варианта ('true' и
+// '1') разбирались верно, — но это был пятый по счёту самодельный разбор одного
+// и того же вида настройки. Именно из такого размножения и вырос A-18: четыре
+// места из пяти разошлись, и разошлись молча.
+const _isWebhookSenderEnabled = () => envFlags.isEnabled('UK_USE_WEBHOOK_SENDER');
 
 // [UK contract 2026-06] Canonical urgency on the wire is a key, not Russian:
 //   low | medium | high | critical

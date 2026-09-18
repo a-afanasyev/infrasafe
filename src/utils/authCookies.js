@@ -15,6 +15,8 @@
 
 'use strict';
 
+const envFlags = require('./envFlags');
+
 const COOKIE_NAMES = Object.freeze({
     access: 'access_token',
     refresh: 'refresh_token',
@@ -50,7 +52,8 @@ const TEMP_TOKEN_MAX_AGE_MS = 5 * 60 * 1000;               // 5m
 // function would need an explicit `SECURE_COOKIES=false` escape hatch.
 function isCookieSecure() {
     if (process.env.NODE_ENV === 'production') return true;
-    if (process.env.SECURE_COOKIES === 'true') return true;
+    // [A-18] Через общий парсер: `=1` не включал Secure вне production.
+    if (envFlags.isEnabled('SECURE_COOKIES')) return true;
     return false;
 }
 
