@@ -262,6 +262,16 @@ if (require.main === module) {
                 logger.error('Alert verification drain worker failed to start:', e);
             }
 
+            // [A-03] Сверяющий проход по открытым алертам без заявки в УК.
+            // Закрывает окно между коммитом алерта и слушателем ALERT_CREATED:
+            // упавший между ними процесс оставлял аварию без тикета навсегда.
+            // Рубильник — UK_INTENT_RECONCILE_ENABLED=false.
+            try {
+                require('./services/uk/alertIntentReconciler').start();
+            } catch (e) {
+                logger.error('UK alert intent reconciler failed to start:', e);
+            }
+
             // [AR-21] Перевод молчащих контроллеров в offline. Логика
             // существовала с самого начала, но вызывалась ТОЛЬКО из
             // admin-эндпоинта, то есть руками. Пока телеметрии нет, дыра
@@ -301,6 +311,7 @@ const gracefulShutdown = async (signal, exitCode = 0) => {
     try { await require('./services/mvRefreshService').stop(); } catch (e) { logger.error('MV scheduler stop error:', e.message); }
     try { await require('./services/uk/ukOutboxService').stop(); } catch (e) { logger.error('UK outbox stop error:', e.message); }
     try { await require('./services/alertVerificationService').stop(); } catch (e) { logger.error('Alert verification stop error:', e.message); }
+    try { await require('./services/uk/alertIntentReconciler').stop(); } catch (e) { logger.error('UK intent reconciler stop error:', e.message); }
     try { await require('./services/controllerStatusScheduler').stop(); } catch (e) { logger.error('Controller status scheduler stop error:', e.message); }
 
     // [Sprint 4] Close Redis after all consumers (rate-limiter / cache /
