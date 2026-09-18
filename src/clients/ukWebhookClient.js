@@ -44,6 +44,7 @@
  */
 
 const crypto = require('crypto');
+const envFlags = require('../utils/envFlags');
 const axios = require('axios');
 
 const logger = require('../utils/logger');
@@ -65,7 +66,9 @@ class UKWebhookClient {
      * either value during the rotation window.
      */
     _getSecret() {
-        const useNext = String(process.env.UK_USE_NEXT_SECRET ?? '').toLowerCase() === 'true';
+        // [A-18] Через общий парсер: `=1` оставлял подпись на СТАРОМ ключе
+        // посреди ротации — молча и ровно тогда, когда это опаснее всего.
+        const useNext = envFlags.isEnabled('UK_USE_NEXT_SECRET');
         if (useNext && process.env.UK_WEBHOOK_SECRET_NEXT) {
             return process.env.UK_WEBHOOK_SECRET_NEXT;
         }

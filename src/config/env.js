@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const logger = require('../utils/logger');
+const envFlags = require('../utils/envFlags');
 // [AR-9] Грамматика значений живёт отдельно от политики «что обязательно».
 const envSchema = require('./envSchema');
 
@@ -163,9 +164,11 @@ function validateEnv() {
         // Outbound sender needs UK_WEBHOOK_SECRET + UK_API_URL only when the
         // sender is actually turned on (UK_USE_WEBHOOK_SENDER=true). Default
         // false → not required.
-        const senderEnabled =
-            String(process.env.UK_USE_WEBHOOK_SENDER ?? 'false').toLowerCase() === 'true' ||
-            process.env.UK_USE_WEBHOOK_SENDER === '1';
+        // [A-18] Через общий парсер — тот же флаг читался здесь и в форвардере
+        // двумя разными выражениями. Дефекта не было, но расхождение между
+        // проверкой на старте и поведением в рантайме — ровно та форма отказа,
+        // которую A-18 и описывает.
+        const senderEnabled = envFlags.isEnabled('UK_USE_WEBHOOK_SENDER');
         if (senderEnabled) {
             const missingSender = [];
             if (!process.env.UK_WEBHOOK_SECRET) missingSender.push('UK_WEBHOOK_SECRET');

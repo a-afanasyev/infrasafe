@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const envFlags = require('../utils/envFlags');
 const metrics = require('../observability/metrics');   // [AR-2]
 const logger = require('../utils/logger');
 const { CircuitBreakerFactory } = require('../utils/circuitBreaker');
@@ -1281,8 +1282,9 @@ class InfrastructureAlertService {
             // lockstep, which is what was originally intended in the plan
             // (D9 in tingly-munching-badger.md).
             const isSystemInitiated = userId === null || userId === undefined;
-            const verificationEnabled = (process.env.ALERT_VERIFICATION_ENABLED || 'false')
-                .toString().toLowerCase() === 'true';
+            // [A-18] Через общий парсер — у этого флага была своя, четвёртая
+            // форма разбора.
+            const verificationEnabled = envFlags.isEnabled('ALERT_VERIFICATION_ENABLED');
             let useVerifyingState = false;
             let rule = null;
 

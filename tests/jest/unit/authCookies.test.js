@@ -96,9 +96,27 @@ describe('[P1-2] authCookies utility', () => {
             expect(opts.secure).toBe(true);
         });
 
-        test('SECURE_COOKIES values other than "true" leave secure off', () => {
+        // [A-18] Этот тест закреплял ДЕФЕКТ как правильное поведение: «'1' —
+        // не каноническая строка, Secure не включаем». Между тем валидатор
+        // окружения принимает `true|false|1|0`, то есть `SECURE_COOKIES=1`
+        // проходит проверку на старте и — по прежней логике — молча ничего не
+        // делает. Ровно та же форма, что у A-16 с TOTP-тестом: тест объяснял,
+        // почему дефект — это норма.
+        test('[A-18] SECURE_COOKIES=1 ВКЛЮЧАЕТ secure — валидатор принимает эту форму', () => {
             process.env.NODE_ENV = 'development';
-            process.env.SECURE_COOKIES = '1';   // not the canonical string
+            process.env.SECURE_COOKIES = '1';
+
+            setAuthCookies(res, { accessToken: 'A' });
+
+            const [, , opts] = res.cookie.mock.calls[0];
+            expect(opts.secure).toBe(true);
+        });
+
+        test('[A-18] мусорное значение НЕ включает secure', () => {
+            // Верная половина прежнего намерения: опечатка не должна менять
+            // поведение безопасности.
+            process.env.NODE_ENV = 'development';
+            process.env.SECURE_COOKIES = 'ture';
 
             setAuthCookies(res, { accessToken: 'A' });
 

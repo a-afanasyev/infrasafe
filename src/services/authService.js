@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const envFlags = require('../utils/envFlags');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
@@ -832,7 +833,10 @@ class AuthService {
     // hasn't set the AUTH_BLACKLIST_FAIL_OPEN escape hatch, in which case
     // fail closed by throwing a typed error for the middleware to map to 503.
     _handleBlacklistUnavailable(error) {
-        const failOpenOverride = process.env.AUTH_BLACKLIST_FAIL_OPEN === 'true';
+        // [A-18] Через общий парсер: `=1` проходил валидацию и НЕ включал
+        // клапан — оператор считал его открытым, а вход продолжал
+        // закрываться всем подряд при отказе базы чёрного списка.
+        const failOpenOverride = envFlags.isEnabled('AUTH_BLACKLIST_FAIL_OPEN');
         if (process.env.NODE_ENV === 'production' && !failOpenOverride) {
             logger.error(`Blacklist DB check unavailable in production — failing CLOSED: ${error.message}`);
             const unavailableError = new Error('Blacklist check unavailable');
