@@ -119,27 +119,47 @@ describe('[FOUNTAIN] у управления три барьера, и ни од
 });
 
 describe('[FOUNTAIN] закрытое осталось закрытым', () => {
-    test('клиентский Authorization до устройства не доходит', () => {
-        // Иначе пользователь подставил бы свои учётные данные устройства и
-        // обошёл нашу проверку роли.
-        const upstream = fs.readFileSync(
-            path.resolve(__dirname, '../../../nginx-config/fountain-upstream.conf'), 'utf8'
-        );
-        expect(upstream).toMatch(/proxy_set_header Authorization ""/);
-    });
-
-    test('вызов Basic от устройства не доходит до браузера', () => {
-        // Иначе поверх страницы всплывёт системное окно ввода пароля, а внутри
-        // iframe браузер его заблокирует и оставит пустую рамку.
-        const upstream = fs.readFileSync(
-            path.resolve(__dirname, '../../../nginx-config/fountain-upstream.conf'), 'utf8'
-        );
-        expect(upstream).toMatch(/proxy_hide_header WWW-Authenticate/);
-    });
-
     test('OTA и штатные ветки ESPHome не опубликованы', () => {
         for (const closed of ['/update', '/switch/', '/button/', '/light/']) {
             expect([closed, CONF.includes(`location = /fountain${closed}`)]).toEqual([closed, false]);
+        }
+    });
+});
+
+describe('[FOUNTAIN] замок поддомена и замок основного хоста не перепутаны', () => {
+    // Это была реальная ошибка, пойманная до выкатки: подстановка учётных
+    // данных устройства лежала в ОБЩЕМ файле проксирования, который подключает
+    // и поддоменный vhost — а у того нет auth_request. Выкатка сделала бы
+    // fountain.infrasafe.uz доступным вообще без авторизации: единственный
+    // замок там на устройстве, и сервер сам бы его открывал.
+    const GATEWAY = fs.readFileSync(
+        path.resolve(__dirname, '../../../nginx-config/fountain-gateway-auth.conf'), 'utf8'
+    );
+    const UPSTREAM = fs.readFileSync(
+        path.resolve(__dirname, '../../../nginx-config/fountain-upstream.conf'), 'utf8'
+    );
+
+    test('общий файл проксирования НЕ принимает решений об авторизации', () => {
+        expect(UPSTREAM).not.toMatch(/proxy_set_header Authorization/);
+        expect(UPSTREAM).not.toMatch(/fountain-auth\./);
+        expect(UPSTREAM).not.toMatch(/proxy_hide_header WWW-Authenticate/);
+    });
+
+    test('подстановка живёт отдельно и снимает клиентский заголовок', () => {
+        expect(GATEWAY).toMatch(/proxy_set_header Authorization ""/);
+        expect(GATEWAY).toMatch(/include .*fountain-auth\.\*\.conf/);
+        expect(GATEWAY).toMatch(/proxy_hide_header WWW-Authenticate/);
+    });
+
+    test('подстановка подключается ТОЛЬКО там, где есть auth_request', () => {
+        // Каждый include шлюза обязан быть в локации, где доступ уже решён
+        // нашей авторизацией. Иначе сервер откроет устройство кому угодно.
+        const blocks = CONF.split(/location /).slice(1);
+        for (const b of blocks) {
+            if (!b.includes('fountain-gateway-auth.conf')) continue;
+            const head = b.split('\n')[0].trim();
+            expect([head, /auth_request \/__fountain_gate_(read|admin)/.test(b)
+                || /include .*fountain-control\.conf/.test(b)]).toEqual([head, true]);
         }
     });
 });
