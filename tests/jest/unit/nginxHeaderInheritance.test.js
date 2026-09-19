@@ -69,10 +69,12 @@ const snippetHeaders = Object.fromEntries(
 const ALLOWED_VHOSTS = Object.freeze({
     'fountain.infrasafe.uz': {
         omit: ['Content-Security-Policy'],
-        why: 'панель фонтана — самостоятельный HTML со встроенным скриптом; строгая CSP требует его '
-            + 'SHA-256, а посчитать хеш можно только по реально полученной странице, то есть после '
-            + 'поднятия туннеля. Временная «unsafe-inline» была бы хуже отсутствия: такие послабления '
-            + 'остаются навсегда. Снять исключение вместе с добавлением хеша (FOUNTAIN-CSP в бэклоге).',
+        why: 'этап 1 — политика стоит в режиме наблюдения (Content-Security-Policy-Report-Only) с '
+            + 'настоящими хешами. Боевой заголовок не выставлен намеренно: панель закрыта Digest, '
+            + 'учётных данных у нас нет, загрузить её самостоятельно мы не можем — то есть включили бы '
+            + 'политику, которую не в состоянии проверить. Хеши не покрывают атрибуты style="…" и '
+            + 'обработчики onclick="…", а они дают молча пустую страницу. Снять исключение после '
+            + 'чистой загрузки без нарушений (FOUNTAIN-CSP в бэклоге).',
     },
     'assets.profk.uz': {
         omit: ['X-XSS-Protection', 'Permissions-Policy'],
@@ -136,6 +138,19 @@ describe('[CO-11] ни один location не теряет заголовки б
             });
         });
     }
+
+    test('[FOUNTAIN-CSP] политика наблюдения несёт настоящие хеши, а не послабления', () => {
+        // Самый вероятный способ «починить» сломавшуюся панель — дописать
+        // 'unsafe-inline'. С хешем он игнорируется браузером, но в политике
+        // остаётся и переезжает в боевой заголовок на следующем шаге.
+        const prod = fs.readFileSync(path.join(ROOT, 'nginx-config/nginx.production.conf'), 'utf8');
+        const csp = /Content-Security-Policy-Report-Only\s+"([^"]+)"/.exec(prod);
+        expect(csp).not.toBeNull();
+        expect(csp[1]).toMatch(/script-src 'sha256-[A-Za-z0-9+/]+='/);
+        expect(csp[1]).toMatch(/style-src 'sha256-[A-Za-z0-9+/]+='/);
+        expect(csp[1]).not.toMatch(/unsafe-inline|unsafe-eval|unsafe-hashes/);
+        expect(csp[1]).toMatch(/report-uri /);
+    });
 
     test('у каждого исключения записана причина', () => {
         // Список исключений без причин через полгода неотличим от списка недочётов.
