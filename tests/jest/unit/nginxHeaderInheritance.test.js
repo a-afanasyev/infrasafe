@@ -67,6 +67,13 @@ const snippetHeaders = Object.fromEntries(
 
 /** Отступления на уровне ЦЕЛОГО вхоста — по `server_name`. */
 const ALLOWED_VHOSTS = Object.freeze({
+    'fountain.infrasafe.uz': {
+        omit: ['Content-Security-Policy'],
+        why: 'панель фонтана — самостоятельный HTML со встроенным скриптом; строгая CSP требует его '
+            + 'SHA-256, а посчитать хеш можно только по реально полученной странице, то есть после '
+            + 'поднятия туннеля. Временная «unsafe-inline» была бы хуже отсутствия: такие послабления '
+            + 'остаются навсегда. Снять исключение вместе с добавлением хеша (FOUNTAIN-CSP в бэклоге).',
+    },
     'assets.profk.uz': {
         omit: ['X-XSS-Protection', 'Permissions-Policy'],
         why: 'отдельный origin под чужую SPA asset-web. Permissions-Policy не ставим намеренно: она '
