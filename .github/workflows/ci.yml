@@ -99,20 +99,27 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Fail only on high/critical CVEs in production deps. Moderate is
-      # informational — noisy across the dep tree and not actionable per-PR.
+      # Порог — high/critical в боевых зависимостях; moderate по дереву шумит и
+      # не действует per-PR.
+      #
+      # Через scripts/audit-deps.sh, а не `npm audit` напрямую: 18.09.2026 на
+      # main эта ОБЯЗАТЕЛЬНАЯ проверка упала не из-за уязвимости, а из-за
+      # `400 Bad Request` на устаревающем quick-эндпоинте npm. Код возврата у
+      # обоих случаев один и тот же (1), поэтому скрипт принимает решение по
+      # СОДЕРЖИМОМУ отчёта: находку роняет сразу, недоступность реестра
+      # повторяет, а исчерпав попытки — падает своим кодом (2), чтобы причина
+      # читалась с первого взгляда.
       - name: Audit production deps
-        run: npm audit --omit=dev --audit-level=high
+        run: scripts/audit-deps.sh
       # [A-22] У генератора СВОЁ дерево зависимостей и свой рантайм-образ: шаг
       # выше его не видел вовсе. На момент правки там висели три moderate в
       # `qs` (через express и body-parser) — их не было видно ни в одном
       # прогоне CI. Порог тот же, что и для основного пакета, чтобы правила не
       # расходились между двумя деревьями одного репозитория.
       - name: Audit generator deps
-        working-directory: generator
         run: |
-          npm ci
-          npm audit --omit=dev --audit-level=high
+          npm ci --prefix generator
+          scripts/audit-deps.sh generator
 
   gitleaks:
     name: Secret scan (gitleaks)
