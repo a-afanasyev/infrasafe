@@ -195,22 +195,25 @@ describe('[A-14] образ публикуется только после об�
 // ни в одном прогоне: «CI зелёный» ничего не говорил про генератор.
 describe('[A-22] npm audit покрывает и дерево генератора', () => {
     const auditSteps = CI_WORKFLOW.jobs.audit.steps;
+    const runs = auditSteps.map((s) => s.run).filter((r) => typeof r === 'string');
 
-    test('есть отдельный шаг с рабочим каталогом generator', () => {
-        const step = auditSteps.find((s) => s['working-directory'] === 'generator');
-        expect(step).toBeDefined();
-        expect(step.run).toMatch(/npm ci/);
-        expect(step.run).toMatch(/npm audit/);
+    test('дерево генератора ставится и проверяется отдельно', () => {
+        const generatorStep = runs.find((r) => /audit-deps\.sh\s+generator/.test(r));
+        expect(generatorStep).toBeDefined();
+        // Установка своя: у генератора отдельный lock-файл, и аудит без неё
+        // смотрел бы на корневое дерево.
+        expect(generatorStep).toMatch(/npm ci --prefix generator/);
     });
 
-    test('порог тот же, что у основного пакета', () => {
-        // Расхождение порогов между двумя деревьями одного репозитория — это
-        // два разных правила, о которых никто не помнит.
-        const levels = auditSteps
-            .filter((s) => typeof s.run === 'string' && s.run.includes('npm audit'))
-            .map((s) => /--audit-level=(\w+)/.exec(s.run)?.[1]);
-        expect(levels.length).toBe(2);
-        expect(new Set(levels).size).toBe(1);
+    test('порог тот же, что у основного пакета — потому что он ОДИН', () => {
+        // Прежде тест сверял два `--audit-level=high` в двух шагах: правило
+        // существовало в двух копиях и держалось на том, что их не забудут
+        // синхронизировать. Теперь порог живёт в одном месте — в самом скрипте,
+        // — и расходиться нечему. Проверяем ровно это: оба дерева идут через
+        // него, а прямых вызовов `npm audit` в workflow не осталось.
+        const viaScript = runs.filter((r) => /audit-deps\.sh/.test(r));
+        expect(viaScript.length).toBe(2);
+        expect(runs.some((r) => /\bnpm audit\b/.test(r))).toBe(false);
     });
 });
 
