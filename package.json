@@ -100,7 +100,8 @@
     ],
     "collectCoverageFrom": [
       "src/**/*.js",
-      "!src/server.js"
+      "!src/server.js",
+      "public/utils/**/*.js"
     ],
     "coverageDirectory": "tests/reports/coverage",
     "coverageReporters": [
@@ -117,6 +118,36 @@
         "functions": 80,
         "lines": 80,
         "statements": 80
+      },
+      "public/utils/": {
+        "branches": 69,
+        "functions": 85,
+        "lines": 79,
+        "statements": 77
+      },
+      "public/utils/brandTokens.js": {
+        "branches": 0,
+        "functions": 0,
+        "lines": 0,
+        "statements": 0
+      },
+      "public/utils/powerUtils.js": {
+        "branches": 56,
+        "functions": 80,
+        "lines": 77,
+        "statements": 74
+      },
+      "public/utils/safeJsonParser.js": {
+        "branches": 57,
+        "functions": 75,
+        "lines": 59,
+        "statements": 60
+      },
+      "public/utils/ukRulesValidation.js": {
+        "branches": 42,
+        "functions": 100,
+        "lines": 60,
+        "statements": 57
       }
     }
   }
