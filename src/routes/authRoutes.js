@@ -1,6 +1,5 @@
 const express = require('express');
 const authController = require('../controllers/authController');
-const authGateController = require('../controllers/authGateController');
 const { authenticateRefresh, authenticateTempToken, isAdmin } = require('../middleware/auth');
 // [L-1] Раздельные бакеты: login / refresh / 2FA / disable-2fa — см. rateLimiter.js
 const { authLimiter, refreshLimiter, twoFaLimiter, disable2faLimiter, registerLimiter, passwordChangeLimiter } = require('../middleware/rateLimiter');
@@ -184,16 +183,6 @@ router.post('/register', registerLimiter.middleware(), isAdmin, authController.r
  *         description: Пользователь не найден
  */
 router.get('/profile', authController.getProfile);
-
-// [FOUNTAIN] Сторожа для `auth_request` на периметре. Оба закрыты
-// default-deny (в PUBLIC_ROUTES их нет), поэтому анонимный запрос до
-// обработчика не доходит вовсе — сторож отвечает только «этот вошедший
-// достаточно прав» или «нет».
-//
-// Два круга не совпадают намеренно: показания панели фонтана может смотреть
-// любой вошедший, переключать оборудование — только администратор.
-router.get('/gate', authGateController.gate);
-router.get('/gate/admin', authGateController.adminGate);
 
 /**
  * @swagger

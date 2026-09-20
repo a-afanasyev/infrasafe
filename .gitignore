@@ -157,10 +157,3 @@ trash/
 # Флаг режима обслуживания ProFK (ставится profk-maintenance-on.sh).
 # Состояние площадки — не код, в репозиторий не попадает.
 frontend-html/.maintenance
-
-# [FOUNTAIN] Подстановка Basic-авторизации к контроллеру — генерируется
-# scripts/fountain-inject-auth.sh из файла учётных данных на хосте. В
-# репозитории ей не место: внутри обратимо закодированный пароль устройства.
-# Отдельная причина держать её в .gitignore: untracked-файл в nginx-config/
-# однажды уже заблокировал `git merge --ff-only` на боевом хосте.
-nginx-config/fountain-auth.*.conf
