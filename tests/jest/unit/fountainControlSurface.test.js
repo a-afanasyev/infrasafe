@@ -1,195 +1,96 @@
 'use strict';
 
 /**
- * [FOUNTAIN] Поверхность управления фонтаном — ровно та, что согласована.
+ * [FOUNTAIN] Фонтан снят с публикации — и обязан остаться снятым.
  *
- * Управление включает физическое оборудование, поэтому список путей — это не
- * настройка, а граница. Разработчик прислал её поимённо и отдельно оговорил:
- * подстановки не нужны. Подстановка здесь опасна не тем, что широка сегодня, а
- * тем, что молча расширится завтра: в прошивке появится новое реле, и оно
- * окажется доступно снаружи без единой правки конфига и без обсуждения.
+ * 20.09.2026 решением владельца обе внешние поверхности убраны: поддомен
+ * fountain.infrasafe.uz и путь /fountain/ на основном хосте вместе с
+ * одиннадцатью управляющими путями. Наружу фонтан будет показан состоянием на
+ * карте через MQTT, а не проксированием чужой веб-страницы.
  *
- * Тест сверяет три вещи, каждая из которых ломается независимо:
- *   1. открыт ровно согласованный набор путей — ни больше, ни меньше;
- *   2. у каждой управляющей локации есть ВСЕ три барьера (роль, Origin,
- *      признак панели) — общий include физически не даёт им разойтись, но
- *      подключить его забыть можно;
- *   3. закрытое остаётся закрытым: OTA и штатные ветки ESPHome.
+ * Раньше этот файл сторожил ОБРАТНОЕ: что открыт ровно согласованный набор
+ * путей и что у каждого есть все три барьера. Инвариант перевернулся, и
+ * перевернулся сторож — но не исчез, потому что вернуть поверхность легко:
+ * это несколько строк конфига и одна перезагрузка. `nginx -t` такой возврат
+ * пропустит, а снаружи он означает путь к физическому оборудованию.
+ *
+ * Что здесь проверяется:
+ *   1. ни одна локация не проксирует к контроллеру;
+ *   2. внутренних сторожей auth_request для фонтана не осталось;
+ *   3. бывшие адреса отвечают 410, а не проваливаются в раздачу статики;
+ *   4. имя поддомена сохранено там, где оно нужно сертификату, — и только там.
  */
 
 const fs = require('fs');
 const path = require('path');
+const { tlsVhosts, topLevelLocations, stripComments } = require('../helpers/nginxConfig');
 
 const CONF = fs.readFileSync(
     path.resolve(__dirname, '../../../nginx-config/nginx.production.conf'), 'utf8'
 );
-const CONTROL_INCLUDE = fs.readFileSync(
-    path.resolve(__dirname, '../../../nginx-config/fountain-control.conf'), 'utf8'
-);
 
-/** Согласовано письмом разработчика 20.09.2026 (тестовый режим стенда). */
-const RELAYS = ['jet_1', 'jet_2', 'circulation_1', 'circulation_2'];
-const CONTROL_PATHS = [
-    ...RELAYS.flatMap((r) => [`/fountain/control/${r}/start`, `/fountain/control/${r}/stop`]),
-    '/fountain/control/stop_all',
+/** Снипеты проксирования к контроллеру: их подключение = открытая поверхность. */
+const FOUNTAIN_SNIPPETS = [
+    'fountain-upstream.conf',
+    'fountain-gateway-auth.conf',
+    'fountain-control.conf',
 ];
-const READ_PATHS = ['/fountain/', '/fountain/events'];
 
-/** Тело локации `location = <path> { … }` из конфига. */
-function locationBody(conf, exactPath) {
-    const marker = `location = ${exactPath} {`;
-    const start = conf.indexOf(marker);
-    if (start === -1) return null;
-    let depth = 0;
-    for (let i = start + marker.length - 1; i < conf.length; i++) {
-        if (conf[i] === '{') depth++;
-        else if (conf[i] === '}') {
-            depth--;
-            if (depth === 0) return conf.slice(start, i + 1);
+describe('[FOUNTAIN] к контроллеру из периметра пути нет', () => {
+    test('ни один вхост не подключает снипеты фонтана', () => {
+        const offenders = [];
+        for (const vhost of tlsVhosts(CONF)) {
+            for (const snippet of FOUNTAIN_SNIPPETS) {
+                if (vhost.body.includes(snippet)) offenders.push(`${vhost.name} → ${snippet}`);
+            }
         }
-    }
-    return null;
-}
-
-describe('[FOUNTAIN] открыт ровно согласованный набор', () => {
-    test.each(READ_PATHS)('%s открыт на чтение', (p) => {
-        const body = locationBody(CONF, p);
-        expect([p, body !== null]).toEqual([p, true]);
-        expect(body).toMatch(/limit_except GET/);
-        expect(body).toMatch(/auth_request \/__fountain_gate_read/);
-    });
-
-    test.each(CONTROL_PATHS)('%s открыт на POST и только админу', (p) => {
-        const body = locationBody(CONF, p);
-        expect([p, body !== null]).toEqual([p, true]);
-        expect(body).toMatch(/limit_except POST/);
-        expect(body).toMatch(/include .*fountain-control\.conf/);
-    });
-
-    test('лишних управляющих путей нет', () => {
-        // Перечисление в конфиге обязано совпадать с согласованным списком.
-        // Появление двенадцатого пути — повод для разговора, а не для молчания.
-        const found = [...CONF.matchAll(/location = (\/fountain\/control\/[^\s]+) \{/g)]
-            .map((m) => m[1])
-            .sort();
-        const expected = [...CONTROL_PATHS, '/fountain/control/capabilities'].sort();
-        expect(found).toEqual(expected);
-    });
-
-    test('подстановок в путях фонтана нет', () => {
-        // Ни regex-локаций, ни префиксных `^~` под /fountain/control/.
-        expect(CONF).not.toMatch(/location\s+~\s*\^?\/fountain/);
-        expect(CONF).not.toMatch(/location\s+\^~\s*\/fountain\/control/);
-    });
-});
-
-describe('[FOUNTAIN] у управления три барьера, и ни один не потерян', () => {
-    test('общая часть требует роль, Origin и признак панели', () => {
-        expect(CONTROL_INCLUDE).toMatch(/auth_request \/__fountain_gate_admin/);
-        expect(CONTROL_INCLUDE).toMatch(/\$http_origin != "https:\/\/infrasafe\.uz"/);
-        expect(CONTROL_INCLUDE).toMatch(/\$http_x_fountain_control != "1"/);
-    });
-
-    test('общая часть НЕ ставит add_header', () => {
-        // [CO-11] Любой add_header внутри location обнуляет весь серверный
-        // набор заголовков безопасности. Одна строка про кеш стоила бы шести
-        // про защиту, причём молча.
-        const directives = CONTROL_INCLUDE
-            .split('\n')
-            .filter((l) => /^\s*add_header\s/.test(l));
-        expect(directives).toEqual([]);
-    });
-
-    test('каждая управляющая локация подключает общую часть', () => {
-        // Барьеры живут в одном файле именно ради этого: разойтись они не
-        // могут, но забыть подключить — можно.
-        for (const p of [...CONTROL_PATHS, '/fountain/control/capabilities']) {
-            const body = locationBody(CONF, p);
-            expect([p, /include .*fountain-control\.conf/.test(body)]).toEqual([p, true]);
-        }
-    });
-
-    test('команды не повторяются автоматически при отказе апстрима', () => {
-        // Повтор POST — это вторая команда реле. Требование разработчика.
-        const upstream = fs.readFileSync(
-            path.resolve(__dirname, '../../../nginx-config/fountain-upstream.conf'), 'utf8'
-        );
-        expect(upstream).toMatch(/proxy_next_upstream off/);
-    });
-});
-
-describe('[FOUNTAIN] закрытое осталось закрытым', () => {
-    test('OTA и штатные ветки ESPHome не опубликованы', () => {
-        for (const closed of ['/update', '/switch/', '/button/', '/light/']) {
-            expect([closed, CONF.includes(`location = /fountain${closed}`)]).toEqual([closed, false]);
-        }
-    });
-});
-
-describe('[FOUNTAIN] замок поддомена и замок основного хоста не перепутаны', () => {
-    // Это была реальная ошибка, пойманная до выкатки: подстановка учётных
-    // данных устройства лежала в ОБЩЕМ файле проксирования, который подключает
-    // и поддоменный vhost — а у того нет auth_request. Выкатка сделала бы
-    // fountain.infrasafe.uz доступным вообще без авторизации: единственный
-    // замок там на устройстве, и сервер сам бы его открывал.
-    const GATEWAY = fs.readFileSync(
-        path.resolve(__dirname, '../../../nginx-config/fountain-gateway-auth.conf'), 'utf8'
-    );
-    const UPSTREAM = fs.readFileSync(
-        path.resolve(__dirname, '../../../nginx-config/fountain-upstream.conf'), 'utf8'
-    );
-
-    test('общий файл проксирования НЕ принимает решений об авторизации', () => {
-        expect(UPSTREAM).not.toMatch(/proxy_set_header Authorization/);
-        expect(UPSTREAM).not.toMatch(/fountain-auth\./);
-        expect(UPSTREAM).not.toMatch(/proxy_hide_header WWW-Authenticate/);
-    });
-
-    test('подстановка живёт отдельно и снимает клиентский заголовок', () => {
-        expect(GATEWAY).toMatch(/proxy_set_header Authorization ""/);
-        expect(GATEWAY).toMatch(/include .*fountain-auth\.\*\.conf/);
-        expect(GATEWAY).toMatch(/proxy_hide_header WWW-Authenticate/);
-    });
-
-    test('подстановка подключается ТОЛЬКО там, где есть auth_request', () => {
-        // Каждый include шлюза обязан быть в локации, где доступ уже решён
-        // нашей авторизацией. Иначе сервер откроет устройство кому угодно.
-        const blocks = CONF.split(/location /).slice(1);
-        for (const b of blocks) {
-            if (!b.includes('fountain-gateway-auth.conf')) continue;
-            const head = b.split('\n')[0].trim();
-            expect([head, /auth_request \/__fountain_gate_(read|admin)/.test(b)
-                || /include .*fountain-control\.conf/.test(b)]).toEqual([head, true]);
-        }
-    });
-});
-
-describe('[FOUNTAIN] у каждой проксирующей локации есть куда проксировать', () => {
-    test('include общего файла без proxy_pass — это 404, а не ошибка конфига', () => {
-        // Реальная регрессия: `proxy_pass` жил в общем файле проксирования, и
-        // переписывание файла его унесло. На основном хосте директива была
-        // прописана явно, на поддомене — нет, и запросы ушли в файловую
-        // систему: 404 вместо панели. `nginx -t` такое пропускает — конфиг
-        // синтаксически верен, просто локация раздаёт файлы.
-        const blocks = CONF.split(/\n {8}location /).slice(1);
-        const offenders = blocks
-            .filter((b) => b.includes('fountain-upstream.conf'))
-            .filter((b) => !/proxy_pass\s+http:\/\//.test(b.split('\n        }')[0]))
-            .map((b) => b.split('\n')[0].trim());
         expect(offenders).toEqual([]);
     });
+
+    test('апстрим фонтана нигде не адресуется', () => {
+        // Переменная объявлялась в снипете, но проксировать можно и напрямую
+        // по адресу в туннеле — эту форму регулярка выше не ловит.
+        const source = stripComments(CONF);
+        expect(source).not.toMatch(/\$fountain_upstream/);
+        expect(source).not.toMatch(/10\.13\.13\.12/);
+    });
+
+    test('внутренних сторожей фонтана не осталось', () => {
+        // Сторожа были `internal` и снаружи недостижимы, но их наличие
+        // означало бы, что рядом живёт локация, ради которой они заведены.
+        const source = stripComments(CONF);
+        expect(source).not.toMatch(/__fountain_gate/);
+        expect(source).not.toMatch(/fountain_audit/);
+    });
+
+    test('управляющих путей нет ни одного', () => {
+        const source = stripComments(CONF);
+        expect([...source.matchAll(/location[^{]*\/fountain\/control/g)].map((m) => m[0])).toEqual([]);
+    });
 });
 
-describe('[FOUNTAIN] поддомен запаркован и никуда не проксирует', () => {
-    // Публикация панели отдельным поддоменом отменена 20.09.2026: состояние
-    // фонтана пойдёт на карту через MQTT. Поддомен был единственным местом, где
-    // доступ решался паролем УСТРОЙСТВА, а не нашей авторизацией.
-    //
-    // Сторож нужен потому, что вернуть локации обратно — это три строки и одна
-    // перезагрузка, а заметить возврат нечем: `nginx -t` будет доволен, и
-    // наружу снова откроется путь к контроллеру мимо нашей проверки прав.
-    const { tlsVhosts } = require('../helpers/nginxConfig');
+describe('[FOUNTAIN] бывшие адреса отвечают 410', () => {
+    const main = tlsVhosts(CONF).find((v) => v.name === 'infrasafe.uz');
 
+    test('основной вхост найден', () => {
+        expect(main).toBeDefined();
+    });
+
+    test.each(['= /fountain', '^~ /fountain/'])('location %s → 410', (selector) => {
+        const loc = topLevelLocations(main.body).find((l) => l.name === selector);
+        expect([selector, loc !== undefined]).toEqual([selector, true]);
+        expect(loc.body).toMatch(/return 410;/);
+    });
+
+    test('410, а не проваливание в раздачу статики', () => {
+        // Без явной локации `/fountain/` попал бы в `location /` с try_files и
+        // ответил 200 на index.html — то есть адрес выглядел бы рабочим.
+        const loc = topLevelLocations(main.body).find((l) => l.name === '^~ /fountain/');
+        expect(loc.body).not.toMatch(/try_files|proxy_pass|root\s/);
+    });
+});
+
+describe('[FOUNTAIN] поддомен запаркован', () => {
     const vhost = tlsVhosts(CONF).find((v) => v.name === 'fountain.infrasafe.uz');
 
     test('вхост существует — имя остаётся в сертификате, отвечать оно обязано', () => {
@@ -198,11 +99,10 @@ describe('[FOUNTAIN] поддомен запаркован и никуда не 
         expect(vhost).toBeDefined();
     });
 
-    test('ни proxy_pass, ни апстрима фонтана', () => {
-        expect(vhost.body).not.toMatch(/proxy_pass/);
-        expect(vhost.body).not.toMatch(/fountain-upstream\.conf/);
-        expect(vhost.body).not.toMatch(/fountain-gateway-auth\.conf/);
-        expect(vhost.body).not.toMatch(/fountain-control\.conf/);
+    test('единственная локация отдаёт 410', () => {
+        const locations = topLevelLocations(vhost.body);
+        expect(locations.map((l) => l.name)).toEqual(['/']);
+        expect(locations[0].body).toMatch(/return 410;/);
     });
 
     test('имя по-прежнему обслуживается ACME-вхостом на :80', () => {
@@ -212,7 +112,6 @@ describe('[FOUNTAIN] поддомен запаркован и никуда не 
         // Искать имя по всему файлу здесь НЕЛЬЗЯ: оно есть и в запаркованном
         // 443-вхосте выше, то есть проверка проходила бы, даже если из
         // ACME-блока имя удалили. Сужаем до блока, который слушает :80.
-        const { stripComments } = require('../helpers/nginxConfig');
         const source = stripComments(CONF);
         const acmeNames = [...source.matchAll(/\bserver\s*\{([\s\S]*?)\n {4}\}/g)]
             .map((m) => m[1])
