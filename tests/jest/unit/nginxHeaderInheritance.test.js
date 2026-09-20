@@ -69,12 +69,10 @@ const snippetHeaders = Object.fromEntries(
 const ALLOWED_VHOSTS = Object.freeze({
     'fountain.infrasafe.uz': {
         omit: ['Content-Security-Policy'],
-        why: 'этап 1 — политика стоит в режиме наблюдения (Content-Security-Policy-Report-Only) с '
-            + 'настоящими хешами. Боевой заголовок не выставлен намеренно: панель закрыта Digest, '
-            + 'учётных данных у нас нет, загрузить её самостоятельно мы не можем — то есть включили бы '
-            + 'политику, которую не в состоянии проверить. Хеши не покрывают атрибуты style="…" и '
-            + 'обработчики onclick="…", а они дают молча пустую страницу. Снять исключение после '
-            + 'чистой загрузки без нарушений (FOUNTAIN-CSP в бэклоге).',
+        why: 'вхост запаркован 20.09.2026: отвечает 404 на всё, проксирования нет, страниц не отдаёт. '
+            + 'CSP защищает содержимое документа — защищать здесь нечего. Остальные шесть заголовков '
+            + 'оставлены: они относятся к транспорту и к самому имени, а не к странице. Панель живёт '
+            + 'на основном хосте, её боевую политику сторожит отдельный тест ниже.',
     },
     'assets.profk.uz': {
         omit: ['X-XSS-Protection', 'Permissions-Policy'],
@@ -139,17 +137,28 @@ describe('[CO-11] ни один location не теряет заголовки б
         });
     }
 
-    test('[FOUNTAIN-CSP] политика наблюдения несёт настоящие хеши, а не послабления', () => {
+    test('[FOUNTAIN-CSP] боевая политика панели несёт настоящие хеши, а не послабления', () => {
         // Самый вероятный способ «починить» сломавшуюся панель — дописать
-        // 'unsafe-inline'. С хешем он игнорируется браузером, но в политике
-        // остаётся и переезжает в боевой заголовок на следующем шаге.
+        // 'unsafe-inline'. С хешем он игнорируется браузером, но остаётся в
+        // политике и однажды переживёт хеш, который его нейтрализовал.
+        //
+        // Раньше этот сторож смотрел на Report-Only поддомена. Поддомен
+        // запаркован (20.09.2026), режим наблюдения своё отработал и дал новые
+        // хеши; панель живёт на основном хосте под БОЕВЫМ заголовком, и сторож
+        // переехал туда же. Ищем в локации, а не по файлу: политик в конфиге
+        // много, и совпадение с чужой означало бы проверку, которая не падает.
         const prod = fs.readFileSync(path.join(ROOT, 'nginx-config/nginx.production.conf'), 'utf8');
-        const csp = /Content-Security-Policy-Report-Only\s+"([^"]+)"/.exec(prod);
+        const start = prod.indexOf('location = /fountain/ {');
+        expect(start).toBeGreaterThan(-1);
+        const body = prod.slice(start, prod.indexOf('\n        }', start));
+
+        const csp = /\n\s*add_header Content-Security-Policy\s+"([^"]+)"/.exec(body);
         expect(csp).not.toBeNull();
         expect(csp[1]).toMatch(/script-src 'sha256-[A-Za-z0-9+/]+='/);
         expect(csp[1]).toMatch(/style-src 'sha256-[A-Za-z0-9+/]+='/);
         expect(csp[1]).not.toMatch(/unsafe-inline|unsafe-eval|unsafe-hashes/);
-        expect(csp[1]).toMatch(/report-uri /);
+        // Встраивание в наш интерфейс: рамка своя, чужой быть не должно.
+        expect(csp[1]).toMatch(/frame-ancestors 'self'/);
     });
 
     test('у каждого исключения записана причина', () => {
