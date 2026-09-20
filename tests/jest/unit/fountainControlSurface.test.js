@@ -179,3 +179,46 @@ describe('[FOUNTAIN] у каждой проксирующей локации е�
         expect(offenders).toEqual([]);
     });
 });
+
+describe('[FOUNTAIN] поддомен запаркован и никуда не проксирует', () => {
+    // Публикация панели отдельным поддоменом отменена 20.09.2026: состояние
+    // фонтана пойдёт на карту через MQTT. Поддомен был единственным местом, где
+    // доступ решался паролем УСТРОЙСТВА, а не нашей авторизацией.
+    //
+    // Сторож нужен потому, что вернуть локации обратно — это три строки и одна
+    // перезагрузка, а заметить возврат нечем: `nginx -t` будет доволен, и
+    // наружу снова откроется путь к контроллеру мимо нашей проверки прав.
+    const { tlsVhosts } = require('../helpers/nginxConfig');
+
+    const vhost = tlsVhosts(CONF).find((v) => v.name === 'fountain.infrasafe.uz');
+
+    test('вхост существует — имя остаётся в сертификате, отвечать оно обязано', () => {
+        // Удалить блок целиком тоже можно, но тогда имя провалится в catch-all,
+        // а в сертификате останется SAN, про который никто уже не вспомнит.
+        expect(vhost).toBeDefined();
+    });
+
+    test('ни proxy_pass, ни апстрима фонтана', () => {
+        expect(vhost.body).not.toMatch(/proxy_pass/);
+        expect(vhost.body).not.toMatch(/fountain-upstream\.conf/);
+        expect(vhost.body).not.toMatch(/fountain-gateway-auth\.conf/);
+        expect(vhost.body).not.toMatch(/fountain-control\.conf/);
+    });
+
+    test('имя по-прежнему обслуживается ACME-вхостом на :80', () => {
+        // Иначе обновление сертификата ОБЩЕГО имени начнёт падать на
+        // недостижимом домене и утянет за собой infrasafe.uz.
+        //
+        // Искать имя по всему файлу здесь НЕЛЬЗЯ: оно есть и в запаркованном
+        // 443-вхосте выше, то есть проверка проходила бы, даже если из
+        // ACME-блока имя удалили. Сужаем до блока, который слушает :80.
+        const { stripComments } = require('../helpers/nginxConfig');
+        const source = stripComments(CONF);
+        const acmeNames = [...source.matchAll(/\bserver\s*\{([\s\S]*?)\n {4}\}/g)]
+            .map((m) => m[1])
+            .filter((body) => /listen\s+80\b/.test(body))
+            .flatMap((body) => [...body.matchAll(/server_name\s+([^;]+);/g)].map((m) => m[1]));
+
+        expect(acmeNames.join(' ')).toContain('fountain.infrasafe.uz');
+    });
+});
