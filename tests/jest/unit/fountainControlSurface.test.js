@@ -171,7 +171,7 @@ describe('[FOUNTAIN] у каждой проксирующей локации е�
         // прописана явно, на поддомене — нет, и запросы ушли в файловую
         // систему: 404 вместо панели. `nginx -t` такое пропускает — конфиг
         // синтаксически верен, просто локация раздаёт файлы.
-        const blocks = CONF.split(/\n        location /).slice(1);
+        const blocks = CONF.split(/\n {8}location /).slice(1);
         const offenders = blocks
             .filter((b) => b.includes('fountain-upstream.conf'))
             .filter((b) => !/proxy_pass\s+http:\/\//.test(b.split('\n        }')[0]))
