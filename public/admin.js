@@ -2111,7 +2111,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     window.editWaterSource = async function(id) {
         try {
-            const response = await fetch(`/api/cold-water-sources/${id}`);
+            const response = await fetch(`/api/cold-water-sources/${encodeURIComponent(id)}`);
             if (!response.ok) throw new Error('Ошибка загрузки источника воды');
 
             const source = await response.json();
@@ -2141,7 +2141,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!confirm('Вы уверены, что хотите удалить этот источник воды?')) return;
 
         try {
-            const response = await fetch(`/api/cold-water-sources/${id}`, {
+            const response = await fetch(`/api/cold-water-sources/${encodeURIComponent(id)}`, {
                 method: 'DELETE',
                 headers: {
                 }
@@ -2164,7 +2164,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     window.editHeatSource = async function(id) {
         try {
-            const response = await fetch(`/api/heat-sources/${id}`);
+            const response = await fetch(`/api/heat-sources/${encodeURIComponent(id)}`);
             if (!response.ok) throw new Error('Ошибка загрузки источника тепла');
 
             const source = await response.json();
@@ -2194,7 +2194,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!confirm('Вы уверены, что хотите удалить этот источник тепла?')) return;
 
         try {
-            const response = await fetch(`/api/heat-sources/${id}`, {
+            const response = await fetch(`/api/heat-sources/${encodeURIComponent(id)}`, {
                 method: 'DELETE',
                 headers: {
                 }
@@ -2288,7 +2288,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!wCoord.valid) { showToast(wCoord.error, 'error'); return; }
 
         try {
-            const response = await fetch(`/api/cold-water-sources/${id}`, {
+            const response = await fetch(`/api/cold-water-sources/${encodeURIComponent(id)}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -2331,7 +2331,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!hCoord.valid) { showToast(hCoord.error, 'error'); return; }
 
         try {
-            const response = await fetch(`/api/heat-sources/${id}`, {
+            const response = await fetch(`/api/heat-sources/${encodeURIComponent(id)}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',

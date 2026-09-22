@@ -41,6 +41,7 @@ const stubController = () => new Proxy({}, {
 jest.mock('../../../src/controllers/transformerController', () => stubController());
 jest.mock('../../../src/controllers/lineController', () => stubController());
 jest.mock('../../../src/controllers/coldWaterSourceController', () => stubController());
+jest.mock('../../../src/controllers/heatSourceController', () => stubController());
 
 const request = require('supertest');
 const express = require('express');
@@ -203,6 +204,53 @@ describe('[AR-10] схема повторяет ограничения БД, а 
                 name: 'Скважина-1', address: 'ул. Тестовая, 1', source_type: 'well',
                 latitude: 41.31, longitude: 69.24,
             });
+
+            expect(res.status).toBe(201);
+            expect(mockCreated).toHaveBeenCalledTimes(1);
+        });
+
+        // [N-01] id задавать можно (модель принимает его из тела), но колонка —
+        // varchar(50): длиннее — 22001 из Postgres и 500 вместо 400.
+        test('свой строковый id в пределах колонки проходит', async () => {
+            const res = await post({
+                id: 'CW-NEW-01', name: 'Скважина-1', address: 'ул. Тестовая, 1',
+                source_type: 'well', latitude: 41.31, longitude: 69.24,
+            });
+
+            expect(res.status).toBe(201);
+            expect(mockCreated).toHaveBeenCalledTimes(1);
+        });
+
+        test('id длиннее 50 символов → 400 по полю id', async () => {
+            const res = await post({
+                id: 'x'.repeat(51), name: 'Скважина-1', address: 'ул. Тестовая, 1',
+                source_type: 'well', latitude: 41.31, longitude: 69.24,
+            });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error.details.some(d => d.field === 'id')).toBe(true);
+            expect(mockCreated).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('[N-01] POST /api/heat-sources', () => {
+        const post = (body) => request(app('/api/heat-sources', '../../../src/routes/heatSourceRoutes'))
+            .post('/api/heat-sources').send(body);
+        const valid = {
+            name: 'Котельная-1', address: 'ул. Тестовая, 2', source_type: 'boiler_house',
+            latitude: 41.31, longitude: 69.24,
+        };
+
+        test('id длиннее 50 символов → 400 по полю id', async () => {
+            const res = await post({ ...valid, id: 'x'.repeat(51) });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error.details.some(d => d.field === 'id')).toBe(true);
+            expect(mockCreated).not.toHaveBeenCalled();
+        });
+
+        test('без id проходит — его сгенерирует модель', async () => {
+            const res = await post(valid);
 
             expect(res.status).toBe(201);
             expect(mockCreated).toHaveBeenCalledTimes(1);

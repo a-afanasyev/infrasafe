@@ -64,11 +64,33 @@ const validateIntParam = (name = 'id') => [
 // Валидация ID параметра (`:id`). Kept as a named export for existing call sites.
 const validateIdParam = validateIntParam('id');
 
+// [N-01] Для таблиц со СТРОКОВЫМ ключом (`heat_sources`, `cold_water_sources`:
+// `varchar(50)`, сиды 'HS-FARABI-01', новые записи — randomUUID()). R2-16 навесил
+// на них validateIntParam, и админка получила 400 на любой источник. Здесь
+// проверяется только длина колонки: запрос параметризован, так что строковое
+// значение до Postgres доходит безопасно и 500 не даёт, а более строгий набор
+// символов мог бы запереть уже существующие записи — id можно было задать
+// в теле POST без ограничений до этой правки.
+const { STRING_ID_MAX_LENGTH } = require('./validatorFields');
+const validateStringIdParam = (name = 'id') => [
+    param(name)
+        .isLength({ min: 1, max: STRING_ID_MAX_LENGTH })
+        .withMessage(`Параметр ${name} должен быть строкой длиной от 1 до ${STRING_ID_MAX_LENGTH} символов`)
+        .bail()
+        // NUL Postgres в тексте не хранит — такой id не может существовать, а
+        // запрос с ним отвечал 500 (22021) вместо 400.
+        .not().contains('\u0000')
+        .withMessage(`Параметр ${name} содержит недопустимый символ`),
+    handleValidationErrors
+];
+
 module.exports = {
     validateBuildingCreate,
     validateControllerCreate,
     validateIdParam,
     validateIntParam,
+    validateStringIdParam,
+    STRING_ID_MAX_LENGTH,
     handleValidationErrors,
     isXSSFree,
     ...entityValidators

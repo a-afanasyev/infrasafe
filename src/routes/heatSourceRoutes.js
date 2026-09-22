@@ -3,7 +3,7 @@ const router = express.Router();
 const heatSourceController = require('../controllers/heatSourceController');
 const { applyCrudRateLimit } = require('../middleware/rateLimiter');
 const { isAdmin } = require('../middleware/auth');
-const { validateIntParam, validateHeatSourceCreate } = require('../middleware/validators');
+const { validateStringIdParam, validateHeatSourceCreate } = require('../middleware/validators');
 
 /**
  * @swagger
@@ -104,7 +104,7 @@ router.get('/', heatSourceController.getAll);
  *       404:
  *         description: Источник не найден
  */
-router.get('/:id', validateIntParam('id'), heatSourceController.getById);
+router.get('/:id', validateStringIdParam('id'), heatSourceController.getById);
 
 /**
  * @swagger
@@ -154,7 +154,7 @@ router.post('/', applyCrudRateLimit, isAdmin, validateHeatSourceCreate, heatSour
  *       404:
  *         description: Источник не найден
  */
-router.put('/:id', applyCrudRateLimit, isAdmin, validateIntParam('id'), heatSourceController.update);
+router.put('/:id', applyCrudRateLimit, isAdmin, validateStringIdParam('id'), heatSourceController.update);
 
 /**
  * @swagger
@@ -174,6 +174,6 @@ router.put('/:id', applyCrudRateLimit, isAdmin, validateIntParam('id'), heatSour
  *       404:
  *         description: Источник не найден
  */
-router.delete('/:id', applyCrudRateLimit, isAdmin, validateIntParam('id'), heatSourceController.remove);
+router.delete('/:id', applyCrudRateLimit, isAdmin, validateStringIdParam('id'), heatSourceController.remove);
 
 module.exports = router;

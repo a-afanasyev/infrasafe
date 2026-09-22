@@ -3,7 +3,7 @@ const router = express.Router();
 const coldWaterSourceController = require('../controllers/coldWaterSourceController');
 const { applyCrudRateLimit } = require('../middleware/rateLimiter');
 const { isAdmin } = require('../middleware/auth');
-const { validateIntParam, validateColdWaterSourceCreate } = require('../middleware/validators');
+const { validateStringIdParam, validateColdWaterSourceCreate } = require('../middleware/validators');
 
 /**
  * @swagger
@@ -104,7 +104,7 @@ router.get('/', coldWaterSourceController.getAll);
  *       404:
  *         description: Источник не найден
  */
-router.get('/:id', validateIntParam('id'), coldWaterSourceController.getById);
+router.get('/:id', validateStringIdParam('id'), coldWaterSourceController.getById);
 
 /**
  * @swagger
@@ -154,7 +154,7 @@ router.post('/', applyCrudRateLimit, isAdmin, validateColdWaterSourceCreate, col
  *       404:
  *         description: Источник не найден
  */
-router.put('/:id', applyCrudRateLimit, isAdmin, validateIntParam('id'), coldWaterSourceController.update);
+router.put('/:id', applyCrudRateLimit, isAdmin, validateStringIdParam('id'), coldWaterSourceController.update);
 
 /**
  * @swagger
@@ -174,6 +174,6 @@ router.put('/:id', applyCrudRateLimit, isAdmin, validateIntParam('id'), coldWate
  *       404:
  *         description: Источник не найден
  */
-router.delete('/:id', applyCrudRateLimit, isAdmin, validateIntParam('id'), coldWaterSourceController.remove);
+router.delete('/:id', applyCrudRateLimit, isAdmin, validateStringIdParam('id'), coldWaterSourceController.remove);
 
 module.exports = router;

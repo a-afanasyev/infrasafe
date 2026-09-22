@@ -20,6 +20,7 @@
 const {
     requiredText,
     optionalText,
+    optionalStringKey,
     requiredCoordinates,
     requiredPositiveNumber,
     requiredNonNegativeNumber,
@@ -85,6 +86,7 @@ const validateWaterLineCreate = [
 
 // У обоих источников `address`, `source_type`, `latitude`, `longitude` — NOT NULL.
 const validateColdWaterSourceCreate = [
+    ...optionalStringKey('id', 'Идентификатор'),
     ...requiredText('name', 'Название источника'),
     ...requiredText('address', 'Адрес'),
     ...requiredText('source_type', 'Тип источника'),
@@ -99,6 +101,7 @@ const validateColdWaterSourceCreate = [
 ];
 
 const validateHeatSourceCreate = [
+    ...optionalStringKey('id', 'Идентификатор'),
     ...requiredText('name', 'Название источника'),
     ...requiredText('address', 'Адрес'),
     ...requiredText('source_type', 'Тип источника'),
