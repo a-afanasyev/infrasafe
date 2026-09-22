@@ -117,6 +117,46 @@ describe('[A-03] непочинимое помечается терминаль�
     });
 });
 
+// [N-07] Хвост A-03. resolveBuildingIds на ошибке БД возвращал `[]`, и проход
+// читал это как «адресата нет» — ставил терминальную пометку no_target, после
+// которой findOrphans алерт больше не выбирает НИКОГДА. То есть секундный сбой
+// пула навсегда оставлял аварию без заявки — ровно тот сценарий, ради которого
+// проход писался. Сбой чтения — это «не знаю», а не «некуда».
+describe('[N-07] сбой чтения зданий — не терминальный исход', () => {
+    test('проход просит бросать на ошибке, а не молча отдавать пустоту', async () => {
+        AlertIntentGap.findOrphans.mockResolvedValue([ORPHAN]);
+
+        await reconciler.reconcileOnce();
+
+        expect(alertForwarder.resolveBuildingIds).toHaveBeenCalledWith(
+            '7', 'controller', { throwOnError: true }
+        );
+    });
+
+    test('ошибка БД — ни пометки no_target, ни засчитанной попытки: алерт вернётся на следующем тике', async () => {
+        AlertIntentGap.findOrphans.mockResolvedValue([ORPHAN]);
+        alertForwarder.resolveBuildingIds.mockRejectedValue(new Error('timeout exceeded when trying to connect'));
+
+        await reconciler.reconcileOnce();
+
+        expect(alertForwarder.sendAlertToUK).not.toHaveBeenCalled();
+        expect(AlertIntentGap.recordAttempt).not.toHaveBeenCalled();
+    });
+
+    test('сбой на одной сироте не мешает соседней', async () => {
+        const second = { ...ORPHAN, alert_id: 78 };
+        AlertIntentGap.findOrphans.mockResolvedValue([ORPHAN, second]);
+        alertForwarder.resolveBuildingIds
+            .mockRejectedValueOnce(new Error('connection terminated'))
+            .mockResolvedValueOnce(withTarget);
+
+        await reconciler.reconcileOnce();
+
+        expect(alertForwarder.sendAlertToUK).toHaveBeenCalledTimes(1);
+        expect(alertForwarder.sendAlertToUK).toHaveBeenCalledWith(expect.objectContaining({ alert_id: 78 }));
+    });
+});
+
 describe('[A-03] починимое чинится', () => {
     test('alertData пересобирается из строки — форвардер получает то же, что получил бы от события', async () => {
         AlertIntentGap.findOrphans.mockResolvedValue([ORPHAN]);

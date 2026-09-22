@@ -84,8 +84,19 @@ class UKAlertForwarder {
     /**
      * Resolve building IDs affected by an infrastructure alert.
      * Returns an empty array on unknown infrastructure_type or DB error.
+     *
+     * [N-07] `throwOnError: true` пробрасывает ошибку БД вместо пустого списка.
+     * Форвардеру пустота на сбое годится (он просто никого не уведомит), а
+     * сверяющему проходу A-03 — нет: из `[]` он делал терминальный вывод
+     * «адресата нет», и временный сбой навсегда оставлял аварию без заявки.
+     * Неизвестный тип остаётся пустым списком и с опцией — это состояние
+     * постоянное, а не сбой.
+     *
+     * @param {number|string} infrastructureId
+     * @param {string} infrastructureType
+     * @param {{ throwOnError?: boolean }} [options]
      */
-    async resolveBuildingIds(infrastructureId, infrastructureType) {
+    async resolveBuildingIds(infrastructureId, infrastructureType, { throwOnError = false } = {}) {
         const queries = {
             transformer: `SELECT building_id, external_id FROM buildings
                           WHERE (primary_transformer_id = $1 OR backup_transformer_id = $1)
@@ -111,6 +122,7 @@ class UKAlertForwarder {
             return result.rows;
         } catch (error) {
             logger.error(`resolveBuildingIds error: ${error.message}`);
+            if (throwOnError) throw error;
             return [];
         }
     }
