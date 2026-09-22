@@ -14,6 +14,22 @@ function MLC_T(name, fallback) {
         : fallback;
 }
 
+/**
+ * [N-54] Координаты сущности как пара для Leaflet, либо null.
+ * Миграция 011 сделала координаты зданий nullable (здания из УК приходят без
+ * них), а `parseFloat(null)` — это NaN, на котором конструктор LatLng бросает.
+ * Проверка — на конечность, а не на истинность: 0 — законная координата.
+ *
+ * @param {{latitude: *, longitude: *}} entity
+ * @returns {[number, number] | null}
+ */
+function MLC_latLng(entity) {
+    const toCoord = (v) => (v === null || v === undefined || v === '' ? NaN : Number(v));
+    const lat = toCoord(entity && entity.latitude);
+    const lng = toCoord(entity && entity.longitude);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? [lat, lng] : null;
+}
+
 class MapLayersControl {
     constructor(map, opts = {}) {
         this.map = map;
@@ -599,12 +615,23 @@ class MapLayersControl {
             return;
         }
 
+        // [N-54] Здание без координат пропускается, а сбой одного маркера не
+        // гасит остальные: исключение внутри forEach обрывало слой целиком.
+        let displayed = 0;
         buildings.forEach(building => {
-            const marker = this.createBuildingMarker(building);
-            layer.addLayer(marker);
+            if (!MLC_latLng(building)) {
+                console.warn('[N-54] Здание без координат не показано на слое:', building.building_name || building.building_id);
+                return;
+            }
+            try {
+                layer.addLayer(this.createBuildingMarker(building));
+                displayed++;
+            } catch (error) {
+                console.error('Ошибка отрисовки здания', building.building_id, error);
+            }
         });
 
-        this.updateLayerCount("🏢 Здания", buildings.length);
+        this.updateLayerCount("🏢 Здания", displayed);
     }
 
     async loadTransformers(headers) {
@@ -762,10 +789,7 @@ class MapLayersControl {
             color = MLC_T('--st-crit', '#dc3545');
         }
         
-        const lat = parseFloat(building.latitude);
-        const lng = parseFloat(building.longitude);
-        
-        const marker = L.circleMarker([lat, lng], {
+        const marker = L.circleMarker(MLC_latLng(building), {
             radius: 6,
             fillColor: color,
             color: MLC_T('--popup-ink-strong', '#000'),
@@ -1301,50 +1325,63 @@ class MapLayersControl {
         // Фильтруем только здания с контроллерами
         const buildingsWithControllers = (data.data || []).filter(b => b.controller_id);
 
+        let displayed = 0;
         buildingsWithControllers.forEach(building => {
-            // Создаём маркер для контроллера (используем те же координаты что и здание)
-            const lat = parseFloat(building.latitude);
-            const lng = parseFloat(building.longitude);
-            
-            const marker = L.marker([lat, lng], {
-                icon: L.divIcon({
-                    className: 'controller-marker',
-                    html: `<div style="background: #2196F3; color: white; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">📊</div>`,
-                    iconSize: [30, 30]
-                })
-            });
+            // Маркер контроллера стоит в координатах здания; без них — пропуск [N-54]
+            const latLng = MLC_latLng(building);
+            if (!latLng) {
+                console.warn('[N-54] Контроллер здания без координат не показан на слое:', building.building_name || building.building_id);
+                return;
+            }
 
-            // ИСПРАВЛЕНИЕ XSS: Создаём popup с санитизацией данных контроллера
-            const controllerId = this.escapeHTML(String(building.controller_id || ''));
-            const controllerBuildingName = this.escapeHTML(building.building_name || 'N/A');
-            const controllerAddress = this.escapeHTML(building.address || 'N/A');
-            const controllerStatus = building.controller_status ? this.escapeHTML(building.controller_status) : 'unknown';
-            const controllerStatusColor = building.controller_status === 'online' ? 'green' : 'red';
-            const latestMetricTime = building.latest_metric_time ? new Date(building.latest_metric_time).toLocaleString('ru-RU') : '';
-            
-            const popupContent = `
-                <div style="min-width: 250px;">
-                    <h4 style="margin: 0 0 10px 0;">📊 Контроллер</h4>
-                    <p style="margin: 5px 0;"><strong>ID:</strong> ${controllerId}</p>
-                    <p style="margin: 5px 0;"><strong>Здание:</strong> ${controllerBuildingName}</p>
-                    <p style="margin: 5px 0;"><strong>Адрес:</strong> ${controllerAddress}</p>
-                    <p style="margin: 5px 0;"><strong>Статус:</strong> <span style="color: ${controllerStatusColor};">${controllerStatus}</span></p>
-                    ${latestMetricTime ? `<p style="margin: 5px 0;"><strong>Последние данные:</strong> ${latestMetricTime}</p>` : ''}
-                </div>
-            `;
-            
-            // Санитизируем popup перед использованием
-            const sanitizedPopup = this.sanitizePopup(popupContent);
-            marker.bindPopup(sanitizedPopup);
-            marker.bindTooltip(`📊 Контроллер #${controllerId}`, {
-                permanent: false,
-                direction: 'top'
-            });
-
-            layer.addLayer(marker);
+            try {
+                layer.addLayer(this.createControllerMarker(building, latLng));
+                displayed++;
+            } catch (error) {
+                console.error('Ошибка отрисовки контроллера', building.controller_id, error);
+            }
         });
 
-        this.updateLayerCount("📊 Контроллеры", buildingsWithControllers.length);
+        this.updateLayerCount("📊 Контроллеры", displayed);
+    }
+
+    createControllerMarker(building, latLng) {
+        const marker = L.marker(latLng, {
+            icon: L.divIcon({
+                className: 'controller-marker',
+                html: `<div style="background: #2196F3; color: white; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">📊</div>`,
+                iconSize: [30, 30]
+            })
+        });
+
+        // ИСПРАВЛЕНИЕ XSS: Создаём popup с санитизацией данных контроллера
+        const controllerId = this.escapeHTML(String(building.controller_id || ''));
+        const controllerBuildingName = this.escapeHTML(building.building_name || 'N/A');
+        const controllerAddress = this.escapeHTML(building.address || 'N/A');
+        const controllerStatus = building.controller_status ? this.escapeHTML(building.controller_status) : 'unknown';
+        const controllerStatusColor = building.controller_status === 'online' ? 'green' : 'red';
+        const latestMetricTime = building.latest_metric_time ? new Date(building.latest_metric_time).toLocaleString('ru-RU') : '';
+        
+        const popupContent = `
+            <div style="min-width: 250px;">
+                <h4 style="margin: 0 0 10px 0;">📊 Контроллер</h4>
+                <p style="margin: 5px 0;"><strong>ID:</strong> ${controllerId}</p>
+                <p style="margin: 5px 0;"><strong>Здание:</strong> ${controllerBuildingName}</p>
+                <p style="margin: 5px 0;"><strong>Адрес:</strong> ${controllerAddress}</p>
+                <p style="margin: 5px 0;"><strong>Статус:</strong> <span style="color: ${controllerStatusColor};">${controllerStatus}</span></p>
+                ${latestMetricTime ? `<p style="margin: 5px 0;"><strong>Последние данные:</strong> ${latestMetricTime}</p>` : ''}
+            </div>
+        `;
+        
+        // Санитизируем popup перед использованием
+        const sanitizedPopup = this.sanitizePopup(popupContent);
+        marker.bindPopup(sanitizedPopup);
+        marker.bindTooltip(`📊 Контроллер #${controllerId}`, {
+            permanent: false,
+            direction: 'top'
+        });
+
+        return marker;
     }
 
     // Загрузка алертов на карту
