@@ -257,10 +257,33 @@ async function enableTotp(userId) {
     await invalidateCache(userId);
 }
 
-/** Переписать коды восстановления (один израсходован). */
+/**
+ * Записать новый набор кодов восстановления (выпуск при подтверждении 2FA).
+ * Погашение кода идёт через `consumeRecoveryCode` — безусловная перезапись
+ * для него небезопасна (N-18).
+ */
 async function setRecoveryCodes(userId, recoveryCodes) {
     await db.query('UPDATE users SET recovery_codes = $1 WHERE user_id = $2', [recoveryCodes, userId]);
     await invalidateCache(userId);
+}
+
+/**
+ * [N-18] Погасить код восстановления, только если набор не менялся с момента
+ * чтения: `expectedCodes` — то, что прочитал вызывающий, `remainingCodes` — то,
+ * что должно остаться. Безусловная перезапись теряла параллельное погашение
+ * (погашенный код возвращался) и пропускала один код дважды. 0 строк означает
+ * «набор успели изменить» — перечитать и решить заново.
+ *
+ * @returns {Promise<boolean>} погашено ли
+ */
+async function consumeRecoveryCode(userId, expectedCodes, remainingCodes) {
+    const { rowCount } = await db.query(
+        `UPDATE users SET recovery_codes = $1::jsonb
+          WHERE user_id = $2 AND recovery_codes = $3::jsonb`,
+        [JSON.stringify(remainingCodes), userId, JSON.stringify(expectedCodes)]
+    );
+    if (rowCount > 0) await invalidateCache(userId);
+    return rowCount > 0;
 }
 
 /** Полностью снять 2FA. */
@@ -292,5 +315,6 @@ module.exports = {
     resetTotpByUsername,
     enableTotp,
     setRecoveryCodes,
+    consumeRecoveryCode,
     disableTotp,
 };

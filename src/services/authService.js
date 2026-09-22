@@ -30,6 +30,13 @@ const REFRESH_REUSE_GRACE_MS = 10_000;
 // use Math.random for this.
 const LOCKOUT_JITTER_MAX_MS = 3 * 60 * 1000; // up to 3 minutes
 
+// [N-03] Ключ счётчика промахов второго фактора в `account_lockout`. Привязан к
+// ПОЛЬЗОВАТЕЛЮ, а не к введённому логину: успешный вход по паролю сбрасывает
+// счётчик логина, и общий счётчик обнулялся бы перед каждой серией перебора.
+// Префикс зарезервирован — authenticateUser отвергает такие логины (см. там).
+const TWO_FA_LOCKOUT_PREFIX = '2fa:user:';
+const twoFaLockoutKey = (userId) => `${TWO_FA_LOCKOUT_PREFIX}${userId}`;
+
 // SEC-11: response-latency timing oracle defense. The locked path throws
 // ACCOUNT_LOCKED *before* reaching the real verifyPassword bcrypt.compare, so a
 // locked account would otherwise respond noticeably faster than a not-locked
@@ -142,7 +149,12 @@ class AuthService {
     async authenticateUser(login, password) {
         try {
             // Phase 12 follow-up: input-length guard before touching DB/PK
-            if (typeof login !== 'string' || login.length === 0 || login.length > 255) {
+            // [N-03] Логины и ключи 2FA живут в одной таблице `account_lockout`.
+            // Без этого отказа аноним, набравший `2fa:user:<id>`, накручивал бы
+            // счётчик второго фактора чужого аккаунта — и один промах самого
+            // владельца запирал бы его. Настоящий логин такой формы быть не может.
+            if (typeof login !== 'string' || login.length === 0 || login.length > 255
+                || login.startsWith(TWO_FA_LOCKOUT_PREFIX)) {
                 const error = new Error('Неверное имя пользователя или пароль');
                 error.code = 'INVALID_CREDENTIALS';
                 throw error;
@@ -616,6 +628,16 @@ class AuthService {
             throw err;
         }
 
+        // [N-03] Имя с зарезервированным префиксом ключа 2FA: войти таким
+        // пользователем нельзя (authenticateUser отвергает такой логин), а его
+        // промахи повторной проверки пароля попадали бы в счётчик второго
+        // фактора ЧУЖОГО аккаунта — ключи живут в одной таблице.
+        if (username.startsWith(TWO_FA_LOCKOUT_PREFIX)) {
+            const err = new Error('Имя пользователя не может начинаться с «2fa:user:»');
+            err.code = 'VALIDATION_ERROR';
+            throw err;
+        }
+
         if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
             const err = new Error('Некорректный email адрес');
             err.code = 'VALIDATION_ERROR';
@@ -705,6 +727,27 @@ class AuthService {
                 await cacheService.invalidate(`${this.cachePrefix}:user:${userId}`);
             }
         }
+    }
+
+    /**
+     * [N-03] Промах второго фактора. Порог и длительность — те же, что у
+     * пароля; на пороге блокировка зеркалится в `users.account_locked_until`
+     * (userId передаётся), а его проверяют и вход, и verifyTempToken.
+     *
+     * Истёкшая блокировка сбрасывается внутри того же атомарного UPSERT
+     * (`AccountLockout.recordFailedAttempt`): у ключа 2FA нет своего
+     * checkAccountLockout на входе. Отдельный шаг «прочитать → очистить»
+     * здесь был и отклонён ревью — между чтением и очисткой параллельный
+     * промах успевал выставить свежую блокировку, и устаревшая очистка её
+     * стирала.
+     */
+    async recordFailed2FA(userId) {
+        await this.recordFailedAttempt(twoFaLockoutKey(userId), userId);
+    }
+
+    /** [N-03] Второй фактор пройден — счётчик промахов 2FA снимается. */
+    async clearFailed2FA(userId) {
+        await AccountLockout.clearAttempts(twoFaLockoutKey(userId));
     }
 
     // Очистка неудачных попыток (после успешной аутентификации)
@@ -919,3 +962,4 @@ class AuthService {
 }
 
 module.exports = new AuthService();
+module.exports.TWO_FA_LOCKOUT_PREFIX = TWO_FA_LOCKOUT_PREFIX;

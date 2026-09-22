@@ -27,6 +27,10 @@ const REPLAY_WINDOW_MS = 120000;
 // this short-lived cache entry (bounds exposure), keyed per pending setup.
 const RECOVERY_SETUP_CACHE_PREFIX = 'totp:setup:recovery:';
 const RECOVERY_SETUP_CACHE_TTL_SECONDS = 900; // 15 min
+// [N-18] Сколько раз перечитать набор кодов восстановления, проиграв гонку.
+// Каждый проигрыш означает, что параллельный запрос УСПЕШНО погасил код, так
+// что набор сокращается и больше трёх подряд — это уже не гонка, а шторм.
+const RECOVERY_CONSUME_ATTEMPTS = 3;
 
 // SEC-106: anti-replay — track used TOTP codes to prevent reuse within validity window
 const usedCodes = new Map();
@@ -213,15 +217,17 @@ async function confirmSetup(userId, code) {
         throw new Error('2FA setup not initiated');
     }
 
+    // [N-19] Формат проверяется ДО otplib, как в verifyCode (A-11): на
+    // нешестизначном значении библиотека бросает, и ответ был 500 вместо 400.
+    const candidate = typeof code === 'string' ? code.trim() : '';
     const secret = decrypt(user.totp_secret);
-    const verification = otplib.verifySync({ secret, token: code });
-
-    if (!verification.valid) {
+    if (!TOTP_CODE_RE.test(candidate) || !verifyTotpSafely(secret, candidate)) {
         throw new Error('Invalid TOTP code');
     }
 
-    // SEC-106: apply anti-replay to setup confirmation path too
-    if (!markCodeUsed(userId, code)) {
+    // SEC-106: apply anti-replay to setup confirmation path too.
+    // [N-17] Ключ дедупа — та же строка, что проверялась, а не сырой ввод.
+    if (!markCodeUsed(userId, candidate)) {
         throw new Error('TOTP code already used');
     }
 
@@ -290,8 +296,10 @@ async function verifyCode(userId, code) {
     // Try TOTP code first
     const secret = decrypt(user.totp_secret);
     if (looksLikeTotp && verifyTotpSafely(secret, candidate)) {
-        // SEC-106: prevent replay — same code cannot be used twice within 60s
-        if (!markCodeUsed(userId, code)) {
+        // SEC-106: prevent replay — same code cannot be used twice within 60s.
+        // [N-17] По `candidate`, а не по сырому `code`: иначе `"123456 "` давал
+        // другой ключ дедупа, и перехваченный код повторялся с пробелом.
+        if (!markCodeUsed(userId, candidate)) {
             return { valid: false, reason: 'code_already_used' };
         }
         return { valid: true, method: 'totp' };
@@ -301,23 +309,40 @@ async function verifyCode(userId, code) {
     if (!looksLikeRecovery) {
         return { valid: false };
     }
-    const normalizedCode = candidate.toUpperCase();
-    const recoveryCodes = user.recovery_codes || [];
+    return consumeRecoveryCode(userId, candidate.toUpperCase(), user.recovery_codes || []);
+}
 
-    for (let i = 0; i < recoveryCodes.length; i++) {
-        const match = await bcrypt.compare(normalizedCode, recoveryCodes[i]);
-        if (match) {
-            // Remove used recovery code
-            const updatedCodes = [...recoveryCodes];
-            updatedCodes.splice(i, 1);
-            await User.setRecoveryCodes(userId, JSON.stringify(updatedCodes));
+/**
+ * [N-18] Найти и погасить код восстановления без гонки. Погашение условное
+ * (`User.consumeRecoveryCode` пишет, только если набор не менялся с чтения);
+ * проиграв параллельному запросу, перечитываем набор и ищем заново. Тот же код
+ * во втором запросе к этому моменту уже исчез — вход по нему не пройдёт; другой
+ * код находится в новом наборе и гасится поверх него, ничего не возвращая.
+ */
+async function consumeRecoveryCode(userId, normalizedCode, initialCodes) {
+    let codes = initialCodes;
+    for (let attempt = 0; attempt < RECOVERY_CONSUME_ATTEMPTS; attempt++) {
+        const index = await findRecoveryCodeIndex(normalizedCode, codes);
+        if (index === -1) return { valid: false };
 
-            logger.warn(`Recovery code used for user ${userId}, ${updatedCodes.length} remaining`);
+        const remaining = codes.filter((_, i) => i !== index);
+        if (await User.consumeRecoveryCode(userId, codes, remaining)) {
+            logger.warn(`Recovery code used for user ${userId}, ${remaining.length} remaining`);
             return { valid: true, method: 'recovery' };
         }
-    }
 
+        const fresh = await User.getTotpState(userId, { withRecoveryCodes: true });
+        codes = (fresh && fresh.recovery_codes) || [];
+    }
+    logger.warn(`Recovery code for user ${userId} not consumed: the set kept changing under concurrent requests`);
     return { valid: false };
+}
+
+async function findRecoveryCodeIndex(normalizedCode, codes) {
+    for (let i = 0; i < codes.length; i++) {
+        if (await bcrypt.compare(normalizedCode, codes[i])) return i;
+    }
+    return -1;
 }
 
 async function disable(userId) {

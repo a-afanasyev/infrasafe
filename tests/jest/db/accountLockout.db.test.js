@@ -255,3 +255,51 @@ describe('[R2-24] cleanup', () => {
         expect(await AccountLockout.get('recent')).not.toBeNull();
     });
 });
+
+// [N-03] Истёкшая блокировка сбрасывается ВНУТРИ того же атомарного UPSERT.
+// Иначе у ключа, для которого нет checkAccountLockout на входе (ключ промахов
+// второго фактора), `failed_attempts` оставался на пороге, и первый же промах
+// после разблокировки запирал бы снова. Отдельный «прочитать → очистить →
+// записать» ревью отклонило: между чтением и очисткой параллельный запрос мог
+// выставить свежую блокировку, и устаревшая очистка её стирала.
+describe('[N-03] recordFailedAttempt — истёкшая блокировка', () => {
+    const insertExpired = () => db.query(
+        `INSERT INTO account_lockout (login, failed_attempts, first_attempt_at, last_attempt_at, locked_until)
+         VALUES ('2fa:user:1', $1, NOW() - INTERVAL '1 hour', NOW() - INTERVAL '20 minutes', NOW() - INTERVAL '1 minute')`,
+        [MAX_ATTEMPTS]
+    );
+
+    test('первая неудача после истечения начинает счёт заново, а не запирает', async () => {
+        await insertExpired();
+
+        const r = await AccountLockout.recordFailedAttempt('2fa:user:1', MAX_ATTEMPTS, LOCKOUT_MS, userId);
+
+        expect(r.failed_attempts).toBe(1);
+        expect(r.locked_until).toBeNull();
+        expect(await userLockedUntil()).toBeNull();
+    });
+
+    test('после сброса блокировка снова защёлкивается ровно на пороге', async () => {
+        await insertExpired();
+
+        let r;
+        for (let i = 0; i < MAX_ATTEMPTS; i += 1) {
+            r = await AccountLockout.recordFailedAttempt('2fa:user:1', MAX_ATTEMPTS, LOCKOUT_MS, userId);
+        }
+
+        expect(r.failed_attempts).toBe(MAX_ATTEMPTS);
+        expect(r.locked_until).not.toBeNull();
+        expect(await userLockedUntil()).not.toBeNull();
+    });
+
+    test('действующая блокировка при неудаче не сбрасывается', async () => {
+        for (let i = 0; i < MAX_ATTEMPTS; i += 1) {
+            await AccountLockout.recordFailedAttempt('2fa:user:1', MAX_ATTEMPTS, LOCKOUT_MS, userId);
+        }
+
+        const r = await AccountLockout.recordFailedAttempt('2fa:user:1', MAX_ATTEMPTS, LOCKOUT_MS, userId);
+
+        expect(r.failed_attempts).toBe(MAX_ATTEMPTS + 1);
+        expect(r.locked_until).not.toBeNull();
+    });
+});
