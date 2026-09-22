@@ -869,7 +869,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
                 const details = [
                     ['Координаты', formatNumber(building.latitude, 6) + ', ' + formatNumber(building.longitude, 6)],
-                    ['Горячая вода', building.hot_water ? 'Да' : 'Нет'],
+                    // [N-08] API отдаёт has_hot_water; legacy hot_water в ответе нет — было всегда «Нет»
+                    ['Горячая вода', building.has_hot_water === true ? 'Да' : 'Нет'],
                     ['Осн. трансформатор', safeValue(building.primary_transformer_name, '\u2014')],
                     ['Рез. трансформатор', safeValue(building.backup_transformer_name, '\u2014')],
                     ['Осн. линия', safeValue(building.primary_line_name, '\u2014')],
@@ -2723,7 +2724,8 @@ document.addEventListener("DOMContentLoaded", function () {
             latitude: parseFloat(document.getElementById('building-latitude').value),
             longitude: parseFloat(document.getElementById('building-longitude').value),
             management_company: document.getElementById('building-management').value,
-            hot_water: document.getElementById('building-hot-water').checked,
+            // [N-08] модель пишет только has_hot_water — legacy-ключ терял галку
+            has_hot_water: document.getElementById('building-hot-water').checked,
             primary_transformer_id: document.getElementById('building-primary-transformer').value || null,
             backup_transformer_id: document.getElementById('building-backup-transformer').value || null,
             primary_line_id: document.getElementById('building-primary-line').value || null,
