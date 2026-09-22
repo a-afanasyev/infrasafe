@@ -49,11 +49,24 @@ async function recordFailedAttempt(login, maxAttempts, lockoutMs, userId = null)
             INSERT INTO account_lockout (login, failed_attempts, first_attempt_at, last_attempt_at, locked_until)
             VALUES ($1, 1, NOW(), NOW(), NULL)
             ON CONFLICT (login) DO UPDATE SET
-                failed_attempts = account_lockout.failed_attempts + 1,
+                -- [N-03] Истёкшая блокировка сбрасывается здесь же, в том же
+                -- атомарном запросе: счёт начинается заново, как с чистого
+                -- листа. Отдельное «прочитать → очистить → записать» теряло
+                -- параллельно выставленную свежую блокировку.
+                failed_attempts = CASE
+                    WHEN account_lockout.locked_until <= NOW() THEN 1
+                    ELSE account_lockout.failed_attempts + 1
+                END,
+                first_attempt_at = CASE
+                    WHEN account_lockout.locked_until <= NOW() THEN NOW()
+                    ELSE account_lockout.first_attempt_at
+                END,
                 last_attempt_at = NOW(),
                 locked_until = CASE
-                    WHEN account_lockout.failed_attempts + 1 >= $2
+                    WHEN (CASE WHEN account_lockout.locked_until <= NOW() THEN 1
+                               ELSE account_lockout.failed_attempts + 1 END) >= $2
                     THEN NOW() + ($3 || ' milliseconds')::interval
+                    WHEN account_lockout.locked_until <= NOW() THEN NULL
                     ELSE account_lockout.locked_until
                 END
             RETURNING failed_attempts, locked_until

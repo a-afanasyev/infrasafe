@@ -84,13 +84,20 @@ const BUILDINGS_METRICS_QUERY = `
     LIMIT $5
 `;
 
+// [N-09] Явная проверка на отсутствие, а не на истинность. Прежнее
+// `row.x ? parseFloat(row.x) : null` давало верный ответ лишь потому, что `pg`
+// отдаёт `numeric` строкой, а '0.00' истинна: включи кто-нибудь
+// `types.setTypeParser(1700, parseFloat)` — и измеренный 0 В стал бы «Нет
+// данных». Здесь 0 остаётся 0 независимо от того, чем драйвер его отдал.
+const toNumberOrNull = (value) => (value === null || value === undefined ? null : parseFloat(value));
+
 const mapAuthenticatedRow = (row) => ({
     building_id: row.building_id,
     building_name: row.building_name,
     address: row.address,
     town: row.town,
-    latitude: row.latitude ? parseFloat(row.latitude) : null,
-    longitude: row.longitude ? parseFloat(row.longitude) : null,
+    latitude: toNumberOrNull(row.latitude),
+    longitude: toNumberOrNull(row.longitude),
     region: row.region,
     management_company: row.management_company,
     external_id: row.external_id || null,
@@ -99,20 +106,20 @@ const mapAuthenticatedRow = (row) => ({
     controller_serial: row.controller_serial,
     controller_status: row.controller_status,
     timestamp: row.timestamp,
-    electricity_ph1: row.electricity_ph1 ? parseFloat(row.electricity_ph1) : null,
-    electricity_ph2: row.electricity_ph2 ? parseFloat(row.electricity_ph2) : null,
-    electricity_ph3: row.electricity_ph3 ? parseFloat(row.electricity_ph3) : null,
-    amperage_ph1: row.amperage_ph1 ? parseFloat(row.amperage_ph1) : null,
-    amperage_ph2: row.amperage_ph2 ? parseFloat(row.amperage_ph2) : null,
-    amperage_ph3: row.amperage_ph3 ? parseFloat(row.amperage_ph3) : null,
-    cold_water_pressure: row.cold_water_pressure ? parseFloat(row.cold_water_pressure) : null,
-    cold_water_temp: row.cold_water_temp ? parseFloat(row.cold_water_temp) : null,
-    hot_water_in_pressure: row.hot_water_in_pressure ? parseFloat(row.hot_water_in_pressure) : null,
-    hot_water_out_pressure: row.hot_water_out_pressure ? parseFloat(row.hot_water_out_pressure) : null,
-    hot_water_in_temp: row.hot_water_in_temp ? parseFloat(row.hot_water_in_temp) : null,
-    hot_water_out_temp: row.hot_water_out_temp ? parseFloat(row.hot_water_out_temp) : null,
-    air_temp: row.air_temp ? parseFloat(row.air_temp) : null,
-    humidity: row.humidity ? parseFloat(row.humidity) : null,
+    electricity_ph1: toNumberOrNull(row.electricity_ph1),
+    electricity_ph2: toNumberOrNull(row.electricity_ph2),
+    electricity_ph3: toNumberOrNull(row.electricity_ph3),
+    amperage_ph1: toNumberOrNull(row.amperage_ph1),
+    amperage_ph2: toNumberOrNull(row.amperage_ph2),
+    amperage_ph3: toNumberOrNull(row.amperage_ph3),
+    cold_water_pressure: toNumberOrNull(row.cold_water_pressure),
+    cold_water_temp: toNumberOrNull(row.cold_water_temp),
+    hot_water_in_pressure: toNumberOrNull(row.hot_water_in_pressure),
+    hot_water_out_pressure: toNumberOrNull(row.hot_water_out_pressure),
+    hot_water_in_temp: toNumberOrNull(row.hot_water_in_temp),
+    hot_water_out_temp: toNumberOrNull(row.hot_water_out_temp),
+    air_temp: toNumberOrNull(row.air_temp),
+    humidity: toNumberOrNull(row.humidity),
     leak_sensor: row.leak_sensor
 });
 
@@ -121,8 +128,8 @@ const mapAnonymousRow = (row) => ({
     building_name: row.building_name,
     address: row.address,
     town: row.town,
-    latitude: row.latitude ? parseFloat(row.latitude) : null,
-    longitude: row.longitude ? parseFloat(row.longitude) : null,
+    latitude: toNumberOrNull(row.latitude),
+    longitude: toNumberOrNull(row.longitude),
     // external_id (the UK cross-system reference) is intentionally omitted from
     // the anonymous projection (P-PENTEST-3). Authenticated callers still receive
     // it via mapAuthenticatedRow; the dedicated /uk-requests-metrics endpoint

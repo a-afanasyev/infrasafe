@@ -7,6 +7,8 @@ const { isAdmin } = require('../middleware/auth');
 // и ПЕРЕД контроллером, как в waterLineRoutes.
 const {
     validateIdParam,
+    // [N-01] у источников тепла и воды ключ varchar(50), а не целое
+    validateStringIdParam,
     // [AR-10] схемная валидация тел — раньше эти пять POST принимали любое тело
     validateTransformerCreate,
     validateLineCreate,
@@ -961,9 +963,9 @@ router.post('/water-lines/batch', rateLimitStrict, adminController.batchWaterLin
 
 router.get('/cold-water-sources', adminController.getOptimizedColdWaterSources);
 router.post('/cold-water-sources', rateLimitStrict, validateColdWaterSourceCreate, adminController.createColdWaterSource);
-router.get('/cold-water-sources/:id', validateIdParam, adminController.getColdWaterSourceById);
-router.put('/cold-water-sources/:id', rateLimitStrict, validateIdParam, adminController.updateColdWaterSource);
-router.delete('/cold-water-sources/:id', rateLimitStrict, validateIdParam, adminController.deleteColdWaterSource);
+router.get('/cold-water-sources/:id', validateStringIdParam(), adminController.getColdWaterSourceById);
+router.put('/cold-water-sources/:id', rateLimitStrict, validateStringIdParam(), adminController.updateColdWaterSource);
+router.delete('/cold-water-sources/:id', rateLimitStrict, validateStringIdParam(), adminController.deleteColdWaterSource);
 
 // ===============================================
 // ИСТОЧНИКИ ТЕПЛА
@@ -971,8 +973,8 @@ router.delete('/cold-water-sources/:id', rateLimitStrict, validateIdParam, admin
 
 router.get('/heat-sources', adminController.getOptimizedHeatSources);
 router.post('/heat-sources', rateLimitStrict, validateHeatSourceCreate, adminController.createHeatSource);
-router.get('/heat-sources/:id', validateIdParam, adminController.getHeatSourceById);
-router.put('/heat-sources/:id', rateLimitStrict, validateIdParam, adminController.updateHeatSource);
-router.delete('/heat-sources/:id', rateLimitStrict, validateIdParam, adminController.deleteHeatSource);
+router.get('/heat-sources/:id', validateStringIdParam(), adminController.getHeatSourceById);
+router.put('/heat-sources/:id', rateLimitStrict, validateStringIdParam(), adminController.updateHeatSource);
+router.delete('/heat-sources/:id', rateLimitStrict, validateStringIdParam(), adminController.deleteHeatSource);
 
 module.exports = router;

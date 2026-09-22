@@ -70,7 +70,11 @@ describe('AccountLockout model', () => {
             expect(sql).toMatch(/INSERT INTO account_lockout/i);
             expect(sql).toMatch(/ON CONFLICT \(login\) DO UPDATE/i);
             // The lock is only set once the incremented counter reaches the max.
-            expect(sql).toMatch(/failed_attempts \+ 1 >= \$2/i);
+            // [N-03] …where an EXPIRED lock restarts the count at 1 inside the
+            // same statement. Behaviour is pinned against real Postgres in
+            // tests/jest/db/accountLockout.db.test.js — this only guards shape.
+            expect(sql).toMatch(/ELSE account_lockout\.failed_attempts \+ 1 END\) >= \$2/i);
+            expect(sql).toMatch(/WHEN account_lockout\.locked_until <= NOW\(\) THEN 1/i);
             // H-1: the lockout write and the users.account_locked_until mirror
             // are a single atomic CTE statement — never two sequential queries.
             expect(sql).toMatch(/WITH lock_state AS/i);

@@ -353,7 +353,23 @@ const verify2FA = async (req, res, next) => {
         const result = await totpService.verifyCode(user.user_id, code);
 
         if (!result.valid) {
+            // [N-03] Промах считается на АККАУНТ: без этого ограничителем был
+            // лишь лимит на IP, а каждый вход с верным паролем выдаёт свежий
+            // temp-токен. Сбой записи не отменяет отказ — код всё равно неверен,
+            // — но и не молчит: счётчик, который перестал считать, надо видеть.
+            try {
+                await authService.recordFailed2FA(user.user_id);
+            } catch (lockoutError) {
+                logger.error(`verify2FA: промах 2FA для user_id=${user.user_id} не записан: ${lockoutError.message}`);
+            }
             return res.status(401).json({ error: 'Invalid 2FA code' });
+        }
+
+        // [N-03] Второй фактор пройден — счётчик его промахов снимается.
+        try {
+            await authService.clearFailed2FA(user.user_id);
+        } catch (lockoutError) {
+            logger.error(`verify2FA: счётчик 2FA для user_id=${user.user_id} не снят: ${lockoutError.message}`);
         }
 
         // SEC-101: blacklist tempToken so it cannot be reused

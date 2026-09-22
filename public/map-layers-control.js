@@ -868,7 +868,7 @@ class MapLayersControl {
                     </div>
                     <div class="info-row">
                         <span class="info-label">Горячая вода</span>
-                        <span class="info-value">${building.hot_water ? '✅ Есть' : '❌ Нет'}</span>
+                        <span class="info-value">${building.has_hot_water === true ? '✅ Есть' : '❌ Нет'}</span>
                     </div>
                     ${hasController ? `
                         <div class="info-row">

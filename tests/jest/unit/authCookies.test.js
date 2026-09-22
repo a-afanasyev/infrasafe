@@ -251,7 +251,10 @@ jest.mock('../../../src/services/authService', () => ({
     logout: jest.fn(),
     refreshToken: jest.fn(),
     changePassword: jest.fn(),
-    blacklistToken: jest.fn()
+    blacklistToken: jest.fn(),
+    // [N-03] verify2FA ведёт счётчик промахов второго фактора.
+    recordFailed2FA: jest.fn().mockResolvedValue(undefined),
+    clearFailed2FA: jest.fn().mockResolvedValue(undefined)
 }));
 jest.mock('../../../src/services/totpService', () => ({
     verifyCode: jest.fn(),

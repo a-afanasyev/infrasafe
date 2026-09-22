@@ -191,9 +191,16 @@ class UKRequestProcessor {
                     //
                     // Признак незавершённости — сам алерт: если УК считает
                     // заявку закрытой, а алерт всё ещё открыт, повторяем.
+                    //
+                    // [N-06] ...и повторять можно только тогда, когда закрыты
+                    // ВСЕ заявки алерта — то же условие, что в обычной ветке
+                    // ниже. У многодомного алерта заявок несколько, и без этой
+                    // проверки reconcile по уже закрытой заявке A закрывал
+                    // алерт, пока по дому B работа ещё шла.
                     const needsRetry = TERMINAL_STATUSES.includes(ukStatus)
                         && ARM_TERMINAL_STATUSES.includes(mapping.status)
-                        && await this._isAlertStillOpen(mapping.infrasafe_alert_id);
+                        && await this._isAlertStillOpen(mapping.infrasafe_alert_id)
+                        && await AlertRequestMap.areAllTerminal(mapping.infrasafe_alert_id);
                     if (needsRetry) {
                         deferredResolveAlertId = mapping.infrasafe_alert_id;
                         logger.info(

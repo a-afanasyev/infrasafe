@@ -308,7 +308,10 @@ describe('totpService — confirmSetup', () => {
             .mockResolvedValueOnce({ rows: [] });
         otplib.verifySync = jest.fn().mockReturnValue({ valid: true });
 
-        await totpService.confirmSetup(82, 'confirm-' + Date.now());
+        // [N-19] Шестизначный код: confirmSetup, как и verifyCode, отсекает
+        // мусорный формат ДО otplib — прежняя строка проходила лишь потому, что
+        // verifySync подменена и принимает что угодно (форма A-11).
+        await totpService.confirmSetup(82, sixDigits());
 
         expect(cacheService.invalidate).toHaveBeenCalledWith('totp:setup:recovery:82');
     });
@@ -348,7 +351,7 @@ describe('totpService — confirmSetup', () => {
         const encryptedSecret = totpService.encrypt('JBSWY3DPEHPK3PXP');
         otplib.verifySync = jest.fn().mockReturnValue({ valid: true });
         const userA = 700 + Math.floor(Math.random() * 1000);
-        const code = `dup-code-${Date.now()}`;
+        const code = sixDigits();
 
         // First call succeeds
         db.query
@@ -413,7 +416,8 @@ describe('totpService — verifyCode', () => {
             .mockResolvedValueOnce({
                 rows: [{ totp_secret: encryptedSecret, totp_enabled: true, recovery_codes: [hashed] }],
             })
-            .mockResolvedValueOnce({ rows: [] });
+            // [N-18] Погашение условное: строка обновлена — код наш.
+            .mockResolvedValueOnce({ rows: [], rowCount: 1 });
         otplib.verifySync = jest.fn().mockReturnValue({ valid: false });
 
         const result = await totpService.verifyCode(12, recoveryCode);
@@ -421,7 +425,10 @@ describe('totpService — verifyCode', () => {
 
         const updateCall = db.query.mock.calls[1];
         expect(updateCall[0]).toMatch(/UPDATE users SET recovery_codes = \$1/);
+        // [N-18] Пишем, только если набор тот же, что прочитали.
+        expect(updateCall[0]).toMatch(/recovery_codes = \$3::jsonb/);
         expect(JSON.parse(updateCall[1][0])).toEqual([]);
+        expect(JSON.parse(updateCall[1][2])).toEqual([hashed]);
         expect(cacheService.invalidate).toHaveBeenCalledWith('auth:user:12');
     });
 

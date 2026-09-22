@@ -61,8 +61,6 @@ const ADMIN_GET = [
     '/api/admin/transformers',
     '/api/admin/lines',
     '/api/admin/water-lines',
-    '/api/admin/cold-water-sources',
-    '/api/admin/heat-sources',
 ];
 
 describe('[R2-16] admin-роутер: нечисловой :id → 400, не 500', () => {
@@ -127,5 +125,57 @@ describe('[R2-16] прочие именованные параметры', () =>
             .get(`/api/integration/building-requests/${uuid}`)
             .set('Authorization', auth);
         expect(res.status).not.toBe(400);
+    });
+});
+
+// [N-01] У источников тепла и холодной воды ключ СТРОКОВЫЙ (`varchar(50)`:
+// сиды 'HS-FARABI-01', новые записи — randomUUID()). R2-16 навесил на них
+// целочисленный guard, и админка получила 400 на ЛЮБОЙ источник — открыть,
+// сохранить и удалить стало нельзя. Прежний список ADMIN_GET выше требовал 400
+// на `/api/admin/cold-water-sources/abc` — то есть закреплял дефект как норму:
+// 'abc' — законный id для varchar-колонки.
+const STRING_ID_BASES = [
+    '/api/heat-sources',
+    '/api/cold-water-sources',
+    '/api/admin/heat-sources',
+    '/api/admin/cold-water-sources',
+];
+const REAL_IDS = ['HS-FARABI-01', 'CW-FARABI-01', '11111111-2222-3333-4444-555555555555'];
+
+const idRejected = (res) => res.status === 400
+    && (res.body?.error?.details || []).some(d => d.field === 'id');
+
+describe('[N-01] строковый :id источников проходит guard', () => {
+    test.each(STRING_ID_BASES.flatMap(b => REAL_IDS.map(id => [b, id])))(
+        'GET %s/%s не отвергается валидацией id', async (base, id) => {
+            const res = await request(app).get(`${base}/${id}`).set('Authorization', auth);
+            expect(idRejected(res)).toBe(false);
+            expect(res.status).not.toBe(500);
+        });
+
+    test.each(STRING_ID_BASES)('DELETE %s/HS-FARABI-01 не отвергается валидацией id', async (base) => {
+        const res = await request(app).delete(`${base}/HS-FARABI-01`).set('Authorization', auth);
+        expect(idRejected(res)).toBe(false);
+    });
+
+    test.each(STRING_ID_BASES)('PUT %s/HS-FARABI-01 не отвергается валидацией id', async (base) => {
+        const res = await request(app)
+            .put(`${base}/HS-FARABI-01`)
+            .set('Authorization', auth)
+            .send({ name: 'Котельная' });
+        expect(idRejected(res)).toBe(false);
+    });
+
+    // Колонка — varchar(50): длиннее не хранится, и такой запрос — мусор, а не id.
+    test.each(STRING_ID_BASES)('GET %s/<51 символ> → 400 по полю id', async (base) => {
+        const res = await request(app).get(`${base}/${'x'.repeat(51)}`).set('Authorization', auth);
+        expect(idRejected(res)).toBe(true);
+    });
+
+    // Postgres не хранит NUL в тексте: такой id не может существовать, а до
+    // Postgres он доходил и отвечал 500 (найдено сек-ревью N-01).
+    test.each(STRING_ID_BASES)('GET %s/<id с NUL> → 400 по полю id', async (base) => {
+        const res = await request(app).get(`${base}/HS%00X`).set('Authorization', auth);
+        expect(idRejected(res)).toBe(true);
     });
 });

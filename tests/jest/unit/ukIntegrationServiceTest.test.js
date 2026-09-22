@@ -848,6 +848,8 @@ describe('UKIntegrationService — Phase 3-5', () => {
                 });
                 // Алерт 400 всё ещё открыт — прошлый resolveAlert не доехал.
                 db.query.mockResolvedValue({ rows: [{ status: 'active' }] });
+                // [N-06] Заявка у алерта одна — все его заявки закрыты.
+                AlertRequestMap.areAllTerminal.mockResolvedValue(true);
 
                 const listener = jest.fn();
                 alertEvents.on(alertEvents.EVENTS.UK_REQUEST_RESOLVED, listener);
@@ -857,6 +859,33 @@ describe('UKIntegrationService — Phase 3-5', () => {
                 expect(listener).toHaveBeenCalledWith({ alertId: 400 });
                 // Статус маппинга менять не за что — он уже целевой.
                 expect(AlertRequestMap.updateStatus).not.toHaveBeenCalled();
+            });
+
+            // [N-06] Хвост A-04. Многодомный алерт (авария трансформатора на два
+            // дома) даёт две заявки: A и B. Обычная ветка закрывает алерт, только
+            // когда ВСЕ его заявки терминальны (areAllTerminal). Ветка повтора
+            // этой проверки не делала: очередной reconcile по уже закрытой A
+            // закрывал алерт, пока по дому B работа ещё шла.
+            it('[N-06] повтор resolve не закрывает многодомный алерт, пока открыта другая заявка', async () => {
+                const alertEvents = require('../../../src/events/alertEvents');
+                AlertRequestMap.findByRequestNumber.mockResolvedValue({
+                    id: 42,
+                    infrasafe_alert_id: 402,
+                    status: 'resolved'
+                });
+                db.query.mockResolvedValue({ rows: [{ status: 'active' }] });
+                // Заявка B того же алерта ещё в работе.
+                AlertRequestMap.areAllTerminal.mockResolvedValue(false);
+
+                const listener = jest.fn();
+                alertEvents.on(alertEvents.EVENTS.UK_REQUEST_RESOLVED, listener);
+                await service.handleRequestWebhook(reconcilePayload);
+                alertEvents.off(alertEvents.EVENTS.UK_REQUEST_RESOLVED, listener);
+
+                expect(AlertRequestMap.areAllTerminal).toHaveBeenCalledWith(402);
+                expect(listener).not.toHaveBeenCalled();
+                expect(AlertRequestMap.updateStatus).not.toHaveBeenCalled();
+                expect(IntegrationLog.updateStatus).toHaveBeenCalledWith(10, 'success');
             });
 
             it('[A-04] mapping resolved и алерт закрыт → по-прежнему тишина', async () => {

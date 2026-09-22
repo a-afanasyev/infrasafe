@@ -263,7 +263,13 @@ class AlertIntentReconciler {
         const rule = await AlertRule.findByTypeAndSeverity(row.type, row.severity);
         if (!rule) return SKIP_NO_RULE;
 
-        const buildings = await alertForwarder.resolveBuildingIds(row.infrastructure_id, row.infrastructure_type);
+        // [N-07] Сбой чтения — «не знаю», а не «некуда»: пусть бросит. Внешний
+        // цикл reconcileOnce его залогирует, пометки не будет, и алерт вернётся
+        // на следующем тике — попытка при этом не засчитывается, иначе минутный
+        // сбой пула за три тика исчерпал бы MAX_ATTEMPTS тем же исходом.
+        const buildings = await alertForwarder.resolveBuildingIds(
+            row.infrastructure_id, row.infrastructure_type, { throwOnError: true }
+        );
         const hasTarget = Array.isArray(buildings) && buildings.some((b) => b && b.external_id);
         return hasTarget ? null : SKIP_NO_TARGET;
     }

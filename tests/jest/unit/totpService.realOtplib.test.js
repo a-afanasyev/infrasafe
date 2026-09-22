@@ -85,7 +85,7 @@ describe('[A-11] verifyCode', () => {
         const code = 'A1B2-C3D4';
         db.query
             .mockResolvedValueOnce({ rows: [await stateWithRecovery(code)] })
-            .mockResolvedValueOnce({ rows: [] });   // списание израсходованного кода
+            .mockResolvedValueOnce({ rows: [], rowCount: 1 });   // списание израсходованного кода
 
         await expect(totpService.verifyCode(USER_ID, code))
             .resolves.toEqual({ valid: true, method: 'recovery' });
@@ -95,7 +95,7 @@ describe('[A-11] verifyCode', () => {
         const code = 'A1B2-C3D4';
         db.query
             .mockResolvedValueOnce({ rows: [await stateWithRecovery(code)] })
-            .mockResolvedValueOnce({ rows: [] });
+            .mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
         await expect(totpService.verifyCode(USER_ID, code.toLowerCase()))
             .resolves.toEqual({ valid: true, method: 'recovery' });

@@ -44,7 +44,8 @@ jest.mock('../../../src/services/ukIntegrationService', () => ({
 
 const db = require('../../../src/config/database');
 const alertService = require('../../../src/services/alertService');
-const { ALERT_NOT_FOUND } = require('../../../src/services/alert/alertConstants');
+const { ALERT_NOT_FOUND, VERIFY_LOCK_BUSY } = require('../../../src/services/alert/alertConstants');
+const AlertRule = require('../../../src/models/AlertRule');
 
 describe('alertService: доменные ошибки не открывают dbBreaker (AR-1)', () => {
     beforeEach(() => {
@@ -98,5 +99,68 @@ describe('alertService: доменные ошибки не открывают db
         }
 
         expect(alertService.dbBreaker.getState().state).toBe('OPEN');
+    });
+});
+
+// [N-05] Тот же класс, что AR-1, — второй код. `resolveAlert` берёт
+// advisory-лок очереди верификации ВНУТРИ dbBreaker.execute; не дождавшись его,
+// бросает VERIFY_LOCK_BUSY. Это не отказ БД — БД ответила «занято». Но
+// предикат исключал только ALERT_NOT_FOUND, и пять «занято» подряд (длинный тик
+// воркера + пачка UK_REQUEST_RESOLVED при reconcile-шторме) открывали общий
+// AlertsDB на минуту — алерты переставали создаваться и эскалироваться.
+describe('alertService: занятый лок верификации не открывает dbBreaker (N-05)', () => {
+    const ORIGINAL_FLAG = process.env.ALERT_VERIFICATION_ENABLED;
+    const busy = () => Object.assign(new Error('Очередь верификации занята'), { code: VERIFY_LOCK_BUSY });
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        jest.restoreAllMocks();
+        alertService.initialized = true;
+        alertService.activeAlerts.clear();
+        alertService.lastChecks.clear();
+        alertService.dbBreaker.reset();
+        process.env.ALERT_VERIFICATION_ENABLED = 'true';
+        // Открытый алерт, у типа есть правило с окном верификации — значит,
+        // системный resolve идёт в путь с advisory-локом.
+        db.query.mockResolvedValue({
+            rows: [{
+                alert_id: 7, type: 'TRANSFORMER_OVERLOAD', infrastructure_id: 1,
+                infrastructure_type: 'transformer', severity: 'CRITICAL', status: 'active',
+            }]
+        });
+        jest.spyOn(AlertRule, 'findByTypeAndSeverity').mockResolvedValue({
+            verification_grace_seconds: 60, verification_window_seconds: 600,
+        });
+        jest.spyOn(alertService, '_resolveVerifying').mockRejectedValue(busy());
+    });
+
+    afterAll(() => {
+        if (ORIGINAL_FLAG === undefined) delete process.env.ALERT_VERIFICATION_ENABLED;
+        else process.env.ALERT_VERIFICATION_ENABLED = ORIGINAL_FLAG;
+        jest.restoreAllMocks();
+    });
+
+    test('breaker остаётся CLOSED после серии VERIFY_LOCK_BUSY', async () => {
+        for (let i = 0; i < 6; i++) {
+            await expect(alertService.resolveAlert(7, null)).rejects.toMatchObject({ code: VERIFY_LOCK_BUSY });
+        }
+
+        expect(alertService._resolveVerifying).toHaveBeenCalledTimes(6);
+        expect(alertService.dbBreaker.getState().state).toBe('CLOSED');
+    });
+
+    test('после серии «занято» операторский вызов доходит до БД, а не отбивается breaker-ом', async () => {
+        for (let i = 0; i < 6; i++) {
+            await alertService.resolveAlert(7, null).catch(() => {});
+        }
+
+        db.query.mockResolvedValue({
+            rows: [{
+                alert_id: 10, type: 'TRANSFORMER_OVERLOAD', infrastructure_id: 1,
+                infrastructure_type: 'transformer', status: 'acknowledged',
+            }]
+        });
+        const result = await alertService.acknowledgeAlert(10, 5);
+        expect(result.alert_id).toBe(10);
     });
 });

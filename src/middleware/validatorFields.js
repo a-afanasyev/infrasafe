@@ -52,6 +52,27 @@ const optionalText = (field, label) => [
 ];
 
 /**
+ * [N-01] Необязательный строковый ключ, задаваемый клиентом (у источников тепла и
+ * воды `id varchar(50)`; не задан — модель сгенерирует UUID). Набор символов
+ * ограничен URL-безопасными: админка подставляет id прямо в путь запроса
+ * (`/api/heat-sources/${id}`), и `/` или `?` в id уводили бы запрос на чужой
+ * маршрут. Под правило подходят и сиды ('HS-FARABI-01'), и UUID.
+ */
+// Ширина колонки `id varchar(50)` — единый источник для проверки пути
+// (validators.js) и тела.
+const STRING_ID_MAX_LENGTH = 50;
+const STRING_KEY_RE = new RegExp(`^[A-Za-z0-9_-]{1,${STRING_ID_MAX_LENGTH}}$`);
+const optionalStringKey = (field, label) => [
+    body(field).optional()
+        .custom((value) => {
+            if (typeof value !== 'string' || !STRING_KEY_RE.test(value)) {
+                throw new Error(`Поле «${label}»: от 1 до ${STRING_ID_MAX_LENGTH} символов — латиница, цифры, «-» и «_»`);
+            }
+            return true;
+        }),
+];
+
+/**
  * Географические координаты. Диапазон проверяется явно: без него в БД
  * попадала любая пара чисел, а карта потом рисовала здание в океане.
  */
@@ -136,6 +157,8 @@ const optionalDate = (field, label) => [
 module.exports = {
     requiredText,
     optionalText,
+    optionalStringKey,
+    STRING_ID_MAX_LENGTH,
     requiredCoordinates,
     requiredPositiveNumber,
     requiredNonNegativeNumber,

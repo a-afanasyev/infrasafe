@@ -14,6 +14,10 @@ const analyticsService = require('./analyticsService');
 // bare reference in the class body resolves unchanged; the singleton still
 // re-exports COOLDOWN_SUFFIX_BY_TYPE / SEVERITY_RANK at the bottom of the file.
 const { UK_REQUESTS_MAX_PER_ALERT, COOLDOWN_SUFFIX_BY_TYPE, SEVERITY_RANK, ALERT_NOT_FOUND, VERIFY_LOCK_BUSY } = require('./alert/alertConstants');
+
+// Доменные исходы, которые бросаются изнутри dbBreaker.execute ПОСЛЕ ответа БД
+// и потому не являются её отказом (AR-1, N-05).
+const BREAKER_DOMAIN_ERRORS = new Set([ALERT_NOT_FOUND, VERIFY_LOCK_BUSY]);
 // [AUD-012] Pure alertData builders split out (delegate-only).
 const alertDataBuilders = require('./alert/alertDataBuilders');
 // [AUD-012] Stateless read-only SQL helpers split out (delegate-only).
@@ -49,8 +53,13 @@ class InfrastructureAlertService {
         // оператора; повторный UK_REQUEST_RESOLVED по закрытому алерту во время
         // reconcile-шторма УК) открывали AlertsDB на минуту, а он общий с
         // createAlert/_escalateAlert — то есть переставали создаваться АЛЕРТЫ.
+        //
+        // [N-05] VERIFY_LOCK_BUSY — того же рода: БД ответила «лок занят», это
+        // не её отказ. Бросается тоже изнутри execute (resolveAlert берёт
+        // advisory-лок очереди верификации), и пять «занято» подряд — длинный
+        // тик воркера плюс пачка UK_REQUEST_RESOLVED — открывали AlertsDB.
         this.dbBreaker = CircuitBreakerFactory.createDatabaseBreaker('AlertsDB', {
-            isFailure: (error) => error?.code !== ALERT_NOT_FOUND
+            isFailure: (error) => !BREAKER_DOMAIN_ERRORS.has(error?.code)
         });
 
         // [AR-16] Ожидание advisory-лока verification-очереди в resolveAlert:
