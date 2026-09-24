@@ -11,6 +11,9 @@
  */
 
 const logger = require('./logger');
+
+// [N-52] Код ошибки отказа открытого circuit (503, стоит повторить).
+const CIRCUIT_OPEN = 'CIRCUIT_OPEN';
 // [AR-2] metrics — «листовой» модуль (prom-client + db + logger), поэтому
 // требовать его отсюда безопасно: цикла не возникает.
 const metrics = require('../observability/metrics');
@@ -134,10 +137,24 @@ class CircuitBreaker {
                 return await fallback();
             } catch (fallbackError) {
                 logger.error(`${this.name}: Fallback failed:`, fallbackError.message);
-                throw new Error('Сервис временно недоступен', { cause: fallbackError });
+                throw this._openError(fallbackError);
             }
         }
-        throw new Error('Сервис временно недоступен');
+        throw this._openError();
+    }
+
+    // [N-52] Отказ открытого circuit — временное, стоящее повтора состояние, а
+    // не поломка. Голый Error уходил клиенту как 500 «Внутренняя ошибка»; код
+    // и статус здесь, а не в контроллерах — чтобы все охраняемые пути отвечали
+    // одинаково. `expose`: текст безопасен и полезен клиенту, в отличие от
+    // обычной 5xx. `retryAfterSeconds` — до следующей пробы, не меньше 1.
+    _openError(cause) {
+        const error = new Error('Сервис временно недоступен', cause ? { cause } : undefined);
+        error.code = CIRCUIT_OPEN;
+        error.statusCode = 503;
+        error.expose = true;
+        error.retryAfterSeconds = Math.max(1, Math.ceil((this.nextAttempt - Date.now()) / 1000));
+        return error;
     }
 
     // [AR-1] Отдельный метод, чтобы падение самого предиката не проглатывало
@@ -291,5 +308,6 @@ class CircuitBreakerFactory {
 
 module.exports = {
     CircuitBreaker,
-    CircuitBreakerFactory
+    CircuitBreakerFactory,
+    CIRCUIT_OPEN
 };

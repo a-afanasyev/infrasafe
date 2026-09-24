@@ -20,10 +20,16 @@ const errorHandler = (err, req, res, next) => {
     // Устанавливаем статус ответа
     const statusCode = err.statusCode || 500;
 
-    // Формируем ответ — для 500 ошибок никогда не раскрываем внутренние детали клиенту
-    const clientMessage = statusCode >= 500
+    // Формируем ответ — для 500 ошибок никогда не раскрываем внутренние детали клиенту.
+    // [N-52] Исключение — ошибка, явно помеченная `expose` (так делает отказ
+    // открытого circuit breaker): её текст написан для клиента.
+    const clientMessage = statusCode >= 500 && err.expose !== true
         ? 'Внутренняя ошибка сервера'
         : (err.message || 'Внутренняя ошибка сервера');
+
+    if (Number.isFinite(err.retryAfterSeconds) && err.retryAfterSeconds > 0) {
+        res.set('Retry-After', String(Math.ceil(err.retryAfterSeconds)));
+    }
 
     const errorResponse = {
         success: false,
