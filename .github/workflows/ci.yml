@@ -19,6 +19,12 @@ concurrency:
       || format('run-{0}', github.run_id) }}
   cancel-in-progress: true
 
+# [N-13] Права токена объявлены здесь, а не взяты из настройки репозитория:
+# задания делают `npm ci` со сторонним postinstall. Запись объявляет только то
+# задание, которому она нужна (tests/jest/unit/workflowPermissions.test.js).
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Lint
