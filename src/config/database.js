@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const { Pool } = require('pg');
 const logger = require('../utils/logger');
+const { markForDiscard, releaseClient } = require('../utils/pgClient');
 
 let pool;
 
@@ -91,8 +92,8 @@ const close = async () => {
 // клиента, а не в локальной переменной: откат и release нередко находятся в
 // разных кадрах (alertVerificationService откатывает внутри `_processDue`, а
 // освобождает соединение вызывающий двумя уровнями выше). Symbol — чтобы не
-// столкнуться с полями самого pg.
-const BROKEN_BY_FAILED_ROLLBACK = Symbol('brokenByFailedRollback');
+// столкнуться с полями самого pg. [N-21] Сама отметка и `releaseClient` живут
+// в utils/pgClient: туда же пишет упавший advisory_unlock.
 
 /**
  * Откатить транзакцию, не маскируя исходную ошибку.
@@ -107,17 +108,9 @@ const safeRollback = async (client, context = 'transaction') => {
     try {
         await client.query('ROLLBACK');
     } catch (rollbackError) {
-        client[BROKEN_BY_FAILED_ROLLBACK] = rollbackError;
+        markForDiscard(client, rollbackError);
         logger.warn(`${context}: ROLLBACK failed: ${rollbackError.message}`);
     }
-};
-
-/**
- * Вернуть клиент в пул. Если откат не удался — передаём ошибку в `release`,
- * что заставляет pg уничтожить соединение, а не переиспользовать его.
- */
-const releaseClient = (client) => {
-    client.release(client[BROKEN_BY_FAILED_ROLLBACK] || undefined);
 };
 
 /**

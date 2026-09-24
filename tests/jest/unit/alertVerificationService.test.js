@@ -164,8 +164,9 @@ describe('alertVerificationService', () => {
             expect(service.isEnabled()).toBe(true);
         });
 
+        // [N-23] `yes` читается как включено (общий envFlags); «прочее» — мусор.
         test('false on any other value', () => {
-            process.env.ALERT_VERIFICATION_ENABLED = 'yes';
+            process.env.ALERT_VERIFICATION_ENABLED = 'garbage';
             expect(service.isEnabled()).toBe(false);
         });
     });

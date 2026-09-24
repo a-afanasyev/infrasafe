@@ -90,7 +90,9 @@ describe('MvRefreshScheduler', () => {
         expect(scheduler.isEnabled()).toBe(true);
     });
 
-    test.each(['false', 'FALSE', '0', ''])(
+    // [N-23] Пустая строка — «не задано» (умолчание true), а не «выключено»;
+    // off/no теперь выключают. Полная матрица — workerFlags.test.js.
+    test.each(['false', 'FALSE', '0', 'off', 'no'])(
         'isEnabled returns false for MV_REFRESH_ENABLED=%p',
         (value) => {
             process.env.MV_REFRESH_ENABLED = value;

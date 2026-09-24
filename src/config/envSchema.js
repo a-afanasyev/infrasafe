@@ -100,6 +100,8 @@ const RULES = [
 
     // --- Планировщики и воркеры -------------------------------------------
     bool('MV_REFRESH_ENABLED'),
+    bool('CONTROLLER_STATUS_SCHEDULER_ENABLED'),   // [N-23]
+    bool('UK_INTENT_RECONCILE_ENABLED'),           // [N-23]
     int('MV_REFRESH_INTERVAL_SECONDS', { min: 10, max: 3600 }),
     bool('ALERT_VERIFICATION_ENABLED'),
     int('ALERT_VERIFICATION_TICK_MS', { min: 5000, max: 60000 }),

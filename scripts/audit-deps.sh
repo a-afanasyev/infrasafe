@@ -32,6 +32,11 @@ readonly EXIT_UNAVAILABLE=2
 
 # Порог тот же, что был у прежнего шага `--audit-level=high`: moderate по дереву
 # зависимостей шумит и не действует per-PR.
+#
+# [N-10] Исключение: moderate в боевом дереве роняет проверку, если npm знает
+# исправление без смены мажора (см. verdict). Иначе qs 6.15.2 — DoS на разборе
+# query-string каждого запроса ещё до аутентификации — стоял в рантайме при
+# зелёном CI, а Dependabot alerts в репозитории выключены.
 readonly FAIL_ON=("high" "critical")
 
 # Паузы между попытками. Переопределяются окружением — тесты гоняют без ожидания.
@@ -66,13 +71,33 @@ verdict() {
             const levels = process.argv[1].split(",");
             const hits = levels
                 .map((level) => [level, Number(counts[level] || 0)])
-                .filter(([, n]) => n > 0);
+                .filter(([, n]) => n > 0)
+                .map(([l, n]) => `${l}=${n}`);
+
+            // [N-10] Moderate роняет, только если есть исправление без смены
+            // мажора — ровно то, что применяет `npm audit fix`.
+            const moderate = Object.values(report.vulnerabilities || {})
+                .filter((v) => v && v.severity === "moderate");
+            // Объект без явного isSemVerMajor: true — исправимый. Сомнение
+            // решается в сторону «уронить», а не «промолчать».
+            const fixable = (v) => v.fixAvailable === true
+                || (Boolean(v.fixAvailable) && typeof v.fixAvailable === "object"
+                    && v.fixAvailable.isSemVerMajor !== true);
+            const fixableModerate = moderate.filter(fixable).map((v) => v.name);
+            const otherModerate = moderate.filter((v) => !fixable(v)).map((v) => v.name);
+
+            if (fixableModerate.length > 0) {
+                hits.push(`moderate с исправлением: ${fixableModerate.join(", ")} — выполните npm audit fix`);
+            }
+            if (otherModerate.length > 0) {
+                console.error(`аудит: moderate без исправления в рамках мажора (не роняет): ${otherModerate.join(", ")}`);
+            }
             if (hits.length === 0) {
                 console.log("ok");
                 return;
             }
             console.log("vulnerable");
-            console.error(`аудит: ${hits.map(([l, n]) => `${l}=${n}`).join(", ")}`);
+            console.error(`аудит: ${hits.join("; ")}`);
         });
     ' "$(IFS=,; echo "${FAIL_ON[*]}")"
 }
@@ -93,7 +118,8 @@ while :; do
 
     case "$result" in
         ok)
-            echo "✅ аудит ($WORKDIR): уязвимостей уровня ${FAIL_ON[*]} нет"
+            echo "✅ аудит ($WORKDIR): уязвимостей уровня ${FAIL_ON[*]} и исправимых moderate нет"
+            [ -n "$detail" ] && echo "   ⚠️  ${detail}"
             exit 0
             ;;
         vulnerable)

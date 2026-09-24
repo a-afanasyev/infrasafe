@@ -41,6 +41,8 @@
 
 const db = require('../../config/database');
 const logger = require('../../utils/logger');
+const { unlockAdvisory, releaseClient } = require('../../utils/pgClient');
+const envFlags = require('../../utils/envFlags');
 
 const UkOutbox = require('../../models/UkOutbox');
 const AlertRequestMap = require('../../models/AlertRequestMap');
@@ -86,8 +88,10 @@ class UkOutboxService {
     }
 
     isEnabled() {
-        const flag = (process.env.UK_USE_WEBHOOK_SENDER ?? 'false').toString().toLowerCase();
-        return flag === 'true' || flag === '1';
+        // [N-23] Тот же парсер, что в config/env.js: иначе `yes` там требовал
+        // UK_API_ALLOWED_HOSTS как для включённого отправителя, а здесь оставлял
+        // его спящим.
+        return envFlags.isEnabled('UK_USE_WEBHOOK_SENDER');
     }
 
     intervalMs() {
@@ -196,12 +200,10 @@ class UkOutboxService {
                     this._consecutiveFailures = 0;
                     this._lastFailureLogAt = 0;
                 } finally {
-                    await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]).catch((err) => {
-                        logger.warn(`ukOutboxService: advisory_unlock failed: ${err.message}`);
-                    });
+                    await unlockAdvisory(client, ADVISORY_LOCK_KEY, 'ukOutboxService'); // [N-21]
                 }
             } finally {
-                client.release();
+                releaseClient(client);
             }
         } catch (err) {
             this._consecutiveFailures += 1;

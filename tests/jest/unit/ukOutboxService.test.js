@@ -117,8 +117,9 @@ describe('ukOutboxService', () => {
             expect(service.isEnabled()).toBe(true);
         });
 
+        // [N-23] `yes` — включено, как в config/env.js; расхождение было дефектом.
         it('returns false for "false", "0", random strings', () => {
-            for (const v of ['false', '0', 'yes', '']) {
+            for (const v of ['false', '0', 'off', 'garbage', '']) {
                 process.env.UK_USE_WEBHOOK_SENDER = v;
                 expect(service.isEnabled()).toBe(false);
             }

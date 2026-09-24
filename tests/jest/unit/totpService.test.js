@@ -17,6 +17,9 @@
 process.env.TOTP_ENCRYPTION_KEY = 'totp-test-key-that-is-at-least-32-bytes-long-123456';
 
 jest.mock('../../../src/config/database', () => ({ query: jest.fn() }));
+// [N-38] Настоящий bcrypt, но не дороже 4 раундов: с продовыми 12 тесты
+// упирались в таймаут под нагрузкой полного прогона.
+jest.mock('bcrypt', () => require('../helpers/fastBcrypt'));
 jest.mock('../../../src/utils/logger', () => ({
     info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn(),
 }));
@@ -41,6 +44,11 @@ const totpService = require('../../../src/services/totpService');
 // anti-replay требует, чтобы соседние тесты не переиспользовали одно значение.
 let sixDigitsCounterSeed = 100000;
 const sixDigits = () => String(sixDigitsCounterSeed++).slice(-6).padStart(6, '0');
+
+// [N-38] `clearAllMocks` в блоках ниже не снимает очередь `mockResolvedValueOnce`:
+// тест, упавший посреди сценария, оставлял свои ответы БД следующему, и одно
+// падение превращалось в каскад. Сброс здесь идёт раньше блочных beforeEach.
+beforeEach(() => db.query.mockReset());
 
 describe('totpService — encryption primitives', () => {
     beforeEach(() => jest.clearAllMocks());
@@ -114,6 +122,16 @@ describe('totpService — recovery codes', () => {
         const a = totpService.generateRecoveryCodes();
         const b = totpService.generateRecoveryCodes();
         expect(a).not.toEqual(b);
+    });
+
+    test('[N-38] сервис просит продовую стоимость bcrypt — 12 раундов', async () => {
+        const { requestedRounds } = require('../helpers/fastBcrypt');
+        requestedRounds.length = 0;
+
+        await totpService.hashRecoveryCodes(['ABCD-1234']);
+
+        // Обёртка тестов хэширует дешевле, но то, что просит сервис, — прод.
+        expect(requestedRounds).toEqual([12]);
     });
 
     test('hashRecoveryCodes returns bcrypt hashes (60-char $2b$… strings)', async () => {

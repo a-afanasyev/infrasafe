@@ -39,10 +39,15 @@ const EXIT_OK = 0;
 const EXIT_VULNERABLE = 1;
 const EXIT_UNAVAILABLE = 2;
 
-const report = (counts) => JSON.stringify({
+const report = (counts, vulnerabilities = {}) => JSON.stringify({
     auditReportVersion: 2,
-    vulnerabilities: {},
+    vulnerabilities,
     metadata: { vulnerabilities: { info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0, ...counts } },
+});
+
+// Форма записи — как у настоящего `npm audit --json` (снята 24.09 с qs 6.15.2).
+const moderateQs = (fixAvailable) => report({ moderate: 1, total: 1 }, {
+    qs: { name: 'qs', severity: 'moderate', isDirect: false, range: '2.2.5 - 6.15.3', fixAvailable },
 });
 
 const endpointError = JSON.stringify({
@@ -96,9 +101,36 @@ describe('[CI] аудит отличает уязвимость от недос�
         expect([res.status, res.calls]).toEqual([EXIT_OK, 1]);
     });
 
-    test('moderate не роняет: порог — high', () => {
-        // Тот же порог, что у прежнего шага (--audit-level=high). Moderate по
-        // дереву зависимостей шумит и не действует per-PR.
+    // [N-10] Moderate в БОЕВОМ дереве роняет проверку, когда npm знает
+    // исправление без смены мажора, то есть то, что делает `npm audit fix`.
+    // Так qs 6.15.2 (DoS на разборе query-string каждого запроса) неделями
+    // стоял в рантайме при зелёном CI. Неисправимый moderate не роняет: иначе
+    // одна находка без фикса блокировала бы все PR и учила жать «перезапуск».
+    test('moderate с исправлением без смены мажора — роняет и называет пакет', () => {
+        const res = run([moderateQs(true)]);
+        expect([res.status, res.calls]).toEqual([EXIT_VULNERABLE, 1]);
+        expect(res.stdout + res.stderr).toMatch(/qs/);
+        expect(res.stdout + res.stderr).toMatch(/npm audit fix/);
+    });
+
+    test('moderate с объектом исправления без пометки мажора — роняет (сомнение в сторону «уронить»)', () => {
+        const res = run([moderateQs({ name: 'qs', version: '6.16.0' })]);
+        expect(res.status).toBe(EXIT_VULNERABLE);
+    });
+
+    test('moderate, исправимый только сменой мажора, — не роняет, но виден', () => {
+        const res = run([moderateQs({ name: 'express', version: '5.0.0', isSemVerMajor: true })]);
+        expect(res.status).toBe(EXIT_OK);
+        expect(res.stdout + res.stderr).toMatch(/qs/);
+    });
+
+    test('moderate без исправления — не роняет, но виден', () => {
+        const res = run([moderateQs(false)]);
+        expect(res.status).toBe(EXIT_OK);
+        expect(res.stdout + res.stderr).toMatch(/qs/);
+    });
+
+    test('moderate без записи о пакете (только счётчик) — не роняет', () => {
         const res = run([report({ moderate: 3, total: 3 })]);
         expect(res.status).toBe(EXIT_OK);
     });

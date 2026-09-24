@@ -34,6 +34,8 @@
 
 const db = require('../config/database');
 const logger = require('../utils/logger');
+const { unlockAdvisory, releaseClient } = require('../utils/pgClient');
+const envFlags = require('../utils/envFlags');
 const controllerService = require('./controllerService');
 
 const DEFAULT_INTERVAL_SECONDS = 120;
@@ -67,9 +69,9 @@ class ControllerStatusScheduler {
     }
 
     isEnabled() {
-        const flag = (process.env.CONTROLLER_STATUS_SCHEDULER_ENABLED ?? 'true')
-            .toString().toLowerCase();
-        return flag !== 'false' && flag !== '0' && flag !== '';
+        // [N-23] Общий парсер: прежний локальный выключал только false/0, и
+        // `=off` оставлял планировщик включённым.
+        return envFlags.isEnabled('CONTROLLER_STATUS_SCHEDULER_ENABLED', true);
     }
 
     start() {
@@ -145,11 +147,9 @@ class ControllerStatusScheduler {
                 }
             } finally {
                 if (locked) {
-                    await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]).catch((err) => {
-                        logger.warn(`Пересчёт статусов: advisory_unlock не выполнен: ${err.message}`);
-                    });
+                    await unlockAdvisory(client, ADVISORY_LOCK_KEY, 'Пересчёт статусов'); // [N-21]
                 }
-                client.release();
+                releaseClient(client);
             }
         } catch (err) {
             // Никогда не пробрасываем: одна сетевая икота не должна навсегда

@@ -2,6 +2,7 @@ const db = require('../config/database');
 const envFlags = require('../utils/envFlags');
 const metrics = require('../observability/metrics');   // [AR-2]
 const logger = require('../utils/logger');
+const { unlockAdvisory } = require('../utils/pgClient');
 const { CircuitBreakerFactory } = require('../utils/circuitBreaker');
 const sharedThresholds = require('../config/thresholds');
 const alertEvents = require('../events/alertEvents');
@@ -1443,9 +1444,7 @@ class InfrastructureAlertService {
                     return updateResult.rows[0];
                 }, { client, context: `resolveAlert(alert ${alertId})` });
             } finally {
-                await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]).catch((e) => {
-                    logger.warn(`resolveAlert: advisory_unlock failed for alert ${alertId}: ${e.message}`);
-                });
+                await unlockAdvisory(client, ADVISORY_LOCK_KEY, `resolveAlert(alert ${alertId})`); // [N-21]
             }
         } finally {
             db.releaseClient(client);
