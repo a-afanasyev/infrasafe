@@ -46,6 +46,7 @@
 
 const db = require('../config/database');
 const logger = require('../utils/logger');
+const envFlags = require('../utils/envFlags');
 
 const DEFAULT_INTERVAL_SECONDS = 60;
 const MIN_INTERVAL_SECONDS = 10;
@@ -86,8 +87,7 @@ class MvRefreshScheduler {
     }
 
     isEnabled() {
-        const flag = (process.env.MV_REFRESH_ENABLED ?? 'true').toString().toLowerCase();
-        return flag !== 'false' && flag !== '0' && flag !== '';
+        return envFlags.isEnabled('MV_REFRESH_ENABLED', true); // [N-23]
     }
 
     start() {

@@ -39,6 +39,7 @@
 
 const db = require('../config/database');
 const logger = require('../utils/logger');
+const envFlags = require('../utils/envFlags');
 const metrics = require('../observability/metrics');   // [AR-2]
 
 const AlertVerification = require('../models/AlertVerification');
@@ -92,8 +93,7 @@ class AlertVerificationService {
     }
 
     isEnabled() {
-        const flag = (process.env.ALERT_VERIFICATION_ENABLED ?? 'false').toString().toLowerCase();
-        return flag === 'true' || flag === '1';
+        return envFlags.isEnabled('ALERT_VERIFICATION_ENABLED'); // [N-23]
     }
 
     intervalMs() {

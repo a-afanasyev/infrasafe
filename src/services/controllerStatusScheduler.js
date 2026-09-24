@@ -34,6 +34,7 @@
 
 const db = require('../config/database');
 const logger = require('../utils/logger');
+const envFlags = require('../utils/envFlags');
 const controllerService = require('./controllerService');
 
 const DEFAULT_INTERVAL_SECONDS = 120;
@@ -67,9 +68,9 @@ class ControllerStatusScheduler {
     }
 
     isEnabled() {
-        const flag = (process.env.CONTROLLER_STATUS_SCHEDULER_ENABLED ?? 'true')
-            .toString().toLowerCase();
-        return flag !== 'false' && flag !== '0' && flag !== '';
+        // [N-23] Общий парсер: прежний локальный выключал только false/0, и
+        // `=off` оставлял планировщик включённым.
+        return envFlags.isEnabled('CONTROLLER_STATUS_SCHEDULER_ENABLED', true);
     }
 
     start() {
