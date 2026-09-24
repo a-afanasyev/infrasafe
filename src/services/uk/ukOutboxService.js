@@ -41,6 +41,7 @@
 
 const db = require('../../config/database');
 const logger = require('../../utils/logger');
+const { unlockAdvisory, releaseClient } = require('../../utils/pgClient');
 const envFlags = require('../../utils/envFlags');
 
 const UkOutbox = require('../../models/UkOutbox');
@@ -199,12 +200,10 @@ class UkOutboxService {
                     this._consecutiveFailures = 0;
                     this._lastFailureLogAt = 0;
                 } finally {
-                    await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]).catch((err) => {
-                        logger.warn(`ukOutboxService: advisory_unlock failed: ${err.message}`);
-                    });
+                    await unlockAdvisory(client, ADVISORY_LOCK_KEY, 'ukOutboxService'); // [N-21]
                 }
             } finally {
-                client.release();
+                releaseClient(client);
             }
         } catch (err) {
             this._consecutiveFailures += 1;

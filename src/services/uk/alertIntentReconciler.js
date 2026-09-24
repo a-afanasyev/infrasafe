@@ -44,6 +44,7 @@
 
 const db = require('../../config/database');
 const logger = require('../../utils/logger');
+const { unlockAdvisory, releaseClient } = require('../../utils/pgClient');
 const envFlags = require('../../utils/envFlags');
 
 const AlertIntentGap = require('../../models/AlertIntentGap');
@@ -159,12 +160,10 @@ class AlertIntentReconciler {
                 try {
                     await this.reconcileOnce();
                 } finally {
-                    await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]).catch((err) => {
-                        logger.warn(`alertIntentReconciler: advisory_unlock failed: ${err.message}`);
-                    });
+                    await unlockAdvisory(client, ADVISORY_LOCK_KEY, 'alertIntentReconciler'); // [N-21]
                 }
             } finally {
-                client.release();
+                releaseClient(client);
             }
         } catch (err) {
             logger.error(`alertIntentReconciler tick failed: ${err.message}`);

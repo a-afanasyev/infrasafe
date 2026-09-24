@@ -46,6 +46,7 @@
 
 const db = require('../config/database');
 const logger = require('../utils/logger');
+const { unlockAdvisory, releaseClient } = require('../utils/pgClient');
 const envFlags = require('../utils/envFlags');
 
 const DEFAULT_INTERVAL_SECONDS = 60;
@@ -164,11 +165,9 @@ class MvRefreshScheduler {
                 logger.info(`MV refresh succeeded in ${durationMs}ms`);
             } finally {
                 if (locked) {
-                    await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]).catch((err) => {
-                        logger.warn(`MV refresh: advisory_unlock failed: ${err.message}`);
-                    });
+                    await unlockAdvisory(client, ADVISORY_LOCK_KEY, 'MV refresh'); // [N-21]
                 }
-                client.release();
+                releaseClient(client);
             }
         } catch (err) {
             const durationMs = Date.now() - startedAt;

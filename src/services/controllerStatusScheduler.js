@@ -34,6 +34,7 @@
 
 const db = require('../config/database');
 const logger = require('../utils/logger');
+const { unlockAdvisory, releaseClient } = require('../utils/pgClient');
 const envFlags = require('../utils/envFlags');
 const controllerService = require('./controllerService');
 
@@ -146,11 +147,9 @@ class ControllerStatusScheduler {
                 }
             } finally {
                 if (locked) {
-                    await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]).catch((err) => {
-                        logger.warn(`Пересчёт статусов: advisory_unlock не выполнен: ${err.message}`);
-                    });
+                    await unlockAdvisory(client, ADVISORY_LOCK_KEY, 'Пересчёт статусов'); // [N-21]
                 }
-                client.release();
+                releaseClient(client);
             }
         } catch (err) {
             // Никогда не пробрасываем: одна сетевая икота не должна навсегда

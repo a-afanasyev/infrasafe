@@ -39,6 +39,7 @@
 
 const db = require('../config/database');
 const logger = require('../utils/logger');
+const { unlockAdvisory } = require('../utils/pgClient');
 const envFlags = require('../utils/envFlags');
 const metrics = require('../observability/metrics');   // [AR-2]
 
@@ -184,9 +185,7 @@ class AlertVerificationService {
                     this._consecutiveFailures = 0;
                     this._lastFailureLogAt = 0;
                 } finally {
-                    await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]).catch((err) => {
-                        logger.warn(`alertVerificationService: advisory_unlock failed: ${err.message}`);
-                    });
+                    await unlockAdvisory(client, ADVISORY_LOCK_KEY, 'alertVerificationService'); // [N-21]
                 }
             } finally {
                 db.releaseClient(client);
@@ -726,9 +725,7 @@ class AlertVerificationService {
                     logger.info(`alertVerificationService: verification ${reopened.id} → reopened (new alert_id=${alertId}, chain=${reopenChainId})`);
                 }
             } finally {
-                await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]).catch((err) => {
-                    logger.warn(`alertVerificationService: advisory_unlock failed: ${err.message}`);
-                });
+                await unlockAdvisory(client, ADVISORY_LOCK_KEY, 'alertVerificationService'); // [N-21]
             }
         } catch (err) {
             logger.error(`alertVerificationService: ALERT_REOPENED handler failed: ${err.message}`);
