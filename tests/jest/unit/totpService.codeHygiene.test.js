@@ -15,6 +15,9 @@
 process.env.TOTP_ENCRYPTION_KEY = 'totp-test-key-that-is-at-least-32-bytes-long-123456';
 
 jest.mock('../../../src/config/database', () => ({ query: jest.fn() }));
+// [N-38] Настоящий bcrypt, но не дороже 4 раундов: с продовыми 12 тесты
+// упирались в таймаут под нагрузкой полного прогона.
+jest.mock('bcrypt', () => require('../helpers/fastBcrypt'));
 jest.mock('../../../src/utils/logger', () => ({
     info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn(),
 }));
