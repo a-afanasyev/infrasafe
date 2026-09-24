@@ -113,6 +113,11 @@ describe('[CI] аудит отличает уязвимость от недос�
         expect(res.stdout + res.stderr).toMatch(/npm audit fix/);
     });
 
+    test('moderate с объектом исправления без пометки мажора — роняет (сомнение в сторону «уронить»)', () => {
+        const res = run([moderateQs({ name: 'qs', version: '6.16.0' })]);
+        expect(res.status).toBe(EXIT_VULNERABLE);
+    });
+
     test('moderate, исправимый только сменой мажора, — не роняет, но виден', () => {
         const res = run([moderateQs({ name: 'express', version: '5.0.0', isSemVerMajor: true })]);
         expect(res.status).toBe(EXIT_OK);

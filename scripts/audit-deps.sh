@@ -78,8 +78,11 @@ verdict() {
             // мажора — ровно то, что применяет `npm audit fix`.
             const moderate = Object.values(report.vulnerabilities || {})
                 .filter((v) => v && v.severity === "moderate");
+            // Объект без явного isSemVerMajor: true — исправимый. Сомнение
+            // решается в сторону «уронить», а не «промолчать».
             const fixable = (v) => v.fixAvailable === true
-                || (v.fixAvailable && v.fixAvailable.isSemVerMajor === false);
+                || (Boolean(v.fixAvailable) && typeof v.fixAvailable === "object"
+                    && v.fixAvailable.isSemVerMajor !== true);
             const fixableModerate = moderate.filter(fixable).map((v) => v.name);
             const otherModerate = moderate.filter((v) => !fixable(v)).map((v) => v.name);
 
