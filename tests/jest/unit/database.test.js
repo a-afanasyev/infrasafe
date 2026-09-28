@@ -66,13 +66,13 @@ describe('Database module', () => {
             expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('Connection refused'));
         });
 
-        test('registers error and connect event handlers', async () => {
+        test('registers the idle-client error handler', async () => {
             await db.init();
 
-            const onCalls = mockPoolInstance.on.mock.calls;
-            const eventNames = onCalls.map(call => call[0]);
+            const eventNames = mockPoolInstance.on.mock.calls.map(call => call[0]);
             expect(eventNames).toContain('error');
-            expect(eventNames).toContain('connect');
+            // [N-29] Служебного SET по событию connect больше нет.
+            expect(eventNames).not.toContain('connect');
         });
 
         test('pool error handler logs the error', async () => {
@@ -89,18 +89,13 @@ describe('Database module', () => {
             );
         });
 
-        test('pool connect handler sets statement_timeout', async () => {
+        test('[N-29] statement_timeout передаётся в конфиге пула', async () => {
+            const { Pool } = require('pg');
             await db.init();
 
-            const connectCall = mockPoolInstance.on.mock.calls.find(call => call[0] === 'connect');
-            const connectHandler = connectCall[1];
-
-            // [R2-27] handler now guards the query with .catch(), so query must
-            // return a promise.
-            const mockConnClient = { query: jest.fn().mockResolvedValue({}) };
-            connectHandler(mockConnClient);
-
-            expect(mockConnClient.query).toHaveBeenCalledWith('SET statement_timeout = 30000');
+            const config = Pool.mock.calls[Pool.mock.calls.length - 1][0];
+            expect(config.statement_timeout).toBe(db.STATEMENT_TIMEOUT_MS);
+            expect(db.STATEMENT_TIMEOUT_MS).toBe(30000);
         });
     });
 

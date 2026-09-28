@@ -6,6 +6,10 @@ const { markForDiscard, releaseClient } = require('../utils/pgClient');
 
 let pool;
 
+// [N-29] Предел выполнения одного запроса. Экспортируется: HTTP-таймаут сервера
+// обязан быть заметно больше (N-55), иначе сокет закрывается раньше ответа.
+const STATEMENT_TIMEOUT_MS = 30000;
+
 // Инициализация подключения к базе данных
 const init = async () => {
     try {
@@ -22,22 +26,15 @@ const init = async () => {
             min: parseInt(process.env.DB_POOL_MIN || '2', 10),
             idleTimeoutMillis: parseInt(process.env.DB_POOL_IDLE_TIMEOUT || '30000', 10),
             connectionTimeoutMillis: parseInt(process.env.DB_POOL_CONNECT_TIMEOUT || '5000', 10),
+            // [N-29] Параметр стартового пакета, а не отдельный SET после
+            // подключения: соединение без таймаута не может возникнуть, и
+            // первый запрос не встаёт в очередь за служебным.
+            statement_timeout: STATEMENT_TIMEOUT_MS,
         });
 
         // Обработка ошибок idle-клиентов
         pool.on('error', (err) => {
             logger.error('Unexpected error on idle database client:', err.message);
-        });
-
-        // Устанавливаем statement_timeout для каждого нового соединения
-        // [R2-27] Guard the fire-and-forget query: an unhandled rejection here
-        // (e.g. connection dropped mid-SET) would bubble to the process-level
-        // unhandledRejection handler → gracefulShutdown(1), i.e. a restart on a
-        // non-fatal per-connection error. Log and move on instead.
-        pool.on('connect', (client) => {
-            client.query('SET statement_timeout = 30000').catch((err) => {
-                logger.warn(`Failed to set statement_timeout on new DB connection: ${err.message}`);
-            });
         });
 
         // Проверка соединения
@@ -167,5 +164,6 @@ module.exports = {
     close,
     safeRollback,
     releaseClient,
-    withTransaction
+    withTransaction,
+    STATEMENT_TIMEOUT_MS
 };
