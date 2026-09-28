@@ -2,6 +2,7 @@ const db = require('../config/database');
 const envFlags = require('../utils/envFlags');
 const metrics = require('../observability/metrics');   // [AR-2]
 const logger = require('../utils/logger');
+const { Semaphore } = require('../utils/semaphore');
 const { unlockAdvisory } = require('../utils/pgClient');
 const { CircuitBreakerFactory } = require('../utils/circuitBreaker');
 const sharedThresholds = require('../config/thresholds');
@@ -70,6 +71,11 @@ class InfrastructureAlertService {
         // константы — тесты ужимают ожидание до миллисекунд.
         this.resolveLockRetries = 15;
         this.resolveLockRetryMs = 200;
+        // [N-53] Не больше стольких системных resolve одновременно держат
+        // соединение пула в ожидании лока верификации; остальные ждут слот без
+        // соединения. 3 из DB_POOL_MAX=20 — пул остаётся запросам приложения.
+        this.resolveVerifyingConcurrency = 3;
+        this._resolveVerifyingSlots = new Semaphore(this.resolveVerifyingConcurrency);
 
         // Phase 4.2 (KISS-008): thresholds come from the shared config module.
         // Local copy kept for updateThresholds() compatibility (runtime overrides).
@@ -1371,6 +1377,26 @@ class InfrastructureAlertService {
      * enqueue fails.
      */
     async _resolveVerifying(alertId, userId, current, rule) {
+        // [N-53] Слот ждём не дольше, чем ждали бы сам лок: не дождались —
+        // тот же VERIFY_LOCK_BUSY, соединение пула при этом не занималось.
+        const release = await this._resolveVerifyingSlots.acquire(
+            this.resolveLockRetries * this.resolveLockRetryMs
+        );
+        if (!release) {
+            const error = new Error(
+                `Очередь верификации занята — resolve алерта ${alertId} не дождался слота`
+            );
+            error.code = VERIFY_LOCK_BUSY;
+            throw error;
+        }
+        try {
+            return await this._resolveVerifyingLocked(alertId, userId, current, rule);
+        } finally {
+            release();
+        }
+    }
+
+    async _resolveVerifyingLocked(alertId, userId, current, rule) {
         const { randomUUID } = require('crypto');
         const AlertVerification = require('../models/AlertVerification');
         const AlertRequestMap = require('../models/AlertRequestMap');
