@@ -21,15 +21,29 @@ const { STATEMENT_TIMEOUT_MS, HTTP_REQUEST_TIMEOUT_MS, RESPONSE_MARGIN_MS } = re
 
 const EDGES = ['nginx.profk.conf', 'nginx.production.conf'];
 
-/** proxy_read_timeout у блоков location, проксирующих в приложение ($app_upstream). */
-function appReadTimeoutsMs(file) {
+// Location, которые ходят в приложение, но ждать его НЕ должны. /health —
+// проба живости: быстрый отказ (5 с) там правилен, иначе монитор ждал бы
+// зависшее приложение дольше, чем имеет смысл.
+const EXEMPT = new Set(['/health']);
+
+/**
+ * Все location, проксирующие в приложение (`app:3000` — напрямую или через
+ * переменную `set $x "app:3000"`), с их proxy_read_timeout. Имя переменной не
+ * важно: новый location под другой переменной не должен проскочить мимо.
+ */
+function appLocations(file) {
     const conf = fs.readFileSync(path.join(__dirname, '../../../nginx-config', file), 'utf8');
-    const blocks = conf.split(/\blocation\b/).slice(1).filter((b) => /proxy_pass\s+http:\/\/\$app_upstream/.test(b.split(/\blocation\b/)[0]));
-    return blocks.map((b) => {
-        const m = /proxy_read_timeout\s+(\d+)s;/.exec(b);
-        // Без явного значения nginx ждёт 60 с.
-        return (m ? Number(m[1]) : 60) * 1000;
-    });
+    // Только настоящие директивы в начале строки: слово «location» встречается
+    // и в комментариях внутри блоков.
+    const heads = [...conf.matchAll(/^[ \t]*location\s+([^{\n]+?)\s*\{/gm)];
+    return heads
+        .map((m, i) => ({ name: m[1].replace(/^[=~^*\s]+/, ''), body: conf.slice(m.index, heads[i + 1] ? heads[i + 1].index : undefined) }))
+        .filter(({ body }) => /set\s+\$\w+\s+"app:3000"|proxy_pass\s+http:\/\/app:3000/.test(body))
+        .map(({ name, body }) => {
+            const t = /proxy_read_timeout\s+(\d+)s;/.exec(body);
+            // Без явного значения nginx ждёт 60 с.
+            return { name, ms: (t ? Number(t[1]) : 60) * 1000 };
+        });
 }
 
 describe('[N-55] цепочка таймаутов', () => {
@@ -39,11 +53,13 @@ describe('[N-55] цепочка таймаутов', () => {
     });
 
     test.each(EDGES)('%s: периметр ждёт дольше, чем сервер', (file) => {
-        const timeouts = appReadTimeoutsMs(file);
-        expect(timeouts.length).toBeGreaterThan(0);
-        for (const t of timeouts) {
-            expect(t).toBeGreaterThan(HTTP_REQUEST_TIMEOUT_MS);
-        }
+        const locations = appLocations(file);
+        expect(locations.map((l) => l.name)).toEqual(expect.arrayContaining(['/api/', '/health']));
+        const tooShort = locations
+            .filter((l) => !EXEMPT.has(l.name))
+            .filter((l) => l.ms <= HTTP_REQUEST_TIMEOUT_MS)
+            .map((l) => `${l.name}: ${l.ms} мс`);
+        expect(tooShort).toEqual([]);
     });
 
     test('database.js и server.js берут значения из одного места', () => {
