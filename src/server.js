@@ -305,7 +305,9 @@ const gracefulShutdown = async (signal, exitCode = 0) => {
 
     // [N-22] HTTP и воркеры закрываются ОДНОВРЕМЕННО: server.close ждёт идущие
     // запросы (до HTTP_REQUEST_TIMEOUT_MS), и последовательно воркеры не успели
-    // бы дождаться своих тиков до forceExit.
+    // бы дождаться своих тиков до forceExit. Сам forceExit (10 с) остаётся
+    // потолком: запрос, который идёт дольше, он оборвёт — это осознанно, у
+    // контейнера всё равно SIGKILL через 10 с после SIGTERM.
     const httpClosed = server
         ? new Promise(resolve => server.close(resolve)).then(() => logger.info('HTTP server closed'))
         : Promise.resolve();
