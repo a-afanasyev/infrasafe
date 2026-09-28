@@ -262,7 +262,7 @@ phase_infrasafe() {
     log "Validating nginx config syntax in throwaway container"
     docker run --rm \
         -v "$INFRASAFE_DIR/nginx.production.conf:/etc/nginx/nginx.conf:ro" \
-        nginx:alpine nginx -t 2>&1 | head -20 || die "nginx -t failed"
+        nginx:1.31-alpine@sha256:54f2a904c251d5a34adf545a72d32515a15e08418dae0266e23be2e18c66fefa nginx -t 2>&1 | head -20 || die "nginx -t failed"
 
     # Recreate nginx + app
     docker compose -p "$INFRASAFE_PROJECT" \

@@ -137,7 +137,7 @@ services:
   # single-replica only. Enabling Redis is the prerequisite for
   # horizontal scale-out (--scale app=N).
   redis:
-    image: redis:7-alpine
+    image: redis:7.4-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
     # [SEC-21] Config (incl. requirepass) comes from a mounted file, NOT argv
     # or ${REDIS_PASSWORD} interpolation: compose interpolation does NOT read
     # env_file (see B-023 note on the postgres service) and a secret in `command`
@@ -164,7 +164,7 @@ services:
 
   # База данных PostgreSQL с PostGIS
   postgres:
-    image: postgis/postgis:15-3.3
+    image: postgis/postgis:15-3.3@sha256:a2fc46b52819d25add4ed93d3da83e106e17ea3ace6883cce3791631c9820bb2
 
     # [SEC-2] DB credentials sourced from .env / .env.prod (both gitignored).
     # Same dual-file pattern as the app service: dev uses .env, prod uses
@@ -321,7 +321,7 @@ services:
   #   - leaflet-network: app, frontend, postgres (InfraSafe stack)
   #   - uk-network: uk-frontend, uk-management-api (UK stack, external)
   nginx:
-    image: nginx:alpine
+    image: nginx:1.31-alpine@sha256:54f2a904c251d5a34adf545a72d32515a15e08418dae0266e23be2e18c66fefa
     # [B-012] Run from a DIRECTORY mount, not a single-file mount. The config is
     # a full top-level nginx.conf, so we mount ./nginx-config as a directory and
     # point nginx at it with `-c`. Directory mounts resolve the filename through
