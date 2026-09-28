@@ -14,16 +14,17 @@ useDefault = true
 [allowlist]
 description = "Known placeholder secrets in fixtures and examples"
 
-# Paths that are intentionally never expected to contain real secrets
-# but may contain plausible-looking placeholders.
+# [N-11] Исключения ПО ПУТИ — только файлы, где секрета быть не может по
+# устройству. Раньше здесь целиком стояли docs/*.md, README, CLAUDE.md и тесты —
+# ровно те места, где секреты утекают чаще всего (ранбуки с командами), и
+# 28.09.2026 проверка нашла в docs значения настоящих, пусть уже ротированных
+# секретов. Плейсхолдеры в документах и тестах исключаются ниже ПО ЗНАЧЕНИЮ.
 paths = [
     '''\.env\.example$''',
-    '''docs/.*\.md$''',
-    '''README\.md$''',
-    '''CLAUDE\.md$''',
-    '''tests/jest/.*\.test\.js$''',
-    '''tests/jest/.*\.config\.js$''',
     '''package-lock\.json$''',
+    # SHA-256 файлов миграций (манифест раннера) — 64 hex, как у секретов.
+    # Общее правило «64 hex» спрятало бы и настоящий секрет вебхука.
+    '''database/init/99_schema_migrations_baseline\.sql$''',
 ]
 
 # Specific placeholder regex patterns used in this codebase.
@@ -49,4 +50,27 @@ regexes = [
     # Tracked for replacement with env_file substitution as a separate
     # follow-up — for now allowlisted explicitly.
     '''@ppl1c@ti0n''',
+
+    # [N-11] Плейсхолдеры в документации: YOUR_JWT_TOKEN и подобные. Обрезанные
+    # примеры — только конкретные публичные префиксы: стандартный заголовок
+    # JWT {"alg":"HS256","typ":"JWT"} и публичный ключ age. Общее правило
+    # «оканчивается на ...» спрятало бы настоящий секрет, обрезанный в ранбуке.
+    '''^YOUR_[A-Z0-9_]+$''',
+    '''^eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.{3}$''',
+    '''^age1[a-z0-9]+\.{3}$''',
+
+    # [N-11] Не секреты, а идентификаторы, на которые срабатывает generic-api-key:
+    # метка HKDF, поле формы, путь API, имя переменной в тесте.
+    '''^infrasafe-totp-v1$''',
+    '''^capacity_m3_per_hour$''',
+    '''^acknowledge/resolve$''',
+    '''^origJwt2faSecret$''',
+
+    # [N-11] Фикстуры тестов и CI: по имени видно, что это не прод.
+    '''^0123456789abcdef0123456789abcdef$''',
+    '''^MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=$''',
+    '''^totp-(test-)?key-''',
+    '''^distinct-2fa-secret-''',
+    '''^secret-0123456789abcdef''',
+    '''^test-(2fa-)?secret-''',
 ]

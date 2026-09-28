@@ -30,4 +30,3 @@ frontend-design/
 !README.md
 docker-compose*.yml
 backup-database.sh
-swagger_update.js

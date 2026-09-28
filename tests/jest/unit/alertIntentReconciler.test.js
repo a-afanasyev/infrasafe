@@ -267,7 +267,11 @@ describe('[A-03] проход подключён к жизненному цик�
     });
 
     test('останавливается при graceful shutdown', () => {
-        expect(SERVER).toMatch(/require\('\.\/services\/uk\/alertIntentReconciler'\)\.stop\(\)/);
+        // [N-22] Воркеры останавливаются списком, параллельно: проверяем, что
+        // проход в этом списке и что список действительно останавливается.
+        const shutdown = SERVER.slice(SERVER.indexOf('const gracefulShutdown'));
+        expect(shutdown).toMatch(/\['[^']+',\s*'\.\/services\/uk\/alertIntentReconciler'\]/);
+        expect(shutdown).toMatch(/require\(mod\)\.stop\(\)/);
     });
 });
 

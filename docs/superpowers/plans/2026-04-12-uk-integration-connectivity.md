@@ -53,7 +53,7 @@ In `docker-compose.dev.yml`, in the `app` service `environment` section (after l
 - [ ] **Step 2: Verify .env has UK_WEBHOOK_SECRET**
 
 Run: `grep UK_ .env`
-Expected: `UK_WEBHOOK_SECRET=ca3b1db0ee1359f7e40100cecb29f432422181ae1c1f1366f7adf84714718434`
+Expected: `UK_WEBHOOK_SECRET=<REDACTED: ротирован, см. .env.prod на хосте>`
 
 - [ ] **Step 3: Commit**
 
@@ -162,7 +162,7 @@ Send a test webhook with valid HMAC signature:
 ```bash
 BODY='{"event":"building.created","event_id":"test-'$(date +%s)'","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","building":{"id":999,"name":"Connectivity Test","address":"Test Address","town":"Test"}}'
 TIMESTAMP=$(date +%s)
-SECRET="ca3b1db0ee1359f7e40100cecb29f432422181ae1c1f1366f7adf84714718434"
+SECRET="<REDACTED: ротирован, см. .env.prod на хосте>"
 SIGNATURE="t=${TIMESTAMP},v1=$(echo -n "${TIMESTAMP}.${BODY}" | openssl dgst -sha256 -hmac "${SECRET}" | awk '{print $2}')"
 
 curl -s -X POST http://localhost:3000/api/webhooks/uk/building \

@@ -48,7 +48,7 @@
 
 ```bash
 openssl rand -base64 32 | tr -d '+/=' | head -c 32
-# → e.g.  Z9hDk7nFp2qWvxLm3RsTuYbAc1eQ4XGi
+# → e.g.  <REDACTED: ротирован, см. .env.prod на хосте>
 ```
 
 Save into your password manager. **Do not** copy via Slack/email.
@@ -89,7 +89,7 @@ password in one atomic step (next).
 ## Flip the role to LOGIN + set the password (atomic)
 
 ```bash
-NEW_PASSWORD='Z9hDk7nFp2qWvxLm3RsTuYbAc1eQ4XGi'   # from the openssl step
+NEW_PASSWORD='<REDACTED: ротирован, см. .env.prod на хосте>'   # from the openssl step
 
 docker exec -i infrasafe-postgres-1 \
     psql -U infrasafe_app -d infrasafe \
@@ -131,7 +131,7 @@ cp .env.prod .env.prod.bak.p0-5-$(date +%Y%m%d%H%M%S)
 # Edit .env.prod — change DB_USER and DB_PASSWORD:
 $EDITOR .env.prod
 # DB_USER=infrasafe_runtime          # was: infrasafe_app
-# DB_PASSWORD=Z9hDk7nFp2qWvxLm3RsTuYbAc1eQ4XGi   # was: @ppl1c@ti0n
+# DB_PASSWORD=<REDACTED: ротирован, см. .env.prod на хосте>   # was: @ppl1c@ti0n
 ```
 
 If you also use `docker-compose.unified.yml`'s inline env (it currently
