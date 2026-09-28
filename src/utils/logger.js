@@ -9,10 +9,34 @@ const { buildConsoleFormat } = require('./loggerConsoleFormat');
 // errors({stack:true}) — стек к этому моменту уже развёрнут — и перед json().
 const redactFormat = winston.format((info) => redactLogInfo(info));
 
+// [N-56] `logger.error('текст:', err.message)` — форма из console.log. splat()
+// без плейсхолдера сливает лишний аргумент в метаданные через Object.assign,
+// и строка разворачивается по индексам: {"0":"t","1":"e",…}, а текст ошибки
+// из записи пропадает. Таких вызовов в src два десятка, поэтому правка здесь:
+// примитивы дописываются к сообщению, объекты по-прежнему идут в метаданные.
+// Сообщение с настоящим плейсхолдером (%s, %d…) не трогаем — это работа splat.
+const SPLAT = Symbol.for('splat');
+const FORMAT_TOKEN = /%[sdifjoO]/;
+const isPrimitive = (v) => v === null || (typeof v !== 'object' && typeof v !== 'function');
+
+const primitiveArgsToMessage = winston.format((info) => {
+    const args = info[SPLAT];
+    if (!Array.isArray(args) || args.length === 0) return info;
+    if (typeof info.message === 'string' && FORMAT_TOKEN.test(info.message)) return info;
+
+    const primitives = args.filter(isPrimitive);
+    if (primitives.length === 0) return info;
+
+    info.message = [info.message, ...primitives.map(String)].join(' ');
+    info[SPLAT] = args.filter((a) => !isPrimitive(a));
+    return info;
+});
+
 // Определение форматов логирования
 const formats = winston.format.combine(
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     winston.format.errors({ stack: true }),
+    primitiveArgsToMessage(),
     winston.format.splat(),
     redactFormat(),
     winston.format.json()
