@@ -303,19 +303,31 @@ const gracefulShutdown = async (signal, exitCode = 0) => {
     }, 10000);
     forceExit.unref();
 
-    if (server) {
-        await new Promise(resolve => server.close(resolve));
-        logger.info('HTTP server closed');
-    }
+    // [N-22] HTTP и воркеры закрываются ОДНОВРЕМЕННО: server.close ждёт идущие
+    // запросы (до HTTP_REQUEST_TIMEOUT_MS), и последовательно воркеры не успели
+    // бы дождаться своих тиков до forceExit.
+    const httpClosed = server
+        ? new Promise(resolve => server.close(resolve)).then(() => logger.info('HTTP server closed'))
+        : Promise.resolve();
 
-    // Очистка таймеров и ресурсов
+    // [N-22] Воркеры останавливаются ПАРАЛЛЕЛЬНО: каждый stop() теперь ждёт свой
+    // идущий тик (до STOP_WAIT_MS), и последовательно пять ожиданий не уложились
+    // бы в 10 с до forceExit и SIGKILL. Пул и Redis закрываются только после.
+    const workers = [
+        ['MV scheduler', './services/mvRefreshService'],
+        ['UK outbox', './services/uk/ukOutboxService'],
+        ['Alert verification', './services/alertVerificationService'],
+        ['UK intent reconciler', './services/uk/alertIntentReconciler'],
+        ['Controller status scheduler', './services/controllerStatusScheduler'],
+    ];
+    const workersStopped = Promise.all(workers.map(async ([label, mod]) => {
+        try { await require(mod).stop(); } catch (e) { logger.error(`${label} stop error: ${e.message}`); }
+    }));
+    await Promise.all([httpClosed, workersStopped]);
+
+    // Очистка таймеров и ресурсов — после воркеров: идущий тик мог ещё ходить в кэш.
     try { destroyAllLimiters(); } catch (e) { logger.error('Rate limiter cleanup error:', e.message); }
     try { await cacheService.close(); } catch (e) { logger.error('Cache close error:', e.message); }
-    try { await require('./services/mvRefreshService').stop(); } catch (e) { logger.error('MV scheduler stop error:', e.message); }
-    try { await require('./services/uk/ukOutboxService').stop(); } catch (e) { logger.error('UK outbox stop error:', e.message); }
-    try { await require('./services/alertVerificationService').stop(); } catch (e) { logger.error('Alert verification stop error:', e.message); }
-    try { await require('./services/uk/alertIntentReconciler').stop(); } catch (e) { logger.error('UK intent reconciler stop error:', e.message); }
-    try { await require('./services/controllerStatusScheduler').stop(); } catch (e) { logger.error('Controller status scheduler stop error:', e.message); }
 
     // [Sprint 4] Close Redis after all consumers (rate-limiter / cache /
     // dedup) have stopped issuing commands.

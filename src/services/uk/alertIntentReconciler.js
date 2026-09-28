@@ -44,6 +44,7 @@
 
 const db = require('../../config/database');
 const logger = require('../../utils/logger');
+const { waitForIdle } = require('../../utils/workerStop');
 const { unlockAdvisory, releaseClient } = require('../../utils/pgClient');
 const envFlags = require('../../utils/envFlags');
 
@@ -141,6 +142,9 @@ class AlertIntentReconciler {
             this._timer = null;
             logger.info('alertIntentReconciler stopped');
         }
+        // [N-22] Таймеры сняты, новых тиков не будет; ждём идущий, иначе
+        // gracefulShutdown закроет пул у него из-под ног.
+        await waitForIdle(this, 'alertIntentReconciler');
     }
 
     /**
