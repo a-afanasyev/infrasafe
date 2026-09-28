@@ -288,8 +288,25 @@ async function checkAffectedBuildingsGate(alertData, rule) {
 // warn. Заглушить эскалацию из-за недоредактированной строки хуже, чем пропустить
 // лишний алерт.
 //
-// `now` инжектируется тестами; по умолчанию — локальное время процесса
-// (TZ контейнера, Asia/Tashkent на проде). Для суточной границы этого достаточно.
+// `now` инжектируется тестами. Календарная дата берётся по Ташкенту явно, а не по
+// TZ процесса. [N-32] Прежде здесь стояли getMonth()/getDate() с расчётом на
+// «TZ контейнера — Asia/Tashkent», но на обеих площадках TZ пуст и время UTC:
+// сезон 10-15..04-15 открывался бы в 05:00 по Ташкенту и закрывался на пять
+// часов позже. Окно задаёт оператор по местному календарю — так и считаем.
+const SEASON_TIME_ZONE = 'Asia/Tashkent';
+const seasonDateFormat = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SEASON_TIME_ZONE, month: '2-digit', day: '2-digit',
+});
+
+// 'MM-DD' в SEASON_TIME_ZONE. formatToParts, а не format: порядок и разделитель
+// у format зависят от локали, у частей — нет.
+function seasonToday(now) {
+    const parts = Object.fromEntries(
+        seasonDateFormat.formatToParts(now).map(({ type, value }) => [type, value])
+    );
+    return `${parts.month}-${parts.day}`;
+}
+
 function checkSeasonGate(alertData, rule, now = new Date()) {
     const from = rule.season_from ? String(rule.season_from).trim() : null;
     const to   = rule.season_to   ? String(rule.season_to).trim()   : null;
@@ -305,9 +322,7 @@ function checkSeasonGate(alertData, rule, now = new Date()) {
         return { allowed: true, reason: 'season gate: неполное окно, fail-open' };
     }
 
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const dd = String(now.getDate()).padStart(2, '0');
-    const today = `${mm}-${dd}`;
+    const today = seasonToday(now);
 
     const inside = (from <= to)
         ? (today >= from && today <= to)
