@@ -168,7 +168,7 @@ services:
 
   # 🗄️ База данных PostgreSQL с PostGIS
   postgres:
-    image: postgis/postgis:15-3.3@sha256:a2fc46b52819d25add4ed93d3da83e106e17ea3ace6883cce3791631c9820bb2
+    image: postgis/postgis:17-3.5@sha256:01a6a70e41e6c4467c8f55f6063555ed72db2d6662cd0d571040d42eadaeb6f6
     ports:
       # [SEC-34f] loopback-only — keep dev Postgres off the public interface
       - "127.0.0.1:5435:5432"
