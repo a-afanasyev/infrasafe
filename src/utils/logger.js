@@ -16,7 +16,9 @@ const redactFormat = winston.format((info) => redactLogInfo(info));
 // примитивы дописываются к сообщению, объекты по-прежнему идут в метаданные.
 // Сообщение с настоящим плейсхолдером (%s, %d…) не трогаем — это работа splat.
 const SPLAT = Symbol.for('splat');
-const FORMAT_TOKEN = /%[sdifjoO]/;
+// Тот же набор, что у logform/splat.js (%s %c %d %j %i %f %o %O и %%): иначе
+// сообщение с плейсхолдером, которого мы не знаем, ушло бы мимо splat.
+const FORMAT_TOKEN = /%[scdjifoO%]/;
 const isPrimitive = (v) => v === null || (typeof v !== 'object' && typeof v !== 'function');
 
 const primitiveArgsToMessage = winston.format((info) => {

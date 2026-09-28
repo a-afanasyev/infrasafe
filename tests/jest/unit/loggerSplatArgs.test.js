@@ -71,6 +71,11 @@ describe('[N-56] примитивы после сообщения', () => {
         expect(last().message).toBe('здание A-1: 7 метрик');
     });
 
+    test('%c и %% — тоже формат splat, аргументы не дописываются вторично', () => {
+        logger.info('загрузка 50%% %s', 'готово');
+        expect(last().message).toBe('загрузка 50% готово');
+    });
+
     test('секрет в метаданных по-прежнему вычищается', () => {
         logger.error('вход:', { password: 'hunter2' });
         expect(JSON.stringify(last())).not.toContain('hunter2');
