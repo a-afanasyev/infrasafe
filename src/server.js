@@ -18,6 +18,7 @@ const correlationId = require('./middleware/correlationId');
 const getAllowedOrigins = require('./utils/allowedOrigins');
 const { destroyAllLimiters } = require('./middleware/rateLimiter');
 const logger = require('./utils/logger');
+const { HTTP_REQUEST_TIMEOUT_MS } = require('./config/timeouts');
 const db = require('./config/database');
 const cacheService = require('./services/cacheService');
 
@@ -230,7 +231,9 @@ if (require.main === module) {
             server = app.listen(PORT, () => {
                 logger.info(`Сервер запущен на порту ${PORT}`);
             });
-            server.timeout = 30000; // 30s — максимальное время обработки запроса
+            // [N-55] Больше statement_timeout с запасом: при равенстве сокет
+            // закрывался раньше ответа на запрос, упёршийся в таймаут БД.
+            server.timeout = HTTP_REQUEST_TIMEOUT_MS;
             server.keepAliveTimeout = 65000; // Чуть больше чем типичный Nginx proxy_read_timeout (60s)
             server.headersTimeout = 66000; // Должен быть больше keepAliveTimeout
 

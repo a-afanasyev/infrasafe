@@ -6,9 +6,8 @@ const { markForDiscard, releaseClient } = require('../utils/pgClient');
 
 let pool;
 
-// [N-29] Предел выполнения одного запроса. Экспортируется: HTTP-таймаут сервера
-// обязан быть заметно больше (N-55), иначе сокет закрывается раньше ответа.
-const STATEMENT_TIMEOUT_MS = 30000;
+// [N-29] Предел выполнения одного запроса; связан с HTTP-таймаутом (N-55).
+const { STATEMENT_TIMEOUT_MS } = require('./timeouts');
 
 // Инициализация подключения к базе данных
 const init = async () => {
