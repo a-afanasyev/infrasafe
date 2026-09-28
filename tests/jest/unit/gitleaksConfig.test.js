@@ -47,6 +47,9 @@ describe('[N-11] исключения gitleaks', () => {
         for (const r of regexes) {
             expect([r, new RegExp(r).test(hex64)]).toEqual([r, false]);
             expect([r, new RegExp(r).test(b64)]).toEqual([r, false]);
+            // Настоящий секрет, обрезанный в ранбуке многоточием, — тоже находка.
+            expect([r, new RegExp(r).test(`${hex64}...`)]).toEqual([r, false]);
+            expect([r, new RegExp(r).test(`${b64}...`)]).toEqual([r, false]);
         }
     });
 });
