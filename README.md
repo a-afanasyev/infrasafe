@@ -26,7 +26,7 @@
 ### DevOps & Инфраструктура
 - **Оркестрация:** Docker Compose (dev, prod, unified, generator)
 - **Reverse Proxy:** Nginx
-- **Тестирование:** Jest (3061 unit/integration/security тестов, 184 suites, плюс 64 E2E) — состояние на 2026-08-05, сверяйтесь прогоном
+- **Тестирование:** Jest — unit/integration/security (`npm test`), тесты на живом Postgres (`npm run test:db`) и E2E на Docker-стеке (`npm run test:e2e`); числа сверяйте прогоном, в README они устаревают
 - **Линтинг:** ESLint
 
 ## Структура проекта
@@ -132,7 +132,7 @@
 │   ├── init/
 │   │   ├── 01_init_database.sql       # Схема БД (PostGIS, все таблицы)
 │   │   └── 02_seed_data.sql           # Тестовые данные (17 зданий, Ташкент)
-│   └── migrations/                    # Миграции 003-041 + раннер (scripts/migrate.sh, AUD-002)
+│   └── migrations/                    # Миграции 003-044 + раннер (scripts/migrate.sh, AUD-002)
 ├── generator/                         # Сервис генерации метрик (отдельный package.json)
 ├── tests/
 │   ├── jest/
@@ -233,7 +233,7 @@ npm run build:frontend:watch   # watch-режим: пересборка при �
 ### Тестирование
 
 ```bash
-npm test                  # Все тесты (~2618, 148 suites)
+npm test                  # unit + integration + security
 npm run test:unit         # Unit-тесты (tests/jest/unit/)
 npm run test:integration  # Интеграционные тесты
 npm run test:security     # Тесты безопасности

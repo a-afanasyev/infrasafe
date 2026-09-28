@@ -24,6 +24,11 @@ const FILES = [
     'Dockerfile.dev',
     'Dockerfile.frontend.dev',
     'scripts/deploy-uk.sh',
+    // services:/container: заданий CI — ни одна экосистема Dependabot их не
+    // видит, поэтому digest здесь обязателен вдвойне.
+    ...fs.readdirSync(path.join(ROOT, '.github/workflows'))
+        .filter((f) => /\.ya?ml$/.test(f))
+        .map((f) => `.github/workflows/${f}`),
 ];
 const OWN = /^(infrasafe-|ghcr\.io\/a-afanasyev\/)/;
 
@@ -43,7 +48,7 @@ function imageRefs(file) {
 describe('[N-12] внешние образы закреплены digest-ом', () => {
     test.each(FILES)('%s', (file) => {
         const refs = imageRefs(file);
-        expect(refs.length).toBeGreaterThan(0);
+        if (!file.startsWith('.github/')) expect(refs.length).toBeGreaterThan(0);
         expect(refs.filter((r) => !/@sha256:[a-f0-9]{64}$/.test(r))).toEqual([]);
     });
 

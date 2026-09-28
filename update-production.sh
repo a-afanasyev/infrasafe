@@ -8,7 +8,8 @@
 # restores app image + tracked static + dist on any failure.
 #
 # [R2-15] DEPLOY_ENV selects the compose -f set, env file, edge health URL and
-# verify base. 'prod' (default, = an unset call) = the profk production box
+# verify base. There is NO default (OPS-003): DEPLOY_ENV, else the host's
+# gitignored .deploy-env, else refuse to start. 'prod' = the profk production box
 # (docker-compose.unified.yml + docker-compose.profk.yml, profk.uz). 'staging' =
 # the future staging VM (+ docker-compose.staging.yml, staging.infrasafe.uz).
 # 'infrasafe' = the ORIGINAL infrasafe.uz production box (.105) — a second live
@@ -16,8 +17,8 @@
 # predates the profk-specific overlay; this is the exact byte-identical
 # behavior the pre-R2-15-Phase-A script always had for this host. docker-compose.prod.yml
 # is DEPRECATED. This is an UPDATE tool — it does NOT bootstrap an empty host (no
-# `up -d postgres`; migrate needs a live postgres). Fresh staging VM →
-# scripts/bootstrap-staging.sh first, then this script for subsequent updates.
+# `up -d postgres`; migrate needs a live postgres). A fresh host is bootstrapped
+# by hand (staging bootstrap script is not written yet — R2-15 Phase 2).
 #
 set -Eeuo pipefail
 
@@ -465,7 +466,7 @@ bash scripts/rebuild-frontend.sh verify
 
 # Step 8 — edge smoke
 say "🌐 Step 8: edge smoke"
-curl -fsS "$EDGE_HEALTH_URL" >/dev/null && ok "✅ edge healthy" || { err "edge health failed"; exit 1; }
+curl -fsS --max-time 15 "$EDGE_HEALTH_URL" >/dev/null && ok "✅ edge healthy" || { err "edge health failed"; exit 1; }
 
 # [A-09] Точка успеха: дальше идёт только уборка, ронять из-за неё выкатку и
 # тем более откатывать её нельзя.
