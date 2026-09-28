@@ -32,7 +32,7 @@ Stack: Express 4.18.2, pg 8.11.3, bcrypt 5.1.1, jsonwebtoken 9.0.2, helmet 7.1.0
 - **severity/infrastructure_type filters**: alertController.js:16-23 has whitelist validation — CONFIRMED FIXED
 
 ## CRITICAL — .env with real secret on disk (2026-04-02)
-- `.env` file exists at project root with real `UK_WEBHOOK_SECRET=ca3b1db0ee1359f7e40100...`
+- `.env` file exists at project root with real `UK_WEBHOOK_SECRET=<REDACTED: ротирован, см. .env.prod на хосте>`
 - `.gitignore` excludes it but file is present — secret must be rotated if this was ever committed
 
 ## Open Vulnerabilities (Production Readiness Audit 2026-04-02)
