@@ -264,11 +264,14 @@ class Transformer {
      * @returns {Promise<Transformer|null>} с `deleted_lines` — удалённые линии
      */
     static async delete(id, { cascadeLines = false } = {}) {
+        // Маршрут уже проверил id; приведение здесь — чтобы в лог и SQL шло
+        // число, а не строка из запроса.
+        const transformerId = Number.parseInt(id, 10);
         try {
             return await db.withTransaction(async (client) => {
                 const locked = await client.query(
                     'SELECT transformer_id FROM transformers WHERE transformer_id = $1 FOR UPDATE',
-                    [id]
+                    [transformerId]
                 );
                 if (!locked.rows.length) return null;
 
@@ -276,21 +279,21 @@ class Transformer {
                     `SELECT building_id, name FROM buildings
                       WHERE primary_transformer_id = $1 OR backup_transformer_id = $1
                       ORDER BY building_id`,
-                    [id]
+                    [transformerId]
                 );
-                if (buildings.rows.length) throw transformerHasBuildings(id, buildings.rows);
+                if (buildings.rows.length) throw transformerHasBuildings(transformerId, buildings.rows);
 
                 const lines = await client.query(
                     'SELECT line_id, name FROM lines WHERE transformer_id = $1 ORDER BY line_id',
-                    [id]
+                    [transformerId]
                 );
                 if (lines.rows.length && !cascadeLines) throw transformerHasLines(lines.rows);
 
                 const { rows } = await client.query(
                     'DELETE FROM transformers WHERE transformer_id = $1 RETURNING *',
-                    [id]
+                    [transformerId]
                 );
-                logger.info(`Deleted transformer ${id} with ${lines.rows.length} line(s)`);
+                logger.info(`Deleted transformer ${transformerId} with ${lines.rows.length} line(s)`);
                 const deleted = new Transformer(rows[0]);
                 deleted.deleted_lines = lines.rows;
                 return deleted;
@@ -299,8 +302,8 @@ class Transformer {
             if (error.statusCode) throw error;
             // Страховка на случай ссылки, не учтённой проверками выше.
             if (error.code === FOREIGN_KEY_VIOLATION) {
-                logger.warn(`Transformer.delete ${id}: ${error.constraint}`);
-                throw transformerHasBuildings(id, []);
+                logger.warn(`Transformer.delete ${transformerId}: нарушение внешнего ключа`);
+                throw transformerHasBuildings(transformerId, []);
             }
             logger.error(`Error in Transformer.delete: ${error.message}`);
             throw createError(`Failed to delete transformer: ${error.message}`, 500);
