@@ -93,7 +93,9 @@ const updateTransformer = async (req, res, next) => {
 const deleteTransformer = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const transformer = await Transformer.delete(id);
+        // [N-63] Линии уходят вместе с трансформатором только по явному
+        // подтверждению; без него модель отвечает 409 со списком линий.
+        const transformer = await Transformer.delete(id, { cascadeLines: req.query.cascade === 'lines' });
 
         if (!transformer) {
             return sendError(res, 404, 'Transformer not found');

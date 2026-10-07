@@ -4,6 +4,26 @@ const { createError } = require('../utils/helpers');
 const { buildUpdateQuery } = require('../utils/dynamicUpdateBuilder');
 const { validateSearchString } = require('../utils/queryValidation');
 
+// [N-63] Отказы БД, за которыми стоит ошибка клиента, а не сервера.
+const FOREIGN_KEY_VIOLATION = '23503';
+const NOT_NULL_VIOLATION = '23502';
+
+/**
+ * Перевести отказ ограничения по трансформатору в 400. Линия обязана
+ * принадлежать существующему трансформатору (миграция 045): без перевода
+ * опечатка в id или пустое поле давали 500.
+ * @returns {Error|null}
+ */
+function transformerConstraintError(error) {
+    if (error.code === FOREIGN_KEY_VIOLATION && error.constraint === 'lines_transformer_id_fkey') {
+        return createError('Трансформатор не найден: укажите существующий трансформатор', 400);
+    }
+    if (error.code === NOT_NULL_VIOLATION && error.column === 'transformer_id') {
+        return createError('Линия должна быть привязана к трансформатору', 400);
+    }
+    return null;
+}
+
 // [AUD-009] Columns writable on create/update and which of them are jsonb.
 const LINE_JSON_COLUMNS = new Set(['main_path', 'branches']);
 const LINE_WRITABLE_COLUMNS = [
@@ -161,6 +181,8 @@ class Line {
         } catch (error) {
             logger.error(`Error in Line.create: ${error.message}`);
             if (error.statusCode) throw error;
+            const clientError = transformerConstraintError(error);
+            if (clientError) throw clientError;
             throw createError(`Failed to create line: ${error.message}`, 500);
         }
     }
@@ -195,6 +217,8 @@ class Line {
         } catch (error) {
             logger.error(`Error in Line.update: ${error.message}`);
             if (error.statusCode) throw error;
+            const clientError = transformerConstraintError(error);
+            if (clientError) throw clientError;
             throw createError(`Failed to update line: ${error.message}`, 500);
         }
     }

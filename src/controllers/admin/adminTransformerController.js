@@ -111,11 +111,16 @@ async function deleteTransformer(req, res, next) {
         // [AUD-008] delegate to model (hits canonical `transformers` table);
         // deleted row is not serialized to the client, so model-instance vs
         // plain-row shape is irrelevant here.
-        const deleted = await Transformer.delete(id);
+        // [N-63] См. transformerController.deleteTransformer.
+        const deleted = await Transformer.delete(id, { cascadeLines: req.query.cascade === 'lines' });
         if (!deleted) {
             return next(createError('Transformer not found', 404));
         }
-        res.json({ success: true, message: 'Transformer deleted successfully' });
+        res.json({
+            success: true,
+            data: { deleted_lines: deleted.deleted_lines || [] },
+            message: 'Transformer deleted successfully'
+        });
     } catch (error) {
         logger.error(`Error in deleteTransformer: ${error.message}`);
         next(toClientError(error));
@@ -132,9 +137,23 @@ async function batchTransformersOperation(req, res, next) {
 
         let result;
         switch (action) {
-            case 'delete':
+            case 'delete': {
+                // [N-63] Пакетное удаление без диалога: каскад молча унёс бы
+                // линии, а здания дали бы 500. Трансформаторы с зависимостями
+                // удаляются только по одному, с подтверждением.
+                const inUse = await Transformer.findWithDependents(ids);
+                if (inUse.length) {
+                    const error = createError(
+                        'Часть трансформаторов используется зданиями или линиями — удалите их по одному',
+                        409
+                    );
+                    error.apiCode = 'TRANSFORMERS_IN_USE';
+                    error.apiMeta = { transformer_ids: inUse };
+                    return next(error);
+                }
                 result = await adminService.batchDelete('transformers', 'transformer_id', ids);
                 break;
+            }
             case 'update_voltage':
                 if (!data || !data.voltage_kv) {
                     return next(createError('voltage_kv is required for update_voltage action', 400));

@@ -7,6 +7,33 @@ const { validateSearchString } = require('../utils/queryValidation');
 // SQLSTATE нарушения внешнего ключа.
 const FOREIGN_KEY_VIOLATION = '23503';
 
+// Сколько имён показать в ответе: список нужен человеку для решения, а не выгрузка.
+const DEPENDENTS_PREVIEW = 20;
+
+/** [N-62] 409: к трансформатору привязаны здания. */
+function transformerHasBuildings(id, buildings) {
+    const error = createError(
+        'Трансформатор нельзя удалить: к нему привязаны здания (основной или резервный ввод). ' +
+        'Сначала отвяжите его в карточках этих зданий.',
+        409
+    );
+    error.apiCode = 'TRANSFORMER_HAS_BUILDINGS';
+    error.apiMeta = { transformer_id: Number(id), buildings: buildings.slice(0, DEPENDENTS_PREVIEW) };
+    return error;
+}
+
+/** [N-63] 409: у трансформатора есть линии, а удаление с ними не подтверждено. */
+function transformerHasLines(lines) {
+    const error = createError(
+        `У трансформатора ${lines.length} лини${lines.length === 1 ? 'я' : 'й'}: ` +
+        'они будут удалены вместе с ним. Подтвердите удаление.',
+        409
+    );
+    error.apiCode = 'TRANSFORMER_HAS_LINES';
+    error.apiMeta = { count: lines.length, lines: lines.slice(0, DEPENDENTS_PREVIEW) };
+    return error;
+}
+
 // [AUD-009] Columns writable on update (matches the prior hand-rolled set —
 // installation_date is create-only, kept that way).
 // [AR-3(б)] `installation_date` добавлен при переводе admin-контроллера на
@@ -218,35 +245,88 @@ class Transformer {
         }
     }
 
-    // Удалить трансформатор
-    static async delete(id) {
+    /**
+     * Удалить трансформатор.
+     *
+     * [N-62] Здания (основной или резервный ввод, ON DELETE NO ACTION) удаление
+     * блокируют всегда — это конфликт с данными, а не сбой сервера: 409 и
+     * причина, которую оператор может устранить.
+     * [N-63] Линии принадлежат трансформатору (NOT NULL, ON DELETE CASCADE) и
+     * уходят вместе с ним — но только по явному подтверждению `cascadeLines`.
+     * Без него 409 со списком линий: каскад в БД молча унёс бы их.
+     *
+     * Строка трансформатора берётся FOR UPDATE: вставка линии или здания со
+     * ссылкой на неё ждёт этой транзакции, и между проверкой и DELETE новая
+     * зависимость не появится.
+     *
+     * @param {number|string} id
+     * @param {{ cascadeLines?: boolean }} [options]
+     * @returns {Promise<Transformer|null>} с `deleted_lines` — удалённые линии
+     */
+    static async delete(id, { cascadeLines = false } = {}) {
         try {
-            const { rows } = await db.query(
-                'DELETE FROM transformers WHERE transformer_id = $1 RETURNING *',
-                [id]
-            );
-
-            if (!rows.length) {
-                return null;
-            }
-
-            logger.info(`Deleted transformer with ID: ${id}`);
-            return new Transformer(rows[0]);
-        } catch (error) {
-            // [N-62] Здание ссылается на трансформатор как на основной или
-            // резервный ввод (ON DELETE NO ACTION). Это конфликт с данными, а не
-            // сбой сервера: 409 и причина, которую оператор может устранить.
-            if (error.code === FOREIGN_KEY_VIOLATION) {
-                logger.warn(`Transformer.delete ${id}: есть привязанные здания (${error.constraint})`);
-                throw createError(
-                    'Трансформатор нельзя удалить: к нему привязаны здания (основной или резервный ввод). ' +
-                    'Сначала отвяжите его в карточках этих зданий.',
-                    409
+            return await db.withTransaction(async (client) => {
+                const locked = await client.query(
+                    'SELECT transformer_id FROM transformers WHERE transformer_id = $1 FOR UPDATE',
+                    [id]
                 );
+                if (!locked.rows.length) return null;
+
+                const buildings = await client.query(
+                    `SELECT building_id, name FROM buildings
+                      WHERE primary_transformer_id = $1 OR backup_transformer_id = $1
+                      ORDER BY building_id`,
+                    [id]
+                );
+                if (buildings.rows.length) throw transformerHasBuildings(id, buildings.rows);
+
+                const lines = await client.query(
+                    'SELECT line_id, name FROM lines WHERE transformer_id = $1 ORDER BY line_id',
+                    [id]
+                );
+                if (lines.rows.length && !cascadeLines) throw transformerHasLines(lines.rows);
+
+                const { rows } = await client.query(
+                    'DELETE FROM transformers WHERE transformer_id = $1 RETURNING *',
+                    [id]
+                );
+                logger.info(`Deleted transformer ${id} with ${lines.rows.length} line(s)`);
+                const deleted = new Transformer(rows[0]);
+                deleted.deleted_lines = lines.rows;
+                return deleted;
+            }, { context: 'Transformer.delete' });
+        } catch (error) {
+            if (error.statusCode) throw error;
+            // Страховка на случай ссылки, не учтённой проверками выше.
+            if (error.code === FOREIGN_KEY_VIOLATION) {
+                logger.warn(`Transformer.delete ${id}: ${error.constraint}`);
+                throw transformerHasBuildings(id, []);
             }
             logger.error(`Error in Transformer.delete: ${error.message}`);
             throw createError(`Failed to delete transformer: ${error.message}`, 500);
         }
+    }
+
+    /**
+     * [N-63] Какие из трансформаторов нельзя удалить без решения человека:
+     * на них ссылаются здания или у них есть линии. Для пакетного удаления,
+     * где диалога подтверждения нет.
+     * @param {number[]} ids
+     * @returns {Promise<number[]>} id трансформаторов с зависимостями
+     */
+    static async findWithDependents(ids) {
+        const { rows } = await db.query(
+            `SELECT t.transformer_id
+               FROM transformers t
+              WHERE t.transformer_id = ANY($1::int[])
+                AND (EXISTS (SELECT 1 FROM buildings b
+                              WHERE b.primary_transformer_id = t.transformer_id
+                                 OR b.backup_transformer_id = t.transformer_id)
+                  OR EXISTS (SELECT 1 FROM lines l WHERE l.transformer_id = t.transformer_id))
+              ORDER BY t.transformer_id`,
+            [ids]
+        );
+        return rows.map((r) => r.transformer_id);
     }
 
     // Найти трансформаторы обслуживающие здание

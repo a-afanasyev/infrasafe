@@ -23,7 +23,9 @@ const {
     optionalStringKey,
     requiredCoordinates,
     requiredPositiveNumber,
-    requiredNonNegativeNumber,
+    requiredRefId,
+    optionalNonNullRefId,
+    optionalPositiveNumber,
     optionalCoordinates,
     optionalEndpointCoordinates,
     optionalNonNegativeNumber,
@@ -31,6 +33,7 @@ const {
     optionalEnum,
     optionalDate,
 } = require('./validatorFields');
+const { body } = require('express-validator');
 const { handleValidationErrors } = require('./validationResultHandler');
 
 // Домен статуса водной линии — источник истины тот же, что у модели и
@@ -65,8 +68,24 @@ const validateTransformerCreate = [
 // [N-61] У `length_km` ещё CHECK > 0: ноль проходил схему и падал 500-й в БД.
 const validateLineCreate = [
     ...requiredText('name', 'Название линии'),
-    ...requiredNonNegativeNumber('voltage_kv', 'Напряжение (кВ)'),
+    // [N-63] CHECK (voltage_kv > 0) в `lines`: ноль падал 500-й из БД.
+    ...requiredPositiveNumber('voltage_kv', 'Напряжение (кВ)'),
     ...requiredPositiveNumber('length_km', 'Длина (км)'),
+    // [N-63] Линия обязана принадлежать трансформатору (миграция 045).
+    ...requiredRefId('transformer_id', 'Трансформатор'),
+    ...optionalIntInRange('commissioning_year', 'Год ввода в эксплуатацию', YEAR_RANGE),
+    ...optionalText('cable_type', 'Тип кабеля'),
+    ...optionalEndpointCoordinates(),
+    handleValidationErrors,
+];
+
+// [N-63] Частичное обновление: поля можно не передавать, но NOT NULL-колонки
+// нельзя обнулить, а CHECK > 0 нарушить — иначе отказ приходил 500-й из БД.
+const validateLineUpdate = [
+    body('name').optional().trim().notEmpty().withMessage('Поле «Название линии»: не может быть пустым'),
+    ...optionalPositiveNumber('voltage_kv', 'Напряжение (кВ)'),
+    ...optionalPositiveNumber('length_km', 'Длина (км)'),
+    ...optionalNonNullRefId('transformer_id', 'Трансформатор'),
     ...optionalIntInRange('commissioning_year', 'Год ввода в эксплуатацию', YEAR_RANGE),
     ...optionalText('cable_type', 'Тип кабеля'),
     ...optionalEndpointCoordinates(),
@@ -119,6 +138,7 @@ const validateHeatSourceCreate = [
 module.exports = {
     validateTransformerCreate,
     validateLineCreate,
+    validateLineUpdate,
     validateWaterLineCreate,
     validateColdWaterSourceCreate,
     validateHeatSourceCreate,

@@ -49,8 +49,9 @@ async function createLine(req, res, next) {
     try {
         const { name, voltage_kv, length_km, transformer_id } = req.body;
 
-        if (!name || !voltage_kv || !length_km) {
-            return next(createError('Name, voltage_kv and length_km are required', 400));
+        // [N-63] Линия обязана принадлежать трансформатору (миграция 045).
+        if (!name || !voltage_kv || !length_km || !transformer_id) {
+            return next(createError('Name, voltage_kv, length_km and transformer_id are required', 400));
         }
 
         // [AR-3(б)] Через модель.

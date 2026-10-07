@@ -110,7 +110,7 @@ describe('[AR-10] POST /api/lines — схема на маршруте, кото
     test('корректное тело проходит к контроллеру', async () => {
         const res = await request(app())
             .post('/api/lines')
-            .send({ name: 'Линия-1', voltage_kv: 10, length_km: 2.5, commissioning_year: 2020 });
+            .send({ name: 'Линия-1', voltage_kv: 10, length_km: 2.5, transformer_id: 3, commissioning_year: 2020 });
 
         expect(res.status).toBe(201);
         expect(mockCreated).toHaveBeenCalledTimes(1);
@@ -179,15 +179,28 @@ describe('[AR-10] схема повторяет ограничения БД, а 
         });
 
         test('[N-61] length_km = 0 → 400: в БД CHECK (length_km > 0)', async () => {
-            const res = await post({ name: 'Линия-1', voltage_kv: 10, length_km: 0 });
+            const res = await post({ name: 'Линия-1', voltage_kv: 10, length_km: 0, transformer_id: 3 });
 
             expect(res.status).toBe(400);
             expect(res.body.error.details.some(d => d.field === 'length_km')).toBe(true);
             expect(mockCreated).not.toHaveBeenCalled();
         });
 
-        test('полное тело проходит', async () => {
+        test('[N-63] без transformer_id → 400: линия обязана принадлежать трансформатору', async () => {
             const res = await post({ name: 'Линия-1', voltage_kv: 10, length_km: 2.5 });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error.details.some(d => d.field === 'transformer_id')).toBe(true);
+            expect(mockCreated).not.toHaveBeenCalled();
+        });
+
+        test.each([[null], [0], ['abc'], [-1]])('[N-63] transformer_id = %j → 400', async (value) => {
+            const res = await post({ name: 'Линия-1', voltage_kv: 10, length_km: 2.5, transformer_id: value });
+            expect(res.status).toBe(400);
+        });
+
+        test('полное тело проходит', async () => {
+            const res = await post({ name: 'Линия-1', voltage_kv: 10, length_km: 2.5, transformer_id: 3 });
 
             expect(res.status).toBe(201);
             expect(mockCreated).toHaveBeenCalledTimes(1);
@@ -263,5 +276,31 @@ describe('[AR-10] схема повторяет ограничения БД, а 
             expect(res.status).toBe(201);
             expect(mockCreated).toHaveBeenCalledTimes(1);
         });
+    });
+});
+
+describe('[N-63] PUT /api/lines/:id — трансформатор нельзя снять', () => {
+    const put = (body) => request(buildApp('/api/lines', '../../../src/routes/lineRoutes'))
+        .put('/api/lines/1').send(body);
+
+    test.each([[null], [0], ['abc']])('transformer_id = %j → 400', async (value) => {
+        const res = await put({ transformer_id: value });
+        expect(res.status).toBe(400);
+        expect(res.body.error.details.some(d => d.field === 'transformer_id')).toBe(true);
+    });
+
+    test('length_km = 0 → 400', async () => {
+        const res = await put({ length_km: 0 });
+        expect(res.status).toBe(400);
+    });
+
+    test('частичное обновление без transformer_id проходит', async () => {
+        const res = await put({ name: 'Новое имя' });
+        expect(res.status).toBe(200);
+    });
+
+    test('смена трансформатора проходит', async () => {
+        const res = await put({ transformer_id: 7 });
+        expect(res.status).toBe(200);
     });
 });

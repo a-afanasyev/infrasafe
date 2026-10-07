@@ -183,6 +183,21 @@ describe('TransformerController', () => {
     });
 
     describe('deleteTransformer', () => {
+        test('[N-63] без ?cascade=lines линии не подтверждены', async () => {
+            req.params.id = '1';
+            Transformer.delete.mockResolvedValue(mockTransformer);
+            await deleteTransformer(req, res, next);
+            expect(Transformer.delete).toHaveBeenCalledWith('1', { cascadeLines: false });
+        });
+
+        test('[N-63] ?cascade=lines — подтверждение удалить вместе с линиями', async () => {
+            req.params.id = '1';
+            req.query.cascade = 'lines';
+            Transformer.delete.mockResolvedValue(mockTransformer);
+            await deleteTransformer(req, res, next);
+            expect(Transformer.delete).toHaveBeenCalledWith('1', { cascadeLines: true });
+        });
+
         test('deletes and returns 200', async () => {
             req.params.id = '1';
             Transformer.delete.mockResolvedValue(mockTransformer);

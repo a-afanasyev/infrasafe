@@ -1,6 +1,10 @@
-jest.mock('../../../src/config/database', () => ({
-    query: jest.fn()
-}));
+jest.mock('../../../src/config/database', () => {
+    const mock = { query: jest.fn() };
+    // [N-63] Transformer.delete работает в транзакции; клиент транзакции ходит
+    // в тот же db.query, чтобы последовательности mockResolvedValueOnce работали.
+    mock.withTransaction = jest.fn((fn) => fn({ query: (...args) => mock.query(...args) }));
+    return mock;
+});
 
 jest.mock('../../../src/utils/logger', () => ({
     info: jest.fn(),
@@ -232,19 +236,26 @@ describe('Transformer Model', () => {
     });
 
     describe('delete', () => {
+        // Порядок запросов: блокировка строки → здания → линии → DELETE.
+        // Поведение на настоящих ключах — tests/jest/db/transformerDeleteInUse.db.test.js.
         test('deletes and returns removed transformer', async () => {
-            db.query.mockResolvedValue({ rows: [mockRow] });
+            db.query
+                .mockResolvedValueOnce({ rows: [{ transformer_id: 1 }] })
+                .mockResolvedValueOnce({ rows: [] })
+                .mockResolvedValueOnce({ rows: [] })
+                .mockResolvedValueOnce({ rows: [mockRow] });
 
             const result = await Transformer.delete(1);
 
             expect(result).toBeDefined();
             expect(result.transformer_id).toBe(1);
-            expect(db.query.mock.calls[0][0]).toContain('DELETE FROM transformers');
-            expect(db.query.mock.calls[0][1]).toEqual([1]);
+            expect(result.deleted_lines).toEqual([]);
+            expect(db.query.mock.calls[3][0]).toContain('DELETE FROM transformers');
+            expect(db.query.mock.calls[3][1]).toEqual([1]);
         });
 
         test('returns null when not found', async () => {
-            db.query.mockResolvedValue({ rows: [] });
+            db.query.mockResolvedValueOnce({ rows: [] });
 
             const result = await Transformer.delete(999);
 

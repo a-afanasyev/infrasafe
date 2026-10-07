@@ -12,6 +12,7 @@ const {
     // [AR-10] схемная валидация тел — раньше эти пять POST принимали любое тело
     validateTransformerCreate,
     validateLineCreate,
+    validateLineUpdate,
     validateWaterLineCreate,
     validateColdWaterSourceCreate,
     validateHeatSourceCreate,
@@ -726,7 +727,7 @@ router.post('/lines', rateLimitStrict, validateLineCreate, adminController.creat
  *         description: Линия удалена
  */
 router.get('/lines/:id', validateIdParam, adminController.getLineById);
-router.put('/lines/:id', rateLimitStrict, validateIdParam, adminController.updateLine);
+router.put('/lines/:id', rateLimitStrict, validateIdParam, validateLineUpdate, adminController.updateLine);
 router.delete('/lines/:id', rateLimitStrict, validateIdParam, adminController.deleteLine);
 
 /**

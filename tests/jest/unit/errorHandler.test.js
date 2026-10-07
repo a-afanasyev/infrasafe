@@ -121,6 +121,27 @@ describe('Error Handler Middleware', () => {
         }
     );
 
+    // [N-63] Машинный код и подробности для клиента — только у 4xx: на них
+    // строится диалог (например, «удалить трансформатор вместе с линиями?»).
+    test('[N-63] 4xx: apiCode и apiMeta уходят в конверт как code и meta', () => {
+        const err = Object.assign(new Error('Есть линии'), {
+            statusCode: 409, apiCode: 'TRANSFORMER_HAS_LINES', apiMeta: { count: 2 },
+        });
+        errorHandler(err, req, res, next);
+        expect(res.json).toHaveBeenCalledWith({
+            success: false,
+            error: { message: 'Есть линии', status: 409, code: 'TRANSFORMER_HAS_LINES', meta: { count: 2 } },
+        });
+    });
+
+    test('[N-63] 5xx: apiCode и apiMeta наружу не уходят', () => {
+        const err = Object.assign(new Error('boom'), { statusCode: 500, apiCode: 'X', apiMeta: { secret: 1 } });
+        errorHandler(err, req, res, next);
+        const body = res.json.mock.calls[0][0];
+        expect(body.error.code).toBeUndefined();
+        expect(body.error.meta).toBeUndefined();
+    });
+
     test('logs error message', () => {
         const err = new Error('Logged error');
         err.statusCode = 400;

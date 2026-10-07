@@ -123,6 +123,31 @@ const requiredPositiveNumber = (field, label) => [
         .isFloat({ gt: 0 }).withMessage(`Поле «${label}»: ожидается число больше нуля`),
 ];
 
+/**
+ * [N-63] Обязательная ссылка на запись — целое больше нуля. Существование
+ * проверяет внешний ключ; модель переводит его отказ в 400.
+ */
+const requiredRefId = (field, label) => [
+    body(field)
+        .exists({ checkNull: true }).withMessage(`Поле «${label}»: обязательно для заполнения`).bail()
+        .isInt({ gt: 0 }).withMessage(`Поле «${label}»: ожидается идентификатор записи`),
+];
+
+/**
+ * [N-63] Ссылка, которую при частичном обновлении можно не передавать, но нельзя
+ * снять: `null` для NOT NULL-колонки — это не «не менять», а ошибка.
+ */
+const optionalNonNullRefId = (field, label) => [
+    body(field).optional()
+        .isInt({ gt: 0 }).withMessage(`Поле «${label}»: ожидается идентификатор записи, снять связь нельзя`),
+];
+
+/** Необязательное строго положительное число (для частичного обновления). */
+const optionalPositiveNumber = (field, label) => [
+    body(field).optional()
+        .isFloat({ gt: 0 }).withMessage(`Поле «${label}»: ожидается число больше нуля`),
+];
+
 /** Обязательное неотрицательное число — колонка NOT NULL без CHECK на знак. */
 const requiredNonNegativeNumber = (field, label) => [
     body(field)
@@ -162,6 +187,9 @@ module.exports = {
     requiredCoordinates,
     requiredPositiveNumber,
     requiredNonNegativeNumber,
+    requiredRefId,
+    optionalNonNullRefId,
+    optionalPositiveNumber,
     optionalCoordinates,
     optionalEndpointCoordinates,
     optionalNonNegativeNumber,

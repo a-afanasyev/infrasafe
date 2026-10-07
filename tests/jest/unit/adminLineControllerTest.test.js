@@ -197,8 +197,17 @@ describe('AdminLineController', () => {
             );
         });
 
-        test('calls next on database error', async () => {
+        test('[N-63] returns 400 when transformer_id is missing', async () => {
             req.body = { name: 'Line', voltage_kv: 10, length_km: 5 };
+
+            await createLine(req, res, next);
+
+            expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
+            expect(db.query).not.toHaveBeenCalled();
+        });
+
+        test('calls next on database error', async () => {
+            req.body = { name: 'Line', voltage_kv: 10, length_km: 5, transformer_id: 1 };
             db.query.mockRejectedValue(new Error('DB error'));
 
             await createLine(req, res, next);

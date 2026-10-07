@@ -3,7 +3,7 @@ const router = express.Router();
 const lineController = require('../controllers/lineController');
 const { applyCrudRateLimit } = require('../middleware/rateLimiter');
 const { isAdmin } = require('../middleware/auth');
-const { validateIntParam, validateLineCreate } = require('../middleware/validators');
+const { validateIntParam, validateLineCreate, validateLineUpdate } = require('../middleware/validators');
 
 // Маршруты для линий
 router.get('/', lineController.getAllLines);
@@ -14,7 +14,7 @@ router.get('/:id', validateIntParam('id'), lineController.getLineById);
 // админка создаёт эти сущности именно через этот маршрут — проверено в браузере,
 // где трансформатор с именем `<script>…` создавался с кодом 201.
 router.post('/', applyCrudRateLimit, isAdmin, validateLineCreate, lineController.createLine);
-router.put('/:id', applyCrudRateLimit, isAdmin, validateIntParam('id'), lineController.updateLine);
+router.put('/:id', applyCrudRateLimit, isAdmin, validateIntParam('id'), validateLineUpdate, lineController.updateLine);
 router.delete('/:id', applyCrudRateLimit, isAdmin, validateIntParam('id'), lineController.deleteLine);
 
 // Дополнительные маршруты

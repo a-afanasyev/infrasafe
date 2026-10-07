@@ -112,7 +112,7 @@ describe('[AR-10] линии электропередач', () => {
 
     test('корректное тело проходит', async () => {
         const res = await request(app).post('/t')
-            .send({ name: 'Л-1', voltage_kv: 10, length_km: 2.5, commissioning_year: 2020 });
+            .send({ name: 'Л-1', voltage_kv: 10, length_km: 2.5, transformer_id: 1, commissioning_year: 2020 });
         expect(res.status).toBe(200);
     });
 });
@@ -187,7 +187,7 @@ describe('[AR-10] необязательные поля остаются нео�
     test('null в необязательном числовом поле допустим', async () => {
         const app = appWith(V.validateLineCreate);
         const res = await request(app).post('/t')
-            .send({ name: 'Л-2', voltage_kv: 10, length_km: 1, cable_type: null });
+            .send({ name: 'Л-2', voltage_kv: 10, length_km: 1, transformer_id: 1, cable_type: null });
         expect(res.status).toBe(200);
     });
 });
