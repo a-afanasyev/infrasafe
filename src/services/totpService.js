@@ -12,7 +12,29 @@ const { createError } = require('../utils/helpers');
 // `totp_enabled` из кэша authService. Теперь запись идёт через `models/User.js`,
 // и сброс кэша — часть самой операции: звать его отсюда больше нечем и незачем.
 
-const ISSUER = 'InfraSafe';
+// [N-60] Имя записи в аутентификаторе. У площадок разные секреты, а запись
+// «InfraSafe: admin» была одна на всех — в приложении две неотличимые строки,
+// и код от одной площадки уходил на другую. Площадка задаёт своё имя через
+// TOTP_ISSUER; действует для НОВЫХ настроек 2FA, старые записи не меняются.
+const DEFAULT_ISSUER = 'InfraSafe';
+const ISSUER_MAX_LENGTH = 64;
+
+function resolveIssuer(value = process.env.TOTP_ISSUER) {
+    if (value === undefined || value === '') return DEFAULT_ISSUER;
+    const issuer = value.trim();
+    // Двоеточие — разделитель «issuer:label» в otpauth-URI.
+    if (!issuer || issuer.length > ISSUER_MAX_LENGTH || issuer.includes(':')) {
+        logger.warn(`TOTP_ISSUER отклонён (пусто, длиннее ${ISSUER_MAX_LENGTH} или с «:»), используется «${DEFAULT_ISSUER}»`);
+        return DEFAULT_ISSUER;
+    }
+    return issuer;
+}
+
+// [N-60] Допуск по времени: соседнее окно в обе стороны (±1 шаг по 30 с).
+// По умолчанию otplib 13 сверяет только ТЕКУЩЕЕ окно — код, набранный в конце
+// окна, или часы телефона, ушедшие на десяток секунд, давали отказ. Именно
+// ±1 шаг предполагал SEC-26 ниже: код живёт до 90 с, anti-replay — 120 с.
+const TOTP_EPOCH_TOLERANCE_SECONDS = 30;
 const RECOVERY_CODE_COUNT = 8;
 const BCRYPT_ROUNDS = 12;
 
@@ -103,7 +125,7 @@ const RECOVERY_CODE_RE = /^[0-9A-F]{4}-[0-9A-F]{4}$/i;
  */
 function verifyTotpSafely(secret, token) {
     try {
-        return otplib.verifySync({ secret, token }).valid === true;
+        return otplib.verifySync({ secret, token, epochTolerance: TOTP_EPOCH_TOLERANCE_SECONDS }).valid === true;
     } catch (error) {
         logger.warn(`TOTP verify отклонён библиотекой: ${error.message}`);
         return false;
@@ -159,7 +181,7 @@ async function generateSetup(userId, username) {
         secret = otplib.generateSecret();
     }
 
-    const otpauthUrl = otplib.generateURI({ issuer: ISSUER, label: username, secret });
+    const otpauthUrl = otplib.generateURI({ issuer: resolveIssuer(), label: username, secret });
     const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
 
     // SEC-28: keep recovery codes stable for the duration of one setup. On a
