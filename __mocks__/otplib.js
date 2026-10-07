@@ -19,7 +19,21 @@
 //   'не-код'    → throw Token must contain only digits
 //   '000000'    → { valid: false }
 //   верный код  → { valid: true }
+//
+// [N-60] epoch / epochTolerance — тоже по настоящей otplib 13 (секунды):
+//   epochTolerance по умолчанию 0 — только текущее 30-секундное окно;
+//   число N — окна, пересекающие [epoch - N, epoch + N];
+//   пара [past, future] — [epoch - past, epoch + future].
 const crypto = require('crypto');
+
+const STEP = 30;
+
+function codeForCounter(secret, counter) {
+    const hash = crypto.createHmac('sha1', secret).update(String(counter)).digest('hex');
+    return String(parseInt(hash.slice(-6), 16) % 1000000).padStart(6, '0');
+}
+
+const nowSeconds = () => Math.floor(Date.now() / 1000);
 
 function assertTokenShape(token) {
     const value = String(token ?? '');
@@ -34,18 +48,24 @@ function assertTokenShape(token) {
 
 module.exports = {
     generateSecret: () => crypto.randomBytes(20).toString('base64url').slice(0, 32).toUpperCase(),
-    generateSync: ({ secret }) => {
+    generateSync: ({ secret, epoch = nowSeconds() }) =>
         // Детерминированный шестизначный код для тестов.
-        const time = Math.floor(Date.now() / 30000);
-        const hash = crypto.createHmac('sha1', secret).update(String(time)).digest('hex');
-        return String(parseInt(hash.slice(-6), 16) % 1000000).padStart(6, '0');
-    },
+        codeForCounter(secret, Math.floor(epoch / STEP)),
     generateURI: ({ issuer, label, secret }) =>
         `otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}`,
-    verifySync: ({ secret, token }) => {
+    verifySync: ({ secret, token, epoch = nowSeconds(), epochTolerance = 0 }) => {
         const value = assertTokenShape(token);
-        const expected = module.exports.generateSync({ secret });
-        return { valid: value === expected, delta: 0 };
+        const [past, future] = Array.isArray(epochTolerance)
+            ? epochTolerance
+            : [epochTolerance, epochTolerance];
+        const from = Math.floor((epoch - past) / STEP);
+        const to = Math.floor((epoch + future) / STEP);
+        for (let counter = from; counter <= to; counter++) {
+            if (codeForCounter(secret, counter) === value) {
+                return { valid: true, delta: counter - Math.floor(epoch / STEP) };
+            }
+        }
+        return { valid: false };
     },
     verify: ({ secret, token }) => Promise.resolve(module.exports.verifySync({ secret, token })),
 };
