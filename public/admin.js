@@ -2038,14 +2038,19 @@ document.addEventListener("DOMContentLoaded", function () {
                 }
             });
 
-            if (!response.ok) throw new Error('Ошибка удаления трансформатора');
+            if (!response.ok) {
+                // [N-62] Причину отказа (например, привязанные здания — 409)
+                // показываем оператору, а не общее «ошибка удаления».
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(ApiError.extractApiError(errorData, 'Ошибка удаления трансформатора'));
+            }
 
             showToast('Трансформатор успешно удален', 'success');
             dataLoaded.transformers = false;
             loadTransformers();
         } catch (error) {
             console.error('Error deleting transformer:', error);
-            showToast('Ошибка удаления трансформатора', 'error');
+            showToast(error.message || 'Ошибка удаления трансформатора', 'error');
         }
     };
 

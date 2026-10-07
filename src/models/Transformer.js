@@ -4,6 +4,9 @@ const { createError } = require('../utils/helpers');
 const { buildUpdateQuery } = require('../utils/dynamicUpdateBuilder');
 const { validateSearchString } = require('../utils/queryValidation');
 
+// SQLSTATE нарушения внешнего ключа.
+const FOREIGN_KEY_VIOLATION = '23503';
+
 // [AUD-009] Columns writable on update (matches the prior hand-rolled set —
 // installation_date is create-only, kept that way).
 // [AR-3(б)] `installation_date` добавлен при переводе admin-контроллера на
@@ -230,6 +233,17 @@ class Transformer {
             logger.info(`Deleted transformer with ID: ${id}`);
             return new Transformer(rows[0]);
         } catch (error) {
+            // [N-62] Здание ссылается на трансформатор как на основной или
+            // резервный ввод (ON DELETE NO ACTION). Это конфликт с данными, а не
+            // сбой сервера: 409 и причина, которую оператор может устранить.
+            if (error.code === FOREIGN_KEY_VIOLATION) {
+                logger.warn(`Transformer.delete ${id}: есть привязанные здания (${error.constraint})`);
+                throw createError(
+                    'Трансформатор нельзя удалить: к нему привязаны здания (основной или резервный ввод). ' +
+                    'Сначала отвяжите его в карточках этих зданий.',
+                    409
+                );
+            }
             logger.error(`Error in Transformer.delete: ${error.message}`);
             throw createError(`Failed to delete transformer: ${error.message}`, 500);
         }
