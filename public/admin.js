@@ -2067,11 +2067,9 @@ document.addEventListener("DOMContentLoaded", function () {
                 lineId: id,
                 existingData: line,
                 apiEndpoint: '/api/lines', // Используем endpoint для обычных линий
-                additionalFields: {
-                    voltage_kv: line.voltage_kv,
-                    transformer_id: line.transformer_id,
-                    length_km: line.length_km
-                },
+                // [N-61] Без additionalFields: форма заполняется из existingData,
+                // длина считается по трассе. Прежние значения здесь затирали
+                // правку напряжения и трансформатора.
                 onSave: () => {
                     dataLoaded.lines = false;
                     loadLines();

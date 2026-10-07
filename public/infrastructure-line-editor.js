@@ -697,6 +697,34 @@ class InfrastructureLineEditor {
     }
 
     /**
+     * [N-61] Длина трассы в км: основной путь плюс ответвления, по большому
+     * кругу (haversine). Точки без конечных lat/lng пропускаются.
+     * @param {Array<{lat:number,lng:number}>} mainPath
+     * @param {Array<Array<{lat:number,lng:number}>>} [branches]
+     * @returns {number}
+     */
+    static pathLengthKm(mainPath, branches = []) {
+        const EARTH_RADIUS_KM = 6371.0088;
+        const rad = (deg) => deg * Math.PI / 180;
+        const valid = (p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lng);
+        const segmentKm = (a, b) => {
+            const dLat = rad(b.lat - a.lat);
+            const dLng = rad(b.lng - a.lng);
+            const h = Math.sin(dLat / 2) ** 2
+                + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+            return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(h)));
+        };
+        const polylineKm = (points) => {
+            const pts = Array.isArray(points) ? points.filter(valid) : [];
+            let km = 0;
+            for (let i = 1; i < pts.length; i++) km += segmentKm(pts[i - 1], pts[i]);
+            return km;
+        };
+        const branchList = Array.isArray(branches) ? branches : [];
+        return branchList.reduce((sum, branch) => sum + polylineKm(branch), polylineKm(mainPath));
+    }
+
+    /**
      * Валидация данных линии
      */
     validateLine() {
@@ -763,8 +791,16 @@ class InfrastructureLineEditor {
             return;
         }
 
+        // [N-61] additionalFields — значения ПО УМОЛЧАНИЮ, а не поверх формы:
+        // editLine передавал сюда загруженные voltage_kv/transformer_id/length_km,
+        // и правка этих полей в форме молча откатывалась к старым.
+        const defaults = Object.fromEntries(
+            Object.entries(this.additionalFields).filter(([, value]) => value !== undefined)
+        );
+
         // Собираем данные - ищем элементы внутри модального окна
         const lineData = {
+            ...defaults,
             line_type: this.lineType,
             name: modal.querySelector('#line-name').value.trim(),
             description: modal.querySelector('#line-description').value.trim(),
@@ -784,6 +820,13 @@ class InfrastructureLineEditor {
             if (transformerEl && transformerEl.value) lineData.transformer_id = parseInt(transformerEl.value);
             if (cableTypeEl && cableTypeEl.value) lineData.cable_type = cableTypeEl.value.trim();
             if (commYearEl && commYearEl.value) lineData.commissioning_year = parseInt(commYearEl.value);
+
+            // [N-61] В `lines.length_km` NOT NULL и CHECK > 0, а поля длины в
+            // форме нет: длина — свойство нарисованной трассы, считаем по ней.
+            // Округление до метра — точность колонки numeric(10,3).
+            lineData.length_km = Number(
+                InfrastructureLineEditor.pathLengthKm(this.mainPath, lineData.branches).toFixed(3)
+            );
         }
 
         // Добавляем специфичные поля для водоснабжения
@@ -804,13 +847,6 @@ class InfrastructureLineEditor {
             if (contactEl && contactEl.value) lineData.maintenance_contact = contactEl.value.trim();
             if (notesEl && notesEl.value) lineData.notes = notesEl.value.trim();
         }
-
-        // Добавляем дополнительные поля (если указаны)
-        Object.keys(this.additionalFields).forEach(key => {
-            if (this.additionalFields[key] !== undefined) {
-                lineData[key] = this.additionalFields[key];
-            }
-        });
 
         try {
             const url = this.lineId 
@@ -1060,3 +1096,7 @@ if (!document.getElementById('infrastructure-line-editor-styles')) {
     document.head.appendChild(style);
 }
 
+// [N-61] Для юнит-тестов в jsdom; в браузере (bundle:false) класс остаётся глобальным.
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { InfrastructureLineEditor };
+}

@@ -178,6 +178,14 @@ describe('[AR-10] схема повторяет ограничения БД, а 
             expect(res.body.error.details.some(d => d.field === 'length_km')).toBe(true);
         });
 
+        test('[N-61] length_km = 0 → 400: в БД CHECK (length_km > 0)', async () => {
+            const res = await post({ name: 'Линия-1', voltage_kv: 10, length_km: 0 });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error.details.some(d => d.field === 'length_km')).toBe(true);
+            expect(mockCreated).not.toHaveBeenCalled();
+        });
+
         test('полное тело проходит', async () => {
             const res = await post({ name: 'Линия-1', voltage_kv: 10, length_km: 2.5 });
 

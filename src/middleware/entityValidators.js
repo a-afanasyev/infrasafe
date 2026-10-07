@@ -62,10 +62,11 @@ const validateTransformerCreate = [
 ];
 
 // `voltage_kv` и `length_km` — NOT NULL в `lines`; без них запрос доезжал до БД.
+// [N-61] У `length_km` ещё CHECK > 0: ноль проходил схему и падал 500-й в БД.
 const validateLineCreate = [
     ...requiredText('name', 'Название линии'),
     ...requiredNonNegativeNumber('voltage_kv', 'Напряжение (кВ)'),
-    ...requiredNonNegativeNumber('length_km', 'Длина (км)'),
+    ...requiredPositiveNumber('length_km', 'Длина (км)'),
     ...optionalIntInRange('commissioning_year', 'Год ввода в эксплуатацию', YEAR_RANGE),
     ...optionalText('cable_type', 'Тип кабеля'),
     ...optionalEndpointCoordinates(),
