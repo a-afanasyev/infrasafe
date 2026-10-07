@@ -47,6 +47,8 @@ const ENTRIES = [
     'public/utils/ukLinkBuilder.js',
     // [R2-10] section-id normalizer + corrected bulk-delete endpoint map
     'public/utils/sectionId.js',
+    // [N-63] удаление трансформатора с подтверждением удаления его линий
+    'public/utils/transformerDelete.js',
     // [R2-12] shared 2FA/auth network + QR-validation layer
     'public/utils/authFlow.js',
     // [brand] доступ к токенам темы из кода: маркеры карты, popup'ы, бейджи.

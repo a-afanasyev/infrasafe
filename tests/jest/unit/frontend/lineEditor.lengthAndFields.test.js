@@ -70,7 +70,7 @@ describe('[N-61] pathLengthKm', () => {
 
 describe('[N-61] создание ЛЭП отправляет длину по трассе', () => {
     test('POST несёт length_km > 0, рассчитанную по точкам', async () => {
-        mountForm({ voltage: '10' });
+        mountForm({ voltage: '10', transformer: '3' });
         const e = editor({ lineId: null });
         e.mainPath = [A, B, C];
 

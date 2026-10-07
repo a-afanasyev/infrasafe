@@ -74,6 +74,8 @@ class InfrastructureLineEditor {
         this.mainPathPolyline = null;
         this.branchPolylines = [];
         this.markers = [];
+        // [N-63] Трансформаторы на карте редактора ЛЭП.
+        this.transformerMarkers = [];
         
         // Режим редактирования
         this.currentMode = 'main'; // 'main' или 'branch'
@@ -196,11 +198,10 @@ class InfrastructureLineEditor {
                                                required>
                                     </div>
                                     <div class="form-group">
-                                        <label for="line-transformer">ID Трансформатора</label>
-                                        <input type="number" 
-                                               id="line-transformer" 
-                                               value="${this.existingData?.transformer_id || ''}"
-                                               placeholder="Опционально">
+                                        <label for="line-transformer">Трансформатор *</label>
+                                        <select id="line-transformer" required>
+                                            <option value="">— выберите или кликните на карте —</option>
+                                        </select>
                                     </div>
                                 </div>
                                 <div class="form-row">
@@ -371,6 +372,89 @@ class InfrastructureLineEditor {
 
         // Обработчик кликов по карте
         this.map.on('click', (e) => this.handleMapClick(e));
+
+        // [N-63] ЛЭП начинается от трансформатора — показываем их на карте.
+        if (this.lineType === 'electricity') {
+            this.loadTransformers();
+        }
+    }
+
+    /**
+     * [N-63] Загрузить трансформаторы: список в форме и маркеры на карте.
+     * Ошибка загрузки не ломает редактор — оператор увидит пустой список и
+     * сообщение, а сохранить без трансформатора ему не даст валидация.
+     */
+    async loadTransformers() {
+        try {
+            const response = await fetch('/api/transformers?limit=200');
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const body = await response.json();
+            const transformers = Array.isArray(body.data) ? body.data : [];
+            this.renderTransformerOptions(transformers);
+            this.renderTransformerMarkers(transformers);
+            if (this.mainPath.length === 0) this.fitToTransformers();
+        } catch (error) {
+            console.error('Не удалось загрузить трансформаторы:', error);
+            this.showToast('Не удалось загрузить список трансформаторов', 'error');
+        }
+    }
+
+    /** [N-63] Заполнить список; имена — текстом, не разметкой. */
+    renderTransformerOptions(transformers) {
+        const select = document.getElementById('line-transformer');
+        if (!select) return;
+        const current = select.value || String(this.existingData?.transformer_id ?? '');
+        [...select.querySelectorAll('option[value]:not([value=""])')].forEach((o) => o.remove());
+        transformers.forEach((t) => {
+            const option = document.createElement('option');
+            option.value = String(t.transformer_id);
+            option.textContent = t.name;
+            select.appendChild(option);
+        });
+        if (current) select.value = current;
+    }
+
+    /** [N-63] Маркеры трансформаторов; клик выбирает трансформатор линии. */
+    renderTransformerMarkers(transformers) {
+        if (!this.map) return;
+        this.transformerMarkers.forEach((m) => this.map.removeLayer(m));
+        this.transformerMarkers = [];
+        transformers.forEach((t) => {
+            const lat = parseFloat(t.latitude);
+            const lng = parseFloat(t.longitude);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+            const label = document.createElement('span');
+            label.textContent = t.name;
+            const marker = L.marker([lat, lng], {
+                icon: L.divIcon({
+                    html: '<div class="line-editor-transformer-icon">⚡</div>',
+                    className: 'custom-marker',
+                    iconSize: [28, 28]
+                }),
+                // Клик по трансформатору — выбор, а не точка трассы.
+                bubblingMouseEvents: false
+            }).addTo(this.map);
+            marker.bindTooltip(label, { direction: 'top', offset: [0, -14] });
+            marker.on('click', (e) => {
+                if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
+                this.selectTransformer(t.transformer_id);
+            });
+            this.transformerMarkers.push(marker);
+        });
+    }
+
+    /** [N-63] Выбрать трансформатор линии (из списка или кликом по карте). */
+    selectTransformer(id) {
+        const select = document.getElementById('line-transformer');
+        if (select) select.value = String(id);
+    }
+
+    /** [N-63] Новая линия: показать район, где стоят трансформаторы. */
+    fitToTransformers() {
+        if (!this.map || this.transformerMarkers.length === 0) return;
+        const bounds = L.latLngBounds(this.transformerMarkers.map((m) => m.getLatLng()));
+        this.map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
     }
 
     /**
@@ -759,6 +843,14 @@ class InfrastructureLineEditor {
             errors.push('Название линии обязательно');
         }
 
+        // [N-63] ЛЭП обязана принадлежать трансформатору.
+        if (this.lineType === 'electricity') {
+            const transformerEl = modal.querySelector('#line-transformer');
+            if (!transformerEl || !transformerEl.value) {
+                errors.push('Выберите трансформатор, от которого идёт линия');
+            }
+        }
+
         // Проверка основного пути
         if (this.mainPath.length < 2) {
             errors.push('Основной путь должен содержать минимум 2 точки');
@@ -1085,6 +1177,14 @@ if (!document.getElementById('infrastructure-line-editor-styles')) {
 
         #line-editor-map {
             border: 2px solid var(--color-border);
+        }
+
+        /* [N-63] трансформатор на карте редактора ЛЭП */
+        .line-editor-transformer-icon {
+            width: 28px; height: 28px; border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            background: #FFA500; color: #fff; font-size: 16px;
+            border: 2px solid #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.35);
         }
 
         /* Leaflet маркеры */

@@ -2032,21 +2032,19 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!confirm('Вы уверены, что хотите удалить этот трансформатор?')) return;
 
         try {
-            const response = await fetch(`/api/transformers/${id}`, {
-                method: 'DELETE',
-                headers: {
-                }
+            // [N-63] Если у трансформатора есть линии, сервер отвечает 409 со
+            // списком, и TransformerDelete спрашивает, удалять ли их вместе с ним.
+            const result = await window.TransformerDelete.deleteTransformerFlow(id, {
+                fetchFn: (url, init) => fetch(url, init),
+                confirmFn: (question) => confirm(question)
             });
+            if (result.status === 'cancelled') return;
 
-            if (!response.ok) {
-                // [N-62] Причину отказа (например, привязанные здания — 409)
-                // показываем оператору, а не общее «ошибка удаления».
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(ApiError.extractApiError(errorData, 'Ошибка удаления трансформатора'));
-            }
-
-            showToast('Трансформатор успешно удален', 'success');
+            showToast(result.linesDeleted
+                ? `Трансформатор и его линии (${result.linesDeleted}) удалены`
+                : 'Трансформатор успешно удален', 'success');
             dataLoaded.transformers = false;
+            dataLoaded.lines = false;
             loadTransformers();
         } catch (error) {
             console.error('Error deleting transformer:', error);
