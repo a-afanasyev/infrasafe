@@ -39,6 +39,14 @@ const errorHandler = (err, req, res, next) => {
         }
     };
 
+    // [N-63] Машинный код и подробности — только для клиентских (4xx) ошибок,
+    // которые их явно несут: по ним фронт строит диалог, а не гадает по тексту.
+    // У 5xx не отдаются никогда — там они были бы утечкой внутренностей.
+    if (statusCode < 500) {
+        if (err.apiCode) errorResponse.error.code = err.apiCode;
+        if (err.apiMeta && typeof err.apiMeta === 'object') errorResponse.error.meta = err.apiMeta;
+    }
+
     // В режиме разработки добавляем стек ошибки
     if (isDev() && err.stack) {
         errorResponse.error.stack = err.stack;

@@ -1,6 +1,10 @@
-jest.mock('../../../src/config/database', () => ({
-    query: jest.fn()
-}));
+jest.mock('../../../src/config/database', () => {
+    const mock = { query: jest.fn() };
+    // [N-63] Transformer.delete работает в транзакции; клиент транзакции ходит
+    // в тот же db.query, чтобы последовательности mockResolvedValueOnce работали.
+    mock.withTransaction = jest.fn((fn) => fn({ query: (...args) => mock.query(...args) }));
+    return mock;
+});
 
 jest.mock('../../../src/utils/logger', () => ({
     info: jest.fn(),
@@ -308,7 +312,11 @@ describe('AdminTransformerController', () => {
     describe('deleteTransformer', () => {
         test('deletes and returns success', async () => {
             req.params.id = '1';
-            db.query.mockResolvedValue({ rows: [{ transformer_id: 1 }] });
+            db.query
+                .mockResolvedValueOnce({ rows: [{ transformer_id: 1 }] })
+                .mockResolvedValueOnce({ rows: [] })
+                .mockResolvedValueOnce({ rows: [] })
+                .mockResolvedValueOnce({ rows: [{ transformer_id: 1 }] });
 
             await deleteTransformer(req, res, next);
 
@@ -322,7 +330,7 @@ describe('AdminTransformerController', () => {
 
         test('calls next with 404 when not found', async () => {
             req.params.id = '999';
-            db.query.mockResolvedValue({ rows: [] });
+            db.query.mockResolvedValueOnce({ rows: [] });
 
             await deleteTransformer(req, res, next);
 
@@ -342,8 +350,21 @@ describe('AdminTransformerController', () => {
     });
 
     describe('batchTransformersOperation', () => {
+        test('[N-63] batch delete отказывает 409, если есть здания или линии', async () => {
+            req.body = { action: 'delete', ids: [1, 2, 3] };
+            db.query.mockResolvedValueOnce({ rows: [{ transformer_id: 2 }] });
+
+            await batchTransformersOperation(req, res, next);
+
+            expect(adminService.batchDelete).not.toHaveBeenCalled();
+            expect(next).toHaveBeenCalledWith(expect.objectContaining({
+                statusCode: 409, apiCode: 'TRANSFORMERS_IN_USE', apiMeta: { transformer_ids: [2] },
+            }));
+        });
+
         test('batch delete calls adminService.batchDelete', async () => {
             req.body = { action: 'delete', ids: [1, 2, 3] };
+            db.query.mockResolvedValueOnce({ rows: [] });
             adminService.batchDelete.mockResolvedValue({ rows: [{ transformer_id: 1 }, { transformer_id: 2 }, { transformer_id: 3 }] });
 
             await batchTransformersOperation(req, res, next);

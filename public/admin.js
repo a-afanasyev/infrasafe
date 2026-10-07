@@ -2032,20 +2032,23 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!confirm('Вы уверены, что хотите удалить этот трансформатор?')) return;
 
         try {
-            const response = await fetch(`/api/transformers/${id}`, {
-                method: 'DELETE',
-                headers: {
-                }
+            // [N-63] Если у трансформатора есть линии, сервер отвечает 409 со
+            // списком, и TransformerDelete спрашивает, удалять ли их вместе с ним.
+            const result = await window.TransformerDelete.deleteTransformerFlow(id, {
+                fetchFn: (url, init) => fetch(url, init),
+                confirmFn: (question) => confirm(question)
             });
+            if (result.status === 'cancelled') return;
 
-            if (!response.ok) throw new Error('Ошибка удаления трансформатора');
-
-            showToast('Трансформатор успешно удален', 'success');
+            showToast(result.linesDeleted
+                ? `Трансформатор и его линии (${result.linesDeleted}) удалены`
+                : 'Трансформатор успешно удален', 'success');
             dataLoaded.transformers = false;
+            dataLoaded.lines = false;
             loadTransformers();
         } catch (error) {
             console.error('Error deleting transformer:', error);
-            showToast('Ошибка удаления трансформатора', 'error');
+            showToast(error.message || 'Ошибка удаления трансформатора', 'error');
         }
     };
 
@@ -2067,11 +2070,9 @@ document.addEventListener("DOMContentLoaded", function () {
                 lineId: id,
                 existingData: line,
                 apiEndpoint: '/api/lines', // Используем endpoint для обычных линий
-                additionalFields: {
-                    voltage_kv: line.voltage_kv,
-                    transformer_id: line.transformer_id,
-                    length_km: line.length_km
-                },
+                // [N-61] Без additionalFields: форма заполняется из existingData,
+                // длина считается по трассе. Прежние значения здесь затирали
+                // правку напряжения и трансформатора.
                 onSave: () => {
                     dataLoaded.lines = false;
                     loadLines();
