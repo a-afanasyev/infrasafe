@@ -17,6 +17,11 @@ JWT_SECRET, JWT_REFRESH_SECRET
 
 # Шифрование 2FA (TOTP) — обязательно (сгенерировать: openssl rand -base64 32)
 TOTP_ENCRYPTION_KEY
+TOTP_ISSUER                # [N-60] Необязательно: имя записи в аутентификаторе
+                           # («InfraSafe (infrasafe.uz)»). У площадок разные
+                           # секреты — одинаковое имя путало записи. Без «:»,
+                           # ≤64 символов, иначе «InfraSafe» + warn. Только для
+                           # новых настроек 2FA.
 
 # Необязательные
 NODE_ENV=development|production
