@@ -133,6 +133,23 @@ module.exports = [
         },
     },
 
+    // Коммерческий лендинг /solutions/ — самостоятельные браузерные скрипты
+    // без сборки (frontend-html/solutions/), глобалы страниц карты им не нужны.
+    {
+        files: ['frontend-html/**/*.js'],
+        languageOptions: {
+            ecmaVersion: 2022,
+            sourceType: 'script',
+            globals: {
+                ...globals.browser,
+                ...globals.es2022,
+            },
+        },
+        rules: {
+            'no-console': 'off',
+        },
+    },
+
     // [EN-8] Генератор тестовых данных — отдельный пакет с `"type": "module"`,
     // поэтому базовый `sourceType: 'commonjs'` его файлы не разбирал вовсе.
     // `no-console` здесь выключен осознанно: это консольный сервис, его вывод
