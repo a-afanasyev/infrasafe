@@ -62,7 +62,7 @@
 .carousel-track::-webkit-scrollbar{display:none}
 .carousel-track:focus-visible{outline:3px solid #009f89;outline-offset:4px}
 .carousel-track .screen-card{flex:0 0 100%;scroll-snap-align:start;display:flex;flex-direction:column}
-.carousel-track .screen-card .screen-image{height:440px;min-height:0;padding:24px}
+.carousel-track .screen-card .screen-image{height:clamp(300px,46vw,640px);min-height:0;padding:24px}
 .carousel-track .screen-card .screen-image img{max-height:100%;max-width:100%;width:auto;height:auto;object-fit:contain}
 .carousel-track .screen-card figcaption{min-height:0}
 .carousel-controls{display:flex;align-items:center;justify-content:center;gap:16px}
@@ -76,7 +76,7 @@
 .carousel-count{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:40px;text-align:center}
 @media(max-width:700px){
 .carousel-track{gap:12px}
-.carousel-track .screen-card .screen-image{height:300px;padding:14px}
+.carousel-track .screen-card .screen-image{height:auto;aspect-ratio:4/3;padding:12px}
 }
 @media(prefers-reduced-motion:reduce){.carousel-track{scroll-behavior:auto}}
 /* real InfraSafe marks */
