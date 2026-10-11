@@ -145,6 +145,16 @@ updates:
       time: "06:00"
       timezone: Asia/Tashkent
     open-pull-requests-limit: 2
+    ignore:
+      # Мажоры БД не обновляются мержем PR. Том postgres 15 не читается
+      # сервером 17 без dump/restore, а у redis 8 другая лицензия и новые модули в ядре.
+      # Это отдельная задача с репетицией на копии данных. Кроме того,
+      # 10.10.2026 два висящих мажора (#280, #281) занимали оба слота лимита,
+      # и патчи digest не могли открыться.
+      - dependency-name: postgis/postgis
+        update-types: ["version-update:semver-major"]
+      - dependency-name: redis
+        update-types: ["version-update:semver-major"]
     labels:
       - dependencies
       - docker

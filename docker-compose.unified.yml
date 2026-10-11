@@ -321,7 +321,7 @@ services:
   #   - leaflet-network: app, frontend, postgres (InfraSafe stack)
   #   - uk-network: uk-frontend, uk-management-api (UK stack, external)
   nginx:
-    image: nginx:1.31-alpine@sha256:54f2a904c251d5a34adf545a72d32515a15e08418dae0266e23be2e18c66fefa
+    image: nginx:1.31-alpine@sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2
     # [B-012] Run from a DIRECTORY mount, not a single-file mount. The config is
     # a full top-level nginx.conf, so we mount ./nginx-config as a directory and
     # point nginx at it with `-c`. Directory mounts resolve the filename through
