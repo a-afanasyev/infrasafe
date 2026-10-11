@@ -412,6 +412,11 @@ button.btn-secondary:hover {
   padding: 0;
 }
 
+/* Пункт «Решения» есть только там, где «/» — лендинг; включает его бренд. */
+.main-nav .nav-landing {
+  display: var(--nav-landing-display);
+}
+
 .main-nav a {
   color: var(--foreground);
   text-decoration: none;
