@@ -9,8 +9,8 @@ InfraSafe is a digital IoT monitoring platform for multi-apartment buildings (Ru
 **Tech stack**: Node.js 20+ / Express.js backend, PostgreSQL 15+ with PostGIS, vanilla JavaScript frontend (Leaflet.js + Chart.js), Docker Compose orchestration, Nginx reverse proxy.
 
 **Active branches**:
-- `main` — production backend + legacy frontend + full UK integration (Phases 1-5 merged) + Phase 5-12B refactors + esbuild bundler
-- `feature/frontend-redesign` — new frontend-design/ (Inter font, design tokens, dark/light themes, responsive dashboard), not yet merged
+- `main` — production backend + legacy frontend + full UK integration (Phases 1-5 merged) + Phase 5-12B refactors + esbuild bundler + коммерческий лендинг (`frontend-html/solutions/`, с 11.10.2026 — главная infrasafe.uz, карта на `/map`)
+- `feature/frontend-redesign` — заброшен: ветка осталась только локально (последний коммит 28.03.2026), на GitHub удалена, в main не слита
 
 ## Key Commands
 
@@ -77,6 +77,7 @@ init-скрипты запускает entrypoint docker.
 - **Webhook Validation**: `src/utils/webhookValidation.js` — UUID, enum whitelist validation for webhook payloads
 - **Integration Event Logging**: `integration_log` table — audit trail for all UK sync operations with retry tracking
 - **Raw Body Preservation**: `src/server.js` — `req.rawBody` captured for webhook signature verification
+- **Различия площадок в общей разметке**: `frontend-html/`, `css/`, `public/` общие для .105 и profk; отличаются только конфиг nginx и каталог бренда за `/brand/` (`public/brand-default/` против `public/brand-profk/`). Элемент, нужный одной площадке, кладётся в разметку скрытым через CSS-переменную в `css/tokens.css` и включается в `brand-*/brand.css` (пример — пункт «Решения» в шапке карты, `--nav-landing-display`); маршрут — только в конфиге своей площадки. Правка общего HTML под одну площадку меняет и другую.
 - **Frontend Bundle Pipeline** (Phase 12B.4): `build/esbuild.config.mjs` emits minified JS + sourcemaps to `public/dist/`; `postinstall` in `package.json` rebuilds on every `npm ci`. HTML pages reference `public/dist/*.js`; production nginx denies `.map` files.
 
 ### UK Integration Module
@@ -118,7 +119,6 @@ nginx (8088), app (3000), postgres (5435), redis. Состав compose, роли
 - Models execute SQL directly (no repository layer). Phase 6 introduced `createCrudModel` factory for two water-source models; the rest still hand-write queries.
 - Duplication across water-related route files remains (Phase 6 factory covers models only).
 - Rate-limiter and cache are **Redis-backed hybrids** (`src/middleware/rateLimiter.js:2,4`, `src/services/cacheService.js:2` — Redis when `REDIS_URL` is set, in-memory Map fallback otherwise), so multi-replica is already coordinated. Sprint 9 outbox (`uk_outbox`) and Sprint 10 verification queue (`alert_verifications`) are DB-backed with `pg_try_advisory_lock` for cross-replica coordination.
-- Frontend redesign (`feature/frontend-redesign`) not yet merged to main.
 - `alertService` persistence gate only fully implemented for LEAK_DETECTED+controller path (SQL aggregation on `metrics`). Other types fail-open in v1, pending rolling-window metric aggregations.
 - **LEAK auto-trigger now live (B-005-LEAK, 2026-05-26)**: `metricService.createMetric` эмитит `alertEvents.LEAK_CHECK` после `leak_sensor=true` insert; `alertService.checkLeak(controllerId)` listener → persistence-gated `createAlert` → UK pipeline. End-to-end ~5 сек в проде verified. **VOLTAGE + HEATING auto-trigger ТОЖЕ live** (B-005 Sprint 11): `metricService` эмитит `VOLTAGE_CHECK` при любом non-null фазном напряжении (`metricService.js:242`) и `HEATING_CHECK` при `hot_water_in_temp` → listeners `checkVoltage`/`checkHeating`. Voltage-пороги: warn 198-242, crit 180-260; persistence WARNING=60s / CRITICAL=10s. **VOLTAGE escalate-in-place LIVE (AUD-006, 2026-06-12, migration 035):** WARNING→CRITICAL обновляет тот же `alert_id` in-place (UPDATE severity + реактивация + immediate notification) вместо drop'а; UK-нотификация эскалации (`alert.escalated`) gated `UK_ESCALATION_NOTIFY` (default off, dormant до подтверждения УК). Прод-synthetic verified (controller 2: alert_id сохранён WARNING→CRITICAL). Cooldown gotcha (commit `e15436f`): для checkLeak/checkVoltage/checkHeating bump `lastChecks` ТОЛЬКО на success — gate denial должен оставлять cooldown unset, иначе persistence-gate маскируется до конца cooldown window'а.
 
