@@ -31,9 +31,10 @@
   window.matchMedia('(min-width: 981px)').addEventListener?.('change', (event) => {
     if (event.matches) setMenu(false);
   });
-  const page = location.pathname.split('/').pop() || 'index.html';
+  const here = location.pathname.replace(/index\.html$/, '');
   navigation?.querySelectorAll('a').forEach(link => {
-    if (link.getAttribute('href') === page) link.setAttribute('aria-current', 'page');
+    const target = new URL(link.href, location.href);
+    if (!target.hash && target.pathname === here) link.setAttribute('aria-current', 'page');
   });
   const form = document.querySelector('#pilot-form');
   if (!form) return;

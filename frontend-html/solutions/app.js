@@ -74,7 +74,7 @@
     const config=scenes[name];
     $$('.scene-tab').forEach(b=>{const active=b.dataset.scene===name;b.classList.toggle('active',active);b.setAttribute('aria-selected',active);b.tabIndex=active?0:-1;});
     $('#scene').dataset.scene=name;$('#scene').setAttribute('aria-labelledby',`tab-${name}`);
-    $('#scene-image').src=`assets/${config.image}.webp`;$('#scene-image').alt=config.alt;$('#scene-subtitle').textContent=config.subtitle;
+    $('#scene-image').src=`/solutions/assets/${config.image}.webp`;$('#scene-image').alt=config.alt;$('#scene-subtitle').textContent=config.subtitle;
     renderHotspots();renderLive();updateAudio();
     if(shouldAnnounce)announce(`Сцена: ${$('#tab-'+name).textContent}. ${config.subtitle}.`);
   }
@@ -176,7 +176,7 @@
   function selectProduct(name) {
     state.product=name;const product=products[name];
     $$('.product-choice').forEach(b=>{const active=b.dataset.product===name;b.classList.toggle('active',active);b.setAttribute('aria-selected',active);b.tabIndex=active?0:-1;});
-    $('#product-detail').setAttribute('aria-labelledby',`product-${name}`);$('#product-image').src=`assets/${product.image}.webp`;$('#product-image').alt=product.alt;$('#product-tag').textContent=product.tag;$('#product-description').textContent=product.description;$('#product-features').innerHTML=product.features.map(x=>`<span>${x}</span>`).join('');
+    $('#product-detail').setAttribute('aria-labelledby',`product-${name}`);$('#product-image').src=`/solutions/assets/${product.image}.webp`;$('#product-image').alt=product.alt;$('#product-tag').textContent=product.tag;$('#product-description').textContent=product.description;$('#product-features').innerHTML=product.features.map(x=>`<span>${x}</span>`).join('');
   }
   let audioContext=null,masterGain=null;
   function initAudio() {
