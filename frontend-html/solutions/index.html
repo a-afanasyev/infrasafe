@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#F4F7FA">
+<title>InfraSafe</title>
+<meta name="description" content="InfraSafe: мониторинг инженерных систем дома и сервисная панель УК. Авария на оборудовании сама становится заявкой. Обсудите пилот на вашем объекте.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap">
+<link rel="preload" href="assets/courtyard-clean.webp" as="image">
+<link rel="stylesheet" href="styles.css?v=20261011-v3"><script src="demo-model.js?v=20261011-v3" defer></script><script src="app.js?v=20261011-v3" defer></script><script src="commercial.js?v=20261011-v3" defer></script>
+</head>
+<body>
+<svg class="svg-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
+<symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+<symbol id="i-sound" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5ZM15 8a6 6 0 0 1 0 8M18 5a10 10 0 0 1 0 14"/></symbol>
+<symbol id="i-muted" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5ZM16 9l6 6m0-6-6 6"/></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z"/></symbol>
+<symbol id="i-reset" viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 1 8M4 4v6h6"/></symbol>
+<symbol id="i-water" viewBox="0 0 24 24"><path d="M12 3s-7 8-7 12a7 7 0 0 0 14 0c0-4-7-12-7-12Z"/></symbol>
+<symbol id="i-bolt" viewBox="0 0 24 24"><path d="m14 2-9 12h6l-1 8 9-12h-6l1-8Z"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-house" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7M5 9v12h14V9M10 21v-7h4v7"/></symbol>
+<symbol id="i-sensor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M5 6a9 9 0 0 0 0 12M19 6a9 9 0 0 1 0 12M8 9a4 4 0 0 0 0 6M16 9a4 4 0 0 1 0 6"/></symbol>
+</defs></svg>
+<a class="skip-link" href="#main">К содержимому</a>
+<header class="site-header">
+<div class="header-inner">
+<a href="./" class="brand" aria-label="InfraSafe, на главную"><img src="assets/logo-mark-96.webp" srcset="assets/logo-mark-96.webp 1x, assets/logo-mark-192.webp 2x" width="36" height="36" alt=""><span>Infra<span class="brand-safe">Safe</span></span></a>
+<button class="menu-toggle" aria-controls="site-nav" aria-expanded="false" aria-label="Открыть меню"><span></span><span></span></button>
+<nav class="main-nav" id="site-nav" aria-label="Основная навигация"><a href="uk.html">Для УК</a><a href="monitoring.html">Мониторинг</a><a href="fountains.html">Фонтаны</a><a href="#launch">Внедрение</a><a href="#contact">Контакты</a></nav>
+<details class="login-menu"><summary>Вход <span aria-hidden="true">⌄</span></summary><div class="login-options"><a href="https://infrasafe.uz/uk/login" target="_blank" rel="noopener">Сервисная панель УК <span>↗</span></a><a href="https://infrasafe.uz/" target="_blank" rel="noopener">Карта мониторинга <span>↗</span></a></div></details>
+</div>
+</header>
+<main id="main">
+<section class="hero commercial-hero section-width" aria-labelledby="hero-title">
+<div class="hero-topline"><span class="eyebrow"><span class="small-line"></span>INFRASAFE · МОНИТОРИНГ И ЭКСПЛУАТАЦИЯ</span><span class="hero-location">Для УК, жилых комплексов и инженерных команд</span></div>
+<div class="hero-copy"><h1 id="hero-title">Дом под контролем.<br><span>Работа УК — до результата.</span></h1><div class="hero-aside"><p>Датчики дома, заявки жителей и работа команды в одной системе. Авария на оборудовании сама открывает заявку в УК, а повторная авария открывает её снова.</p></div></div>
+<div class="hero-actions"><a class="button-primary" href="#pilot">Обсудить пилот <svg><use href="#i-arrow"/></svg></a><a class="button-secondary" href="#demo">Посмотреть систему <span aria-hidden="true">↓</span></a></div>
+<div class="hero-footnote"><span class="tiny-dot"></span>От сигнала датчика до принятой работы</div>
+</section>
+<section class="directions section-width" id="directions" aria-labelledby="directions-title">
+<div class="directions-heading"><h2 id="directions-title">Три направления.<span>Задачи вашего объекта.</span></h2><p>Начните с того, что нужно сейчас.</p></div>
+<div class="direction-cards">
+<a href="uk.html" class="direction-card"><div class="direction-card-visual"><img src="assets/card-uk.webp" width="800" height="500" alt="Жилой дом, обращения жителей и работа управляющей компании" loading="lazy" decoding="async"><span class="direction-index">01</span></div><div class="direction-card-copy"><span class="card-eyebrow">СЕРВИСНАЯ ПАНЕЛЬ</span><h3>Управляющим компаниям <span aria-hidden="true">↗</span></h3><p>Обращения, исполнители, сроки и приёмка. Вся работа по заявке в одном процессе.</p><span class="card-link">Возможности для УК <span aria-hidden="true">→</span></span></div></a>
+<a href="monitoring.html" class="direction-card"><div class="direction-card-visual"><img src="assets/card-monitoring.webp" width="800" height="500" alt="Разрез дома: стояки горячей и холодной воды, счётчики, электрощит и датчики" loading="lazy" decoding="async"><span class="direction-index">02</span></div><div class="direction-card-copy"><span class="card-eyebrow">ИНЖЕНЕРНЫЙ МОНИТОРИНГ</span><h3>Состояние оборудования <span aria-hidden="true">↗</span></h3><p>Электроснабжение, вода, отопление и протечки. Объекты на карте, авария сразу уходит в работу УК.</p><span class="card-link">Что можно подключить <span aria-hidden="true">→</span></span></div></a>
+<a href="fountains.html" class="direction-card"><div class="direction-card-visual"><img src="assets/card-fountains.webp" width="800" height="500" alt="Фонтан во дворе, резервуар и насос под ним" loading="lazy" decoding="async"><span class="direction-index">03</span></div><div class="direction-card-copy"><span class="card-eyebrow">ФОНТАНЫ</span><h3>Состояние и обслуживание <span aria-hidden="true">↗</span></h3><p>Давление, работа насоса и аварийные сигналы. Фонтан виден на карте рядом с домами.</p><span class="card-link">Решения для фонтанов <span aria-hidden="true">→</span></span></div></a>
+</div>
+</section>
+<div class="demo-section-intro section-width"><div><span class="eyebrow">ОБЪЕКТ В ДЕТАЛЯХ</span><h2>Понимайте, что происходит<br>с домом.</h2></div><p>Оборудование, текущее состояние и действия команды в одном сценарии.</p></div>
+<section class="demo section-width" id="demo" aria-label="Оборудование и сервисы дома">
+<div class="demo-topbar"><div class="demo-name"><span class="status-dot"></span><span>Состояние объекта</span><span class="demo-badge">DEMO</span></div><div class="scene-tabs" role="tablist" aria-label="Разделы объекта"><button class="scene-tab active" id="tab-courtyard" role="tab" aria-selected="true" aria-controls="scene" data-scene="courtyard">Двор</button><button class="scene-tab" id="tab-engineering" role="tab" aria-selected="false" aria-controls="scene" data-scene="engineering" tabindex="-1">Инженерия</button><button class="scene-tab" id="tab-overview" role="tab" aria-selected="false" aria-controls="scene" data-scene="overview" tabindex="-1">Дом и команда</button></div></div>
+<div class="demo-body">
+<div class="scene" id="scene" role="tabpanel" aria-labelledby="tab-courtyard" data-scene="courtyard">
+<div class="scene-image-wrap">
+<img id="scene-image" class="scene-image" src="assets/courtyard-clean.webp" alt="Плоская архитектурная иллюстрация: жилые дома, фонтан, насосная и электрощит под двором" width="1586" height="992" fetchpriority="high">
+<svg class="scene-motion" viewBox="0 0 1586 992" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+<defs>
+<linearGradient id="steel" x1="0" x2="1"><stop stop-color="#d5e1e5"/><stop offset=".48" stop-color="#f4f8fa"/><stop offset="1" stop-color="#b5c9d1"/></linearGradient>
+<linearGradient id="water-fill" x1="0" y1="1" x2="0" y2="0"><stop stop-color="#23b8c6"/><stop offset="1" stop-color="#90e9ed"/></linearGradient>
+<clipPath id="lift-inset-clip"><circle cx="1358" cy="252" r="120"/></clipPath>
+<clipPath id="door-inset-clip"><circle cx="1408" cy="560" r="124"/></clipPath>
+</defs>
+<g class="courtyard-motion">
+<g id="fountain-water" class="fountain-water">
+<g fill="url(#water-fill)" opacity=".86">
+<path d="M732 586C733 542 736 494 740 494S747 542 748 586Z"/>
+<path d="M774 586C775 515 778 435 783 435S791 515 792 586Z"/>
+<path d="M822 586C823 482 827 370 832 370S841 482 842 586Z"/>
+<path d="M875 586C876 515 879 435 884 435S892 515 893 586Z"/>
+<path d="M917 586C918 542 921 494 925 494S932 542 933 586Z"/>
+</g>
+<g class="jet-highlight" fill="none" stroke="#e7ffff" stroke-width="3" stroke-linecap="round">
+<path d="M738 580Q736 526 740 506M781 580Q777 490 783 449M831 580Q823 451 832 389M884 580Q877 490 884 449M925 580Q920 526 925 506"/>
+</g>
+<g fill="none" stroke="#2abfcb" stroke-width="2.5" opacity=".8"><path d="M728 586q12-9 23 0m20 0q13-10 24 0m20 0q18-12 35 0m18 0q13-10 25 0m18 0q13-9 25 0"/></g>
+<g class="water-spray" fill="#8be7e8"><circle cx="748" cy="573" r="3"/><circle cx="793" cy="567" r="3"/><circle cx="846" cy="566" r="3"/><circle cx="896" cy="574" r="3"/></g>
+</g>
+<path id="pump-flow" class="flow-line" d="M924 824h-78v-57h-144v-88M946 822h133V680"/>
+</g>
+<g class="engineering-motion">
+<g id="heating-inset">
+<circle cx="1358" cy="252" r="118" fill="#f3f8fb"/>
+<text x="1358" y="190" fill="#4d6f7c" text-anchor="middle" font-size="13" font-family="Inter,Arial,sans-serif" letter-spacing="1">ГВС И ОТОПЛЕНИЕ</text>
+<g font-family="Inter,Arial,sans-serif" text-anchor="start">
+<text x="1282" y="238" fill="#64757c" font-size="15">Подача</text><text x="1434" y="238" fill="#0f1e25" font-size="22" font-weight="600" text-anchor="end">62 °C</text>
+<text x="1282" y="280" fill="#64757c" font-size="15">Обратка</text><text x="1434" y="280" fill="#0f1e25" font-size="22" font-weight="600" text-anchor="end">47 °C</text>
+</g>
+<path d="M1282 300h152" stroke="#cfdee2" stroke-width="2"/>
+<text x="1358" y="326" fill="#008876" text-anchor="middle" font-size="12" font-family="Inter,Arial,sans-serif">в норме</text>
+</g>
+<g id="leak-water" opacity="0">
+<ellipse cx="429" cy="909" rx="72" ry="10" fill="#40c6d5" opacity=".65"/><ellipse cx="429" cy="908" rx="41" ry="4" fill="#97eaf1" opacity=".8"/>
+<path class="leak-drop" d="M421 861q-11 17 0 20q11-3 0-20Z" fill="#3bc3d2"/>
+<ellipse cx="188" cy="839" rx="49" ry="9" fill="#40c6d5" opacity=".65"/><ellipse cx="188" cy="838" rx="30" ry="4" fill="#b1f2f4"/>
+<path class="leak-drop" d="M191 746q-12 19 0 22q12-3 0-22Zm11 46q-12 19 0 22q12-3 0-22Z" fill="#37bfd1"/>
+</g>
+<g id="dry-indicator"><circle cx="564" cy="886" r="7" fill="#00af94"/><circle cx="111" cy="789" r="7" fill="#00af94"/></g>
+<g id="power-inset">
+<circle cx="1408" cy="560" r="125" fill="#f3f8fb"/>
+<text x="1408" y="490" fill="#4d6f7c" text-anchor="middle" font-size="13" font-family="Inter,Arial,sans-serif" letter-spacing="1">ВВОД 0,4 кВ</text>
+<g font-family="Inter,Arial,sans-serif" font-size="20" font-weight="600">
+<text x="1336" y="532" fill="#64757c" font-size="15" font-weight="400">L1</text><text x="1480" y="532" fill="#0f1e25" text-anchor="end">229 В</text>
+<text x="1336" y="570" fill="#64757c" font-size="15" font-weight="400">L2</text><text id="phase-l2" x="1480" y="570" fill="#0f1e25" text-anchor="end">231 В</text>
+<text x="1336" y="608" fill="#64757c" font-size="15" font-weight="400">L3</text><text x="1480" y="608" fill="#0f1e25" text-anchor="end">226 В</text>
+</g>
+<text id="power-status" x="1408" y="642" fill="#008876" text-anchor="middle" font-size="12" font-family="Inter,Arial,sans-serif">норма 198–242 В</text>
+</g>
+<circle class="signal-ring" cx="657" cy="70" r="22"/>
+</g>
+<g class="overview-motion"><path class="flow-line" d="M375 195h29l43 43M1208 195h-30l-44 43M377 519h31l91 198M1206 520h-39l-83 196"/></g>
+</svg>
+<div id="hotspots" class="hotspots"></div>
+<div class="scene-hint"><span class="hint-ring"></span>Оборудование объекта</div>
+</div>
+<div class="scene-caption"><span id="scene-subtitle">Фонтан · насос · электрощит</span><span class="illustration-label">Дом А</span></div>
+</div>
+<aside class="telemetry" aria-label="Состояние оборудования">
+<div class="telemetry-heading"><span class="eyebrow">СОСТОЯНИЕ ОБОРУДОВАНИЯ</span><span class="pulse-mini"></span></div>
+<h2 id="state-title">Фонтан работает</h2><p id="state-description" hidden>Давление и режим работы для контроля обслуживания.</p>
+<div class="metric-list" id="metric-list"></div>
+<div id="object-controls" class="object-controls" aria-label="Демонстрация событий"></div>
+<div class="sensor-note"><span class="status-dot"></span><span id="sensor-note">Параметры оборудования</span></div>
+<div class="detail-panel" id="detail-panel"><span class="detail-kicker" id="detail-kicker">В ФОКУСЕ · ФОНТАН</span><h3 id="detail-title">Обслуживание фонтана</h3><p id="detail-text">Показания насоса помогают заметить отклонения и определить, где нужна проверка.</p></div>
+</aside></div>
+<div class="demo-controls"><div class="sound-controls"><button class="sound-button" id="sound-toggle" aria-pressed="false"><svg><use href="#i-muted"/></svg><span>Включить звук фонтана</span></button><label class="volume-control"><span class="sr-only">Громкость фонтана</span><input type="range" id="volume" min="0" max="100" value="35" aria-label="Громкость фонтана"><span id="volume-value">35%</span></label></div><div class="motion-controls"><button class="subtle-button" id="pause-toggle" aria-pressed="false"><svg><use href="#i-pause"/></svg><span>Пауза</span></button><button class="subtle-button" id="reset-demo"><svg><use href="#i-reset"/></svg><span>Сброс</span></button></div></div>
+<div class="scenario-bar"><div><span class="scenario-label">Протечка: от сигнала до приёмки</span><span class="scenario-caption">Проверка, исполнитель и результат</span></div><button id="simulate-leak" class="scenario-button">Показать протечку <svg><use href="#i-arrow"/></svg></button></div>
+<div class="demo-announcement sr-only" id="demo-announcement" role="status" aria-live="polite"></div>
+</section>
+<div class="under-demo section-width"><span>Демонстрационные данные. Оборудование не подключено. Кнопки показывают, как система видит событие, и не отправляют команд или заявок.</span></div>
+<section class="product-section section-width" id="product" aria-labelledby="product-title">
+<div class="section-label"><span>СЕРВИСНАЯ ПАНЕЛЬ И МОНИТОРИНГ</span><span>Ежедневные задачи УК</span></div>
+<div class="section-heading"><h2 id="product-title">Заявки и работы<br>в одной панели.</h2><p>Руководитель контролирует выполнение, диспетчер ведёт заявки, житель следит за статусом.</p></div>
+<div class="product-explorer"><div class="product-tabs" role="tablist" aria-label="Задачи продукта" aria-orientation="vertical">
+<button class="product-choice active" role="tab" id="product-residents" aria-selected="true" aria-controls="product-detail" data-product="residents"><span class="product-number">01</span><span><strong>Обращения жителей</strong><small>Telegram, статусы и приёмка</small></span><svg><use href="#i-arrow"/></svg></button>
+<button class="product-choice" role="tab" id="product-team" aria-selected="false" aria-controls="product-detail" data-product="team" tabindex="-1"><span class="product-number">02</span><span><strong>Работа команды</strong><small>Исполнители, сроки и ресурсы</small></span><svg><use href="#i-arrow"/></svg></button>
+<button class="product-choice" role="tab" id="product-engineering" aria-selected="false" aria-controls="product-detail" data-product="engineering" tabindex="-1"><span class="product-number">03</span><span><strong>Контроль оборудования</strong><small>Показания, события и тревоги</small></span><svg><use href="#i-arrow"/></svg></button>
+</div><div id="product-detail" class="product-detail" role="tabpanel" aria-labelledby="product-residents"><div class="product-visual"><img id="product-image" src="assets/management.webp" alt="Иллюстрация управления домом и сервисов для жителей" width="1586" height="992" loading="lazy"></div><div class="product-detail-copy"><span class="product-tag" id="product-tag">СЕРВИСНАЯ ПАНЕЛЬ УК</span><p id="product-description">Обращения из Telegram поступают в работу УК. Житель видит статус, а диспетчер ведёт заявку до выполненной и принятой работы.</p><div id="product-features" class="feature-chips"><span>Обращения</span><span>Статусы</span><span>Фото результата</span><span>Приёмка</span></div></div></div></div>
+<div class="architecture-note"><svg><use href="#i-sensor"/></svg><p><strong>Мониторинг и панель УК уже связаны</strong><br>Авария на оборудовании создаёт заявку в панели УК, решение по заявке возвращается в мониторинг. На пилоте согласуем, какие события превращаются в заявки и с какой срочностью. Каждое направление можно подключить и отдельно.</p></div>
+</section>
+<section class="product-evidence section-width" aria-labelledby="evidence-title"><div class="section-label"><span>ЭКРАНЫ ПРОДУКТА</span><span>Сервисная панель УК</span></div><div class="section-heading"><h2 id="evidence-title">Как выглядит<br>рабочая панель.</h2><p>Регистрация обращения, организация смен и материалы по заявке. Фрагменты реального интерфейса.</p></div><div class="screen-carousel" id="screen-carousel" role="region" aria-roledescription="карусель" aria-label="Экраны сервисной панели"><div class="carousel-track" id="carousel-track" tabindex="0" aria-label="Листайте влево и вправо"><figure class="screen-card slide" id="slide-0" role="group" aria-roledescription="слайд" aria-label="1 из 3: Создание обращения"><div class="screen-image"><img src="assets/product-screen-request.png" alt="Экран создания обращения по телефону: категория, срочность и описание" width="512" height="518" loading="lazy" decoding="async"></div><figcaption><strong>Создание обращения</strong>Категория, срочность и описание.<a href="assets/product-screen-request.png" target="_blank" rel="noopener">Открыть в полном размере ↗</a></figcaption></figure><figure class="screen-card slide" id="slide-1" role="group" aria-roledescription="слайд" aria-label="2 из 3: Работа со сменами"><div class="screen-image"><img src="assets/product-screen-shifts.png" alt="Экран смен: исполнители, покрытие специализаций и нагрузка" width="1116" height="350" loading="lazy" decoding="async"></div><figcaption><strong>Работа со сменами</strong>Исполнители на смене и покрытие специализаций.<a href="assets/product-screen-shifts.png" target="_blank" rel="noopener">Открыть в полном размере ↗</a></figcaption></figure><figure class="screen-card slide" id="slide-2" role="group" aria-roledescription="слайд" aria-label="3 из 3: Материалы по заявке"><div class="screen-image"><img src="assets/product-screen-photo-report.png" alt="Карточка заявки с отдельными полями для фотографии проблемы и фотоотчёта" width="488" height="200" loading="lazy" decoding="async"></div><figcaption><strong>Материалы по заявке</strong>Отдельные поля для фото проблемы и фотоотчёта.<a href="assets/product-screen-photo-report.png" target="_blank" rel="noopener">Открыть в полном размере ↗</a></figcaption></figure></div><div class="carousel-controls"><button type="button" class="carousel-arrow" id="carousel-prev" aria-label="Предыдущий экран"><svg style="transform:scaleX(-1)"><use href="#i-arrow"/></svg></button><div class="carousel-dots"><button type="button" class="carousel-dot" data-slide="0" aria-label="Экран 1: Создание обращения" aria-current="true"></button><button type="button" class="carousel-dot" data-slide="1" aria-label="Экран 2: Работа со сменами"></button><button type="button" class="carousel-dot" data-slide="2" aria-label="Экран 3: Материалы по заявке"></button></div><span class="carousel-count" id="carousel-count" aria-live="polite">1 / 3</span><button type="button" class="carousel-arrow" id="carousel-next" aria-label="Следующий экран"><svg><use href="#i-arrow"/></svg></button></div></div><p class="evidence-note">Фрагменты интерфейса сервисной панели. Персональные данные исключены из кадра. Снимки показывают интерфейс, а не результаты внедрения.</p></section>
+<section class="workflow-section" id="workflow" aria-labelledby="workflow-title"><div class="section-width">
+<div class="section-label light"><span>ОТ СОБЫТИЯ ДО РЕЗУЛЬТАТА</span><span>Как это работает</span></div>
+<div class="workflow-intro"><h2 id="workflow-title">У каждой работы —<br>ответственный и результат.</h2><p>Датчик фиксирует аварию, заявка появляется в панели УК, инженер устраняет причину. Если после закрытия авария повторяется, заявка открывается снова со срочностью выше прежней.</p></div>
+<div class="journey-tabs" role="tablist" aria-label="Этапы обработки события">
+<button class="journey-step active" role="tab" id="step-0" aria-selected="true" aria-controls="journey-panel" data-step="0"><span class="step-circle">01</span><span>Сигнал</span></button><button class="journey-step" role="tab" id="step-1" aria-selected="false" aria-controls="journey-panel" data-step="1" tabindex="-1"><span class="step-circle">02</span><span>Проверка</span></button><button class="journey-step" role="tab" id="step-2" aria-selected="false" aria-controls="journey-panel" data-step="2" tabindex="-1"><span class="step-circle">03</span><span>Работа</span></button><button class="journey-step" role="tab" id="step-3" aria-selected="false" aria-controls="journey-panel" data-step="3" tabindex="-1"><span class="step-circle">04</span><span>Приёмка</span></button>
+</div>
+<div id="journey-panel" class="journey-panel" role="tabpanel" aria-labelledby="step-0"><div class="journey-copy"><span class="journey-kicker" id="journey-kicker">01 / ОБОРУДОВАНИЕ</span><h3 id="journey-title">Обнаружить проблему</h3><p id="journey-description">Мониторинг фиксирует воду в техническом помещении. Диспетчер видит, на каком объекте нужна проверка.</p><button class="journey-next" id="journey-next">Следующий этап <svg><use href="#i-arrow"/></svg></button></div><div class="event-card"><div class="event-card-header"><span><span class="event-led"></span>КАРТОЧКА СОБЫТИЯ</span><span id="event-number">Нет события</span></div><div class="event-main"><div class="event-icon"><svg id="event-icon"><use href="#i-water"/></svg></div><div><span class="event-location">Техническое помещение · Дом A</span><h4 id="event-title">Обнаружена вода</h4></div></div><div class="event-data"><div><span>Состояние</span><strong id="event-status">Нужна проверка</strong></div><div><span id="event-label">Источник</span><strong id="event-value">Датчик протечки</strong></div></div><div class="event-bottom"><span id="event-bottom">Требуется проверка диспетчера</span><svg><use href="#i-arrow"/></svg></div></div></div>
+<div class="simulation-workspace"><div class="simulation-actions" id="simulation-actions" aria-label="Действия по заявке"><div class="simulation-heading"><span>ОБРАБОТКА ЗАЯВКИ</span><p id="action-instruction">Новых сигналов нет.</p></div><button data-action="acknowledge"><span>01</span>Подтвердить сигнал</button><button data-action="assign"><span>02</span>Назначить инженера</button><button data-action="complete"><span>03</span>Завершить работу</button><button data-action="accept"><span>04</span>Принять результат</button></div><div class="event-history"><div class="simulation-heading"><span>ИСТОРИЯ ЗАЯВКИ</span><p>Решения и результат в одной карточке.</p></div><ol id="event-history"><li>Событий пока нет. Датчик в норме.</li></ol></div></div>
+<p class="workflow-note">После закрытия заявки система ещё некоторое время следит за датчиком. Работа считается выполненной, только когда показания остаются в норме.</p>
+</div></section>
+<section class="content-section section-width" id="map" aria-labelledby="map-title">
+<div class="section-label"><span>КАРТА ОБЪЕКТОВ</span><span>Что видит диспетчер</span></div>
+<div class="section-heading"><h2 id="map-title">Все дома и сети<br>на одной карте.</h2><p>Карта показывает дома, трансформаторные подстанции, линии электропередачи и источники воды и тепла. Цвет объекта меняется, когда приходит авария или пропадают данные.</p></div>
+<div class="module-grid">
+<article class="module-card"><h3>Электроснабжение</h3><p>Напряжение и ток по трём фазам. Норма 198–242 В. При выходе за 180–260 В авария уходит в заявку через 10 секунд.</p></article>
+<article class="module-card"><h3>Подстанции и линии</h3><p>Нагрузка трансформаторов и связь «подстанция → линия → дом». Видно, сколько домов затронет отключение.</p></article>
+<article class="module-card"><h3>Вода и протечки</h3><p>Давление холодной и горячей воды, датчики протечки. От срабатывания датчика до заявки в УК проходят секунды.</p></article>
+<article class="module-card"><h3>Отопление и ГВС</h3><p>Температура и давление подачи и обратки. Правила по отоплению работают только в отопительный сезон.</p></article>
+<article class="module-card"><h3>Связь с объектом</h3><p>Отсутствие свежих данных видно сразу. Пропавший контроллер не выглядит как исправный дом.</p></article>
+<article class="module-card"><h3>Правила эскалации</h3><p>Пороги, задержки и срочность настраивает администратор. Каждое изменение правила записывается в журнал.</p></article>
+</div>
+<p class="map-note"><a class="text-link" href="https://infrasafe.uz/" target="_blank" rel="noopener">Открыть карту мониторинга <span aria-hidden="true">↗</span></a></p>
+</section>
+<section class="launch-section section-width" id="launch" aria-labelledby="launch-title"><div class="section-label"><span>ВНЕДРЕНИЕ</span><span>От рабочих процессов к оборудованию</span></div><div class="launch-layout"><div class="launch-intro"><h2 id="launch-title">Начните с одного объекта.<br><span>Проверьте результат.</span></h2><p>Выберите нужное направление и конкретную задачу. Согласуем состав решения, порядок работы и критерии приёмки до запуска.</p><div class="pilot-note"><span class="pilot-symbol">↗</span><p>Понятный объём работ.<br>Согласованный сценарий.<br><strong>Проверяемый результат.</strong></p></div></div><div class="launch-steps">
+<details open><summary><span class="launch-number">01</span><span>Выбрать задачу и объект</span><svg><use href="#i-plus"/></svg></summary><div class="launch-content"><p>Определите, что нужно проверить: обработку заявок, состояние инженерной системы или работу фонтана. Зафиксируйте исходные данные и ответственных.</p><span>РЕЗУЛЬТАТ · СОГЛАСОВАННЫЙ СОСТАВ ПИЛОТА</span></div></details>
+<details><summary><span class="launch-number">02</span><span>Подготовить решение</span><svg><use href="#i-plus"/></svg></summary><div class="launch-content"><p>Для сервисной панели подготовьте дома, роли и процесс заявок. Для мониторинга проверьте совместимость датчиков, контроллера и канала связи.</p><span>РЕЗУЛЬТАТ · ГОТОВНОСТЬ К ПРОВЕРКЕ</span></div></details>
+<details><summary><span class="launch-number">03</span><span>Проверить рабочий сценарий</span><svg><use href="#i-plus"/></svg></summary><div class="launch-content"><p>Пройдите согласованный сценарий на объекте. Проверьте показания или обработку обращения, действия команды и результат. Затем решите, что подключать дальше.</p><span>РЕЗУЛЬТАТ · ПРОВЕРЕННЫЙ СЦЕНАРИЙ</span></div></details>
+</div></div><p class="launch-disclaimer">Состав оборудования, объём работ и критерии приёмки согласуются с вашей УК до запуска.</p></section>
+<section class="pilot-section section-width" id="pilot" aria-labelledby="pilot-title">
+<div class="pilot-copy"><span class="eyebrow">ОБСУДИМ ВАШ ОБЪЕКТ</span><h2 id="pilot-title">Что нужно взять<br>под контроль?</h2><p>Расскажите о задаче. Начнём с подходящего модуля и одного понятного сценария.</p><div class="pilot-contact"><span>Можно написать напрямую</span><a href="mailto:info@infrasafe.uz">info@infrasafe.uz <span aria-hidden="true">↗</span></a></div></div>
+<form class="pilot-form" id="pilot-form" novalidate>
+<fieldset class="module-selector"><legend>Какие направления интересуют?</legend><div class="module-options"><label><input type="checkbox" name="module" value="Сервисная панель УК" checked><span>Управляющая компания</span></label><label><input type="checkbox" name="module" value="Инженерный мониторинг"><span>Мониторинг</span></label><label><input type="checkbox" name="module" value="Фонтаны"><span>Фонтаны</span></label></div></fieldset>
+<div class="form-fields"><label>Ваше имя<input type="text" name="name" autocomplete="name" placeholder="Как к вам обращаться" maxlength="100" required></label><label>Телефон или email<input type="text" name="contact" autocomplete="email" placeholder="Для связи с вами" maxlength="150" required></label><label>Количество домов или объектов<input type="number" name="houses" min="1" max="100000" inputmode="numeric" placeholder="Например, 3"></label><label>Коротко о задаче <span class="field-optional">необязательно</span><input type="text" name="task" placeholder="Что хотите проверить в пилоте" maxlength="500"></label></div>
+<button class="button-primary" type="submit" disabled>Подготовить письмо <svg><use href="#i-arrow"/></svg></button>
+<p class="form-note">Мы соберём текст письма на адрес info@infrasafe.uz. Его можно открыть в почтовой программе или скопировать. Форма ничего не отправляет и не сохраняет.</p>
+<div class="email-draft" id="email-draft" hidden><label for="email-draft-text">Текст письма на info@infrasafe.uz</label><textarea id="email-draft-text" rows="9" readonly></textarea><div class="email-draft-actions"><button type="button" class="button-secondary" id="copy-draft">Скопировать текст</button><a class="button-secondary" id="email-draft-link" href="mailto:info@infrasafe.uz">Открыть в почте <span aria-hidden="true">↗</span></a></div></div>
+<p class="form-status" id="form-status" role="status" aria-live="polite"></p>
+<noscript><p class="form-note">Для подготовки черновика включите JavaScript или напишите напрямую: <a href="mailto:info@infrasafe.uz">info@infrasafe.uz</a>.</p></noscript>
+</form></section>
+<section class="faq-section section-width" aria-labelledby="faq-title"><div class="faq-heading"><span class="eyebrow">ВОПРОСЫ ПЕРЕД СТАРТОМ</span><h2 id="faq-title">Коротко о главном.</h2></div><div class="faq-list">
+<details><summary>Можно начать только с заявок жителей?<span aria-hidden="true">+</span></summary><p>Да. Сервисная панель УК — отдельное направление. В пилоте можно проверить обращения, назначение исполнителей и приёмку, без подключения инженерных датчиков.</p></details>
+<details><summary>Подойдёт ли наше оборудование?<span aria-hidden="true">+</span></summary><p>Это проверяется до запуска. Нужны модели датчиков и контроллеров, доступные интерфейсы и информация о связи на объекте. Состав показаний зависит от оборудования.</p></details>
+<details><summary>Тревога автоматически становится заявкой?<span aria-hidden="true">+</span></summary><p>Да. Авария на оборудовании создаёт заявку в панели УК, а решение по ней возвращается в мониторинг. Если авария повторяется после закрытия, заявка открывается снова. На пилоте согласуем, какие события превращаются в заявки и с какой срочностью.</p></details>
+<details><summary>Что можно делать с фонтаном?<span aria-hidden="true">+</span></summary><p>Наблюдать за давлением, работой насоса и аварийными сигналами. Фонтан отображается на карте рядом с домами. Управление фонтаном не входит в решение и остаётся на объекте.</p></details>
+<details><summary>Как определяется стоимость?<span aria-hidden="true">+</span></summary><p>После согласования направления, числа объектов, состава оборудования и интеграций. Объём пилота, работы и критерии приёмки фиксируются до запуска.</p></details>
+</div></section>
+</main>
+<footer class="commercial-footer section-width" id="contact"><div class="footer-top"><div><a href="./" class="footer-logo-link" aria-label="InfraSafe, на главную"><img class="footer-logo" src="assets/logo-full-320.webp" width="120" height="132" alt="InfraSafe" loading="lazy" decoding="async"></a><p>Дом под контролем.<br>Работа УК — до результата.</p></div><div class="footer-column"><span>Решения</span><a href="uk.html">Сервисная панель УК</a><a href="monitoring.html">Инженерный мониторинг</a><a href="fountains.html">Фонтаны</a></div><div class="footer-column"><span>Действующим пользователям</span><a href="https://infrasafe.uz/uk/login" target="_blank" rel="noopener">Вход для УК ↗</a><a href="https://infrasafe.uz/uk/resident-board" target="_blank" rel="noopener">Информация для жителей ↗</a><a href="https://infrasafe.uz/documentation.html" target="_blank" rel="noopener">Документация ↗</a></div><div class="footer-column"><span>Обсудить задачу</span><a class="footer-email" href="mailto:info@infrasafe.uz">info@infrasafe.uz</a><a href="#pilot">Подготовить запрос →</a><a href="https://infrasafe.uz/" target="_blank" rel="noopener">Карта мониторинга ↗</a></div></div><div class="footer-bottom"><span>InfraSafe · Мониторинг инженерных систем и работа УК</span><a href="#main">Наверх ↑</a></div></footer>
+<noscript><div class="noscript-message">Для интерактивного просмотра оборудования нужен JavaScript. Описание продукта и ссылка на официальный сайт доступны на странице.</div></noscript>
+</body></html>
