@@ -137,7 +137,7 @@ services:
   # single-replica only. Enabling Redis is the prerequisite for
   # horizontal scale-out (--scale app=N).
   redis:
-    image: redis:7.4-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
+    image: redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     # [SEC-21] Config (incl. requirepass) comes from a mounted file, NOT argv
     # or ${REDIS_PASSWORD} interpolation: compose interpolation does NOT read
     # env_file (see B-023 note on the postgres service) and a secret in `command`
