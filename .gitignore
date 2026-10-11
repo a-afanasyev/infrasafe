@@ -10,6 +10,11 @@ generator/.env
 # Keep the template + README tracked.
 redis-config/redis.conf
 
+# Хост-локальные server-блоки nginx (.105: extmon-central). Подключаются
+# `include /etc/nginx/custom/extra/*.conf;` в nginx.production.conf; рядом,
+# в extra/le/, лежат закрытые ключи Let's Encrypt — никогда не коммитить.
+nginx-config/extra/
+
 # ==========================================
 # Node.js — зависимости и кэш
 # ==========================================
