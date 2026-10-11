@@ -5,6 +5,7 @@
 > **Лицензия:** Apache 2.0  
 > **Репозиторий:** git, main branch  
 > **Изменения с 2026-04-12:** Phase 12B.3 (persistent account lockout, migration 013), Phase 12B.4 (esbuild bundler активирован, public/dist/), 2FA-фикс (admin-auth redirect + идемпотентный setup-2fa), migrations 012-015.  
+> **⚠️ 2026-10-11:** документ в целом не обновлялся с апреля. Адреса сайта и раздачу страниц смотреть в [PUBLISHING.md](PUBLISHING.md): на infrasafe.uz главная — коммерческий лендинг, карта на `/map`. Ветка `feature/frontend-redesign` заброшена (только локально, последний коммит 28.03.2026). Открытое — в [BACKLOG.md](BACKLOG.md).  
 
 ---
 
@@ -610,10 +611,10 @@ Express → metricController.receiveTelemetry → DB insert + trigger update_hea
 - `script.js` ~1,400 строк — монолитный
 - Нет фреймворка, нет сборщика (прямая загрузка в браузер)
 
-### 7.2 Frontend Redesign (feature/frontend-redesign)
+### 7.2 Frontend Redesign (feature/frontend-redesign) — заброшен
 
 **Директория:** `frontend-design/` — в процессе разработки  
-**Статус:** Минимальная реализация (только images subdirectory на момент аудита main branch)
+**Статус (2026-10-11):** заброшен — ветка только локально, последний коммит 28.03.2026, на GitHub удалена, в main не слита. Каталога `frontend-design/` в main нет.
 
 ---
 
@@ -720,7 +721,7 @@ npm run test:watch           # Watch mode
 |-------|--------|-----------|
 | `main` | Production | Бэкенд + legacy фронтенд + UK Phase 1-2 |
 | `feature/uk-integration-phase3-5` | Ready to merge | UK Phase 3-5 (алерт→заявка, обратная связь, карта) |
-| `feature/frontend-redesign` | In progress | Новый фронтенд (дизайн-система, темы) |
+| `feature/frontend-redesign` | Заброшен (11.10.2026) | Новый фронтенд (дизайн-система, темы); только локально |
 | `fix/p0-p1-security-and-hygiene` | Completed | Security и production hardening |
 
 ### 10.2 Локальные (архивные) ветки
