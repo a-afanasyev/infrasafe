@@ -46,6 +46,7 @@
 
 ### Docker и развертывание
 
+- **[PUBLISHING.md](PUBLISHING.md)** — 📍 **что где опубликовано и как**: адреса infrasafe.uz и profk.uz, лендинг (`/`) и карта (`/map`), откуда берутся файлы, выкатка на .105, хост-локальное (`extra/`, monitor.infrasafe.uz)
 - **[DEVELOPMENT_DOCKER_GUIDE.md](DEVELOPMENT_DOCKER_GUIDE.md)** — Docker для разработки
 - **[PRODUCTION-DEPLOYMENT.md](PRODUCTION-DEPLOYMENT.md)** — production-развертывание
 - **[PRODUCTION_SETUP.md](PRODUCTION_SETUP.md)** — настройка production
