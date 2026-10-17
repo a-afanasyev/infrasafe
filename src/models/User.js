@@ -95,12 +95,6 @@ async function findByLogin(login, email = null) {
     return rows[0] || null;
 }
 
-/** Хеш пароля. Отдельным методом, чтобы он не попадал в общие проекции. */
-async function getPasswordHash(userId) {
-    const { rows } = await db.query('SELECT password_hash FROM users WHERE user_id = $1', [userId]);
-    return rows.length ? rows[0].password_hash : null;
-}
-
 /** Хеш пароля только для активного пользователя — вторичные проверки (SEC-105). */
 async function getActivePasswordHash(userId) {
     const { rows } = await db.query(
@@ -123,32 +117,6 @@ async function getTotpState(userId, { withRecoveryCodes = false } = {}) {
 async function getRole(userId) {
     const { rows } = await db.query('SELECT role FROM users WHERE user_id = $1', [userId]);
     return rows.length ? rows[0].role : null;
-}
-
-/** Первый попавшийся администратор — bootstrap-проверка в CLI. */
-async function findAnyAdmin() {
-    const { rows } = await db.query(
-        "SELECT user_id, username, email FROM users WHERE role = 'admin' LIMIT 1"
-    );
-    return rows[0] || null;
-}
-
-/** Проверка занятости логина — CLI. */
-async function findByUsername(username) {
-    const { rows } = await db.query(
-        'SELECT user_id, role FROM users WHERE username = $1 LIMIT 1',
-        [username]
-    );
-    return rows[0] || null;
-}
-
-/** Проверка занятости почты — CLI. */
-async function findByEmail(email) {
-    const { rows } = await db.query(
-        'SELECT user_id FROM users WHERE email = $1 LIMIT 1',
-        [email]
-    );
-    return rows[0] || null;
 }
 
 // --- Запись (каждый метод сам сбрасывает кэш) ------------------------------
@@ -300,13 +268,9 @@ module.exports = {
     invalidateCache,
     findAuthProjection,
     findByLogin,
-    getPasswordHash,
     getActivePasswordHash,
     getTotpState,
     getRole,
-    findAnyAdmin,
-    findByUsername,
-    findByEmail,
     create,
     updatePassword,
     revokeSessions,
