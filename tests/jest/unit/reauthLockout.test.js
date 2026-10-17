@@ -45,7 +45,6 @@ jest.mock('../../../src/models/AccountLockout', () => ({
 jest.mock('../../../src/models/User', () => ({
     findAuthProjection: jest.fn(),
     getActivePasswordHash: jest.fn(),
-    getPasswordHash: jest.fn(),
     updatePassword: jest.fn().mockResolvedValue(undefined)
 }));
 
@@ -71,7 +70,6 @@ beforeEach(() => {
     jest.clearAllMocks();
     User.findAuthProjection.mockResolvedValue({ ...ACTIVE_USER });
     User.getActivePasswordHash.mockResolvedValue('$2b$12$storedhash');
-    User.getPasswordHash.mockResolvedValue('$2b$12$storedhash');
     AccountLockout.get.mockResolvedValue(null);
     AccountLockout.recordFailedAttempt.mockResolvedValue({ failed_attempts: 1, locked_until: null });
 });

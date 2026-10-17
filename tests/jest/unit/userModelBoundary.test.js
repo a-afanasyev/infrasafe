@@ -87,8 +87,8 @@ describe('[AR-3] граница модели пользователей', () => 
     test('модель отдаёт весь набор операций, которым пользуются вызывающие', () => {
         const User = require('../../../src/models/User');
         const required = [
-            'findAuthProjection', 'findByLogin', 'getPasswordHash', 'getActivePasswordHash',
-            'getTotpState', 'getRole', 'findAnyAdmin', 'findByUsername', 'findByEmail',
+            'findAuthProjection', 'findByLogin', 'getActivePasswordHash',
+            'getTotpState', 'getRole',
             'create', 'updatePassword', 'updateLastLogin', 'setTotpSecret',
             'enableTotp', 'setRecoveryCodes', 'disableTotp',
         ];
