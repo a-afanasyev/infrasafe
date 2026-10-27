@@ -91,7 +91,7 @@ These keys appear inside the `alert` block on **every** outbound event (not just
 | `reopen_sequence` | int ≥ 1 | always (defaults to 1) | 1 = first-time alert, 2+ = N-th reopen. Increments by 1 on each verification → reopen transition. |
 | `related_request_number` | string or null | always (null on sequence=1) | UK request number of the previous terminated request in this chain. Operator-facing context: "this is a reopen of ticket X". Format is whatever UK returned at request creation — InfraSafe does not normalise it. |
 | `uk_urgency_override` | string or null | always (null when no override applies) | When non-null, UK SHOULD use this value instead of `rule.uk_urgency`. Set on reopens with `reopen_urgency_bump=true` (canonical ladder `Обычная → Средняя → Срочная → Критическая`, capped) and always set to `"Критическая"` on `alert.engineer_required` events. |
-| `uk_category_override` | string or null | always (null except on engineer_required) | Always `"Инженерный разбор"` on `alert.engineer_required`, null otherwise. UK SHOULD route to engineering queue when present. |
+| `uk_category_override` | null | always | **Always null since 2026-10-27.** UK assigns «Инженерный разбор» to `alert.engineer_required` itself (ignoring any override) and rejects that category as an override on other events. Was `"Инженерный разбор"` on engineer_required before. |
 | `engineer_required_reason` | string or null | always (null except on engineer_required) | Always `"max_reopens_per_24h"` on `alert.engineer_required` (the only trigger in v1), null otherwise. |
 
 ### 2.3 Example — second escalation of the same leak (`event = "alert.created"`, `reopen_sequence ≥ 2`)
@@ -150,7 +150,7 @@ When a chain reaches `max_reopens_per_24h` (default 3), InfraSafe does **NOT** s
     "reopen_sequence": 4,
     "related_request_number": "260523-006",
     "uk_urgency_override": "Критическая",
-    "uk_category_override": "Инженерный разбор",
+    "uk_category_override": null,
     "engineer_required_reason": "max_reopens_per_24h"
   }
 }
