@@ -60,7 +60,7 @@ describe('[AUD-001 PR-B Step 5b] engineer escalation forwarding', () => {
         expect(UkOutbox.enqueue).toHaveBeenCalledTimes(1);
         const body = JSON.parse(UkOutbox.enqueue.mock.calls[0][0].payload_body);
         expect(body.event).toBe('alert.engineer_required');
-        expect(body.alert.uk_category_override).toBe('Инженерный разбор');
+        expect(body.alert.uk_category_override).toBeNull();
         expect(body.alert.engineer_required_reason).toBe('max_reopens_per_24h');
         expect(UkOutbox.enqueue.mock.calls[0][0].event_id).toMatch(UUID_RE);
     });

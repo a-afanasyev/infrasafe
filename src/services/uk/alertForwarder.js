@@ -135,8 +135,9 @@ class UKAlertForwarder {
      * @param {object} [options]
      * @param {boolean} [options.engineerRequired=false] - When true, the
      *   outbound payload uses event="alert.engineer_required" and adds
-     *   `engineer_required_reason` + hardcoded category/urgency overrides
-     *   per Sprint 10 spec §2.4. Triggered by the ALERT_ENGINEER_REQUIRED
+     *   `engineer_required_reason` + hardcoded urgency override per Sprint 10
+     *   spec §2.4 (category override dropped 2026-10-27: UK hard-routes this
+     *   event to «Инженерный разбор» itself and ignores ours). Triggered by the ALERT_ENGINEER_REQUIRED
      *   listener (below) after the verification worker hits a chain's
      *   max_reopens_per_24h ceiling.
      */
@@ -300,7 +301,11 @@ class UKAlertForwarder {
                 reopen_sequence: alertData.reopen_sequence || 1,
                 related_request_number: alertData.previous_uk_request_number || null,
                 uk_urgency_override: urgencyOverride,
-                uk_category_override: engineerRequired ? 'Инженерный разбор' : null,
+                // [2026-10-27] UK owns the category of alert.engineer_required
+                // («Инженерный разбор» hard-wired, override ignored) and rejects
+                // that category on any other event — so we never set it. Key
+                // kept for a stable payload shape.
+                uk_category_override: null,
                 engineer_required_reason: engineerRequired ? 'max_reopens_per_24h' : null
             }
         });
