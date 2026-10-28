@@ -53,7 +53,7 @@
 
 | Адрес | Что показывает |
 |---|---|
-| `/` | 302 → `/uk/resident-board` (панель УК) |
+| `/` | 302 → `/uk/home` (главная УК) |
 | `/index.html`, `/map` | Карта (`/map` — через fallback) |
 | `/solutions/…` | 404 (проверено после выкатки `c81014f`) |
 | `/uk/…`, `/health`, `/login.html` | как на infrasafe.uz |
@@ -168,7 +168,7 @@ docker exec infrasafe-nginx-1 nginx -t -c /etc/nginx/custom/nginx.profk.conf
 docker exec infrasafe-nginx-1 nginx -s reload -c /etc/nginx/custom/nginx.profk.conf
 ```
 
-Проверка: `https://profk.uz/` — 302 на `/uk/resident-board`, `/solutions/` — 404,
+Проверка: `https://profk.uz/` — 302 на `/uk/home`, `/solutions/` — 404,
 `/map`, `/uk/`, `/health` — 200. Если бэкенд менялся — `update-production.sh`
 с `DEPLOY_ENV=prod` (см. скилл `infrasafe-runtime`).
 

@@ -22,8 +22,8 @@ below for the one-time cutover (host-build remains the break-glass path).
     to `/etc/letsencrypt/live/profk.uz/*.pem` (same `/etc/nginx/ssl/*` targets as base).
 - **`nginx-config/nginx.profk.conf`** — fork of `nginx.production.conf`: `server_name` + CORS map +
   CSP → `profk.uz` (dropped the `aisolutions` SAN alias); `/uk/*` routing + HMAC unchanged. The
-  **root `location = /` returns a 302 to `https://profk.uz/uk/resident-board`** (client sees the UK
-  resident board; `/uk`, `/api`, `/admin.html` still work directly). Revert = restore the root block
+  **root `location = /` returns a 302 to `https://profk.uz/uk/home`** (client sees the UK home
+  page — was `/uk/resident-board` until 2026-10-12; `/uk`, `/api`, `/admin.html` still work directly). Revert = restore the root block
   to `root /srv/frontend-html; try_files /index.html =404;` + `nginx -s reload`.
 
 ## Operator steps (NOT in git — secrets / host-only)
