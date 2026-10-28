@@ -83,6 +83,11 @@ describe('SEC-22 — /uk/api/ prefix-allowlist + edge rate-limit', () => {
             // Запрос УК 06.09.2026. «Контроль платежей» — реестры долгов и
             // платежей; bare-вызываемая коллекция + подпути, та же идиома.
             '/uk/api/v2/payment-control(/|$)',
+            // Запрос УК 29.10.2026. «Отключения» в дашборде менеджера.
+            // auto-manager-config тоже должен быть префиксом: из-под него
+            // зовётся /ai-breaker/reset («Сбросить предохранитель»).
+            '/uk/api/v2/news-watch(/|$)',
+            '/uk/api/v2/auto-manager-config(/|$)',
         ]) {
             expect(conf).toContain(p);
         }
@@ -91,7 +96,7 @@ describe('SEC-22 — /uk/api/ prefix-allowlist + edge rate-limit', () => {
     // Голый префикс без границы пустил бы и соседние пути с тем же началом
     // (/monitored-groups-admin и подобные), которых УК не запрашивали.
     test('bare-callable prefixes are bounded by (/|$), not open-ended', () => {
-        for (const name of ['monitored-groups', 'work-reports', 'residents', 'payment-control', 'requests', 'shifts', 'feedback', 'profile']) {
+        for (const name of ['monitored-groups', 'work-reports', 'residents', 'payment-control', 'news-watch', 'auto-manager-config', 'requests', 'shifts', 'feedback', 'profile']) {
             expect(conf).toMatch(new RegExp(`/uk/api/v2/${name}\\(/\\|\\$\\)"\\s+1;`));
             expect(conf).not.toMatch(new RegExp(`/uk/api/v2/${name}"\\s+1;`));
         }
