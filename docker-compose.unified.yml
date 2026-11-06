@@ -336,13 +336,10 @@ services:
     volumes:
       # [B-012] Directory mount (was ./nginx.production.conf:/etc/nginx/nginx.conf).
       - ./nginx-config:/etc/nginx/custom:ro
-      # SSL сертификаты — SAN-сертификат на infrasafe.uz + infrasafe.aisolutions.uz
-      # Создать на сервере: sudo certbot certonly --webroot -w ~/infrasafe/certbot-webroot
-      #                      -d infrasafe.uz -d infrasafe.aisolutions.uz
-      # Live-папка certbot по primary-домену (-d первым):
-      - /etc/letsencrypt/live/infrasafe.uz/fullchain.pem:/etc/nginx/ssl/fullchain.pem:ro
-      - /etc/letsencrypt/live/infrasafe.uz/privkey.pem:/etc/nginx/ssl/privkey.pem:ro
-      - /etc/letsencrypt/live/infrasafe.uz/chain.pem:/etc/nginx/ssl/chain.pem:ro
+      # SSL: сертификат infrasafe.uz (+aisolutions, +www) выпускает user-level certbot
+      # в ./nginx-config/extra/le (gitignored, cron `renew` + `nginx -s reload`), nginx
+      # читает его через уже смонтированный ./nginx-config — отдельные file-mount'ы
+      # из /etc/letsencrypt не нужны (они же требовали пересоздания контейнера).
       # ACME webroot для certbot renew без downtime (см. nginx server { listen 80 })
       - ./certbot-webroot:/var/www/certbot:rw
       # [B-002] HTML pages live in ./frontend-html/. Mounted to a SEPARATE
