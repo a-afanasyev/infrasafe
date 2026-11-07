@@ -189,7 +189,7 @@ credential-эндпоинтов УК через `%61uth` (S-PERIM-1) подтв�
 | **C-10** | Моки БД : живой Postgres = 7:1; старые SQL-пути (`adminService`, `controllerService`) живой БД не касаются | не расширять моки для нового SQL | M |
 | **H-7** | `~/.ssh` на .105: `id_rsa` (+`.back`, `.pem`), старый `github_deploy` рядом с ротированным, `authorized_keys.bak-*`; `X11Forwarding yes`, `PermitRootLogin yes` в основном файле (эффективно `no`) на profk | убрать мусор; `X11Forwarding no` | XS |
 | **H-10** | `docker-ce 29.9.3`, `docker-compose-plugin 5.7.0` ждут apt на profk (.105 обновлён 05.11) — unattended Docker-репозиторий не покрывает | в окно 0.1 | XS |
-| **H-12** | SSH-входы на profk за неделю с `62.164.155.145` и `94.141.81.168` (78) — **подтвердить владельцу**; брутфорса нет | если чужой — ротация ключа | — |
+| ~~**H-12**~~ ✅ | ~~SSH-входы на profk с `62.164.155.145` и `94.141.81.168`~~ — **закрыто 07.11**: все входы ключом владельца, время совпало с его коммитами и сессиями на его Mac (см. Волну J) | — | — |
 | **H-13** | `fountain.infrasafe.uz` → .105 без сертификата (handshake отклонён); DNSSEC выкл.; CAA не прочитан | удалить запись у регистратора | XS |
 | **UK-3** | CSP `assets.profk.uz` с `script-src 'unsafe-inline'`; нет `limit_req` | УК выносит inline-скрипты, затем убираем | S |
 
@@ -911,13 +911,34 @@ PR-C при мерже упёрся в «merge conflicts» на GitHub при ч
    postgres → **15.13**, PostGIS 3.3.4 → **3.5.2** (все три расширения),
    `log_connections=on`; redis → 7.4; app healthy под hardening; `migrate status`
    44 / 0 / drift 0; сторож дрейфа чист.
-   **Открыто:** prune-cron на profk — **не раньше 14.11**: еженедельный
-   `image prune -a --filter until=72h` смотрит на дату СБОРКИ образа, а не тега,
-   и в первое же воскресенье удалил бы rollback-образы (postgis 15-3.3 собран в
-   2023). То же на .105: тамошний cron в воскресенье 03:30 заберёт
-   `redis-rollback` — для redis не критично. Дальше: `ufw delete allow 51820`
-   на .105 (sudo), тома .105 поимённо, смена пароля admin на profk, SSH-IP (H-12),
-   ответ УК.
+   ✅ **Хвосты хостов — 07.11 (владелец авторизовал «делай сам»):**
+   - **prune-cron на profk** поставлен с защитой по дате: первое срабатывание —
+     воскресенье **15.11** (`[ "$(date +%Y%m%d)" -ge 20261115 ]`), скрипт — копия
+     `profk-observability/host-105/docker-prune-weekly.sh`, метрика в
+     `/var/lib/node_exporter/textfile_collector` (Alloy profk). Защита — потому что
+     `image prune -a --filter until=72h` смотрит на дату СБОРКИ образа, а не тега,
+     и сразу удалил бы rollback-образы окна (postgis 15-3.3 собран в 2023). На .105
+     тамошний cron в ближайшее воскресенье заберёт `redis-rollback` — для redis не
+     критично.
+   - **Тома .105** (10 шт.: `extmon-central_*` ×5, `infrasafe_generator_data`,
+     `site-content_postgres_data` (PG 15, проект неизвестен, 109 МБ), `uk_caddy_*`,
+     `uk_media_uploads` (пустой, медиа-сервис УК его не монтирует)) — заархивированы
+     в `/home/infrasafe/backups/volumes-2026-11-07/*.tar.gz` (600), архивы прочитаны
+     обратно, затем удалены. Висячих томов 0.
+   - **postgres на .105 пересоздан** под настройки PR-E (`log_connections=on`,
+     `database.sql:ro`): окно 17:12:04–17:12:51 UTC, дамп
+     `/home/infrasafe/backups/infrasafe-pre-pgrecreate-2026-11-07.dump`
+     восстановлен со счётчиками один в один. Дрейфа нет, миграции 44/0.
+   - **H-12 закрыт**: все внешние SSH-входы на profk за 30 дней — ключом
+     `infrasafe-prod-new` (тот, что на Mac владельца). `94.141.81.168` (Super iMAX
+     LTE) — вход 06.11 в 11:10 совпал минута в минуту с `ssh profk` из сессии
+     Claude на этом Mac; `62.164.155.x` (RWC, домашний) — входы 28.10 00:30–01:15 и
+     29.10 00:40–01:20 совпали с коммитами владельца `aff8f473` (01:12) и
+     `cdee37f3` (00:40) про nginx profk. Чужих ключей и брутфорса нет.
+   **Открыто (только владелец):** `sudo ufw delete allow 51820/udp|tcp` на .105 —
+   у `infrasafe` sudo с паролем; порт уже ничего не слушает, правило мёртвое.
+   Смена пароля admin на profk — в UI (пароль не должен проходить через чат).
+   Ответ УК — `docs/audit/2026-11-07-uk-reply.md` (канала к УК у агента нет).
 1. **PR-A «вход»** — [#326](https://github.com/a-afanasyev/infrasafe/pull/326):
    `S-INJ-1` (ReDoS `validatePassword`, предел 72 байта), `S-AUTH-1` (lockout
    только на вход), `S-INJ-3` (CRLF в логах после `splat`), `S-AUTH-2в`,
