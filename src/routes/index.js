@@ -24,6 +24,7 @@ const cspReportRoutes = require('./cspReportRoutes');
 const metricController = require('../controllers/metricController');
 const { authenticateJWT } = require('../middleware/auth');
 const csrfOriginGuard = require('../middleware/csrfOriginGuard');
+const mutationAudit = require('../middleware/mutationAudit');
 const { applyTelemetryRateLimit } = require('../middleware/rateLimiter');
 const { verifyTelemetryHmac } = require('../middleware/telemetryHmac');
 const { createError } = require('../utils/helpers');
@@ -147,6 +148,10 @@ router.use((req, res, next) => {
 // Runs after the default-deny gate; self-skips non-mutation, non-cookie
 // (Bearer/webhook/telemetry) requests — see middleware for the policy.
 router.use(csrfOriginGuard);
+
+// [S-PERIM-4] Журнал мутаций аутентифицированных пользователей — после
+// default-deny (req.user известен) и CSRF-guard (отбитые им не пишем).
+router.use(mutationAudit);
 
 /**
  * @swagger

@@ -106,6 +106,17 @@ function validateEnv() {
         throw new Error(message);
     }
 
+    // [S-AUTH-3] The same separation for the refresh secret: with a shared
+    // value a 7-day refresh token would verify as an access token. The
+    // middleware also rejects by the type claim; this is the second lock.
+    if (isProduction && process.env.JWT_REFRESH_SECRET === process.env.JWT_SECRET) {
+        const message =
+            'JWT_REFRESH_SECRET must differ from JWT_SECRET in production (S-AUTH-3): ' +
+            'refresh tokens must use a dedicated signing secret.';
+        logger.error(message);
+        throw new Error(message);
+    }
+
     // [R2-26] Presence alone is not enough — a short/low-entropy secret (e.g.
     // JWT_SECRET=1) passes the filter above but is trivially brute-forceable.
     // Enforce a minimum length for crypto secrets in production.

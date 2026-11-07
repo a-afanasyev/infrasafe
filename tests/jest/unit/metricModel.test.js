@@ -134,7 +134,9 @@ describe('Metric Model', () => {
             const result = await Metric.findByControllerId(10);
 
             expect(result).toHaveLength(1);
-            expect(db.query.mock.calls[0][1]).toEqual([10]);
+            // [S-INJ-2] LIMIT стоит всегда — последним параметром идёт потолок.
+            expect(db.query.mock.calls[0][1]).toEqual([10, Metric.MAX_ROWS]);
+            expect(db.query.mock.calls[0][0]).toMatch(/LIMIT \$2/);
         });
 
         test('applies both start and end date filters', async () => {
@@ -144,7 +146,7 @@ describe('Metric Model', () => {
 
             const query = db.query.mock.calls[0][0];
             expect(query).toContain('BETWEEN $2 AND $3');
-            expect(db.query.mock.calls[0][1]).toEqual([10, '2024-01-01', '2024-01-31']);
+            expect(db.query.mock.calls[0][1]).toEqual([10, '2024-01-01', '2024-01-31', Metric.MAX_ROWS]);
         });
 
         test('applies only start date filter', async () => {
@@ -154,7 +156,7 @@ describe('Metric Model', () => {
 
             const query = db.query.mock.calls[0][0];
             expect(query).toContain('timestamp >= $2');
-            expect(db.query.mock.calls[0][1]).toEqual([10, '2024-01-01']);
+            expect(db.query.mock.calls[0][1]).toEqual([10, '2024-01-01', Metric.MAX_ROWS]);
         });
 
         test('applies only end date filter', async () => {
@@ -164,7 +166,21 @@ describe('Metric Model', () => {
 
             const query = db.query.mock.calls[0][0];
             expect(query).toContain('timestamp <= $2');
-            expect(db.query.mock.calls[0][1]).toEqual([10, '2024-01-31']);
+            expect(db.query.mock.calls[0][1]).toEqual([10, '2024-01-31', Metric.MAX_ROWS]);
+        });
+
+        // [S-INJ-2] явный limit выше потолка или мусор → потолок; ниже — как есть
+        test('clamps an explicit limit to MAX_ROWS and ignores garbage', async () => {
+            db.query.mockResolvedValue({ rows: [] });
+
+            await Metric.findByControllerId(10, null, null, 10 ** 9);
+            expect(db.query.mock.calls[0][1]).toEqual([10, Metric.MAX_ROWS]);
+
+            await Metric.findByControllerId(10, null, null, 'abc');
+            expect(db.query.mock.calls[1][1]).toEqual([10, Metric.MAX_ROWS]);
+
+            await Metric.findByControllerId(10, null, null, 7);
+            expect(db.query.mock.calls[2][1]).toEqual([10, 7]);
         });
 
         test('returns empty array when none found', async () => {

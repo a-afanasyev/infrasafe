@@ -43,6 +43,13 @@ const ALLOWED_METRIC_FIELDS = [
 // temperature fields the old validator used.
 const NUMERIC_METRIC_FIELDS = ALLOWED_METRIC_FIELDS.filter((f) => f !== 'leak_sensor');
 
+// [S-INJ-2] Канонический вид даты для ключа кэша; «нет даты» — литерал.
+const canonicalDate = (d) => {
+    if (!d) return 'all';
+    const t = Date.parse(d);
+    return Number.isNaN(t) ? String(d) : new Date(t).toISOString();
+};
+
 class MetricService {
     constructor() {
         this.cachePrefix = 'metric';
@@ -146,7 +153,10 @@ class MetricService {
                 throw error;
             }
 
-            const cacheKey = `${this.cachePrefix}:controller:${controllerId}:${startDate || 'all'}:${endDate || 'all'}`;
+            // [S-INJ-2] Ключ — из канонических ISO-границ: `2026-01-01` и
+            // `2026-01-01T00:00:00.000Z` — один и тот же запрос, а не две записи
+            // в кэше. Границы уже проверены validateMetricsRange на маршруте.
+            const cacheKey = `${this.cachePrefix}:controller:${controllerId}:${canonicalDate(startDate)}:${canonicalDate(endDate)}`;
 
             const cached = await cacheService.get(cacheKey, { ttl: this.defaultCacheTTL });
             if (cached) {
@@ -154,6 +164,8 @@ class MetricService {
                 return cached;
             }
 
+            // LIMIT = Metric.MAX_ROWS всегда (S-INJ-2); потребитель видит
+            // обрезку по длине массива — контроллер ставит X-Metrics-Truncated.
             const metrics = await Metric.findByControllerId(controllerId, startDate, endDate);
 
             // Сохраняем в кэш
@@ -395,15 +407,21 @@ class MetricService {
                     startDate.setHours(endDate.getHours() - 1);
             }
 
-            // Получаем метрики за период
-            const metrics = await this.getMetricsByControllerId(
+            // [S-INJ-2] Агрегаты считает SQL по всему периоду. Раньше сюда шла
+            // сырая выборка через getMetricsByControllerId и JS-агрегация —
+            // с LIMIT на сырых строках статистика за неделю считалась бы по
+            // последним 5000 и теряла старые экстремумы.
+            const controller = await Controller.findById(controllerId);
+            if (!controller) {
+                const error = new Error('Контроллер не найден');
+                error.code = 'CONTROLLER_NOT_FOUND';
+                throw error;
+            }
+            const aggregated = await Metric.aggregateByControllerId(
                 controllerId,
                 startDate.toISOString(),
                 endDate.toISOString()
             );
-
-            // Агрегируем данные
-            const aggregated = this.aggregateMetrics(metrics);
 
             // Сохраняем в кэш
             await cacheService.set(cacheKey, aggregated, { ttl: this.defaultCacheTTL });
@@ -474,41 +492,8 @@ class MetricService {
     // real telemetry, and its `anomalies` output was neither persisted nor read.
     // Live anomaly detection is the event-bus checker path (checkVoltage/checkLeak/…).
 
-    // Агрегация метрик. [R2-06] Fixed to aggregate the REAL numeric fields
-    // (NUMERIC_METRIC_FIELDS) — it previously keyed off phantom voltage/amperage/
-    // power/temperature and returned all-null. Consumed by getAggregatedMetrics
-    // (GET /metrics/controller/:id/aggregated).
-    aggregateMetrics(metrics) {
-        if (!metrics || metrics.length === 0) {
-            return { count: 0, period: null };
-        }
-
-        const aggregated = {
-            count: metrics.length,
-            period: {
-                start: metrics[metrics.length - 1]?.timestamp,
-                end: metrics[0]?.timestamp
-            }
-        };
-
-        NUMERIC_METRIC_FIELDS.forEach(field => {
-            const values = metrics
-                .map(m => m[field])
-                .filter(v => v !== null && v !== undefined && !isNaN(v))
-                .map(Number);
-
-            aggregated[field] = values.length > 0
-                ? {
-                    min: Math.min(...values),
-                    max: Math.max(...values),
-                    avg: values.reduce((sum, v) => sum + v, 0) / values.length,
-                    count: values.length
-                }
-                : null;
-        });
-
-        return aggregated;
-    }
+    // [S-INJ-2] aggregateMetrics (JS по сырой выборке) удалён: агрегаты считает
+    // Metric.aggregateByControllerId в SQL по всему периоду. Форма ответа та же.
 
     // Обновление пороговых значений
     updateThresholds(newThresholds) {

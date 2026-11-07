@@ -29,8 +29,21 @@ const EDITABLE_FIELDS = Object.freeze({
 // валидной).
 const MMDD_RE = /^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/;
 
+// [S-INJ-6, аудит 05.11.2026] Все отказы валидации несут code='VALIDATION_ERROR':
+// контроллер отличает их от сбоя БД и отдаёт 400 только на них. Раньше любая
+// ошибка из update (в том числе текст pg об обрыве соединения) уходила
+// администратору телом 400.
+const invalid = (message) => {
+    const err = new Error(message);
+    err.code = 'VALIDATION_ERROR';
+    return err;
+};
+
 function validateField(name, value) {
-    const spec = EDITABLE_FIELDS[name];
+    // Object.hasOwn: EDITABLE_FIELDS['constructor'] / ['__proto__'] / ['toString']
+    // истинны через прототип и проходили whitelist — дальше SQL падал на
+    // «column does not exist», и его текст уходил клиенту.
+    const spec = Object.hasOwn(EDITABLE_FIELDS, name) ? EDITABLE_FIELDS[name] : undefined;
     if (!spec) return { ok: false, error: `field "${name}" is not editable` };
     if (value === null) {
         return spec.nullable
@@ -127,18 +140,18 @@ class AlertRule {
      * Throws on invalid field name, type, or out-of-range value.
      */
     static async update(id, fields, userId = null, reason = null) {
-        if (!id) throw new Error('AlertRule.update: id is required');
+        if (!id) throw invalid('AlertRule.update: id is required');
         if (!fields || typeof fields !== 'object' || Array.isArray(fields)) {
-            throw new Error('AlertRule.update: fields must be a plain object');
+            throw invalid('AlertRule.update: fields must be a plain object');
         }
         const fieldNames = Object.keys(fields);
-        if (fieldNames.length === 0) throw new Error('AlertRule.update: at least one field required');
+        if (fieldNames.length === 0) throw invalid('AlertRule.update: at least one field required');
 
         // Validate all fields BEFORE touching the DB so an invalid value
         // doesn't leave a partial state.
         for (const name of fieldNames) {
             const check = validateField(name, fields[name]);
-            if (!check.ok) throw new Error(`AlertRule.update: ${check.error}`);
+            if (!check.ok) throw invalid(`AlertRule.update: ${check.error}`);
         }
 
         const before = await AlertRule.findById(id);
@@ -152,7 +165,7 @@ class AlertRule {
         const seasonFrom = 'season_from' in fields ? fields.season_from : before.season_from;
         const seasonTo   = 'season_to'   in fields ? fields.season_to   : before.season_to;
         if ((seasonFrom === null || seasonFrom === undefined) !== (seasonTo === null || seasonTo === undefined)) {
-            throw new Error(
+            throw invalid(
                 'AlertRule.update: season_from и season_to задаются и снимаются только вместе'
             );
         }

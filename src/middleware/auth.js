@@ -38,13 +38,6 @@ const authenticateJWT = async (req, res, next) => {
             return sendError(res, 401, 'Access token is missing');
         }
 
-        // Проверка токена на черном списке
-        const isBlacklisted = await authService.isTokenBlacklisted(token);
-        if (isBlacklisted) {
-            logger.warn(`Попытка использования токена из черного списка`);
-            return sendError(res, 401, 'Token has been revoked');
-        }
-
         if (!process.env.JWT_SECRET) {
             logger.error('JWT_SECRET is not defined in environment variables');
             return sendError(res, 500, 'Internal server configuration error');
@@ -55,6 +48,15 @@ const authenticateJWT = async (req, res, next) => {
             issuer: 'infrasafe-api',
             audience: 'infrasafe-client'
         });
+
+        // [S-AUTH-4] Чёрный список — ПОСЛЕ подписи. Иначе любой аноним с
+        // мусорным Bearer вызывал SHA-256 + кэш + SELECT по token_blacklist
+        // через breaker, а при деградации БД получал 503 вместо честного 401.
+        const isBlacklisted = await authService.isTokenBlacklisted(token);
+        if (isBlacklisted) {
+            logger.warn(`Попытка использования токена из черного списка`);
+            return sendError(res, 401, 'Token has been revoked');
+        }
 
         // SEC-1: reject scoped tokens (e.g. the 2FA temp-token, scope:'2fa') on
         // normal routes. Even though the 2FA temp-token is now signed with a
@@ -68,9 +70,17 @@ const authenticateJWT = async (req, res, next) => {
             return sendError(res, 401, 'Invalid or expired token');
         }
 
-        // H-1/H-2: uncached PK read — a lockout or deactivation must be
-        // enforced on the very next request, not masked by findUserById's
-        // 5-min cache.
+        // [S-AUTH-3] Refresh-токен несёт type:'refresh' и подписан своим
+        // секретом. env.js в проде требует, чтобы секреты различались, но
+        // в dev/test они могут совпасть — тогда 7-дневный refresh прошёл бы
+        // здесь как access. Отсекаем по claim'у независимо от секретов.
+        if (decoded.type) {
+            logger.warn(`Typed token (type=${decoded.type}) rejected on access-token route`);
+            return sendError(res, 401, 'Invalid or expired token');
+        }
+
+        // H-2: uncached PK read — deactivation must be enforced on the very
+        // next request, not masked by findUserById's 5-min cache.
         const user = await authService.getUserForAuth(decoded.user_id);
         if (!user) {
             return sendError(res, 401, 'User not found');
@@ -87,9 +97,14 @@ const authenticateJWT = async (req, res, next) => {
             return sendError(res, 401, 'Invalid or expired token');
         }
 
-        if (user.account_locked_until && new Date(user.account_locked_until) > new Date()) {
-            return sendError(res, 401, 'Account is locked');
-        }
+        // [S-AUTH-1, аудит 05.11.2026] Блокировка аккаунта (account_locked_until)
+        // здесь НЕ проверяется — намеренно. Она действует только на вход
+        // (пароль, второй фактор, повторная проверка пароля): пять неверных
+        // паролей по известному логину «admin» с чужого IP иначе гасили и все
+        // живые сессии администратора, то есть любой аноним отрезал оператора
+        // от системы на 15 минут и мог повторять это бесконечно. Отзыв выданных
+        // токенов — только явный: password_changed_at, sessions_revoked_at,
+        // is_active=false, blacklist.
 
         req.user = mapUserToReqUser(user);
         req.token = token;
@@ -149,8 +164,6 @@ const authenticateRefresh = async (req, res, next) => {
         // ответить 503 с Retry-After, а не 500 из глубины сервиса. Поэтому
         // исключение по-прежнему обрабатывается ниже, а вот вердикт «да, в
         // списке» теперь просто передаётся дальше.
-        await authService.isTokenBlacklisted(refreshToken);
-
         if (!process.env.JWT_REFRESH_SECRET) {
             logger.error('JWT_REFRESH_SECRET is not defined in environment variables');
             return sendError(res, 500, 'Internal server configuration error');
@@ -161,6 +174,9 @@ const authenticateRefresh = async (req, res, next) => {
             issuer: 'infrasafe-api',
             audience: 'infrasafe-client'
         });
+
+        // [S-AUTH-4] Проба доступности списка — после подписи (см. authenticateJWT).
+        await authService.isTokenBlacklisted(refreshToken);
 
         // Defense-in-depth: refresh tokens (generateTokens) always carry
         // type:'refresh'; reject anything else verified with this secret.
@@ -186,9 +202,7 @@ const authenticateRefresh = async (req, res, next) => {
             return sendError(res, 401, 'Invalid or expired refresh token');
         }
 
-        if (user.account_locked_until && new Date(user.account_locked_until) > new Date()) {
-            return sendError(res, 401, 'Account is locked');
-        }
+        // [S-AUTH-1] account_locked_until не проверяется — см. authenticateJWT.
 
         req.user = mapUserToReqUser(user);
         req.refreshToken = refreshToken;
@@ -217,12 +231,6 @@ const optionalAuth = async (req, res, next) => {
             return next();
         }
 
-        const isBlacklisted = await authService.isTokenBlacklisted(token);
-        if (isBlacklisted) {
-            req.user = null;
-            return next();
-        }
-
         if (!process.env.JWT_SECRET) {
             req.user = null;
             return next();
@@ -234,6 +242,13 @@ const optionalAuth = async (req, res, next) => {
             audience: 'infrasafe-client'
         });
 
+        // [S-AUTH-4] Чёрный список — после подписи (см. authenticateJWT).
+        const isBlacklisted = await authService.isTokenBlacklisted(token);
+        if (isBlacklisted) {
+            req.user = null;
+            return next();
+        }
+
         // SEC-1 (consistency): mirror authenticateJWT's scope guard. A scoped
         // token (e.g. the 2FA temp-token, scope:'2fa') must never grant req.user
         // here either — degrade gracefully to the anonymous path like an invalid
@@ -243,12 +258,11 @@ const optionalAuth = async (req, res, next) => {
             return next();
         }
 
-        // H-1/H-2/M-1: uncached PK read + is_active + password-cutoff check —
-        // previously optionalAuth only checked lockout, unlike authenticateJWT.
+        // H-2/M-1: uncached PK read + is_active + password-cutoff check.
+        // [S-AUTH-1] Блокировка аккаунта не учитывается — см. authenticateJWT.
         const user = await authService.getUserForAuth(decoded.user_id);
-        const isLocked = !!(user && user.account_locked_until && new Date(user.account_locked_until) > new Date());
         const isStale = !!(user && authService._isIssuedBeforeCutoff(decoded, user));
-        if (user && user.is_active !== false && !isLocked && !isStale) {
+        if (user && user.is_active !== false && !isStale) {
             req.user = mapUserToReqUser(user);
         } else {
             req.user = null;
@@ -279,13 +293,14 @@ const authenticateTempToken = async (req, res, next) => {
             return sendError(res, 400, 'Temporary token is required');
         }
 
+        // [S-AUTH-4] Сначала подпись и срок, потом «уже использован».
+        const decoded = await authService.verifyTempToken(tempToken);
+
         // Check if tempToken has already been used
         const isBlacklisted = await authService.isTokenBlacklisted(tempToken);
         if (isBlacklisted) {
             return sendError(res, 401, 'Temporary token has already been used');
         }
-
-        const decoded = await authService.verifyTempToken(tempToken);
         req.tempUser = decoded;
         req.tempToken = tempToken; // Pass to controller for blacklisting after use
         next();

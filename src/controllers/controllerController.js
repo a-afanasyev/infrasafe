@@ -2,6 +2,7 @@ const controllerService = require('../services/controllerService');
 const logger = require('../utils/logger');
 const { sendError, sendNotFound } = require('../utils/apiResponse');
 const { validatePagination, validateSortOrder } = require('../utils/queryValidation');
+const { metricsQuery } = require('../config/thresholds');
 
 // Получить все контроллеры
 const getAllControllers = async (req, res, next) => {
@@ -53,10 +54,17 @@ const getControllersByBuildingId = async (req, res, next) => {
 const getControllerMetrics = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { startDate, endDate } = req.query;
+        // [S-INJ-2] Диапазон — из validateMetricsRange; без middleware — из query.
+        const [startDate, endDate] = req.metricsRange
+            ? [req.metricsRange.start, req.metricsRange.end]
+            : [req.query.startDate, req.query.endDate];
 
         const metrics = await controllerService.getControllerMetrics(id, startDate, endDate);
 
+        if (Array.isArray(metrics) && metrics.length >= metricsQuery.maxRows) {
+            res.set('X-Metrics-Truncated', 'true');
+            res.set('X-Metrics-Limit', String(metricsQuery.maxRows));
+        }
         return res.status(200).json(metrics);
     } catch (error) {
         if (error.code === 'CONTROLLER_NOT_FOUND') {

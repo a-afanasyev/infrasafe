@@ -101,8 +101,11 @@ class ControllerService {
                 throw error;
             }
 
-            // Создаем ключ кэша с учетом временного диапазона
-            const cacheKey = `${this.cachePrefix}:${controllerId}:metrics:${startDate || 'all'}:${endDate || 'all'}`;
+            // Создаем ключ кэша с учетом временного диапазона.
+            // [S-INJ-2] Канонические ISO-границы: иначе каждое написание одной
+            // и той же даты — отдельная запись в кэше.
+            const iso = (d) => (d && !Number.isNaN(Date.parse(d)) ? new Date(d).toISOString() : (d || 'all'));
+            const cacheKey = `${this.cachePrefix}:${controllerId}:metrics:${iso(startDate)}:${iso(endDate)}`;
 
             // Для метрик используем более короткий TTL
             const metricsCache = await cacheService.get(cacheKey, { ttl: 60 }); // 1 минута

@@ -81,3 +81,28 @@ describe('[N-56] примитивы после сообщения', () => {
         expect(JSON.stringify(last())).not.toContain('hunter2');
     });
 });
+
+// [S-INJ-3] Перевод строки из клиентского значения не должен рисовать в логе
+// вторую запись. Фильтр стоит после splat(), поэтому ловит и `%s`-аргументы.
+describe('[S-INJ-3] перевод строки в сообщении', () => {
+    test('в самом сообщении', () => {
+        logger.warn('login=x\n2026-01-01 00:00:00 error: FORGED');
+        expect(last().message).not.toMatch(/[\r\n]/);
+        expect(last().message).toBe('login=x 2026-01-01 00:00:00 error: FORGED');
+    });
+
+    test('в %s-аргументе splat', () => {
+        logger.warn('auth %s', 'user\nFORGED');
+        expect(last().message).toBe('auth user FORGED');
+    });
+
+    test('в примитивном аргументе без плейсхолдера', () => {
+        logger.warn('sort:', 'x\r\nFORGED');
+        expect(last().message).toBe('sort: x FORGED');
+    });
+
+    test('значения в метаданных не трогаем — их экранирует json()', () => {
+        logger.warn('ok', { detail: 'a\nb' });
+        expect(last().detail).toBe('a\nb');
+    });
+});
