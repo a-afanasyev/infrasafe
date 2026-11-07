@@ -2,6 +2,22 @@ const metricService = require('../services/metricService');
 const logger = require('../utils/logger');
 const { sendNotFound, sendError } = require('../utils/apiResponse');
 const { validatePagination, validateSortOrder } = require('../utils/queryValidation');
+const { metricsQuery } = require('../config/thresholds');
+
+// [S-INJ-2] Диапазон — из validateMetricsRange (канонические ISO-границы);
+// без middleware (прямой вызов в тестах) — как раньше, из query.
+const rangeOf = (req) => (req.metricsRange
+    ? [req.metricsRange.start, req.metricsRange.end]
+    : [req.query.startDate, req.query.endDate]);
+
+// [S-INJ-2] Сырая выдача ограничена metricsQuery.maxRows; потребителю это
+// видно заголовком, тело остаётся массивом (форма ответа не меняется).
+const markTruncated = (res, rows) => {
+    if (Array.isArray(rows) && rows.length >= metricsQuery.maxRows) {
+        res.set('X-Metrics-Truncated', 'true');
+        res.set('X-Metrics-Limit', String(metricsQuery.maxRows));
+    }
+};
 
 // Получить все метрики
 const getAllMetrics = async (req, res, next) => {
@@ -51,9 +67,10 @@ const getLastMetricsForAllControllers = async (req, res, next) => {
 const getMetricsByControllerId = async (req, res, next) => {
     try {
         const { controllerId } = req.params;
-        const { startDate, endDate } = req.query;
+        const [startDate, endDate] = rangeOf(req);
 
         const metrics = await metricService.getMetricsByControllerId(controllerId, startDate, endDate);
+        markTruncated(res, metrics);
         return res.status(200).json(metrics);
     } catch (error) {
         if (error.code === 'CONTROLLER_NOT_FOUND') {

@@ -6,6 +6,7 @@ jest.mock('../../../src/models/Metric', () => ({
     findAll: jest.fn(),
     findById: jest.fn(),
     findByControllerId: jest.fn(),
+    aggregateByControllerId: jest.fn(),
     findLastForAllControllers: jest.fn(),
     create: jest.fn(),
     delete: jest.fn(),
@@ -402,13 +403,19 @@ describe('MetricService', () => {
             expect(result).toEqual(cached);
         });
 
+        // [S-INJ-2] Агрегаты считает SQL (Metric.aggregateByControllerId) по
+        // всему периоду, а не JS по обрезанной LIMIT'ом сырой выборке.
         test('returns empty aggregation when no metrics exist', async () => {
             Controller.findById.mockResolvedValue(mockController);
-            Metric.findByControllerId.mockResolvedValue([]);
+            Metric.aggregateByControllerId.mockResolvedValue({ count: 0, period: null });
 
             const result = await metricService.getAggregatedMetrics(1, '1h');
 
             expect(result.count).toBe(0);
+            expect(Metric.findByControllerId).not.toHaveBeenCalled();
+            expect(Metric.aggregateByControllerId).toHaveBeenCalledWith(
+                1, expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/), expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/)
+            );
         });
 
         test('throws CONTROLLER_NOT_FOUND for missing controller', async () => {
@@ -505,25 +512,17 @@ describe('MetricService', () => {
     });
 
     // [R2-06] detectAnomalies removed (phantom fields, unpersisted output).
-    // aggregateMetrics kept but fixed to the real numeric schema fields.
-    describe('aggregateMetrics [R2-06: real fields]', () => {
-        test('returns count 0 for empty/null input', () => {
-            expect(metricService.aggregateMetrics([]).count).toBe(0);
-            expect(metricService.aggregateMetrics(null).count).toBe(0);
-        });
+    // [S-INJ-2] aggregateMetrics (JS) удалён — агрегация в SQL, см.
+    // Metric.aggregateByControllerId и tests/jest/db/metricRangeAggregate.db.test.js.
+    describe('getAggregatedMetrics passes the SQL aggregate through unchanged', () => {
+        test('returns what the model computed (shape owned by the model)', async () => {
+            Controller.findById.mockResolvedValue(mockController);
+            const agg = { count: 2, period: { start: 'a', end: 'b' }, electricity_ph1: { min: 220, max: 230, avg: 225, count: 2 } };
+            Metric.aggregateByControllerId.mockResolvedValue(agg);
 
-        test('aggregates REAL numeric fields (electricity_ph1, air_temp), not phantom voltage', () => {
-            const metrics = [
-                { electricity_ph1: 220, air_temp: 20, timestamp: '2026-01-01T12:00:00Z' },
-                { electricity_ph1: 230, air_temp: 24, timestamp: '2026-01-01T11:00:00Z' }
-            ];
+            const result = await metricService.getAggregatedMetrics(1, '1h');
 
-            const result = metricService.aggregateMetrics(metrics);
-
-            expect(result.count).toBe(2);
-            expect(result.electricity_ph1).toEqual({ min: 220, max: 230, avg: 225, count: 2 });
-            expect(result.air_temp).toEqual({ min: 20, max: 24, avg: 22, count: 2 });
-            // Phantom field is no longer part of the shape.
+            expect(result).toBe(agg);
             expect(result.voltage).toBeUndefined();
         });
     });
@@ -560,28 +559,33 @@ describe('MetricService', () => {
     describe('getAggregatedMetrics - timeFrame variants', () => {
         beforeEach(() => {
             Controller.findById.mockResolvedValue(mockController);
-            Metric.findByControllerId.mockResolvedValue([]);
+            Metric.aggregateByControllerId.mockResolvedValue({ count: 0, period: null });
         });
+
+        const spanHours = () => {
+            const [, from, to] = Metric.aggregateByControllerId.mock.calls.at(-1);
+            return (Date.parse(to) - Date.parse(from)) / 3_600_000;
+        };
 
         test('uses 24h time frame', async () => {
             const result = await metricService.getAggregatedMetrics(1, '24h');
 
             expect(result.count).toBe(0);
-            expect(Metric.findByControllerId).toHaveBeenCalled();
+            expect(spanHours()).toBeCloseTo(24, 0);
         });
 
         test('uses 7d time frame', async () => {
             const result = await metricService.getAggregatedMetrics(1, '7d');
 
             expect(result.count).toBe(0);
-            expect(Metric.findByControllerId).toHaveBeenCalled();
+            expect(spanHours()).toBeCloseTo(24 * 7, 0);
         });
 
         test('uses default (1h) time frame for unknown value', async () => {
             const result = await metricService.getAggregatedMetrics(1, 'unknown');
 
             expect(result.count).toBe(0);
-            expect(Metric.findByControllerId).toHaveBeenCalled();
+            expect(spanHours()).toBeCloseTo(1, 0);
         });
     });
 

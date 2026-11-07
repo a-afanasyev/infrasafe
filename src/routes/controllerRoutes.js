@@ -4,7 +4,7 @@ const { applyCrudRateLimit, applyAnalyticsRateLimit } = require('../middleware/r
 const { isAdmin } = require('../middleware/auth');
 // [R2-16] validateIntParam — для именованных параметров (:buildingId), которые
 // validateIdParam (жёстко привязан к 'id') не покрывает.
-const { validateControllerCreate, validateIdParam, validateIntParam } = require('../middleware/validators');
+const { validateControllerCreate, validateIdParam, validateIntParam, validateMetricsRange } = require('../middleware/validators');
 const router = express.Router();
 
 /**
@@ -206,7 +206,8 @@ router.get('/building/:buildingId', validateIntParam('buildingId'), controllerCo
  *       404:
  *         description: Контроллер не найден
  */
-router.get('/:id/metrics', validateIdParam, controllerController.getControllerMetrics);
+// [S-INJ-2] лимитер + нормализованный диапазон дат (req.metricsRange)
+router.get('/:id/metrics', applyAnalyticsRateLimit, validateIdParam, validateMetricsRange, controllerController.getControllerMetrics);
 
 /**
  * @swagger

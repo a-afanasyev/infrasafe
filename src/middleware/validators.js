@@ -1,4 +1,6 @@
-const { body, param } = require('express-validator');
+const { body, param, query } = require('express-validator');
+const { sendError } = require('../utils/apiResponse');
+const { metricsQuery } = require('../config/thresholds');
 // [AR-4] Канонический ответ на ошибку валидации живёт отдельным модулем —
 // он общий с entityValidators.js, и держать его здесь значило замкнуть цикл.
 const { handleValidationErrors } = require('./validationResultHandler');
@@ -84,12 +86,64 @@ const validateStringIdParam = (name = 'id') => [
     handleValidationErrors
 ];
 
+// [S-INJ-2, аудит 05.11.2026] Контракт диапазона для выборки метрик контроллера.
+// До этого startDate/endDate из query шли в SQL и в ключ кэша как есть, а без
+// дат отдавалась ВСЯ история. Теперь:
+//   обе даты      → start ≤ end и end − start ≤ rangeMaxDays, иначе 400;
+//   только start  → end = min(start + rangeMaxDays, now);
+//   только end    → start = end − rangeMaxDays;
+//   ни одной      → последние rangeDefaultHours часов.
+// Канонические ISO-границы кладутся в req.metricsRange — контроллеры берут их
+// оттуда, а не из req.query. timeFrame — только из закрытого списка.
+const DAY_MS = 24 * 60 * 60 * 1000;
+const normalizeMetricsRange = (req, res, next) => {
+    const maxMs = metricsQuery.rangeMaxDays * DAY_MS;
+    const now = Date.now();
+    const startIn = req.query.startDate ? Date.parse(req.query.startDate) : null;
+    const endIn = req.query.endDate ? Date.parse(req.query.endDate) : null;
+
+    let start;
+    let end;
+    if (startIn !== null && endIn !== null) {
+        if (startIn > endIn) {
+            return sendError(res, 400, 'startDate must not be later than endDate');
+        }
+        if (endIn - startIn > maxMs) {
+            return sendError(res, 400, `Date range must not exceed ${metricsQuery.rangeMaxDays} days`);
+        }
+        start = startIn;
+        end = endIn;
+    } else if (startIn !== null) {
+        start = startIn;
+        end = Math.min(startIn + maxMs, now);
+        if (end < start) end = start;
+    } else if (endIn !== null) {
+        end = endIn;
+        start = endIn - maxMs;
+    } else {
+        end = now;
+        start = now - metricsQuery.rangeDefaultHours * 60 * 60 * 1000;
+    }
+    req.metricsRange = { start: new Date(start).toISOString(), end: new Date(end).toISOString() };
+    next();
+};
+
+const validateMetricsRange = [
+    query('startDate').optional().isISO8601().withMessage('startDate must be ISO 8601'),
+    query('endDate').optional().isISO8601().withMessage('endDate must be ISO 8601'),
+    query('timeFrame').optional().isIn([...metricsQuery.timeFrames])
+        .withMessage(`timeFrame must be one of ${metricsQuery.timeFrames.join(', ')}`),
+    handleValidationErrors,
+    normalizeMetricsRange
+];
+
 module.exports = {
     validateBuildingCreate,
     validateControllerCreate,
     validateIdParam,
     validateIntParam,
     validateStringIdParam,
+    validateMetricsRange,
     STRING_ID_MAX_LENGTH,
     handleValidationErrors,
     isXSSFree,
