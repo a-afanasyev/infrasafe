@@ -58,8 +58,25 @@ const validateControllerCreate = [
 // param otherwise reaches pg as-is → 22P02 → 500 instead of a clean 400. Use for
 // ANY numeric route param — validateIdParam below only matches the literal `:id`,
 // so routes with `:alertId` / `:transformerId` need validateIntParam('alertId').
+// [S-INJ-5] max — предел int4: /buildings/99999999999 раньше доходил до pg и
+// давал 22003 → 500.
+const PG_INT4_MAX = 2147483647;
 const validateIntParam = (name = 'id') => [
-    param(name).isInt().withMessage(`Параметр ${name} должен быть целым числом`),
+    param(name).isInt({ min: 1, max: PG_INT4_MAX }).withMessage(`Параметр ${name} должен быть целым числом`),
+    handleValidationErrors
+];
+
+// [C-3 / S-INJ-5, аудит 05.11.2026] Общая проверка `ids` для batch-маршрутов
+// админки. У buildings/controllers/metrics она была inline в контроллерах, у
+// transformers/lines/water-lines — не было: `['x']` → ANY($1::int[]) → 22P02 → 500.
+const BATCH_IDS_MAX = 1000;
+const validateBatchIds = [
+    body('ids')
+        .isArray({ min: 1, max: BATCH_IDS_MAX })
+        .withMessage(`ids: непустой массив не длиннее ${BATCH_IDS_MAX}`),
+    body('ids.*')
+        .isInt({ min: 1, max: PG_INT4_MAX })
+        .withMessage('ids: только положительные целые'),
     handleValidationErrors
 ];
 
@@ -144,6 +161,7 @@ module.exports = {
     validateIntParam,
     validateStringIdParam,
     validateMetricsRange,
+    validateBatchIds,
     STRING_ID_MAX_LENGTH,
     handleValidationErrors,
     isXSSFree,

@@ -177,6 +177,8 @@ describe('Phase 1: 2FA Security Hardening', () => {
                 const authService = require('../../../src/services/authService');
                 // Mock isTokenBlacklisted to return true
                 jest.spyOn(authService, 'isTokenBlacklisted').mockResolvedValue(true);
+                // [S-AUTH-4] подпись проверяется ДО списка — токен должен быть «валидным»
+                jest.spyOn(authService, 'verifyTempToken').mockResolvedValue({ user_id: 1, scope: '2fa' });
 
                 const { authenticateTempToken } = require('../../../src/middleware/auth');
                 const req = { body: { tempToken: 'blacklisted-token' } };
@@ -204,6 +206,8 @@ describe('Phase 1: 2FA Security Hardening', () => {
                 const unavailable = new Error('Blacklist check unavailable');
                 unavailable.code = 'BLACKLIST_UNAVAILABLE';
                 jest.spyOn(authService, 'isTokenBlacklisted').mockRejectedValue(unavailable);
+                // [S-AUTH-4] подпись проверяется ДО списка — токен должен быть «валидным»
+                jest.spyOn(authService, 'verifyTempToken').mockResolvedValue({ user_id: 1, scope: '2fa' });
 
                 const { authenticateTempToken } = require('../../../src/middleware/auth');
                 const req = { body: { tempToken: 'some-token' } };

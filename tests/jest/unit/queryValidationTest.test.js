@@ -161,6 +161,16 @@ describe('queryValidation', () => {
             expect(validatePagination('abc', -1, 10).limitNum).toBe(1);
             expect(validatePagination(-5, 99999, 10).limitNum).toBe(200);
         });
+
+        // [S-INJ-5] page=1e21 давал offset за пределами bigint → 500 из pg.
+        test('[S-INJ-5] caps page so offset stays within bigint', () => {
+            const r = validatePagination('1000000000000', 200);
+            expect(r.pageNum).toBe(100000);
+            expect(r.offset).toBe((100000 - 1) * 200);
+            expect(validatePagination(Number.MAX_SAFE_INTEGER, 50).pageNum).toBe(100000);
+            // '1e21' parseInt-ом становится 1 — экспонента отбрасывается, страница первая
+            expect(validatePagination('1e21', 200).pageNum).toBe(1);
+        });
     });
 
     describe('validateSearchString', () => {

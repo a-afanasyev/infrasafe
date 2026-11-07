@@ -81,8 +81,25 @@ describe('Auth Middleware', () => {
             );
         });
 
+        // [S-AUTH-4] Мусорный Bearer не должен стоить обращения к blacklist
+        // (SHA-256 + кэш + SELECT через breaker): сначала подпись, потом список.
+        test('[S-AUTH-4] invalid signature → 401 without touching the blacklist', async () => {
+            req.headers.authorization = 'Bearer garbage';
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
+                const err = new Error('invalid signature');
+                err.name = 'JsonWebTokenError';
+                cb(err, null);
+            });
+
+            await authenticateJWT(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(401);
+            expect(authService.isTokenBlacklisted).not.toHaveBeenCalled();
+        });
+
         test('returns 401 when token is blacklisted', async () => {
             req.headers.authorization = 'Bearer valid-token';
+            jwt.verify.mockImplementation((token, secret, opts, cb) => cb(null, { user_id: 1 }));
             authService.isTokenBlacklisted.mockResolvedValue(true);
 
             await authenticateJWT(req, res, next);
@@ -97,6 +114,7 @@ describe('Auth Middleware', () => {
         // surface as 503 with Retry-After, distinct from an actual 401.
         test('returns 503 with Retry-After when the blacklist check is unavailable', async () => {
             req.headers.authorization = 'Bearer valid-token';
+            jwt.verify.mockImplementation((token, secret, opts, cb) => cb(null, { user_id: 1 }));
             const unavailable = new Error('Blacklist check unavailable');
             unavailable.code = 'BLACKLIST_UNAVAILABLE';
             authService.isTokenBlacklisted.mockRejectedValue(unavailable);

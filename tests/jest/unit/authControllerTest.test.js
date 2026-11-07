@@ -484,21 +484,46 @@ describe('AuthController', () => {
             expect(authService.blacklistToken).not.toHaveBeenCalled();
         });
 
-        test('refresh blacklist failure does not abort logout (best-effort)', async () => {
+        // [S-AUTH-7] Раньше отказ записи в blacklist глотался на двух уровнях, и
+        // клиент получал «Logout successful» при живом токене. Теперь оба отзыва
+        // доходят до конца, куки чистятся, но ответ — 500 «Logout incomplete».
+        test('[S-AUTH-7] refresh blacklist failure → cookies cleared, 500 Logout incomplete', async () => {
             req.headers = { authorization: 'Bearer access-tok' };
             req.body = { refreshToken: 'refresh-tok' };
             authService.logout.mockResolvedValue({ message: 'OK' });
-            authService.blacklistToken.mockRejectedValue(new Error('db down'));
+            authService.blacklistToken.mockRejectedValue(Object.assign(new Error('db down'), { code: 'BLACKLIST_PERSIST_FAILED' }));
 
             await authController.logout(req, res, next);
 
             expect(authService.logout).toHaveBeenCalledWith('access-tok');
             expect(authService.blacklistToken).toHaveBeenCalledWith('refresh-tok', 'logout');
-            // Logout still completes with 200, not 5xx
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({ success: true })
-            );
+            expect(res.clearCookie).toHaveBeenCalled();
+            expect(res.status).toHaveBeenCalledWith(500);
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: false, failed: ['refresh'] }));
             expect(next).not.toHaveBeenCalled();
+        });
+
+        test('[S-AUTH-7] access blacklist persist failure still revokes refresh and answers 500', async () => {
+            req.headers = { authorization: 'Bearer access-tok' };
+            req.body = { refreshToken: 'refresh-tok' };
+            authService.logout.mockRejectedValue(Object.assign(new Error('db down'), { code: 'BLACKLIST_PERSIST_FAILED' }));
+            authService.blacklistToken.mockResolvedValue(undefined);
+
+            await authController.logout(req, res, next);
+
+            expect(authService.blacklistToken).toHaveBeenCalledWith('refresh-tok', 'logout');
+            expect(res.status).toHaveBeenCalledWith(500);
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ failed: ['access'] }));
+        });
+
+        test('[S-AUTH-7] when cookie and header carry different tokens, the COOKIE one is revoked (same as authenticateJWT)', async () => {
+            req.headers = { authorization: 'Bearer header-tok' };
+            req.cookies = { access_token: 'cookie-tok' };
+            authService.logout.mockResolvedValue({ message: 'OK' });
+
+            await authController.logout(req, res, next);
+
+            expect(authService.logout).toHaveBeenCalledWith('cookie-tok');
         });
 
         test('ignores non-string refreshToken value (defensive)', async () => {

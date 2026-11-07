@@ -81,6 +81,10 @@ const allowedSortColumns = {
  */
 const allowedOrderDirections = ['ASC', 'DESC'];
 
+// [S-INJ-5] Потолок номера страницы: offset = (page-1)*limit обязан помещаться
+// в bigint, а 100 000 страниц по 200 строк — больше любой таблицы проекта.
+const PAGE_MAX = 100000;
+
 /**
  * Дефолтные параметры сортировки для каждого типа сущности
  */
@@ -177,8 +181,9 @@ function validateSortOrder(entityType, sort, order) {
  */
 function validatePagination(page, limit, defaultLimit = 50) {
     try {
-        // Валидация номера страницы
-        const pageNum = Math.max(1, parseInt(page) || 1);
+        // Валидация номера страницы. [S-INJ-5] Потолок: page=1e21 давал
+        // offset за пределами bigint → 500 из pg.
+        const pageNum = Math.min(Math.max(1, parseInt(page) || 1), PAGE_MAX);
 
         // Валидация лимита с ограничением максимального значения
         let limitNum = parseInt(limit) || defaultLimit;

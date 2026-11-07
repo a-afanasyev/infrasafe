@@ -4,7 +4,7 @@ const totpService = require('../services/totpService');
 const logger = require('../utils/logger');
 // [P1-2] HttpOnly cookie helpers — emit alongside the existing body
 // fields so the client transition can land in a follow-up PR.
-const { setAuthCookies, setTempCookie, clearAuthCookies, extractRefreshToken } = require('../utils/authCookies');
+const { setAuthCookies, setTempCookie, clearAuthCookies, extractAccessToken, extractRefreshToken } = require('../utils/authCookies');
 
 // [S-INJ-1] Потолок длины пароля на входе (символы). См. комментарий в login.
 const LOGIN_PASSWORD_MAX_LENGTH = 1024;
@@ -200,11 +200,10 @@ const logout = async (req, res, next) => {
         // [P1-2] Read access token from Authorization header OR access_token
         // cookie. clearAuthCookies runs at the end regardless of the path
         // taken so the browser stops sending stale tokens on next request.
-        const headerToken = req.headers.authorization?.replace('Bearer ', '');
-        const cookieToken = req.cookies && typeof req.cookies.access_token === 'string'
-            ? req.cookies.access_token
-            : null;
-        const token = headerToken || cookieToken;
+        // [S-AUTH-7] Тот же порядок источников, что у authenticateJWT
+        // (кука первой): раньше logout брал заголовок первым, и при разных
+        // токенах в куке и заголовке гасился не тот, которым аутентифицировались.
+        const token = extractAccessToken(req);
 
         if (!token) {
             // Even without an access token we clear any orphan refresh
@@ -221,7 +220,16 @@ const logout = async (req, res, next) => {
         // Best-effort: refresh-token blacklist failure must not block logout.
         const refresh = extractRefreshToken(req);
 
-        await authService.logout(token);
+        // [S-AUTH-7] Оба отзыва идут до конца; результат собирается, а не
+        // решается первым же исключением: даже если access не персистировался,
+        // refresh всё равно гасим.
+        const failures = [];
+        try {
+            await authService.logout(token);
+        } catch (accessErr) {
+            if (accessErr.code !== 'BLACKLIST_PERSIST_FAILED') throw accessErr;
+            failures.push('access');
+        }
 
         if (refresh) {
             // [Sprint 0.1 / HIGH-3] Verify the refresh token belongs to the
@@ -253,14 +261,26 @@ const logout = async (req, res, next) => {
                     await authService.blacklistToken(refresh, 'logout');
                 } catch (refreshErr) {
                     logger.warn(`logout: refresh token blacklist failed: ${refreshErr.message}`);
+                    failures.push('refresh');
                 }
             }
         }
 
         // [P1-2] Clear both HttpOnly cookies. Browser sends a matching
         // Set-Cookie with Max-Age=0 → cookies removed immediately.
+        // [S-AUTH-7] Куки чистим в любом случае — но если отзыв не
+        // персистировался, честно отвечаем 500: токен мог остаться валидным
+        // до истечения (после рестарта или на другой реплике).
         clearAuthCookies(res);
-        authEvent(req, 'logout', { user_id: req.user?.user_id ?? req.user?.id });
+        authEvent(req, 'logout', { user_id: req.user?.user_id ?? req.user?.id, failures: failures.length ? failures : undefined });
+
+        if (failures.length > 0) {
+            return res.status(500).json({
+                success: false,
+                error: 'Logout incomplete: token revocation was not persisted',
+                failed: failures
+            });
+        }
 
         res.json({
             success: true,
