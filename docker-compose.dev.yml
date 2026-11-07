@@ -38,6 +38,11 @@ services:
     networks:
       - infrasafe-dev
     restart: unless-stopped
+    # [S-PERIM-10] Зеркало prod-nginx (docker-compose.unified.yml).
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE, CHOWN, SETUID, SETGID, DAC_OVERRIDE]
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -130,6 +135,16 @@ services:
     networks:
       - infrasafe-dev
     restart: unless-stopped
+    # [S-PERIM-10] Зеркало prod-hardening (docker-compose.unified.yml): E2E на
+    # этом compose — единственная проверка, что приложение стартует и живёт под
+    # cap_drop/no-new-privileges/read_only ДО выкатки на прод.
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    read_only: true
+    tmpfs:
+      - /tmp
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
       interval: 30s
@@ -215,6 +230,7 @@ services:
       postgres
       -c log_destination=stderr
       -c log_min_duration_statement=250
+      -c log_connections=on
       -c shared_preload_libraries=pg_stat_statements
     labels:
       - "description=PostgreSQL with PostGIS for Development"
