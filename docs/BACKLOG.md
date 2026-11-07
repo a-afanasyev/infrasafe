@@ -136,6 +136,63 @@ API зданий отдаёт 30 и 8.
 `N-26` → `AR-13`, `N-28` → `B-004`, `N-44` → `R2-35`, `N-51` → `EN-7`. У них
 обновлены формулировки и цифры.
 
+## Аудит 05.11.2026 — сведён сюда же
+
+Пятый источник: прогон `/audit` от 5 ноября 2026 (коммит `5646b976`) с упором на
+безопасность: три AppSec-прохода (auth, инъекции, периметр), ревью дельты
+`de1ad1a9..5646b976`, срез обоих прод-хостов и внешний black-box пентест обеих
+площадок. Отчёт в репозитории —
+[docs/audit/2026-11-05-audit.md](audit/2026-11-05-audit.md). ID: `S-AUTH-*`,
+`S-INJ-*`, `S-PERIM-*`, `C-*`, `H-*`, `PT-*`, `UK-*`. P0 — 0, P1 — 3, P2 — 7,
+остальное P3 (это СЕРЬЁЗНОСТЬ по отчёту).
+
+**Решения владельца (06.11).** Объём лечения — P1 + P2 + дешёвые P3; блокировка
+аккаунта действует **только на вход**, выданные сессии не гасит (меняет политику
+H-1 «lockout отзывает JWT»); WireGuard и mosquitto на .105 — остановлены (не в
+compose, порт 51820 закрыт); `.env.db` для postgres (S-PERIM-9) — отложен.
+
+**Что уже выкачено/сделано** — см. [Волну J](#волна-j--аудит-05112026) ниже.
+
+**Что проверено живьём на проде и отличается от бумаги.** Обход edge-лимита
+credential-эндпоинтов УК через `%61uth` (S-PERIM-1) подтверждён 26 запросами без
+единого 429. Пункт 4 заявки УК от 23.10 («проверять `x-service-token`») —
+**неактуален**: проверка включена с 07.2026, на обеих площадках без токена и с
+неверным токеном ответ 401. `postgis/postgis:15-3.5` — самый свежий образ линейки
+на Docker Hub и даёт PostgreSQL 15.13, не 15.18 из заявки УК.
+
+### Аудит 05.11.2026: не взятое в волну J (серьёзность по отчёту — P3)
+
+| ID | Что не так | Куда | Труд |
+|---|---|---|---|
+| **S-AUTH-5** | Коды восстановления 2FA — 32 бита энтропии (`randomBytes(4)`), открытый набор до 15 мин в Redis (SEC-28) | ≥10 hex / 16 символов | S |
+| **S-AUTH-6** | Окно «первый предъявивший пароль занимает 2FA» после `create-admin`/`reset-2fa` | одноразовый enrollment-токен из CLI; операционно — настраивать сразу | M |
+| **S-AUTH-8** | `GET /map-layer-counts` без app-лимитера и кэша (8×count на запрос) | `applyMapDataRateLimit` + кэш 15 с | S |
+| **S-AUTH-9** | Роль `user` = глобальное чтение; `/integration/request-counts`, `/building-requests/:externalId` без admin и лимитера; `/integration/*` нет в `API_AUTH_MATRIX` | решение владельца; дополнить матрицу | S |
+| **S-AUTH-11** | Глобальный `express.json(1mb)` раньше локального 16 КБ у csp-report (живьём 100 КБ → 204); `INTERNAL_METRICS_TOKEN` не в `PRODUCTION_REQUIRED_VARS` | парсер на роутере; токен в required | S |
+| **S-INJ-4** | `isXSSFree` пропускает не-строки; `isFloat/isInt` пропускают массивы; на `PUT` пяти сущностей нет валидаторов тела | `.isString()` перед `.custom`; валидаторы на PUT | S |
+| **S-INJ-7** | `PUT /analytics/thresholds` без whitelist (= N-15); `createDecipheriv` без `authTagLength`; дампы без шифрования; телеметрия без физических диапазонов (поверх N-20); `metrics/latest` — окно по всей таблице | по пунктам | S–M |
+| **S-PERIM-3** | WS-локации УК без проверки `Origin` (CSWSH) — **ждёт ответа УК** про `SameSite` куки `uk_access` | `if ($http_origin !~ …) return 403` на `/uk/ws/*` | S |
+| **S-PERIM-6** | `/health` без `limit_req`, каждый запрос — `SELECT 1` (+ L-5, CO-11-tail) | лимит с исключением для монитора или кэш 1–2 с | S |
+| **S-PERIM-9** | postgres получает весь `.env.prod` (JWT/TOTP/HMAC-секреты) — **отложен**: нужны `docker-compose.staging.yml:33`, `ci.yml:182`, preflight, оба хоста | отдельный `.env.db` | M |
+| **S-PERIM-11** | Деплой тянет `sha-<full>` по mutable-тегу, подписи/provenance нет; Trivy только CRITICAL app | cosign + сверка digest, SBOM | M |
+| **S-PERIM-12** | Устаревшие артефакты: корневой `nginx.conf` (frontend-контейнер), `docs/nginx-production-improved.conf` с `unsafe-inline`, `docker-compose.staging.yml` → несуществующий `nginx.staging.conf` | удалить/пометить | S |
+| **S-PERIM-13** | `generator/`: `cors()` wildcard, без авторизации, Node 20 EOL — на проде не запущен | токен, без wildcard, Node 22 | S |
+| **S-PERIM-14** | `infrastructure-line-editor.js` — сырая подстановка имени линии в шаблон до DOMPurify (`style`/`id` в whitelist) | `escapeHTML` до шаблона | S |
+| **S-PERIM-15** | Старый DB-пароль литералом в `.gitleaks.toml:52` и 6 документах; `curl -sk` в трёх скриптах; Redis `allkeys-lru` может вытеснять счётчики лимитера | стереть; `--cacert`; `volatile-lru` | S |
+| **S-PERIM-16** | Скриншоты панели УК на лендинге — реальные номера заявок/даты; маскировка по PUBLISHING.md на двух выглядит выполненной | владельцу сверить каждый снимок с клиентом | S |
+| **S-PERIM-17** | Edge-зона `api_cred` 5 r/min общая для login/refresh/verify-2fa — офис за одним NAT упрётся. Безопасность отлично, доступность — решение владельца | отдельная зона для `/refresh` или принять | S |
+| **C-2** | `src/cli/uk-synthetic.js` шлёт живой тикет в УК по умолчанию (`--dry-run` opt-in), без печати хоста | инвертировать (`--send`), печатать host | S |
+| **C-4** | 400 на FK-отказ `lines` завязан на имя constraint — на .105 имя может отличаться (N-02) | `\d lines` на площадках; матчить по `error.table` | XS |
+| **C-5** | Редактор ЛЭП тянет `?limit=200` = серверный потолок — лишние трансформаторы молча исчезают | сверять `pagination.total` | S |
+| **C-6** | `uk_category_override` — константа `null` «для формы payload», 4 теста утверждают константу | согласовать с УК удаление ключа | XS |
+| **C-8** | Лендинг: 4 копии шапки, версия кэша `?v=…` в 10 местах руками, `styles.css` 72 КБ в 92 строках | тест паритета nav + константа версии | S |
+| **C-10** | Моки БД : живой Postgres = 7:1; старые SQL-пути (`adminService`, `controllerService`) живой БД не касаются | не расширять моки для нового SQL | M |
+| **H-7** | `~/.ssh` на .105: `id_rsa` (+`.back`, `.pem`), старый `github_deploy` рядом с ротированным, `authorized_keys.bak-*`; `X11Forwarding yes`, `PermitRootLogin yes` в основном файле (эффективно `no`) на profk | убрать мусор; `X11Forwarding no` | XS |
+| **H-10** | `docker-ce 29.9.3`, `docker-compose-plugin 5.7.0` ждут apt на profk (.105 обновлён 05.11) — unattended Docker-репозиторий не покрывает | в окно 0.1 | XS |
+| **H-12** | SSH-входы на profk за неделю с `62.164.155.145` и `94.141.81.168` (78) — **подтвердить владельцу**; брутфорса нет | если чужой — ротация ключа | — |
+| **H-13** | `fountain.infrasafe.uz` → .105 без сертификата (handshake отклонён); DNSSEC выкл.; CAA не прочитан | удалить запись у регистратора | XS |
+| **UK-3** | CSP `assets.profk.uz` с `script-src 'unsafe-inline'`; нет `limit_req` | УК выносит inline-скрипты, затем убираем | S |
+
 ## Легенда
 
 **Приоритет.** `P1` — берём сейчас. `P2` — очередь. `P3` — по касанию.
@@ -464,10 +521,10 @@ ADR #138 слит, календарь определён — пункты взя
 | **N-57** (P3, найдено ревью N-32 28.09) | **Прогноз нагрузки трансформаторов группирует по часу UTC, а не Ташкента.** `generateSimpleForecast` раскладывает историю по `getHours()` и так же выбирает час прогноза. На продах `TZ` пуст (UTC), поэтому «пиковый час» сдвинут на 5 часов от местного — тот же класс, что N-32. Касается только аналитики и дашборда, не гейтов алертов. Правка — `Intl.DateTimeFormat` с `timeZone: Asia/Tashkent`, как в N-32 | `src/services/analyticsService.js:372,391` | S |
 | **N-58** (P3, найдено ревью N-22 28.09) | **Работа, запущенная событиями вне тика, остановкой не дожидается.** N-22 дожидается тика воркера, но две ветки отвязаны от него: обработчик `ALERT_REOPENED` в `alertVerificationService` (явный fire-and-forget) и слушатели `VERIFY_*` в `alertService`, которые запускают чекеры через `Promise.resolve().then(...)` — тик их эмитит и завершается раньше. При SIGTERM они могут остаться посреди запроса к пулу, который закроется после остановки воркеров. Было и до N-22 (тогда пул закрывался ещё раньше). Правка: учитывать такие промисы в воркере (счётчик или Set) и ждать их в `stop()` тем же `waitForIdle` | `src/services/alertVerificationService.js:771`, `src/services/alertService.js:1712-1766`, `src/utils/workerStop.js` | S |
 | **N-59** (P3, найдено сек-ревью N-11 28.09) | **gitleaks исключает любой JWT по форме.** В `.gitleaks.toml` давнее правило `ey…\.ey…\.…` пропускает всё, что похоже на JWT, во всём репозитории, а не только тестовые фикстуры. Настоящий access или refresh токен (refresh живёт 7 дней) в ранбуке или логе, вставленном в документ, gitleaks не заметит. Сузить: ограничить путями тестов через `[[allowlists]]` с `condition = "AND"` (gitleaks v8.21+) или требовать фикстурную метку в payload | `.gitleaks.toml` (regexes, JWT) | S |
-| **N-60** (P2, жалоба владельца 07.10, ЗАКРЫТ в этом PR) | **2FA на infrasafe.uz отклоняет верные коды.** 07.10 четыре кода подряд — 401, при этом секрет расшифровывается (иначе 500), часы сервера по NTP. Две причины: (1) otplib 13 по умолчанию сверяет только текущее 30-с окно (`epochTolerance: 0`) — код, набранный в конце окна, или часы телефона, ушедшие на десяток секунд, дают отказ; замысел SEC-26 «±1 шаг» потерялся при переходе на otplib 13; (2) обе площадки выдают QR «InfraSafe: admin» — две неотличимые записи с разными секретами. Исправлено: допуск ±30 с в `verifyTotpSafely` (и вход, и подтверждение настройки), anti-replay 120 с его покрывает; issuer из `TOTP_ISSUER` (проверка: без «:», ≤64). Мок otplib дополнен контрактом epoch/epochTolerance, снятым с настоящей библиотеки. Тест `totpService.toleranceIssuer.test.js` | `src/services/totpService.js`, `__mocks__/otplib.js` | S |
-| **N-61** (P2, жалоба владельца 07.10, ЗАКРЫТ в этом PR) | **ЛЭП через редактор на карте не создавалась.** «length_km: Поле «Длина (км)»: обязательно» — а поля в форме нет. `lines.length_km` NOT NULL + CHECK > 0, редактор длину не слал никогда (до AR-10 тот же отказ был 500-й). Теперь длина считается по трассе (`InfrastructureLineEditor.pathLengthKm`, haversine по основному пути и ответвлениям). Там же: `editLine` передавал старые `voltage_kv`/`transformer_id`/`length_km` в `additionalFields`, и те ложились ПОВЕРХ формы — правка напряжения/трансформатора молча откатывалась; теперь `additionalFields` — только умолчания. Схема `length_km` приведена к CHECK: 0 → 400, а не 500. Тесты `lineEditor.lengthAndFields.test.js`, `entityRoutesValidation.test.js` | `public/infrastructure-line-editor.js`, `public/admin.js`, `src/middleware/entityValidators.js` | S |
-| **N-62** (P3, найдено 07.10 в логах .105, ЗАКРЫТ в этом PR) | **Удаление трансформатора с привязанными зданиями → 500.** `fk_buildings_*_transformer` (NO ACTION) отказывал, `Transformer.delete` превращал любую ошибку БД в 500, админка показывала «Ошибка удаления» без причины. Теперь SQLSTATE 23503 → 409 с текстом «отвяжите в карточках зданий», админка показывает причину. Каскад на линии решён в N-63 (подтверждение) | `src/models/Transformer.js`, `public/admin.js`; тест `tests/jest/db/transformerDeleteInUse.db.test.js` | S |
-| **N-63** (P2, решение владельца 07.10, ЗАКРЫТ в этом PR) | **ЛЭП обязана принадлежать трансформатору; удаление трансформатора с линиями — с подтверждением.** Миграция 045: `lines.transformer_id` SET NOT NULL (таблица пуста на обоих продах, при сиротах миграция падает с текстом). Схемы: `transformer_id` обязателен при создании, при обновлении его нельзя снять (`validateLineUpdate` на обоих PUT); FK/NOT NULL в `Line` → 400. `Transformer.delete(id, { cascadeLines })` в транзакции с `FOR UPDATE`: здания → 409 `TRANSFORMER_HAS_BUILDINGS`, линии без подтверждения → 409 `TRANSFORMER_HAS_LINES` со списком, `?cascade=lines` удаляет вместе с линиями; пакетное удаление отказывает 409 `TRANSFORMERS_IN_USE`. `errorHandler` отдаёт `code`/`meta` у 4xx. Админка: `public/utils/transformerDelete.js` спрашивает, удалять ли линии. Редактор ЛЭП: трансформаторы маркерами на карте, обязательный список вместо поля «ID (опционально)», клик по маркеру выбирает | `database/migrations/045_*`, `src/models/{Transformer,Line}.js`, `src/middleware/{entityValidators,validatorFields,errorHandler}.js`, `public/{infrastructure-line-editor,admin}.js`, `public/utils/transformerDelete.js` | M |
+| ~~**N-60**~~ ✅ (P2, жалоба владельца 07.10 — закрыт 07.10.2026, выкачен 07.10 `9b260fb6`) | **2FA на infrasafe.uz отклоняет верные коды.** 07.10 четыре кода подряд — 401, при этом секрет расшифровывается (иначе 500), часы сервера по NTP. Две причины: (1) otplib 13 по умолчанию сверяет только текущее 30-с окно (`epochTolerance: 0`) — код, набранный в конце окна, или часы телефона, ушедшие на десяток секунд, дают отказ; замысел SEC-26 «±1 шаг» потерялся при переходе на otplib 13; (2) обе площадки выдают QR «InfraSafe: admin» — две неотличимые записи с разными секретами. Исправлено: допуск ±30 с в `verifyTotpSafely` (и вход, и подтверждение настройки), anti-replay 120 с его покрывает; issuer из `TOTP_ISSUER` (проверка: без «:», ≤64). Мок otplib дополнен контрактом epoch/epochTolerance, снятым с настоящей библиотеки. Тест `totpService.toleranceIssuer.test.js` | `src/services/totpService.js`, `__mocks__/otplib.js` | S |
+| ~~**N-61**~~ ✅ (P2, жалоба владельца 07.10 — закрыт 07.10.2026, выкачен 07.10 `9b260fb6`) | **ЛЭП через редактор на карте не создавалась.** «length_km: Поле «Длина (км)»: обязательно» — а поля в форме нет. `lines.length_km` NOT NULL + CHECK > 0, редактор длину не слал никогда (до AR-10 тот же отказ был 500-й). Теперь длина считается по трассе (`InfrastructureLineEditor.pathLengthKm`, haversine по основному пути и ответвлениям). Там же: `editLine` передавал старые `voltage_kv`/`transformer_id`/`length_km` в `additionalFields`, и те ложились ПОВЕРХ формы — правка напряжения/трансформатора молча откатывалась; теперь `additionalFields` — только умолчания. Схема `length_km` приведена к CHECK: 0 → 400, а не 500. Тесты `lineEditor.lengthAndFields.test.js`, `entityRoutesValidation.test.js` | `public/infrastructure-line-editor.js`, `public/admin.js`, `src/middleware/entityValidators.js` | S |
+| ~~**N-62**~~ ✅ (P3, найдено 07.10 в логах .105 — закрыт 07.10.2026, выкачен 07.10 `9b260fb6`) | **Удаление трансформатора с привязанными зданиями → 500.** `fk_buildings_*_transformer` (NO ACTION) отказывал, `Transformer.delete` превращал любую ошибку БД в 500, админка показывала «Ошибка удаления» без причины. Теперь SQLSTATE 23503 → 409 с текстом «отвяжите в карточках зданий», админка показывает причину. Каскад на линии решён в N-63 (подтверждение) | `src/models/Transformer.js`, `public/admin.js`; тест `tests/jest/db/transformerDeleteInUse.db.test.js` | S |
+| ~~**N-63**~~ ✅ (P2, решение владельца 07.10 — закрыт 07.10.2026, выкачен 07.10 `9b260fb6`) | **ЛЭП обязана принадлежать трансформатору; удаление трансформатора с линиями — с подтверждением.** Миграция 045: `lines.transformer_id` SET NOT NULL (таблица пуста на обоих продах, при сиротах миграция падает с текстом). Схемы: `transformer_id` обязателен при создании, при обновлении его нельзя снять (`validateLineUpdate` на обоих PUT); FK/NOT NULL в `Line` → 400. `Transformer.delete(id, { cascadeLines })` в транзакции с `FOR UPDATE`: здания → 409 `TRANSFORMER_HAS_BUILDINGS`, линии без подтверждения → 409 `TRANSFORMER_HAS_LINES` со списком, `?cascade=lines` удаляет вместе с линиями; пакетное удаление отказывает 409 `TRANSFORMERS_IN_USE`. `errorHandler` отдаёт `code`/`meta` у 4xx. Админка: `public/utils/transformerDelete.js` спрашивает, удалять ли линии. Редактор ЛЭП: трансформаторы маркерами на карте, обязательный список вместо поля «ID (опционально)», клик по маркеру выбирает | `database/migrations/045_*`, `src/models/{Transformer,Line}.js`, `src/middleware/{entityValidators,validatorFields,errorHandler}.js`, `public/{infrastructure-line-editor,admin}.js`, `public/utils/transformerDelete.js` | M |
 | **N-20** | Один `TELEMETRY_HMAC_SECRET` на все контроллеры, подпись не привязана к `serial_number`. Ключ, извлечённый из одного полевого ПК, подделывает телеметрию любого, а это ложные LEAK/VOLTAGE и заявки в УК. Решать в ADR телеметрии: ключ на устройство (HKDF от master и serial) или mTLS на MQTT-мосту | `src/middleware/telemetryHmac.js:171-186` | M |
 | ~~**N-21**~~ ✅ | ~~Ошибка `pg_advisory_unlock` только логируется, соединение возвращается в пул с висящим сессионным локом~~ — **закрыто 24.09.2026**. Новый `src/utils/pgClient.js`: `unlockAdvisory` снимает лок и при ошибке помечает клиент, а `releaseClient` уничтожает помеченное соединение — так же, как после упавшего ROLLBACK (CO-2). Отметка отката переехала туда же, `config/database.js` её переиспользует и по-прежнему экспортирует `releaseClient`. Модуль отдельный намеренно: тесты воркеров мокают `config/database`, а возврат в пул мок не должен подменять молча. Мест оказалось **семь, а не шесть**: к шести из бэклога добавился системный `alertService.resolveAlert`, который берёт тот же лок верификации (B-021). Все переведены, рубеж запрещает `pg_advisory_unlock` в `src/` мимо помощника. **Проверено на живом Postgres**: лок снят на соединении с отказавшим unlock — соединение уничтожено, лок свободен для другой сессии. Контрольный тест фиксирует механизм дефекта: прежний `release()` без пометки оставлял лок занятым. Наблюдатель — отдельное соединение вне пула: лок реентерабелен в пределах сессии, и пул мог бы отдать тот же клиент. Отказ unlock на живом соединении вызвать нельзя (соединение, которое не может ответить, обычно уже разорвано), поэтому он моделируется обёрткой клиента. На dev-стеке после перезапуска: воркеры тикают, простаивающих соединений с advisory-локом — 0 в трёх замерах | `tests/jest/db/advisoryUnlock.db.test.js`, `tests/jest/unit/pgClient.test.js` (контракт release и рубеж) | — |
 | ~~**N-22**~~ ✅ | ~~`stop()` воркеров не ждёт идущего тика, и сразу закрываются Redis и пул~~ — **закрыто 28.09.2026**. Новый `src/utils/workerStop.js`: `waitForIdle` ждёт окончания идущего тика (флаг `_running`), но не дольше `STOP_WAIT_MS` = 5 с, и пишет предупреждение, если не дождался: зависший тик не должен превращать штатную остановку в SIGKILL. Подключён во все пять воркеров. `gracefulShutdown` переделан. Закрытие HTTP и остановка воркеров идут **одновременно**: `server.close` ждёт идущие запросы до 45 с (N-55), и последовательно воркеры не успели бы до forceExit и SIGKILL (10 с). Воркеры останавливаются **параллельно**: пять ожиданий подряд тоже не уложились бы. Кэш и лимитеры закрываются **после** воркеров — раньше кэш закрывался до них. Старый тест проверял вызов `stop()` буквальным текстом — переписан под список воркеров. **Проверено вживую**: настоящий `node src/server.js` в dev-контейнере, тик MV-обновления держится блокировкой `controllers`, SIGTERM посреди тика. Новый код — «MV refresh succeeded in 5438ms» записано **до** закрытия Redis и БД. Старый — Redis закрыт посреди тика, тик закончился уже после. В этом прогоне старый тик MV всё же доработал: `pool.end` ждёт выданные соединения. Вред наступает у тиков, которым после начала остановки нужен новый запрос или Redis, — `markSent` в outbox после отправки в УК | `tests/jest/unit/workerStopDrain.test.js` (каждый из пяти воркеров: `stop()` не возвращается, пока идёт тик, — на старом коде падают 5; предел ожидания) | — |
@@ -813,6 +870,46 @@ commit-msg) через `postinstall` и профиль выкатки из `.dep
    удаления мёртвого, чтобы не аннотировать удаляемое), `N-04` (координация с УК).
 6. **Упрощение и чистка.** `N-40`, `N-41`, `R2-35`/`N-44`, `N-45`, `N-46` —
    механически, одним PR. Остальное — по касанию.
+
+### Волна J — аудит 05.11.2026
+
+План лечения утверждён владельцем 06.11 (ревизия 3). Порядок merge/выкатки
+строго **A → B → C → D → E**: A и C делят auth-файлы, B и C — nginx-конфиги;
+PR-C и PR-D собраны поверх предыдущих (стек), PR-E независим.
+
+0. **Хосты.** ✅ .105 (05–07.11): postgres пересоздан на закреплённом
+   `postgis/postgis:15-3.5` (PostgreSQL 15.13, postgis 3.5.2), redis — на
+   `7.4-alpine` по digest; WireGuard и mosquitto остановлены, `restart=no`,
+   выведены из legacy-compose; cron `extmon-net` и сеть `extmon-central_default`
+   удалены; `.bak` ×4 удалены; `generator` деактивирован. profk: `.bak` ×7 удалены,
+   builder-cache 6,3 ГБ вычищен (диск 58 % → 44 %). **Открыто:** окно 0.1 на profk
+   (postgres 15.4 → 15.13, redis; с барьером `stop app`, дампом и rollback-тегами),
+   prune-cron на profk, `ufw delete allow 51820` на .105 (sudo), тома .105 поимённо,
+   смена пароля admin на profk, SSH-IP (H-12).
+1. **PR-A «вход»** — [#326](https://github.com/a-afanasyev/infrasafe/pull/326):
+   `S-INJ-1` (ReDoS `validatePassword`, предел 72 байта), `S-AUTH-1` (lockout
+   только на вход), `S-INJ-3` (CRLF в логах после `splat`), `S-AUTH-2в`,
+   `S-AUTH-10`, `S-AUTH-3`. CI зелёный.
+2. **PR-B «edge»** — [#327](https://github.com/a-afanasyev/infrasafe/pull/327):
+   `S-PERIM-1` (map по `$uri`, подтверждённый обход), `S-PERIM-2` (куки
+   `Path=/api` + очистка обоих путей), `H-5` (`location ~ /\.` → 404, robots),
+   `S-PERIM-8` (XFF в УК = `$remote_addr`). Nginx-часть выкатывается
+   `git pull` + `nginx -t` на хосте + reload.
+3. **PR-C «метрики и логи»** — [#328](https://github.com/a-afanasyev/infrasafe/pull/328):
+   `S-INJ-2` (контракт диапазона, LIMIT всегда, агрегаты в SQL, предел L1-кэша
+   синхронно), `S-PERIM-4` (`$request_id` ↔ `X-Correlation-ID`, события `auth`,
+   `mutationAudit`). db-тест на живом Postgres.
+4. **PR-D «дешёвые P3 кода»** — [#329](https://github.com/a-afanasyev/infrasafe/pull/329):
+   `S-INJ-6`, `C-3`/`S-INJ-5`, `S-AUTH-4`, `S-AUTH-7` (честный logout — 500
+   «Logout incomplete»), `C-1`, `C-7`, `C-9`.
+5. **PR-E «окружение»** — [#330](https://github.com/a-afanasyev/infrasafe/pull/330):
+   `S-PERIM-10` (cap_drop/no-new-privileges/pids/read_only на app, набор
+   capabilities nginx; зеркально в dev для E2E), `H-11` (`:ro`), `log_connections`.
+   **На прод — только после зелёной E2E-nightly.**
+6. **Волна 5 (этот PR).** Сторож дрейфа образов — Check C в
+   `scripts/compose-drift-check.sh` + Step 5b в `update-production.sh` (warn);
+   сведение сюда; CLAUDE.md (куки `Path=/api`, бамп образов ≠ пересоздание);
+   черновик ответа УК — [docs/audit/2026-11-07-uk-reply.md](audit/2026-11-07-uk-reply.md).
 
 ### Новое, найдено при деплое 12.08.2026
 

@@ -51,6 +51,7 @@ init-скрипты запускает entrypoint docker.
 - `isAdmin` guards on: admin routes, analytics transformer CRUD, power-analytics refresh, controller status updates, integration config/logs/rules
 - JWT with refresh tokens, blacklist, and persistent account lockout (`src/middleware/auth.js` + `src/models/AccountLockout.js`, migration 013)
 - **2FA (TOTP)**: mandatory for admin accounts. Login returns `{ requires2FA | requires2FASetup, tempToken }` (no `accessToken`); flow completes via `/auth/verify-2fa` or `/auth/setup-2fa` → `/auth/confirm-2fa`. `generateSetup()` is idempotent — same secret returned until `confirmSetup()` succeeds, so refreshing the QR page doesn't invalidate prior scans (`src/services/totpService.js`).
+- **Auth-куки — `Path=/api`** (аудит 05.11.2026, S-PERIM-2): `access_token`/`refresh_token`/`temp_token` браузер шлёт только под `/api/*` — на `/uk/*` (стек УК за тем же edge), `/map` и статику они не уходят. При выдаче новых кук старые с `Path=/` стираются явно, `clearAuthCookies` чистит оба пути (RFC 6265: удаление только с тем же Path). `src/utils/authCookies.js`.
 - **Admin login flow** (2026-04-17): `admin.html` delegates login entirely to `/login.html`. `public/admin-auth.js` only validates the token in localStorage and intercepts `window.fetch` to add `Authorization: Bearer`; when unauthenticated it redirects to `/login.html`, which writes `admin_token` back and redirects to `/admin.html`.
 - **Map-page login modal — порядок веток 2FA**: в инлайн-модалке `public/script.js` проверять `requires2FA` / `requires2FASetup` ДО терминальной ветки `success` (зеркалить `public/login.js`) — бэкенд для админа возвращает `{success:true, requires2FA:true, tempToken}`, и обратный порядок закрывает модалку без выдачи куки. `completeMapLogin`: закрыть модалку и переключить кнопку входа ДО `await loadData()`, обернув в try/catch. Нарратив фикса 2026-05-24 — `docs/audit/CLAUDE-MD-ARCHIVE.md`.
 
@@ -102,7 +103,11 @@ nginx (8088), app (3000), postgres (5435), redis. Состав compose, роли
 без пересборки образа — `docs/PUBLISHING.md`.
 
 **Помните при выкатке:** изменения бэкенда требуют пересборки образа —
-одного `git pull` недостаточно.
+одного `git pull` недостаточно. **Бамп образов postgres/redis/nginx в compose
+сам по себе ничего не меняет**: `update-production.sh` пересоздаёт только app —
+контейнер с новым пином пересоздаётся отдельно, в окно (`up -d --no-deps <svc>`,
+для postgres — после дампа и с `ALTER EXTENSION postgis UPDATE`). Дрейф ловит
+Step 5b деплоя (`scripts/compose-drift-check.sh`, Check C) — аудит 05.11.2026, H-1.
 
 ## Test Data
 - **Admin**: admin / admin123

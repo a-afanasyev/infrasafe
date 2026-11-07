@@ -434,6 +434,17 @@ say "🏥 Step 5: app health-wait"
 app_health_wait
 ok "✅ app healthy"
 
+# Step 5b — [аудит 05.11.2026, H-1] сторож дрейфа образов: этот скрипт
+# пересоздаёт ТОЛЬКО app, поэтому бамп postgres/redis/nginx в compose ничего не
+# делает, пока контейнер не пересоздан руками. Предупреждение, не отказ: БД не
+# должна пересоздаваться внутри деплоя приложения.
+say "🧭 Step 5b: compose drift check (networks / public ports / images)"
+if COMPOSE_FILES="${COMPOSE_FILES[*]}" bash scripts/compose-drift-check.sh; then
+    ok "✅ no compose drift"
+else
+    warn "⚠ compose drift detected — see ✗ lines above; images: recreate the listed service(s) in a maintenance window"
+fi
+
 # Step 6 — publish dist (flag AFTER success; two statements so a publish failure
 # fires the ERR trap with DIST_PUBLISHED still 0 — publish already self-restored).
 say "📦 Step 6: publish frontend dist"
