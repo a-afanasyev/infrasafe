@@ -877,15 +877,47 @@ commit-msg) через `postinstall` и профиль выкатки из `.dep
 строго **A → B → C → D → E**: A и C делят auth-файлы, B и C — nginx-конфиги;
 PR-C и PR-D собраны поверх предыдущих (стек), PR-E независим.
 
+✅ **Волна J выкачена 07.11.2026 на обе площадки, по одному PR**: merge → образ
+`sha-<merge>` из CI на main → `update-production.sh` с `DEPLOY_TARGET_COMMIT` на
+.105 → живая проверка → profk → живая проверка. Обе площадки на `19e73b6d`.
+Всё прошло с первой попытки, откатов не было. Что проверено живьём:
+
+| PR | Проверка на проде |
+|---|---|
+| A #326 | пароль-число на входе → 400 на обеих (было 500/401); маркеры кода в контейнере |
+| B #327 | `%61uth` ×26 → 429 после 11 (было 26×405); `//auth` — та же зона; `/.env`, `/.git/HEAD` → 404 с 7 заголовками на обеих; `robots.txt` text/plain; `security.txt`, карта, `/uk/home`, `assets.profk.uz` целы; 6 / 7 UK-апстримов на `$remote_addr` |
+| C #328 | один `rid` в строке nginx и в событии `login_failed` app — с реальным IP и `login_hash` |
+| D #329 | мусорный Bearer → 401; валидатор окружения с `TOTP_ISSUER` молчит |
+| E #330 | app: `CapDrop=[ALL]`, `ReadonlyRootfs=true`, `no-new-privileges`, pids 256 — healthy, воркеры тикают, ни одной ошибки записи; edge-nginx пересоздан руками (`up -d --no-deps nginx`) с урезанными capabilities — healthy на обеих, сети совпали с объявленными |
+| #331 | Step 5b: .105 — дрейфа нет; profk — Check C поймал postgres/redis «объявлен, но не скачан» |
+
+PR-C при мерже упёрся в «merge conflicts» на GitHub при чистом локальном
+слиянии — стек считался от устаревшей базы; лечится `git merge origin/main` в
+ветку и повторным прогоном проверок. Для #331 на хостах сначала делался
+`git merge --ff-only` на целевой коммит, потом деплой: в релизе менялся сам
+`update-production.sh`, а bash читает скрипт по ходу выполнения.
+
 0. **Хосты.** ✅ .105 (05–07.11): postgres пересоздан на закреплённом
    `postgis/postgis:15-3.5` (PostgreSQL 15.13, postgis 3.5.2), redis — на
    `7.4-alpine` по digest; WireGuard и mosquitto остановлены, `restart=no`,
    выведены из legacy-compose; cron `extmon-net` и сеть `extmon-central_default`
-   удалены; `.bak` ×4 удалены; `generator` деактивирован. profk: `.bak` ×7 удалены,
-   builder-cache 6,3 ГБ вычищен (диск 58 % → 44 %). **Открыто:** окно 0.1 на profk
-   (postgres 15.4 → 15.13, redis; с барьером `stop app`, дампом и rollback-тегами),
-   prune-cron на profk, `ufw delete allow 51820` на .105 (sudo), тома .105 поимённо,
-   смена пароля admin на profk, SSH-IP (H-12).
+   удалены; `.bak` ×4 удалены; `generator` деактивирован. profk: `.bak` ×8 удалены,
+   builder-cache 6,3 ГБ вычищен (диск 58 % → 44 %).
+   ✅ **Окно 0.1 на profk — 07.11, 16:59:28–17:00:54 UTC (простой API ≈ 86 с):**
+   rollback-теги `postgis-rollback:pre-15.13-2026-11-07`,
+   `redis-rollback:pre-7.4-2026-11-07`; `stop app` (барьер записи вместе с
+   воркерами); дамп `/home/infrasafe/db-backups/infrasafe-pre-15.13-2026-11-07.dump`
+   восстановлен в `restore_check` со счётчиками один в один (1 / 30 / 5368 / 44);
+   postgres → **15.13**, PostGIS 3.3.4 → **3.5.2** (все три расширения),
+   `log_connections=on`; redis → 7.4; app healthy под hardening; `migrate status`
+   44 / 0 / drift 0; сторож дрейфа чист.
+   **Открыто:** prune-cron на profk — **не раньше 14.11**: еженедельный
+   `image prune -a --filter until=72h` смотрит на дату СБОРКИ образа, а не тега,
+   и в первое же воскресенье удалил бы rollback-образы (postgis 15-3.3 собран в
+   2023). То же на .105: тамошний cron в воскресенье 03:30 заберёт
+   `redis-rollback` — для redis не критично. Дальше: `ufw delete allow 51820`
+   на .105 (sudo), тома .105 поимённо, смена пароля admin на profk, SSH-IP (H-12),
+   ответ УК.
 1. **PR-A «вход»** — [#326](https://github.com/a-afanasyev/infrasafe/pull/326):
    `S-INJ-1` (ReDoS `validatePassword`, предел 72 байта), `S-AUTH-1` (lockout
    только на вход), `S-INJ-3` (CRLF в логах после `splat`), `S-AUTH-2в`,
@@ -905,8 +937,9 @@ PR-C и PR-D собраны поверх предыдущих (стек), PR-E �
 5. **PR-E «окружение»** — [#330](https://github.com/a-afanasyev/infrasafe/pull/330):
    `S-PERIM-10` (cap_drop/no-new-privileges/pids/read_only на app, набор
    capabilities nginx; зеркально в dev для E2E), `H-11` (`:ro`), `log_connections`.
-   **На прод — только после зелёной E2E-nightly.**
-6. **Волна 5 (этот PR).** Сторож дрейфа образов — Check C в
+   E2E на PR (тот же dev-compose) прошёл; официальный `nginx:1.31-alpine` с
+   прод-конфигом под урезанными capabilities дополнительно проверен локально.
+6. **Волна 5** — [#331](https://github.com/a-afanasyev/infrasafe/pull/331). Сторож дрейфа образов — Check C в
    `scripts/compose-drift-check.sh` + Step 5b в `update-production.sh` (warn);
    сведение сюда; CLAUDE.md (куки `Path=/api`, бамп образов ≠ пересоздание);
    черновик ответа УК — [docs/audit/2026-11-07-uk-reply.md](audit/2026-11-07-uk-reply.md).
