@@ -30,6 +30,12 @@ warn() { printf '[drift-check WARN] %s\n' "$*" >&2; }
 die()  { printf '[drift-check FATAL] %s\n' "$*" >&2; exit 2; }
 
 COMPOSE_FILE="${1:-${COMPOSE_FILE:-docker-compose.unified.yml}}"
+# [аудит 05.11.2026] Площадка может собираться из нескольких файлов (profk:
+# unified + overlay). COMPOSE_FILES="a.yml b.yml" → -f a.yml -f b.yml; по
+# умолчанию — один COMPOSE_FILE, поведение прежнее.
+COMPOSE_FILES="${COMPOSE_FILES:-$COMPOSE_FILE}"
+COMPOSE_F=()
+for f in $COMPOSE_FILES; do COMPOSE_F+=(-f "$f"); done
 # Ports allowed to be published on 0.0.0.0/:: (public edge + VPN). Everything
 # else MUST bind 127.0.0.1. Override with ALLOWED_PUBLIC_PORTS="80 443 ...".
 ALLOWED_PUBLIC_PORTS="${ALLOWED_PUBLIC_PORTS:-80 443 51820}"
@@ -58,7 +64,7 @@ drift=0
 log "Check A: network drift (compose '$COMPOSE_FILE' vs runtime)"
 
 # Rendered config → project name + "service<TAB>realNet1,realNet2,..." per service.
-config_json="$(docker compose -f "$COMPOSE_FILE" config --format json 2>/dev/null)" \
+config_json="$(docker compose "${COMPOSE_F[@]}" config --format json 2>/dev/null)" \
   || die "could not render '$COMPOSE_FILE' (docker compose config failed)"
 # A transient daemon hiccup can return empty stdout with exit 0; fail cleanly
 # rather than feeding empty input to the JSON parser below (ugly traceback).
@@ -170,6 +176,52 @@ done < <(docker ps --format '{{.Names}}|{{.Ports}}')
 
 if [ "$b_drift" -eq 0 ]; then
   log "Check B: clean — only whitelisted ports are public host-wide"
+else
+  drift=1
+fi
+
+# ---------------------------------------------------------------------------
+# Check C — image drift (declared image vs the image the container RUNS)
+#
+# [аудит 05.11.2026, H-1] Compose-бамп образов (PR 11.10: postgis 15-3.5, redis
+# 7.4 по digest) сам по себе ничего не меняет: update-production.sh пересоздаёт
+# только app, и обе площадки месяц работали на postgis 15-3.3 (PostgreSQL 15.4,
+# образ 2023 года) при «закреплённом» 15-3.5. Сравниваем immutable image ID
+# запущенного контейнера с ID образа, объявленного в конфиге, — по сервису
+# через compose-label. Если объявленный образ ещё не скачан на хост, это тоже
+# дрейф: пин есть, а на хосте его нет.
+# ---------------------------------------------------------------------------
+log "Check C: image drift (declared image vs running container image)"
+
+c_drift=0
+while IFS=$'\t' read -r svc image; do
+  [ -n "${svc:-}" ] && [ -n "${image:-}" ] || continue
+  cname="$(docker ps --filter "label=com.docker.compose.project=$PROJECT" \
+             --filter "label=com.docker.compose.service=$svc" --format '{{.Names}}' | head -1)"
+  [ -n "$cname" ] || continue   # не запущен — уже отмечен в Check A как «·»
+  running_id="$(docker inspect "$cname" --format '{{.Image}}' 2>/dev/null || true)"
+  declared_id="$(docker image inspect "$image" --format '{{.Id}}' 2>/dev/null || true)"
+  if [ -z "$declared_id" ]; then
+    printf '  ✗ %s (%s): declared image %s is not present on this host (never pulled?)\n' "$svc" "$cname" "$image"
+    c_drift=1
+  elif [ "$running_id" != "$declared_id" ]; then
+    printf '  ✗ %s (%s): IMAGE DRIFT running=%s declared=%s (%s) → docker compose %s up -d --no-deps %s\n' \
+      "$svc" "$cname" "${running_id#sha256:}" "${declared_id#sha256:}" "$image" "${COMPOSE_F[*]}" "$svc"
+    c_drift=1
+  else
+    printf '  ✓ %s (%s): %s\n' "$svc" "$cname" "$image"
+  fi
+done < <(printf '%s' "$config_json" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+for svc, body in (d.get("services") or {}).items():
+    img = body.get("image")
+    if img:
+        print(svc + "\t" + img)
+')
+
+if [ "$c_drift" -eq 0 ]; then
+  log "Check C: clean — every running container uses its declared image"
 else
   drift=1
 fi
