@@ -11,11 +11,26 @@
 //   httpOnly        — JS cannot read the cookie even if XSS exists
 //   secure          — only sent over HTTPS (relaxed in non-production)
 //   sameSite=strict — never sent on cross-site navigation (CSRF mitigation)
-//   path=/          — sent on every request (so /api/* picks it up too)
+//   path=/api       — [S-PERIM-2, аудит 05.11.2026] раньше path=/, и браузер
+//                     слал access/refresh/temp на ЛЮБОЙ same-origin запрос,
+//                     в том числе на /uk/* — чужой стек УК за тем же edge
+//                     получал в Cookie-заголовке рабочий refresh-токен
+//                     администратора InfraSafe. Приложение читает куки только
+//                     под /api/*, поэтому сужение ничего не ломает.
+//
+// Переход со старого path. По RFC 6265 кука удаляется только Set-Cookie с тем
+// же Path, и clearCookie одного пути старую (`Path=/`) не снимет — она жила бы
+// до 7 дней, продолжала утекать на /uk/* и после logout снова попадала бы в
+// /api/*. Поэтому: при каждой выдаче новых кук старые с Path=/ стираются явно
+// (LEGACY_COOKIE_PATH), а clearAuthCookies чистит оба пути. Это навсегда, не
+// на переходный период — три лишних Set-Cookie дешевле ещё одного такого бага.
 
 'use strict';
 
 const envFlags = require('./envFlags');
+
+const COOKIE_PATH = '/api';
+const LEGACY_COOKIE_PATH = '/';
 
 const COOKIE_NAMES = Object.freeze({
     access: 'access_token',
@@ -62,8 +77,19 @@ function baseOpts() {
         httpOnly: true,
         secure: isCookieSecure(),
         sameSite: 'strict',
-        path: '/'
+        path: COOKIE_PATH
     };
+}
+
+// [S-PERIM-2] Снять старые куки с Path=/ (выданы до перехода на /api).
+// Снятие несуществующей куки безвредно. Вызывается ПОСЛЕ выставления новых кук:
+// клиенты, берущие «первый Set-Cookie с этим именем» (тесты, простые парсеры),
+// тогда видят живое значение, а не пустую строку снятия.
+function clearLegacyPathCookies(res) {
+    const opts = { ...baseOpts(), path: LEGACY_COOKIE_PATH };
+    res.clearCookie(COOKIE_NAMES.access, opts);
+    res.clearCookie(COOKIE_NAMES.refresh, opts);
+    res.clearCookie(COOKIE_NAMES.temp, opts);
 }
 
 // [M-4] Выставить куку промежуточного токена 2FA.
@@ -73,6 +99,7 @@ function setTempCookie(res, tempToken) {
         ...baseOpts(),
         maxAge: TEMP_TOKEN_MAX_AGE_MS
     });
+    clearLegacyPathCookies(res);
 }
 
 function setAuthCookies(res, { accessToken, refreshToken } = {}) {
@@ -93,6 +120,7 @@ function setAuthCookies(res, { accessToken, refreshToken } = {}) {
             maxAge: REFRESH_TOKEN_MAX_AGE_MS
         });
     }
+    clearLegacyPathCookies(res);
 }
 
 function clearAuthCookies(res) {
@@ -102,6 +130,8 @@ function clearAuthCookies(res) {
     res.clearCookie(COOKIE_NAMES.access, opts);
     res.clearCookie(COOKIE_NAMES.refresh, opts);
     res.clearCookie(COOKIE_NAMES.temp, opts);
+    // [S-PERIM-2] И старый путь тоже — иначе кука с Path=/ переживает logout.
+    clearLegacyPathCookies(res);
 }
 
 // [P1-2 / 1A-FU-S-L4] Extraction helpers used by middleware.
@@ -167,6 +197,8 @@ function extractTempToken(req) {
 
 module.exports = {
     COOKIE_NAMES,
+    COOKIE_PATH,
+    LEGACY_COOKIE_PATH,
     ACCESS_TOKEN_MAX_AGE_MS,
     REFRESH_TOKEN_MAX_AGE_MS,
     TEMP_TOKEN_MAX_AGE_MS,
