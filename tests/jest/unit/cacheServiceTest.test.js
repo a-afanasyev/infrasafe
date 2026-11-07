@@ -26,6 +26,32 @@ afterEach(() => {
 });
 
 describe('CacheService', () => {
+    // [S-INJ-2] Предел L1 — синхронно в set(), а не раз в минуту таймером:
+    // между тиками можно было положить сколько угодно записей.
+    describe('[S-INJ-2] L1 bound is enforced on set()', () => {
+        test('the 1001st distinct key evicts the oldest immediately', async () => {
+            cacheService.maxMemoryItems = 3;
+            await cacheService.set('k1', 1);
+            await cacheService.set('k2', 2);
+            await cacheService.set('k3', 3);
+            await cacheService.set('k4', 4);
+
+            expect(cacheService.analyticsCache.size).toBe(3);
+            expect(cacheService.analyticsCache.has('k1')).toBe(false);
+            expect(cacheService.analyticsCache.has('k4')).toBe(true);
+        });
+
+        test('re-setting an existing key does not evict', async () => {
+            cacheService.maxMemoryItems = 2;
+            await cacheService.set('a', 1);
+            await cacheService.set('b', 2);
+            await cacheService.set('a', 3);
+
+            expect(cacheService.analyticsCache.size).toBe(2);
+            expect(cacheService.analyticsCache.get('a').data).toBe(3);
+        });
+    });
+
     describe('get', () => {
         test('returns null for non-existent key', async () => {
             const result = await cacheService.get('nonexistent');

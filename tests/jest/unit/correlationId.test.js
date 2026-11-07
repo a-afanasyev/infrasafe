@@ -23,6 +23,26 @@ describe('correlationId middleware', () => {
         expect(next).toHaveBeenCalled();
     });
 
+    // [S-PERIM-4] nginx $request_id — 32 hex без дефисов — принимается, чтобы
+    // строка edge-лога и записи приложения связывались одним id.
+    test('[S-PERIM-4] accepts a 32-hex nginx $request_id', () => {
+        const rid = '0123456789abcdef0123456789ABCDEF';
+        req.headers['x-correlation-id'] = rid;
+
+        correlationId(req, res, next);
+
+        expect(req.correlationId).toBe(rid);
+        expect(res.setHeader).toHaveBeenCalledWith('x-correlation-id', rid);
+    });
+
+    test('[S-PERIM-4] 31 or 33 hex chars, or hex with a newline, are rejected', () => {
+        for (const bad of ['0123456789abcdef0123456789abcde', '0123456789abcdef0123456789abcdef0', '0123456789abcdef0123456789abcde\n']) {
+            req.headers['x-correlation-id'] = bad;
+            correlationId(req, res, next);
+            expect(req.correlationId).not.toBe(bad);
+        }
+    });
+
     test('uses existing x-correlation-id header when it is a valid UUID', () => {
         const validUuid = '11111111-2222-3333-4444-555555555555';
         req.headers['x-correlation-id'] = validUuid;

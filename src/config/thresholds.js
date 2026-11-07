@@ -13,6 +13,17 @@
  */
 
 module.exports = Object.freeze({
+    // [S-INJ-2, аудит 05.11.2026] Границы выборки метрик контроллера. До этого
+    // findByControllerId шёл без LIMIT, а startDate/endDate из query попадали
+    // в SQL и в ключ кэша как есть: каждый уникальный запрос клал в кучу всю
+    // историю контроллера. При 90 днях сырых данных и шаге 5 мин это ~26 000
+    // строк (~10 МБ) на ответ — десятки таких подряд = OOM.
+    metricsQuery: Object.freeze({
+        maxRows: 5000,          // потолок сырой выдачи; при достижении — заголовок X-Metrics-Truncated
+        rangeMaxDays: 90,       // = глубине хранения сырых метрик (ADR 07.07)
+        rangeDefaultHours: 24,  // без дат — последние сутки (раньше — вся история)
+        timeFrames: Object.freeze(['1h', '24h', '7d']),
+    }),
     transformer: Object.freeze({
         overload: 85,       // % load — WARNING alert (transformer_overload)
         critical: 95,       // % load — CRITICAL alert (transformer_critical)

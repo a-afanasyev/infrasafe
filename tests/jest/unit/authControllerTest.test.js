@@ -134,6 +134,77 @@ describe('AuthController', () => {
             expect(res.json.mock.calls[0][0].tempToken).toBeUndefined();
         });
 
+        // [S-AUTH-2в] Число вместо строки уходило в bcrypt.compare и давало 500
+        // для существующего логина против 401 для несуществующего — оракул.
+        test('[S-AUTH-2в] non-string password → 400, service is not called', async () => {
+            req.body = { username: 'admin', password: 123 };
+
+            await authController.login(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(authService.authenticateUser).not.toHaveBeenCalled();
+        });
+
+        test('[S-AUTH-2в] non-string username → 400', async () => {
+            req.body = { username: ['admin'], password: 'admin123' };
+
+            await authController.login(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(authService.authenticateUser).not.toHaveBeenCalled();
+        });
+
+        // [S-INJ-1] Потолок на входе — защита от тела на мегабайт; существующие
+        // длинные пароли (до 1024 символов) по-прежнему проходят в сервис.
+        test('[S-INJ-1] password longer than 1024 chars → 400, 1024 passes through', async () => {
+            req.body = { username: 'admin', password: 'a'.repeat(1025) };
+            await authController.login(req, res, next);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(authService.authenticateUser).not.toHaveBeenCalled();
+
+            res.status.mockClear();
+            authService.authenticateUser.mockResolvedValue({
+                user_id: 1, username: 'admin', role: 'user', totp_enabled: false
+            });
+            authService.generateTokens.mockReturnValue({ accessToken: 'a', refreshToken: 'r' });
+            req.body = { username: 'admin', password: 'a'.repeat(1024) };
+            await authController.login(req, res, next);
+            expect(authService.authenticateUser).toHaveBeenCalledWith('admin', 'a'.repeat(1024));
+        });
+
+        // [S-PERIM-4] Неудачный и удачный вход оставляют событие с IP и
+        // хэшем логина — раньше неудачный вход в логах не отражался вовсе.
+        test('[S-PERIM-4] failed login logs an auth event with ip and login_hash (no raw login)', async () => {
+            const logger = require('../../../src/utils/logger');
+            req.body = { username: 'admin', password: 'wrong' };
+            req.ip = '203.0.113.9';
+            req.correlationId = 'cid-9';
+            const err = new Error('Неверное имя пользователя или пароль');
+            err.code = 'INVALID_CREDENTIALS';
+            authService.authenticateUser.mockRejectedValue(err);
+
+            await authController.login(req, res, next);
+
+            const ev = logger.info.mock.calls.find(([m]) => m === 'auth');
+            expect(ev).toBeDefined();
+            expect(ev[1]).toEqual(expect.objectContaining({
+                event: 'login_failed', reason: 'INVALID_CREDENTIALS', ip: '203.0.113.9', correlationId: 'cid-9'
+            }));
+            expect(ev[1].login_hash).toMatch(/^[0-9a-f]{12}$/);
+            expect(JSON.stringify(ev[1])).not.toContain('"admin"');
+        });
+
+        test('[S-PERIM-4] successful login logs login_success with user_id', async () => {
+            const logger = require('../../../src/utils/logger');
+            req.body = { username: 'u', password: 'p' };
+            authService.authenticateUser.mockResolvedValue({ user_id: 5, username: 'u', role: 'user', totp_enabled: false });
+            authService.generateTokens.mockReturnValue({ accessToken: 'a', refreshToken: 'r' });
+
+            await authController.login(req, res, next);
+
+            expect(logger.info).toHaveBeenCalledWith('auth', expect.objectContaining({ event: 'login_success', user_id: 5 }));
+        });
+
         test('returns requires2FA for user with 2FA enabled', async () => {
             req.body = { username: 'admin', password: 'admin123' };
             authService.authenticateUser.mockResolvedValue({
@@ -413,21 +484,46 @@ describe('AuthController', () => {
             expect(authService.blacklistToken).not.toHaveBeenCalled();
         });
 
-        test('refresh blacklist failure does not abort logout (best-effort)', async () => {
+        // [S-AUTH-7] Раньше отказ записи в blacklist глотался на двух уровнях, и
+        // клиент получал «Logout successful» при живом токене. Теперь оба отзыва
+        // доходят до конца, куки чистятся, но ответ — 500 «Logout incomplete».
+        test('[S-AUTH-7] refresh blacklist failure → cookies cleared, 500 Logout incomplete', async () => {
             req.headers = { authorization: 'Bearer access-tok' };
             req.body = { refreshToken: 'refresh-tok' };
             authService.logout.mockResolvedValue({ message: 'OK' });
-            authService.blacklistToken.mockRejectedValue(new Error('db down'));
+            authService.blacklistToken.mockRejectedValue(Object.assign(new Error('db down'), { code: 'BLACKLIST_PERSIST_FAILED' }));
 
             await authController.logout(req, res, next);
 
             expect(authService.logout).toHaveBeenCalledWith('access-tok');
             expect(authService.blacklistToken).toHaveBeenCalledWith('refresh-tok', 'logout');
-            // Logout still completes with 200, not 5xx
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({ success: true })
-            );
+            expect(res.clearCookie).toHaveBeenCalled();
+            expect(res.status).toHaveBeenCalledWith(500);
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: false, failed: ['refresh'] }));
             expect(next).not.toHaveBeenCalled();
+        });
+
+        test('[S-AUTH-7] access blacklist persist failure still revokes refresh and answers 500', async () => {
+            req.headers = { authorization: 'Bearer access-tok' };
+            req.body = { refreshToken: 'refresh-tok' };
+            authService.logout.mockRejectedValue(Object.assign(new Error('db down'), { code: 'BLACKLIST_PERSIST_FAILED' }));
+            authService.blacklistToken.mockResolvedValue(undefined);
+
+            await authController.logout(req, res, next);
+
+            expect(authService.blacklistToken).toHaveBeenCalledWith('refresh-tok', 'logout');
+            expect(res.status).toHaveBeenCalledWith(500);
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ failed: ['access'] }));
+        });
+
+        test('[S-AUTH-7] when cookie and header carry different tokens, the COOKIE one is revoked (same as authenticateJWT)', async () => {
+            req.headers = { authorization: 'Bearer header-tok' };
+            req.cookies = { access_token: 'cookie-tok' };
+            authService.logout.mockResolvedValue({ message: 'OK' });
+
+            await authController.logout(req, res, next);
+
+            expect(authService.logout).toHaveBeenCalledWith('cookie-tok');
         });
 
         test('ignores non-string refreshToken value (defensive)', async () => {

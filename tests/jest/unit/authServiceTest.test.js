@@ -1100,17 +1100,26 @@ describe('AuthService', () => {
             expect(cacheService.set).not.toHaveBeenCalled();
         });
 
-        test('handles DB error in blacklistToken gracefully (falls back to cache)', async () => {
+        // [S-AUTH-7] Отказ персистентного слоя больше не глотается: L1 ставится,
+        // но наружу уходит BLACKLIST_PERSIST_FAILED — контроллер отвечает 500.
+        test('[S-AUTH-7] DB error in blacklistToken → cache set, then BLACKLIST_PERSIST_FAILED', async () => {
             const user = { user_id: 1, username: 'u', email: 'u@b.com', role: 'user' };
             const tokens = authService.generateTokens(user);
 
             cacheService.set.mockResolvedValue(undefined);
             db.query.mockRejectedValue(new Error('DB insert failed'));
 
-            // Should not throw - DB error is caught, cache still works
-            await expect(authService.blacklistToken(tokens.accessToken)).resolves.not.toThrow();
-            // Cache should still have been called
+            await expect(authService.blacklistToken(tokens.accessToken)).rejects.toMatchObject({ code: 'BLACKLIST_PERSIST_FAILED' });
             expect(cacheService.set).toHaveBeenCalled();
+        });
+
+        test('[S-AUTH-7] logout propagates BLACKLIST_PERSIST_FAILED instead of reporting success', async () => {
+            const user = { user_id: 1, username: 'u', email: 'u@b.com', role: 'user' };
+            const tokens = authService.generateTokens(user);
+            cacheService.set.mockResolvedValue(undefined);
+            db.query.mockRejectedValue(new Error('DB insert failed'));
+
+            await expect(authService.logout(tokens.accessToken)).rejects.toMatchObject({ code: 'BLACKLIST_PERSIST_FAILED' });
         });
     });
 

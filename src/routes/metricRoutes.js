@@ -1,8 +1,8 @@
 const express = require('express');
 const metricController = require('../controllers/metricController');
 const { isAdmin } = require('../middleware/auth');
-const { applyCrudRateLimit } = require('../middleware/rateLimiter');
-const { validateIntParam } = require('../middleware/validators');
+const { applyCrudRateLimit, applyAnalyticsRateLimit } = require('../middleware/rateLimiter');
+const { validateIntParam, validateMetricsRange } = require('../middleware/validators');
 const router = express.Router();
 
 /**
@@ -188,7 +188,8 @@ router.delete('/cleanup', isAdmin, applyCrudRateLimit, metricController.cleanupO
  *       400:
  *         description: Неверные параметры запроса
  */
-router.get('/controller/:controllerId/aggregated', validateIntParam('controllerId'), metricController.getAggregatedMetrics);
+// [S-INJ-2] лимитер + закрытый список timeFrame
+router.get('/controller/:controllerId/aggregated', applyAnalyticsRateLimit, validateIntParam('controllerId'), validateMetricsRange, metricController.getAggregatedMetrics);
 
 /**
  * @swagger
@@ -221,7 +222,8 @@ router.get('/controller/:controllerId/aggregated', validateIntParam('controllerI
  *       404:
  *         description: Контроллер не найден
  */
-router.get('/controller/:controllerId', validateIntParam('controllerId'), metricController.getMetricsByControllerId);
+// [S-INJ-2] лимитер + нормализованный диапазон дат (req.metricsRange)
+router.get('/controller/:controllerId', applyAnalyticsRateLimit, validateIntParam('controllerId'), validateMetricsRange, metricController.getMetricsByControllerId);
 
 /**
  * @swagger

@@ -124,12 +124,17 @@ describe('SEC-22 — /uk/api/ prefix-allowlist + edge rate-limit', () => {
         expect(conf).toMatch(/limit_req\s+zone=uk_api_cred\s+burst=\d+\s+nodelay/);
     });
 
-    test('credential limit keys on $request_uri, not $uri (rewrite runs before limit_req)', () => {
-        // The /uk/api/ location rewrites /uk/api/(.*) -> /api/$1. limit_req (preaccess)
-        // evaluates the map AFTER the rewrite phase, so $uri is already /api/... — keying
-        // the cred map on $uri silently disables the limit. Must use $request_uri.
-        expect(conf).toMatch(/map\s+\$request_uri\s+\$uk_cred_limit_key\s*\{/);
-        expect(conf).not.toMatch(/map\s+\$uri\s+\$uk_cred_limit_key\s*\{/);
+    test('[S-PERIM-1] credential limit keys on normalized $uri and accepts both pre/post-rewrite forms', () => {
+        // History: this test used to REQUIRE $request_uri because limit_req
+        // (preaccess) evaluates the map AFTER the rewrite phase, when $uri is
+        // already /api/v2/auth/… and a /uk/api/… regex would never match.
+        // The 05.11.2026 audit showed the other side of that trap live: the raw
+        // $request_uri is NOT normalized, so `/uk/api/v2/%61uth/login` and
+        // `//auth/login` passed the allowlist and the rewrite but skipped the
+        // credential zone entirely (26 requests, zero 429s). The fix keeps $uri
+        // and makes the regex accept both forms — see nginxEdgeAudit1105.test.js.
+        expect(conf).not.toMatch(/map\s+\$request_uri\s+\$uk_cred_limit_key\s*\{/);
+        expect(conf).toMatch(/map\s+\$uri\s+\$uk_cred_limit_key\s*\{[^}]*"~\^\/\(uk\/\)\?api\/v2\/\(auth\|registration\)\/"/);
     });
 
     test('WebSocket narrowed to the canonical /uk/ws/v2/ prefix', () => {

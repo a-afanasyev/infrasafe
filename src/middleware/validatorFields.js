@@ -148,13 +148,6 @@ const optionalPositiveNumber = (field, label) => [
         .isFloat({ gt: 0 }).withMessage(`Поле «${label}»: ожидается число больше нуля`),
 ];
 
-/** Обязательное неотрицательное число — колонка NOT NULL без CHECK на знак. */
-const requiredNonNegativeNumber = (field, label) => [
-    body(field)
-        .exists({ checkNull: true }).withMessage(`Поле «${label}»: обязательно для заполнения`).bail()
-        .isFloat({ min: 0 }).withMessage(`Поле «${label}»: допустимы только неотрицательные числа`),
-];
-
 /** Неотрицательное число — для физических величин, где минус бессмыслен. */
 const optionalNonNegativeNumber = (field, label) => [
     body(field).optional({ nullable: true })
@@ -186,7 +179,6 @@ module.exports = {
     STRING_ID_MAX_LENGTH,
     requiredCoordinates,
     requiredPositiveNumber,
-    requiredNonNegativeNumber,
     requiredRefId,
     optionalNonNullRefId,
     optionalPositiveNumber,

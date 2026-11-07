@@ -4,14 +4,40 @@ const totpService = require('../services/totpService');
 const logger = require('../utils/logger');
 // [P1-2] HttpOnly cookie helpers — emit alongside the existing body
 // fields so the client transition can land in a follow-up PR.
-const { setAuthCookies, setTempCookie, clearAuthCookies, extractRefreshToken } = require('../utils/authCookies');
+const { setAuthCookies, setTempCookie, clearAuthCookies, extractAccessToken, extractRefreshToken } = require('../utils/authCookies');
+
+// [S-INJ-1] Потолок длины пароля на входе (символы). См. комментарий в login.
+const LOGIN_PASSWORD_MAX_LENGTH = 1024;
+
+// [S-PERIM-4, аудит 05.11.2026] События аутентификации с IP и user-agent —
+// единственное место, где они есть: сервис `req` не видит, а в nginx-логе
+// нет пользователя. correlationId — явно: middleware кладёт его в req, в
+// logger он сам не попадает. Логин — только хэшем (пользователи вставляют в
+// это поле пароль).
+const crypto = require('crypto');
+const loginHash = (login) => crypto.createHash('sha256').update(String(login)).digest('hex').slice(0, 12);
+const authEvent = (req, event, extra = {}) => {
+    logger.info('auth', {
+        event,
+        ip: req.ip,
+        ua: String(req.get?.('user-agent') || '').slice(0, 120),
+        correlationId: req.correlationId,
+        ...extra
+    });
+};
 
 // Логин пользователя
 const login = async (req, res, next) => {
     try {
         const { username, password } = req.body;
 
-        if (!username || !password) {
+        // [S-AUTH-2в / S-INJ-1] Тип — строго строка: число уходило в
+        // bcrypt.compare и давало 500 вместо 401 (оракул «логин существует»).
+        // Верхняя граница на входе — символы, не байты bcrypt: уже выданные
+        // длинные пароли должны продолжать работать, а здесь regex не
+        // вызывается, так что 1024 — только защита от злоупотребления телом.
+        if (typeof username !== 'string' || typeof password !== 'string'
+            || !username || !password || password.length > LOGIN_PASSWORD_MAX_LENGTH) {
             return res.status(400).json({
                 error: 'Username and password are required'
             });
@@ -30,6 +56,7 @@ const login = async (req, res, next) => {
         // токен из куки, которую браузер шлёт сам.
         if (user.totp_enabled) {
             setTempCookie(res, authService.generateTempToken(user));
+            authEvent(req, 'password_ok_2fa_pending', { user_id: user.user_id });
             return res.json({
                 success: true,
                 requires2FA: true,
@@ -40,6 +67,7 @@ const login = async (req, res, next) => {
         // Для админов без настроенного 2FA — принудительная настройка
         if (user.role === 'admin') {
             setTempCookie(res, authService.generateTempToken(user));
+            authEvent(req, 'password_ok_2fa_setup_required', { user_id: user.user_id });
             return res.json({
                 success: true,
                 requires2FASetup: true,
@@ -52,6 +80,7 @@ const login = async (req, res, next) => {
 
         // [P1-2] HttpOnly cookies are the auth delivery mechanism.
         setAuthCookies(res, tokens);
+        authEvent(req, 'login_success', { user_id: user.user_id });
 
         // [1A-FU2-S-M2] Tokens are NOT echoed in the response body —
         // the cookies above are the source of truth. Body-echoed tokens
@@ -70,6 +99,10 @@ const login = async (req, res, next) => {
 
     } catch (error) {
         // Обрабатываем специфичные ошибки сервиса
+        if (error.code === 'INVALID_CREDENTIALS' || error.code === 'ACCOUNT_DISABLED' || error.code === 'ACCOUNT_LOCKED') {
+            // [S-PERIM-4] Неудачный вход раньше не оставлял в логах ничего.
+            authEvent(req, 'login_failed', { reason: error.code, login_hash: loginHash(req.body?.username) });
+        }
         if (error.code === 'INVALID_CREDENTIALS') {
             return res.status(401).json({ error: error.message });
         }
@@ -167,11 +200,10 @@ const logout = async (req, res, next) => {
         // [P1-2] Read access token from Authorization header OR access_token
         // cookie. clearAuthCookies runs at the end regardless of the path
         // taken so the browser stops sending stale tokens on next request.
-        const headerToken = req.headers.authorization?.replace('Bearer ', '');
-        const cookieToken = req.cookies && typeof req.cookies.access_token === 'string'
-            ? req.cookies.access_token
-            : null;
-        const token = headerToken || cookieToken;
+        // [S-AUTH-7] Тот же порядок источников, что у authenticateJWT
+        // (кука первой): раньше logout брал заголовок первым, и при разных
+        // токенах в куке и заголовке гасился не тот, которым аутентифицировались.
+        const token = extractAccessToken(req);
 
         if (!token) {
             // Even without an access token we clear any orphan refresh
@@ -188,7 +220,16 @@ const logout = async (req, res, next) => {
         // Best-effort: refresh-token blacklist failure must not block logout.
         const refresh = extractRefreshToken(req);
 
-        await authService.logout(token);
+        // [S-AUTH-7] Оба отзыва идут до конца; результат собирается, а не
+        // решается первым же исключением: даже если access не персистировался,
+        // refresh всё равно гасим.
+        const failures = [];
+        try {
+            await authService.logout(token);
+        } catch (accessErr) {
+            if (accessErr.code !== 'BLACKLIST_PERSIST_FAILED') throw accessErr;
+            failures.push('access');
+        }
 
         if (refresh) {
             // [Sprint 0.1 / HIGH-3] Verify the refresh token belongs to the
@@ -220,13 +261,26 @@ const logout = async (req, res, next) => {
                     await authService.blacklistToken(refresh, 'logout');
                 } catch (refreshErr) {
                     logger.warn(`logout: refresh token blacklist failed: ${refreshErr.message}`);
+                    failures.push('refresh');
                 }
             }
         }
 
         // [P1-2] Clear both HttpOnly cookies. Browser sends a matching
         // Set-Cookie with Max-Age=0 → cookies removed immediately.
+        // [S-AUTH-7] Куки чистим в любом случае — но если отзыв не
+        // персистировался, честно отвечаем 500: токен мог остаться валидным
+        // до истечения (после рестарта или на другой реплике).
         clearAuthCookies(res);
+        authEvent(req, 'logout', { user_id: req.user?.user_id ?? req.user?.id, failures: failures.length ? failures : undefined });
+
+        if (failures.length > 0) {
+            return res.status(500).json({
+                success: false,
+                error: 'Logout incomplete: token revocation was not persisted',
+                failed: failures
+            });
+        }
 
         res.json({
             success: true,
@@ -254,6 +308,7 @@ const refreshToken = async (req, res, next) => {
         // [P1-2] Rotate cookies as part of the refresh — the new access
         // token and (rotated) refresh token become the active cookies.
         setAuthCookies(res, tokens);
+        authEvent(req, 'refresh', { user_id: req.user?.user_id ?? req.user?.id });
 
         // [1A-FU2-S-M2] No token spread — cookies are the only delivery.
         res.json({
@@ -266,6 +321,7 @@ const refreshToken = async (req, res, next) => {
         // client-error condition, not a server fault — was previously falling
         // through to next(error) and surfacing as a 500.
         if (error.code === 'INVALID_REFRESH_TOKEN' || error.code === 'USER_NOT_FOUND' || error.code === 'TOKEN_REUSE') {
+            authEvent(req, 'refresh_failed', { reason: error.code });
             return res.status(401).json({ error: error.message });
         }
 
@@ -362,6 +418,7 @@ const verify2FA = async (req, res, next) => {
             } catch (lockoutError) {
                 logger.error(`verify2FA: промах 2FA для user_id=${user.user_id} не записан: ${lockoutError.message}`);
             }
+            authEvent(req, 'twofa_failed', { user_id: user.user_id });
             return res.status(401).json({ error: 'Invalid 2FA code' });
         }
 
@@ -382,6 +439,7 @@ const verify2FA = async (req, res, next) => {
 
         // [P1-2] HttpOnly cookies are the auth delivery mechanism.
         setAuthCookies(res, tokens);
+        authEvent(req, 'login_success', { user_id: user.user_id, method: result.method || 'totp' });
 
         // [1A-FU2-S-M2] No token spread — cookies only.
         res.json({
