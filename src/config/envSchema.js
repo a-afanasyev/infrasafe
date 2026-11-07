@@ -51,6 +51,21 @@ const bool = (name) => ({
     },
 });
 
+/**
+ * Короткая строка с запретом на символы. [C-7] Для TOTP_ISSUER: otpauth-URI
+ * разделяет issuer и логин двоеточием, поэтому `:` в имени ломает QR; длиннее
+ * 64 — не влезает в аутентификатор. Раньше проверялось при первой настройке
+ * 2FA (warn и тихий fallback), а не на старте, как остальные переменные.
+ */
+const text = (name, { max, forbid } = {}) => ({
+    name,
+    check(raw) {
+        if (max !== undefined && raw.length > max) return `${name}: не длиннее ${max} символов, получено ${raw.length}`;
+        if (forbid && forbid.test(raw)) return `${name}: недопустимые символы (${forbid})`;
+        return null;
+    },
+});
+
 /** Значение из закрытого списка. */
 const oneOf = (name, values) => ({
     name,
@@ -94,6 +109,7 @@ const RULES = [
     oneOf('LOG_LEVEL', ['error', 'warn', 'info', 'debug']),
     bool('LOG_CONSOLE_ONLY'),
     bool('SECURE_COOKIES'),
+    text('TOTP_ISSUER', { max: 64, forbid: /:/ }),
     bool('AUTH_BLACKLIST_FAIL_OPEN'),
     int('REPLICA_COUNT', { min: 1 }),
     url('REDIS_URL', ['redis', 'rediss']),

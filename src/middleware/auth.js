@@ -38,13 +38,6 @@ const authenticateJWT = async (req, res, next) => {
             return sendError(res, 401, 'Access token is missing');
         }
 
-        // Проверка токена на черном списке
-        const isBlacklisted = await authService.isTokenBlacklisted(token);
-        if (isBlacklisted) {
-            logger.warn(`Попытка использования токена из черного списка`);
-            return sendError(res, 401, 'Token has been revoked');
-        }
-
         if (!process.env.JWT_SECRET) {
             logger.error('JWT_SECRET is not defined in environment variables');
             return sendError(res, 500, 'Internal server configuration error');
@@ -55,6 +48,15 @@ const authenticateJWT = async (req, res, next) => {
             issuer: 'infrasafe-api',
             audience: 'infrasafe-client'
         });
+
+        // [S-AUTH-4] Чёрный список — ПОСЛЕ подписи. Иначе любой аноним с
+        // мусорным Bearer вызывал SHA-256 + кэш + SELECT по token_blacklist
+        // через breaker, а при деградации БД получал 503 вместо честного 401.
+        const isBlacklisted = await authService.isTokenBlacklisted(token);
+        if (isBlacklisted) {
+            logger.warn(`Попытка использования токена из черного списка`);
+            return sendError(res, 401, 'Token has been revoked');
+        }
 
         // SEC-1: reject scoped tokens (e.g. the 2FA temp-token, scope:'2fa') on
         // normal routes. Even though the 2FA temp-token is now signed with a
@@ -162,8 +164,6 @@ const authenticateRefresh = async (req, res, next) => {
         // ответить 503 с Retry-After, а не 500 из глубины сервиса. Поэтому
         // исключение по-прежнему обрабатывается ниже, а вот вердикт «да, в
         // списке» теперь просто передаётся дальше.
-        await authService.isTokenBlacklisted(refreshToken);
-
         if (!process.env.JWT_REFRESH_SECRET) {
             logger.error('JWT_REFRESH_SECRET is not defined in environment variables');
             return sendError(res, 500, 'Internal server configuration error');
@@ -174,6 +174,9 @@ const authenticateRefresh = async (req, res, next) => {
             issuer: 'infrasafe-api',
             audience: 'infrasafe-client'
         });
+
+        // [S-AUTH-4] Проба доступности списка — после подписи (см. authenticateJWT).
+        await authService.isTokenBlacklisted(refreshToken);
 
         // Defense-in-depth: refresh tokens (generateTokens) always carry
         // type:'refresh'; reject anything else verified with this secret.
@@ -228,12 +231,6 @@ const optionalAuth = async (req, res, next) => {
             return next();
         }
 
-        const isBlacklisted = await authService.isTokenBlacklisted(token);
-        if (isBlacklisted) {
-            req.user = null;
-            return next();
-        }
-
         if (!process.env.JWT_SECRET) {
             req.user = null;
             return next();
@@ -244,6 +241,13 @@ const optionalAuth = async (req, res, next) => {
             issuer: 'infrasafe-api',
             audience: 'infrasafe-client'
         });
+
+        // [S-AUTH-4] Чёрный список — после подписи (см. authenticateJWT).
+        const isBlacklisted = await authService.isTokenBlacklisted(token);
+        if (isBlacklisted) {
+            req.user = null;
+            return next();
+        }
 
         // SEC-1 (consistency): mirror authenticateJWT's scope guard. A scoped
         // token (e.g. the 2FA temp-token, scope:'2fa') must never grant req.user
@@ -289,13 +293,14 @@ const authenticateTempToken = async (req, res, next) => {
             return sendError(res, 400, 'Temporary token is required');
         }
 
+        // [S-AUTH-4] Сначала подпись и срок, потом «уже использован».
+        const decoded = await authService.verifyTempToken(tempToken);
+
         // Check if tempToken has already been used
         const isBlacklisted = await authService.isTokenBlacklisted(tempToken);
         if (isBlacklisted) {
             return sendError(res, 401, 'Temporary token has already been used');
         }
-
-        const decoded = await authService.verifyTempToken(tempToken);
         req.tempUser = decoded;
         req.tempToken = tempToken; // Pass to controller for blacklisting after use
         next();

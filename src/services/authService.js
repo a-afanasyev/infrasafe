@@ -809,37 +809,41 @@ class AuthService {
      *   семейства сессий влияет только 'rotation', который ставит сама ротация
      *   (см. refreshTokens); всё, что гасится здесь, семейство не трогает.
      */
+    // [S-AUTH-7, аудит 05.11.2026] Отказ персистентного слоя больше не глотается.
+    // L1 (кэш процесса) ставится всегда, но он пропадает на рестарте и не виден
+    // другой реплике; раньше при упавшем INSERT в token_blacklist клиент получал
+    // «Logout successful», а токен оставался валидным до истечения. Теперь
+    // бросается BLACKLIST_PERSIST_FAILED — контроллер logout отвечает 500
+    // «Logout incomplete», и клиент знает, что сессия могла остаться живой.
+    // Мусорный/просроченный токен — по-прежнему тихий skip: гасить нечего.
     async blacklistToken(token, reason = 'manual') {
+        const decoded = jwt.decode(token);
+        if (!decoded || typeof decoded.exp !== 'number') {
+            logger.warn('blacklistToken: invalid or malformed token, skip');
+            return;
+        }
+        const expiry = decoded.exp * 1000; // Конвертируем в миллисекунды
+        const ttl = Math.max(0, (expiry - Date.now()) / 1000); // TTL в секундах
+        if (ttl <= 0) return;
+
+        // L1 cache (in-memory) for fast lookups
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+        const cacheKey = `${this.cachePrefix}:blacklist:${tokenHash}`;
+        await cacheService.set(cacheKey, true, { ttl });
+
+        // L2 persistent storage (database) survives restarts
         try {
-            const decoded = jwt.decode(token);
-            if (!decoded || typeof decoded.exp !== 'number') {
-                logger.warn('blacklistToken: invalid or malformed token, skip');
-                return;
-            }
-            const expiry = decoded.exp * 1000; // Конвертируем в миллисекунды
-            const ttl = Math.max(0, (expiry - Date.now()) / 1000); // TTL в секундах
-
-            if (ttl > 0) {
-                // L1 cache (in-memory) for fast lookups
-                const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-                const cacheKey = `${this.cachePrefix}:blacklist:${tokenHash}`;
-                await cacheService.set(cacheKey, true, { ttl });
-
-                // L2 persistent storage (database) survives restarts
-                try {
-                    const expiresAt = new Date(expiry);
-                    await db.query(
-                        `INSERT INTO token_blacklist (token_hash, expires_at, reason)
-                         VALUES ($1, $2, $3) ON CONFLICT (token_hash) DO NOTHING`,
-                        [tokenHash, expiresAt, reason]
-                    );
-                } catch (dbError) {
-                    logger.error(`Ошибка сохранения токена в БД: ${dbError.message}`);
-                    // Cache-based blacklist still works as fallback
-                }
-            }
-        } catch (error) {
-            logger.error(`Ошибка добавления токена в черный список: ${error.message}`);
+            const expiresAt = new Date(expiry);
+            await db.query(
+                `INSERT INTO token_blacklist (token_hash, expires_at, reason)
+                 VALUES ($1, $2, $3) ON CONFLICT (token_hash) DO NOTHING`,
+                [tokenHash, expiresAt, reason]
+            );
+        } catch (dbError) {
+            logger.error(`Ошибка сохранения токена в БД: ${dbError.message}`);
+            const err = new Error('Token revocation was not persisted');
+            err.code = 'BLACKLIST_PERSIST_FAILED';
+            throw err;
         }
     }
 

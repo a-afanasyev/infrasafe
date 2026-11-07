@@ -267,9 +267,13 @@ const handlers = {
                     data: rule,
                     changes_recorded: changes.length
                 });
-            } catch (validationErr) {
-                // AlertRule.update throws on invalid field name or value
-                return sendError(res, 400, validationErr.message);
+            } catch (err) {
+                // [S-INJ-6] 400 — только на ошибки валидации (code=VALIDATION_ERROR).
+                // Сбой БД раньше тоже попадал сюда и уходил админу текстом pg.
+                if (err.code === 'VALIDATION_ERROR') {
+                    return sendError(res, 400, err.message);
+                }
+                throw err;
             }
         } catch (error) {
             logger.error(`integrationController.updateRule error: ${error.message}`);

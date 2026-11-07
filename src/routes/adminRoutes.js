@@ -16,6 +16,8 @@ const {
     validateWaterLineCreate,
     validateColdWaterSourceCreate,
     validateHeatSourceCreate,
+    // [C-3] один валидатор `ids` на все шесть batch-маршрутов
+    validateBatchIds,
 } = require('../middleware/validators');
 
 const router = express.Router();
@@ -162,7 +164,7 @@ router.delete('/buildings/:id', rateLimitStrict, validateIdParam, adminControlle
  *       200:
  *         description: Результат массовой операции
  */
-router.post('/buildings/batch', rateLimitStrict, adminController.batchBuildingsOperation);
+router.post('/buildings/batch', rateLimitStrict, validateBatchIds, adminController.batchBuildingsOperation);
 
 /**
  * @swagger
@@ -265,7 +267,7 @@ router.delete('/controllers/:id', rateLimitStrict, validateIdParam, adminControl
  *       200:
  *         description: Результат массовой операции
  */
-router.post('/controllers/batch', rateLimitStrict, adminController.batchControllersOperation);
+router.post('/controllers/batch', rateLimitStrict, validateBatchIds, adminController.batchControllersOperation);
 
 /**
  * @swagger
@@ -377,7 +379,7 @@ router.delete('/metrics/:id', rateLimitStrict, validateIdParam, adminController.
  *       200:
  *         description: Результат массовой операции
  */
-router.post('/metrics/batch', rateLimitStrict, adminController.batchMetricsOperation);
+router.post('/metrics/batch', rateLimitStrict, validateBatchIds, adminController.batchMetricsOperation);
 
 // Phase 9.3 (YAGNI-007/008): /admin/search (globalSearch stub) and
 // /admin/export (exportData stub returning 501) removed. Per-entity
@@ -575,7 +577,7 @@ router.delete('/transformers/:id', rateLimitStrict, validateIdParam, adminContro
  *       200:
  *         description: Результат массовой операции
  */
-router.post('/transformers/batch', rateLimitStrict, adminController.batchTransformersOperation);
+router.post('/transformers/batch', rateLimitStrict, validateBatchIds, adminController.batchTransformersOperation);
 
 /**
  * @swagger
@@ -756,7 +758,7 @@ router.delete('/lines/:id', rateLimitStrict, validateIdParam, adminController.de
  *       200:
  *         description: Результат массовой операции
  */
-router.post('/lines/batch', rateLimitStrict, adminController.batchLinesOperation);
+router.post('/lines/batch', rateLimitStrict, validateBatchIds, adminController.batchLinesOperation);
 
 /**
  * @swagger
@@ -956,7 +958,7 @@ router.delete('/water-lines/:id', rateLimitStrict, validateIdParam, adminControl
  *       200:
  *         description: Результат массовой операции
  */
-router.post('/water-lines/batch', rateLimitStrict, adminController.batchWaterLinesOperation);
+router.post('/water-lines/batch', rateLimitStrict, validateBatchIds, adminController.batchWaterLinesOperation);
 
 // ===============================================
 // ИСТОЧНИКИ ХОЛОДНОЙ ВОДЫ

@@ -68,6 +68,24 @@ describe('AlertRule.update — Sprint 10 PR-5', () => {
             ).rejects.toThrow('not editable');
         });
 
+        // [S-INJ-6] Имена из Object.prototype раньше проходили whitelist
+        // (EDITABLE_FIELDS['constructor'] истинно) и падали уже в SQL — текст pg
+        // уходил клиенту. Теперь это обычный отказ валидации с кодом.
+        test('[S-INJ-6] prototype keys are rejected as not editable, with VALIDATION_ERROR code', async () => {
+            for (const name of ['constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf']) {
+                await expect(AlertRule.update(4, { [name]: 1 }))
+                    .rejects.toMatchObject({ code: 'VALIDATION_ERROR', message: expect.stringContaining('not editable') });
+            }
+            expect(db.query).not.toHaveBeenCalled();
+        });
+
+        test('[S-INJ-6] every validation failure carries code VALIDATION_ERROR', async () => {
+            await expect(AlertRule.update(null, { enabled: true })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+            await expect(AlertRule.update(4, [])).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+            await expect(AlertRule.update(4, {})).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+            await expect(AlertRule.update(4, { min_persistence_seconds: 'x' })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+        });
+
         test('rejects out-of-range integer', async () => {
             await expect(
                 AlertRule.update(4, { min_persistence_seconds: 99999 })
