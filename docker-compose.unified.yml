@@ -108,12 +108,28 @@ services:
       # leaflet-network — общая шина с frontend / redis / nginx.
       - leaflet-network
     restart: unless-stopped
+    # [S-PERIM-10, аудит 05.11.2026] Базовый hardening контейнера приложения:
+    # процесс и так non-root (nodejs), но capabilities были полные, setuid-
+    # эскалация не запрещена, число процессов не ограничено, корень — на
+    # запись. Образ immutable (SEC-14/15): пишет он только в /app/logs (том)
+    # и во временные файлы — отсюда read_only + tmpfs. То же в
+    # docker-compose.dev.yml, чтобы E2E-nightly проверил старт под ограничениями
+    # ДО прода.
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
     # [Sprint 6 / P1-V13] Hardening ported from docker-compose.prod.yml.
     deploy:
       resources:
         limits:
           cpus: '1'
           memory: 512M
+          # [S-PERIM-10] предел процессов — здесь, а не pids_limit: compose
+          # считает их одним полем и отказывается принимать оба рядом.
+          pids: 256
         reservations:
           cpus: '0.5'
           memory: 256M
@@ -188,7 +204,12 @@ services:
       - POSTGRES_DB=infrasafe
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database.sql:/docker-entrypoint-initdb.d/database.sql
+      # [H-11] :ro — контейнер БД не должен уметь переписать bootstrap-схему на
+      # хосте (profk-оверлей монтирует свой init уже :ro).
+      - ./database.sql:/docker-entrypoint-initdb.d/database.sql:ro
+    # [S-PERIM-4] log_connections — кто и когда подключался к БД: часть
+    # расследования инцидента (сейчас off). Применяется при пересоздании.
+    command: ["postgres", "-c", "log_connections=on"]
     healthcheck:
       # [init-race] TCP, не unix-сокет — см. развёрнутый комментарий в
       # docker-compose.dev.yml. На существующем томе (обычная выкатка) init-фазы нет
@@ -364,6 +385,13 @@ services:
       - leaflet-network
       - uk-network
     restart: unless-stopped
+    # [S-PERIM-10] Официальный образ стартует от root и сам опускается до nginx:
+    # для этого ему нужны ровно CHOWN/SETUID/SETGID/DAC_OVERRIDE и NET_BIND_SERVICE
+    # на 80/443. Всё остальное (SYS_ADMIN, NET_RAW, …) снято.
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE, CHOWN, SETUID, SETGID, DAC_OVERRIDE]
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       # [B-012] -c must match the command above, else `nginx -t` validates the
       # default /etc/nginx/nginx.conf (no longer mounted) instead of our config.
