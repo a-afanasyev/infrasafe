@@ -37,6 +37,16 @@ const LOCKOUT_JITTER_MAX_MS = 3 * 60 * 1000; // up to 3 minutes
 const TWO_FA_LOCKOUT_PREFIX = '2fa:user:';
 const twoFaLockoutKey = (userId) => `${TWO_FA_LOCKOUT_PREFIX}${userId}`;
 
+// [S-INJ-1] Границы нового пароля и email. 72 байта — предел bcrypt; 254 — RFC 5321.
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_BYTES = 72;
+const EMAIL_MAX_LENGTH = 254;
+
+// [S-AUTH-10] Введённый логин в лог не пишем: пользователи вставляют в это поле
+// пароль. В записи остаётся короткий хэш — связать строки одного логина можно,
+// прочитать значение нельзя.
+const loginHash = (login) => crypto.createHash('sha256').update(String(login)).digest('hex').slice(0, 12);
+
 // SEC-11: response-latency timing oracle defense. The locked path throws
 // ACCOUNT_LOCKED *before* reaching the real verifyPassword bcrypt.compare, so a
 // locked account would otherwise respond noticeably faster than a not-locked
@@ -638,7 +648,11 @@ class AuthService {
             throw err;
         }
 
-        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        // [S-INJ-1] Длина проверяется ДО regex: email-regex с тремя жадными
+        // классами квадратичен на строке без «@» — 50 000 точек давали ~1,5 с.
+        // 254 — предел RFC 5321 для адреса.
+        if (typeof email !== 'string' || email.length > EMAIL_MAX_LENGTH
+            || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
             const err = new Error('Некорректный email адрес');
             err.code = 'VALIDATION_ERROR';
             throw err;
@@ -647,15 +661,33 @@ class AuthService {
         this.validatePassword(password);
     }
 
-    // Валидация пароля
+    // Валидация НОВОГО пароля (регистрация, смена пароля, CLI). На входе не
+    // вызывается — там пароль только сравнивается с хэшем.
+    //
+    // [S-INJ-1, аудит 05.11.2026] Прежний `/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/`
+    // без якоря был квадратичным: на строке без заглавной каждая стартовая
+    // позиция сканировала остаток — 100 000 символов блокировали event loop на
+    // 6 с, 1 МБ тела — на минуты. Любой аутентифицированный пользователь мог
+    // положить API одним change-password. Теперь: тип и длина — первыми,
+    // классы символов — тремя линейными проверками.
+    //
+    // Предел — в БАЙТАХ UTF-8, а не в символах: bcrypt хэширует первые 72 байта,
+    // и два разных пароля по 73 байта давали один хэш. `.length` считает
+    // UTF-16-единицы и этого не видит.
     validatePassword(password) {
-        if (!password || password.length < 8) {
-            const err = new Error('Пароль должен содержать минимум 8 символов');
+        if (typeof password !== 'string' || password.length < PASSWORD_MIN_LENGTH) {
+            const err = new Error(`Пароль должен содержать минимум ${PASSWORD_MIN_LENGTH} символов`);
             err.code = 'INVALID_PASSWORD';
             throw err;
         }
 
-        if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+        if (Buffer.byteLength(password, 'utf8') > PASSWORD_MAX_BYTES) {
+            const err = new Error(`Пароль не длиннее ${PASSWORD_MAX_BYTES} байт в UTF-8 (bcrypt учитывает только их)`);
+            err.code = 'INVALID_PASSWORD';
+            throw err;
+        }
+
+        if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password)) {
             const err = new Error('Пароль должен содержать строчные и заглавные буквы, а также цифры');
             err.code = 'INVALID_PASSWORD';
             throw err;
@@ -688,7 +720,7 @@ class AuthService {
             // time follow-up spraying. The frontend normalizer (login.js)
             // already strips it from the HTML response, but raw API consumers
             // bypassed that. Now the timestamp is only logged server-side.
-            logger.warn(`Account lockout active for login=${login} until=${new Date(lockedUntilMs).toISOString()}`);
+            logger.warn(`Account lockout active for login_hash=${loginHash(login)} until=${new Date(lockedUntilMs).toISOString()}`);
             await this._timingEqualizerDelay();
             const error = new Error('Аккаунт временно заблокирован. Попробуйте позже.');
             error.code = 'ACCOUNT_LOCKED';
@@ -720,7 +752,10 @@ class AuthService {
         const failedAttempts = result?.failed_attempts ?? 0;
         const lockedUntil = result?.locked_until ?? null;
         if (lockedUntil && failedAttempts >= this.maxLoginAttempts) {
-            logger.warn(`Аккаунт ${login} заблокирован из-за превышения лимита попыток входа`);
+            logger.warn(
+                `Аккаунт login_hash=${loginHash(login)}${userId != null ? ` user_id=${userId}` : ''} ` +
+                'заблокирован из-за превышения лимита попыток входа'
+            );
             if (userId != null) {
                 // Invalidate findUserById's cache too, for any non-auth-decision
                 // caller still reading through it (getUserForAuth is uncached).

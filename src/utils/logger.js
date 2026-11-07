@@ -34,12 +34,26 @@ const primitiveArgsToMessage = winston.format((info) => {
     return info;
 });
 
+// [S-INJ-3] Перевод строки в сообщении — подделка записей лога. Консольный
+// транспорт печатает строку как есть, и `\n` внутри значения, пришедшего от
+// клиента (логин при блокировке, `?sort=`, тексты ошибок pg с эхом ввода),
+// рисовал в `docker logs` вторую, фальшивую строку. Стоит ПОСЛЕ splat(): именно
+// splat подставляет `%s`-аргументы, и фильтр раньше него обходился
+// `logger.warn('auth %s', 'x\nFORGED')`.
+const stripLineBreaks = winston.format((info) => {
+    if (typeof info.message === 'string' && /[\r\n]/.test(info.message)) {
+        info.message = info.message.replace(/[\r\n]+/g, ' ');
+    }
+    return info;
+});
+
 // Определение форматов логирования
 const formats = winston.format.combine(
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     winston.format.errors({ stack: true }),
     primitiveArgsToMessage(),
     winston.format.splat(),
+    stripLineBreaks(),
     redactFormat(),
     winston.format.json()
 );

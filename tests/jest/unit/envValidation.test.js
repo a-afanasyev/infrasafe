@@ -93,6 +93,14 @@ describe('validateEnv — JWT_2FA_SECRET production requirement (SEC-34h)', () =
         expect(() => validateEnv()).not.toThrow();
     });
 
+    // [S-AUTH-3] Та же изоляция для refresh-секрета: при совпадении 7-дневный
+    // refresh-токен проходил бы как access.
+    it('[S-AUTH-3] throws in production when JWT_REFRESH_SECRET equals JWT_SECRET', () => {
+        setValidProdEnv();
+        process.env.JWT_REFRESH_SECRET = process.env.JWT_SECRET;
+        expect(() => validateEnv()).toThrow(/JWT_REFRESH_SECRET/);
+    });
+
     it('[R2-26] throws in production when a crypto secret is shorter than 32 chars', () => {
         setValidProdEnv();
         process.env.JWT_SECRET = 'short';

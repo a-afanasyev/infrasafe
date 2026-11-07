@@ -157,7 +157,9 @@ describe('Auth Middleware', () => {
             );
         });
 
-        test('returns 401 when account is locked', async () => {
+        // [S-AUTH-1] Блокировка действует только на вход: пять неверных паролей
+        // по известному логину с чужого IP не должны гасить живую сессию.
+        test('[S-AUTH-1] a locked account keeps its already-issued session', async () => {
             req.headers.authorization = 'Bearer valid-token';
             authService.isTokenBlacklisted.mockResolvedValue(false);
             jwt.verify.mockImplementation((token, secret, opts, cb) => {
@@ -171,10 +173,25 @@ describe('Auth Middleware', () => {
 
             await authenticateJWT(req, res, next);
 
+            expect(res.status).not.toHaveBeenCalled();
+            expect(next).toHaveBeenCalled();
+            expect(req.user).toEqual(expect.objectContaining({ id: 1 }));
+        });
+
+        // [S-AUTH-3] Refresh-токен (type:'refresh') на access-маршруте — 401,
+        // даже если подпись прошла (в dev секреты могут совпадать).
+        test('[S-AUTH-3] rejects a token carrying type:"refresh"', async () => {
+            req.headers.authorization = 'Bearer refresh-as-access';
+            authService.isTokenBlacklisted.mockResolvedValue(false);
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
+                cb(null, { user_id: 1, type: 'refresh' });
+            });
+
+            await authenticateJWT(req, res, next);
+
             expect(res.status).toHaveBeenCalledWith(401);
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({ error: expect.objectContaining({ message: 'Account is locked' }) })
-            );
+            expect(authService.getUserForAuth).not.toHaveBeenCalled();
+            expect(next).not.toHaveBeenCalled();
         });
 
         // H-2: a deactivated user with a still-valid (not-yet-expired) access
@@ -431,7 +448,8 @@ describe('Auth Middleware', () => {
             );
         });
 
-        test('returns 401 when account is locked', async () => {
+        // [S-AUTH-1] Блокировка не мешает обновить уже выданную сессию.
+        test('[S-AUTH-1] a locked account can still refresh its session', async () => {
             req.body = { refreshToken: 'valid-refresh' };
             authService.isTokenBlacklisted.mockResolvedValue(false);
             jwt.verify.mockImplementation((token, secret, opts, cb) => {
@@ -445,10 +463,8 @@ describe('Auth Middleware', () => {
 
             await authenticateRefresh(req, res, next);
 
-            expect(res.status).toHaveBeenCalledWith(401);
-            expect(res.json).toHaveBeenCalledWith(
-                expect.objectContaining({ error: expect.objectContaining({ message: 'Account is locked' }) })
-            );
+            expect(res.status).not.toHaveBeenCalled();
+            expect(next).toHaveBeenCalled();
         });
 
         test('returns 401 when user is deactivated', async () => {
@@ -602,7 +618,8 @@ describe('Auth Middleware', () => {
             expect(next).toHaveBeenCalled();
         });
 
-        test('sets req.user to null when account is locked', async () => {
+        // [S-AUTH-1] Как и authenticateJWT: блокировка — только про вход.
+        test('[S-AUTH-1] keeps req.user for a locked account with a valid token', async () => {
             req.headers.authorization = 'Bearer valid-token';
             authService.isTokenBlacklisted.mockResolvedValue(false);
             jwt.verify.mockImplementation((token, secret, opts, cb) => {
@@ -616,7 +633,7 @@ describe('Auth Middleware', () => {
 
             await optionalAuth(req, res, next);
 
-            expect(req.user).toBeNull();
+            expect(req.user).toEqual(expect.objectContaining({ id: 1 }));
             expect(next).toHaveBeenCalled();
         });
 

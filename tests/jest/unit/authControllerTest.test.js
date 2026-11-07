@@ -134,6 +134,44 @@ describe('AuthController', () => {
             expect(res.json.mock.calls[0][0].tempToken).toBeUndefined();
         });
 
+        // [S-AUTH-2в] Число вместо строки уходило в bcrypt.compare и давало 500
+        // для существующего логина против 401 для несуществующего — оракул.
+        test('[S-AUTH-2в] non-string password → 400, service is not called', async () => {
+            req.body = { username: 'admin', password: 123 };
+
+            await authController.login(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(authService.authenticateUser).not.toHaveBeenCalled();
+        });
+
+        test('[S-AUTH-2в] non-string username → 400', async () => {
+            req.body = { username: ['admin'], password: 'admin123' };
+
+            await authController.login(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(authService.authenticateUser).not.toHaveBeenCalled();
+        });
+
+        // [S-INJ-1] Потолок на входе — защита от тела на мегабайт; существующие
+        // длинные пароли (до 1024 символов) по-прежнему проходят в сервис.
+        test('[S-INJ-1] password longer than 1024 chars → 400, 1024 passes through', async () => {
+            req.body = { username: 'admin', password: 'a'.repeat(1025) };
+            await authController.login(req, res, next);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(authService.authenticateUser).not.toHaveBeenCalled();
+
+            res.status.mockClear();
+            authService.authenticateUser.mockResolvedValue({
+                user_id: 1, username: 'admin', role: 'user', totp_enabled: false
+            });
+            authService.generateTokens.mockReturnValue({ accessToken: 'a', refreshToken: 'r' });
+            req.body = { username: 'admin', password: 'a'.repeat(1024) };
+            await authController.login(req, res, next);
+            expect(authService.authenticateUser).toHaveBeenCalledWith('admin', 'a'.repeat(1024));
+        });
+
         test('returns requires2FA for user with 2FA enabled', async () => {
             req.body = { username: 'admin', password: 'admin123' };
             authService.authenticateUser.mockResolvedValue({
