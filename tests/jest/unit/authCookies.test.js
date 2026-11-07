@@ -22,7 +22,10 @@ jest.mock('../../../src/utils/logger', () => ({
 
 const {
     COOKIE_NAMES,
+    COOKIE_PATH,
+    LEGACY_COOKIE_PATH,
     setAuthCookies,
+    setTempCookie,
     clearAuthCookies,
     extractAccessToken,
     extractRefreshToken
@@ -54,7 +57,7 @@ describe('[P1-2] authCookies utility', () => {
                     httpOnly: true,
                     secure: true,
                     sameSite: 'strict',
-                    path: '/',
+                    path: '/api',
                     maxAge: expect.any(Number)
                 })
             );
@@ -64,8 +67,36 @@ describe('[P1-2] authCookies utility', () => {
                     httpOnly: true,
                     secure: true,
                     sameSite: 'strict',
-                    path: '/'
+                    path: '/api'
                 })
+            );
+        });
+
+        // [S-PERIM-2] Path=/api: браузер не шлёт куки на /uk/* (чужой стек за
+        // тем же edge), на /map и статику. Приложение читает их только под /api.
+        test('[S-PERIM-2] cookies are scoped to /api and legacy Path=/ copies are cleared on every issue', () => {
+            setAuthCookies(res, { accessToken: 'A', refreshToken: 'R' });
+
+            for (const [, , opts] of res.cookie.mock.calls) {
+                expect(opts.path).toBe(COOKIE_PATH);
+                expect(opts.path).toBe('/api');
+            }
+            // Старые куки с Path=/ удаляются только Set-Cookie с тем же Path
+            // (RFC 6265) — иначе они жили бы до 7 дней и продолжали утекать.
+            for (const name of [COOKIE_NAMES.access, COOKIE_NAMES.refresh, COOKIE_NAMES.temp]) {
+                expect(res.clearCookie).toHaveBeenCalledWith(
+                    name, expect.objectContaining({ path: LEGACY_COOKIE_PATH })
+                );
+            }
+        });
+
+        test('[S-PERIM-2] setTempCookie also clears legacy-path cookies', () => {
+            setTempCookie(res, 'T');
+            expect(res.cookie).toHaveBeenCalledWith(
+                COOKIE_NAMES.temp, 'T', expect.objectContaining({ path: '/api' })
+            );
+            expect(res.clearCookie).toHaveBeenCalledWith(
+                COOKIE_NAMES.access, expect.objectContaining({ path: '/' })
             );
         });
 
@@ -148,14 +179,15 @@ describe('[P1-2] authCookies utility', () => {
             // [M-4] Третья кука — temp_token: выход обязан снимать и её,
             // иначе брошенный на полпути 2FA-поток оставлял бы живой
             // предъявительский токен ещё на пять минут.
-            expect(res.clearCookie).toHaveBeenCalledTimes(3);
+            // [S-PERIM-2] ×2: текущий путь /api и старый Path=/ — иначе кука,
+            // выданная до перехода, переживает logout и снова попадает в /api.
+            expect(res.clearCookie).toHaveBeenCalledTimes(6);
             // path + sameSite + secure + httpOnly must match the SET to clear
-            const accessClearOpts = res.clearCookie.mock.calls.find(c => c[0] === COOKIE_NAMES.access)[1];
-            expect(accessClearOpts).toMatchObject({
-                httpOnly: true,
-                sameSite: 'strict',
-                path: '/'
-            });
+            const accessClears = res.clearCookie.mock.calls.filter(c => c[0] === COOKIE_NAMES.access).map(c => c[1]);
+            expect(accessClears).toEqual(expect.arrayContaining([
+                expect.objectContaining({ httpOnly: true, sameSite: 'strict', path: '/api' }),
+                expect.objectContaining({ httpOnly: true, sameSite: 'strict', path: '/' })
+            ]));
         });
     });
 
@@ -389,8 +421,8 @@ describe('[P1-2] controllers emit cookies on token-issuing endpoints', () => {
         await authController.logout(req, res, jest.fn());
 
         expect(res.status).toHaveBeenCalledWith(400);
-        // [M-4] +temp_token: см. clearAuthCookies.
-        expect(res.clearCookie).toHaveBeenCalledTimes(3);
+        // [M-4] +temp_token, [S-PERIM-2] ×2 пути: см. clearAuthCookies.
+        expect(res.clearCookie).toHaveBeenCalledTimes(6);
     });
 
     test('logout accepts access token from cookie when header missing', async () => {
@@ -406,7 +438,52 @@ describe('[P1-2] controllers emit cookies on token-issuing endpoints', () => {
         await authController.logout(req, res, jest.fn());
 
         expect(authService.logout).toHaveBeenCalledWith('cookie-access-tok');
-        // [M-4] +temp_token: см. clearAuthCookies.
-        expect(res.clearCookie).toHaveBeenCalledTimes(3);
+        // [M-4] +temp_token, [S-PERIM-2] ×2 пути: см. clearAuthCookies.
+        expect(res.clearCookie).toHaveBeenCalledTimes(6);
+    });
+});
+
+// -----------------------------------------------------------------------------
+// [S-PERIM-2] Переход Path=/ → /api сквозь настоящий Express + cookie jar:
+// старая сессия → новый вход → logout → ни одной куки ни на одном пути.
+// -----------------------------------------------------------------------------
+describe('[S-PERIM-2] cookie path migration through a real response', () => {
+    const express = require('express');
+    const supertest = require('supertest');
+    const { setAuthCookies: setCookies, clearAuthCookies: clearCookies } = require('../../../src/utils/authCookies');
+
+    const parseSetCookie = (res) => (res.headers['set-cookie'] || []).map((line) => {
+        const [pair, ...attrs] = line.split(';').map((s) => s.trim());
+        const [name, value] = pair.split('=');
+        const path = (attrs.find((a) => /^Path=/i.test(a)) || 'Path=').slice(5);
+        const expired = attrs.some((a) => /^Expires=Thu, 01 Jan 1970/i.test(a) || /^Max-Age=0$/i.test(a));
+        return { name, value, path, expired };
+    });
+
+    const app = express();
+    app.post('/api/auth/login', (req, res) => { setCookies(res, { accessToken: 'A2', refreshToken: 'R2' }); res.json({ ok: true }); });
+    app.post('/api/auth/logout', (req, res) => { clearCookies(res); res.json({ ok: true }); });
+
+    test('new login clears the legacy Path=/ copies and sets Path=/api ones', async () => {
+        const res = await supertest(app).post('/api/auth/login');
+        const cookies = parseSetCookie(res);
+
+        const live = cookies.filter((c) => !c.expired);
+        expect(live.map((c) => [c.name, c.path])).toEqual(expect.arrayContaining([
+            ['access_token', '/api'], ['refresh_token', '/api']
+        ]));
+        expect(live.every((c) => c.path === '/api')).toBe(true);
+
+        const legacyClears = cookies.filter((c) => c.expired && c.path === '/').map((c) => c.name);
+        expect(legacyClears).toEqual(expect.arrayContaining(['access_token', 'refresh_token', 'temp_token']));
+    });
+
+    test('logout expires every name on BOTH paths', async () => {
+        const res = await supertest(app).post('/api/auth/logout');
+        const cookies = parseSetCookie(res);
+        expect(cookies.every((c) => c.expired)).toBe(true);
+        for (const name of ['access_token', 'refresh_token', 'temp_token']) {
+            expect(cookies.filter((c) => c.name === name).map((c) => c.path).sort()).toEqual(['/', '/api']);
+        }
     });
 });
