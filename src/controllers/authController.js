@@ -6,12 +6,21 @@ const logger = require('../utils/logger');
 // fields so the client transition can land in a follow-up PR.
 const { setAuthCookies, setTempCookie, clearAuthCookies, extractRefreshToken } = require('../utils/authCookies');
 
+// [S-INJ-1] Потолок длины пароля на входе (символы). См. комментарий в login.
+const LOGIN_PASSWORD_MAX_LENGTH = 1024;
+
 // Логин пользователя
 const login = async (req, res, next) => {
     try {
         const { username, password } = req.body;
 
-        if (!username || !password) {
+        // [S-AUTH-2в / S-INJ-1] Тип — строго строка: число уходило в
+        // bcrypt.compare и давало 500 вместо 401 (оракул «логин существует»).
+        // Верхняя граница на входе — символы, не байты bcrypt: уже выданные
+        // длинные пароли должны продолжать работать, а здесь regex не
+        // вызывается, так что 1024 — только защита от злоупотребления телом.
+        if (typeof username !== 'string' || typeof password !== 'string'
+            || !username || !password || password.length > LOGIN_PASSWORD_MAX_LENGTH) {
             return res.status(400).json({
                 error: 'Username and password are required'
             });
