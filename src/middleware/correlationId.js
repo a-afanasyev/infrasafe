@@ -6,10 +6,17 @@ const HEADER_NAME = 'x-correlation-id';
 // a crafted value (newlines, ANSI, fake log entries) is a log-injection
 // vector. Anything that isn't a UUID → generate a fresh one.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// [S-PERIM-4] Edge-nginx передаёт свой $request_id (32 hex без дефисов) в том же
+// заголовке — так строка access-лога nginx (с IP) и записи приложения
+// связываются одним идентификатором. Такой же закрытый алфавит, инъекция
+// в лог невозможна.
+const NGINX_REQUEST_ID_RE = /^[0-9a-f]{32}$/i;
+
+const isAcceptableId = (v) => typeof v === 'string' && (UUID_RE.test(v) || NGINX_REQUEST_ID_RE.test(v));
 
 const correlationId = (req, res, next) => {
     const incoming = req.headers[HEADER_NAME];
-    const id = (typeof incoming === 'string' && UUID_RE.test(incoming))
+    const id = isAcceptableId(incoming)
         ? incoming
         : crypto.randomUUID();
     req.correlationId = id;

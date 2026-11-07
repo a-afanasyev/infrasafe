@@ -61,6 +61,14 @@ describe.each(Object.entries(CONFIGS))('[аудит 05.11] %s', (slug, rel) => {
         expect(apiBlock[0]).toMatch(/X-Forwarded-For\s+\$proxy_add_x_forwarded_for/);
     });
 
+    test('[S-PERIM-4] $request_id в log_format и уходит в app заголовком X-Correlation-ID (/api/ и /health)', () => {
+        expect(src).toMatch(/log_format\s+main[\s\S]*?rid=\$request_id/);
+        const apiBlock = src.match(/location\s+\/api\/\s*\{[\s\S]*?\n\s{8}\}/)[0];
+        const healthBlock = src.match(/location\s+\/health\s*\{[\s\S]*?\n\s{8}\}/)[0];
+        expect(apiBlock).toMatch(/proxy_set_header\s+X-Correlation-ID\s+\$request_id;/);
+        expect(healthBlock).toMatch(/proxy_set_header\s+X-Correlation-ID\s+\$request_id;/);
+    });
+
     test('[H-5] скрытые пути → 404, /.well-known/ исключён', () => {
         expect(src).toMatch(/location\s+~\s+\/\\\.\(\?!well-known\/\)\s*\{\s*return 404;\s*\}/);
     });

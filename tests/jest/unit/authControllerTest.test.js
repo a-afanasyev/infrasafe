@@ -172,6 +172,39 @@ describe('AuthController', () => {
             expect(authService.authenticateUser).toHaveBeenCalledWith('admin', 'a'.repeat(1024));
         });
 
+        // [S-PERIM-4] Неудачный и удачный вход оставляют событие с IP и
+        // хэшем логина — раньше неудачный вход в логах не отражался вовсе.
+        test('[S-PERIM-4] failed login logs an auth event with ip and login_hash (no raw login)', async () => {
+            const logger = require('../../../src/utils/logger');
+            req.body = { username: 'admin', password: 'wrong' };
+            req.ip = '203.0.113.9';
+            req.correlationId = 'cid-9';
+            const err = new Error('Неверное имя пользователя или пароль');
+            err.code = 'INVALID_CREDENTIALS';
+            authService.authenticateUser.mockRejectedValue(err);
+
+            await authController.login(req, res, next);
+
+            const ev = logger.info.mock.calls.find(([m]) => m === 'auth');
+            expect(ev).toBeDefined();
+            expect(ev[1]).toEqual(expect.objectContaining({
+                event: 'login_failed', reason: 'INVALID_CREDENTIALS', ip: '203.0.113.9', correlationId: 'cid-9'
+            }));
+            expect(ev[1].login_hash).toMatch(/^[0-9a-f]{12}$/);
+            expect(JSON.stringify(ev[1])).not.toContain('"admin"');
+        });
+
+        test('[S-PERIM-4] successful login logs login_success with user_id', async () => {
+            const logger = require('../../../src/utils/logger');
+            req.body = { username: 'u', password: 'p' };
+            authService.authenticateUser.mockResolvedValue({ user_id: 5, username: 'u', role: 'user', totp_enabled: false });
+            authService.generateTokens.mockReturnValue({ accessToken: 'a', refreshToken: 'r' });
+
+            await authController.login(req, res, next);
+
+            expect(logger.info).toHaveBeenCalledWith('auth', expect.objectContaining({ event: 'login_success', user_id: 5 }));
+        });
+
         test('returns requires2FA for user with 2FA enabled', async () => {
             req.body = { username: 'admin', password: 'admin123' };
             authService.authenticateUser.mockResolvedValue({

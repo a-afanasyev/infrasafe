@@ -9,6 +9,23 @@ const { setAuthCookies, setTempCookie, clearAuthCookies, extractRefreshToken } =
 // [S-INJ-1] Потолок длины пароля на входе (символы). См. комментарий в login.
 const LOGIN_PASSWORD_MAX_LENGTH = 1024;
 
+// [S-PERIM-4, аудит 05.11.2026] События аутентификации с IP и user-agent —
+// единственное место, где они есть: сервис `req` не видит, а в nginx-логе
+// нет пользователя. correlationId — явно: middleware кладёт его в req, в
+// logger он сам не попадает. Логин — только хэшем (пользователи вставляют в
+// это поле пароль).
+const crypto = require('crypto');
+const loginHash = (login) => crypto.createHash('sha256').update(String(login)).digest('hex').slice(0, 12);
+const authEvent = (req, event, extra = {}) => {
+    logger.info('auth', {
+        event,
+        ip: req.ip,
+        ua: String(req.get?.('user-agent') || '').slice(0, 120),
+        correlationId: req.correlationId,
+        ...extra
+    });
+};
+
 // Логин пользователя
 const login = async (req, res, next) => {
     try {
@@ -39,6 +56,7 @@ const login = async (req, res, next) => {
         // токен из куки, которую браузер шлёт сам.
         if (user.totp_enabled) {
             setTempCookie(res, authService.generateTempToken(user));
+            authEvent(req, 'password_ok_2fa_pending', { user_id: user.user_id });
             return res.json({
                 success: true,
                 requires2FA: true,
@@ -49,6 +67,7 @@ const login = async (req, res, next) => {
         // Для админов без настроенного 2FA — принудительная настройка
         if (user.role === 'admin') {
             setTempCookie(res, authService.generateTempToken(user));
+            authEvent(req, 'password_ok_2fa_setup_required', { user_id: user.user_id });
             return res.json({
                 success: true,
                 requires2FASetup: true,
@@ -61,6 +80,7 @@ const login = async (req, res, next) => {
 
         // [P1-2] HttpOnly cookies are the auth delivery mechanism.
         setAuthCookies(res, tokens);
+        authEvent(req, 'login_success', { user_id: user.user_id });
 
         // [1A-FU2-S-M2] Tokens are NOT echoed in the response body —
         // the cookies above are the source of truth. Body-echoed tokens
@@ -79,6 +99,10 @@ const login = async (req, res, next) => {
 
     } catch (error) {
         // Обрабатываем специфичные ошибки сервиса
+        if (error.code === 'INVALID_CREDENTIALS' || error.code === 'ACCOUNT_DISABLED' || error.code === 'ACCOUNT_LOCKED') {
+            // [S-PERIM-4] Неудачный вход раньше не оставлял в логах ничего.
+            authEvent(req, 'login_failed', { reason: error.code, login_hash: loginHash(req.body?.username) });
+        }
         if (error.code === 'INVALID_CREDENTIALS') {
             return res.status(401).json({ error: error.message });
         }
@@ -236,6 +260,7 @@ const logout = async (req, res, next) => {
         // [P1-2] Clear both HttpOnly cookies. Browser sends a matching
         // Set-Cookie with Max-Age=0 → cookies removed immediately.
         clearAuthCookies(res);
+        authEvent(req, 'logout', { user_id: req.user?.user_id ?? req.user?.id });
 
         res.json({
             success: true,
@@ -263,6 +288,7 @@ const refreshToken = async (req, res, next) => {
         // [P1-2] Rotate cookies as part of the refresh — the new access
         // token and (rotated) refresh token become the active cookies.
         setAuthCookies(res, tokens);
+        authEvent(req, 'refresh', { user_id: req.user?.user_id ?? req.user?.id });
 
         // [1A-FU2-S-M2] No token spread — cookies are the only delivery.
         res.json({
@@ -275,6 +301,7 @@ const refreshToken = async (req, res, next) => {
         // client-error condition, not a server fault — was previously falling
         // through to next(error) and surfacing as a 500.
         if (error.code === 'INVALID_REFRESH_TOKEN' || error.code === 'USER_NOT_FOUND' || error.code === 'TOKEN_REUSE') {
+            authEvent(req, 'refresh_failed', { reason: error.code });
             return res.status(401).json({ error: error.message });
         }
 
@@ -371,6 +398,7 @@ const verify2FA = async (req, res, next) => {
             } catch (lockoutError) {
                 logger.error(`verify2FA: промах 2FA для user_id=${user.user_id} не записан: ${lockoutError.message}`);
             }
+            authEvent(req, 'twofa_failed', { user_id: user.user_id });
             return res.status(401).json({ error: 'Invalid 2FA code' });
         }
 
@@ -391,6 +419,7 @@ const verify2FA = async (req, res, next) => {
 
         // [P1-2] HttpOnly cookies are the auth delivery mechanism.
         setAuthCookies(res, tokens);
+        authEvent(req, 'login_success', { user_id: user.user_id, method: result.method || 'totp' });
 
         // [1A-FU2-S-M2] No token spread — cookies only.
         res.json({

@@ -1,8 +1,22 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const { createError } = require('../utils/helpers');
+const { metricsQuery } = require('../config/thresholds');
+
+// Числовые столбцы metrics — те, по которым считаются агрегаты. Зеркало
+// NUMERIC_METRIC_FIELDS в metricService (там — для валидации входа).
+const NUMERIC_METRIC_COLUMNS = Object.freeze([
+    'electricity_ph1', 'electricity_ph2', 'electricity_ph3',
+    'amperage_ph1', 'amperage_ph2', 'amperage_ph3',
+    'cold_water_pressure', 'cold_water_temp',
+    'hot_water_in_pressure', 'hot_water_out_pressure',
+    'hot_water_in_temp', 'hot_water_out_temp',
+    'air_temp', 'humidity'
+]);
 
 class Metric {
+    static get NUMERIC_METRIC_COLUMNS() { return NUMERIC_METRIC_COLUMNS; }
+    static get MAX_ROWS() { return metricsQuery.maxRows; }
     /**
      * Получить все метрики с пагинацией и сортировкой
      * @param {number} page - Номер страницы
@@ -89,10 +103,13 @@ class Metric {
      * @param {number} controllerId - ID контроллера
      * @param {string} startDate - Начальная дата (опционально)
      * @param {string} endDate - Конечная дата (опционально)
-     * @param {number} limit - Максимальное количество записей (опционально)
-     * @returns {Promise<Array>} - Массив метрик
+     * @param {number} [limit=metricsQuery.maxRows] - Потолок строк. [S-INJ-2]
+     *   LIMIT стоит ВСЕГДА: без него один запрос за всю историю контроллера
+     *   тянул десятки тысяч строк в кучу и в кэш. Агрегаты за период считает
+     *   aggregateByControllerId в SQL — этот метод отдаёт только сырые строки.
+     * @returns {Promise<Array>} - Массив метрик (новые первыми)
      */
-    static async findByControllerId(controllerId, startDate, endDate, limit) {
+    static async findByControllerId(controllerId, startDate, endDate, limit = metricsQuery.maxRows) {
         try {
             let query = `
                 SELECT * FROM metrics
@@ -115,17 +132,59 @@ class Metric {
 
             query += ` ORDER BY timestamp DESC`;
 
-            // SEC-002: add LIMIT to prevent unbounded result sets
-            if (limit && Number.isInteger(limit) && limit > 0) {
-                query += ` LIMIT $${params.length + 1}`;
-                params.push(limit);
-            }
+            // SEC-002 / [S-INJ-2]: LIMIT всегда; кривое значение → потолок.
+            const safeLimit = Number.isInteger(limit) && limit > 0
+                ? Math.min(limit, metricsQuery.maxRows)
+                : metricsQuery.maxRows;
+            query += ` LIMIT $${params.length + 1}`;
+            params.push(safeLimit);
 
             const { rows } = await db.query(query, params);
             return rows;
         } catch (error) {
             logger.error(`Error in Metric.findByControllerId: ${error.message}`);
             throw createError(`Failed to fetch metrics for controller: ${error.message}`);
+        }
+    }
+
+    /**
+     * [S-INJ-2] Агрегаты за период — в SQL, по ВСЕМ строкам периода, а не по
+     * обрезанной выборке findByControllerId: при одном измерении в минуту
+     * неделя даёт 10 080 строк, и LIMIT 5000 прятал бы старые экстремумы.
+     * Форма ответа совпадает с прежним aggregateMetrics (JS), чтобы потребители
+     * GET /metrics/controller/:id/aggregated ничего не заметили.
+     * @returns {Promise<Object>} { count, period:{start,end}, <поле>:{min,max,avg,count}|null }
+     */
+    static async aggregateByControllerId(controllerId, startDate, endDate) {
+        try {
+            const aggExpr = NUMERIC_METRIC_COLUMNS.map((c) =>
+                `MIN(${c})::float AS ${c}_min, MAX(${c})::float AS ${c}_max, ` +
+                `AVG(${c})::float AS ${c}_avg, COUNT(${c})::int AS ${c}_count`
+            ).join(',\n                    ');
+            const { rows } = await db.query(
+                `SELECT COUNT(*)::int AS count,
+                        MIN(timestamp) AS period_start,
+                        MAX(timestamp) AS period_end,
+                        ${aggExpr}
+                   FROM metrics
+                  WHERE controller_id = $1
+                    AND timestamp BETWEEN $2 AND $3`,
+                [controllerId, startDate, endDate]
+            );
+            const r = rows[0];
+            if (!r || r.count === 0) {
+                return { count: 0, period: null };
+            }
+            const aggregated = { count: r.count, period: { start: r.period_start, end: r.period_end } };
+            for (const c of NUMERIC_METRIC_COLUMNS) {
+                aggregated[c] = r[`${c}_count`] > 0
+                    ? { min: r[`${c}_min`], max: r[`${c}_max`], avg: r[`${c}_avg`], count: r[`${c}_count`] }
+                    : null;
+            }
+            return aggregated;
+        } catch (error) {
+            logger.error(`Error in Metric.aggregateByControllerId: ${error.message}`);
+            throw createError(`Failed to aggregate metrics for controller: ${error.message}`);
         }
     }
 

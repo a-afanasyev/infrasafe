@@ -171,6 +171,17 @@ class CacheService {
     async set(key, data, options = {}) {
         const ttl = options.ttl || this.defaultTTL;
 
+        // [S-INJ-2] Предел L1 держится синхронно, а не раз в минуту таймером:
+        // между двумя тиками cleanupMemoryCache сюда можно было положить
+        // сколько угодно записей (каждый уникальный диапазон дат — своя).
+        // Map хранит порядок вставки, поэтому «самая старая» — первый ключ.
+        // ponytail: O(1) по порядку вставки, не по timestamp; при повторном
+        // set того же ключа позиция не меняется — для кэша с TTL достаточно.
+        if (!this.analyticsCache.has(key) && this.analyticsCache.size >= this.maxMemoryItems) {
+            const oldest = this.analyticsCache.keys().next().value;
+            this.analyticsCache.delete(oldest);
+        }
+
         // Memory cache
         this.analyticsCache.set(key, {
             data,
