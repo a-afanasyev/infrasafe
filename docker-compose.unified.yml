@@ -180,7 +180,7 @@ services:
 
   # База данных PostgreSQL с PostGIS
   postgres:
-    image: postgis/postgis:15-3.5@sha256:2a60827705ad26af212f31ca6ed4884f9fa95fffbe7eed5be516fece1bca25f8
+    image: postgis/postgis:15-3.6@sha256:91098df530c92202d69193ded45dd47e6d0b6a3117a6398b0abe2be365f23550
 
     # [SEC-2] DB credentials sourced from .env / .env.prod (both gitignored).
     # Same dual-file pattern as the app service: dev uses .env, prod uses
