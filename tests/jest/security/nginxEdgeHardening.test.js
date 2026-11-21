@@ -90,6 +90,8 @@ describe('SEC-22 — /uk/api/ prefix-allowlist + edge rate-limit', () => {
             '/uk/api/v2/auto-manager-config(/|$)',
             // Запрос УК 16.11.2026. «Уборка»: дашборд менеджера + Mini App.
             '/uk/api/v2/cleaning(/|$)',
+            // Запрос УК 21.11.2026. «Паспорт дома»: дашборд, фото, выгрузка.
+            '/uk/api/v2/passports(/|$)',
         ]) {
             expect(conf).toContain(p);
         }
