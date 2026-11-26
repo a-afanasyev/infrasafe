@@ -37,6 +37,8 @@ LOG_CONSOLE_ONLY=false   # [R2-37] true|1 → только stdout (снять д
 # Планировщик материализованных представлений (Sprint 6 / P0-6)
 MV_REFRESH_ENABLED=true                  # в тестах false; иначе не трогать
 MV_REFRESH_INTERVAL_SECONDS=60           # по умолчанию 60, зажат в [10, 3600]
+INTEGRATION_LOG_RETENTION_ENABLED=true   # [A12-10] суточная очистка integration_log; false — рубильник
+INTEGRATION_LOG_RETENTION_DAYS=90        # срок хранения журнала интеграции с УК, зажат в [30, 365]
 
 # Интеграция с УК — секреты только в ENV (Sprint 9 / FIX-007, разделение по O5):
 INFRASAFE_WEBHOOK_SECRET   # Проверка УК→InfraSafe (подписывает УК, проверяем мы).

@@ -284,6 +284,14 @@ if (require.main === module) {
             } catch (e) {
                 logger.error('Controller status scheduler failed to start:', e);
             }
+
+            // [A12-10] Суточная очистка integration_log по сроку хранения
+            // (INTEGRATION_LOG_RETENTION_DAYS, по умолчанию 90).
+            try {
+                require('./services/uk/integrationLogRetention').start();
+            } catch (e) {
+                logger.error('Integration log retention failed to start:', e);
+            }
         })
         .catch((error) => {
             logger.error(`Ошибка инициализации базы данных: ${error.message}`);
@@ -321,6 +329,7 @@ const gracefulShutdown = async (signal, exitCode = 0) => {
         ['Alert verification', './services/alertVerificationService'],
         ['UK intent reconciler', './services/uk/alertIntentReconciler'],
         ['Controller status scheduler', './services/controllerStatusScheduler'],
+        ['Integration log retention', './services/uk/integrationLogRetention'],
     ];
     const workersStopped = Promise.all(workers.map(async ([label, mod]) => {
         try { await require(mod).stop(); } catch (e) { logger.error(`${label} stop error: ${e.message}`); }
