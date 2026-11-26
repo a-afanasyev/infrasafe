@@ -158,7 +158,7 @@ router.use(mutationAudit);
  * /:
  *   get:
  *     summary: Информация об API
- *     description: Возвращает базовую информацию о версии API
+ *     description: Возвращает имя и статус API (версия не раскрывается)
  *     responses:
  *       200:
  *         description: Информация об API
@@ -169,18 +169,17 @@ router.use(mutationAudit);
  *               properties:
  *                 name:
  *                   type: string
- *                 version:
- *                   type: string
  *                 status:
  *                   type: string
  */
 // [M-16] Корневой маршрут API — публичный, без auth (PUBLIC_ROUTES). Больше не
 // перечисляет все эндпоинты (включая /api/admin и /api-docs): это была карта
 // поверхности API, отдаваемая любому анонимному вызывающему без надобности.
+// [аудит #12] По той же причине убрана версия приложения: анониму она нужна
+// только для подбора уязвимостей под конкретный релиз.
 router.get('/', (req, res) => {
     res.json({
         name: 'InfraSafe Habitat IQ API',
-        version: '1.0.1',
         status: 'healthy'
     });
 });
