@@ -131,11 +131,11 @@ cp .env.prod .env.prod.bak.p0-5-$(date +%Y%m%d%H%M%S)
 # Edit .env.prod — change DB_USER and DB_PASSWORD:
 $EDITOR .env.prod
 # DB_USER=infrasafe_runtime          # was: infrasafe_app
-# DB_PASSWORD=<REDACTED: ротирован, см. .env.prod на хосте>   # was: @ppl1c@ti0n
+# DB_PASSWORD=<REDACTED: ротирован, см. .env.prod на хосте>   # was: <REDACTED>
 ```
 
 If you also use `docker-compose.unified.yml`'s inline env (it currently
-has `DB_USER=infrasafe_app` / `DB_PASSWORD=@ppl1c@ti0n` hardcoded at
+has `DB_USER=infrasafe_app` / `DB_PASSWORD=<REDACTED>` hardcoded at
 lines 35–36), update those too — or better, switch them to read from
 `.env.prod` via `env_file: .env.prod`. (That env-file migration is
 [P1-V13] / [P1-V6] follow-up; for this rollout, hardcoded inline still

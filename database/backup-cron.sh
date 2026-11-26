@@ -65,6 +65,9 @@ fi
 : "${DB_NAME:=infrasafe}"
 : "${DB_USER:?DB_USER is required — refusing to fall back to a hardcoded value}"
 : "${PGPASSWORD:?PGPASSWORD is required — pass via env, not on the command line}"
+# Экспорт обязателен: `docker exec -e PGPASSWORD` (без значения) и прямой pg_dump
+# берут пароль из окружения этого процесса.
+export PGPASSWORD
 
 : "${BACKUP_LOCAL_DIR:=/var/backups/infrasafe}"
 : "${RETENTION_DAYS:=30}"
@@ -98,8 +101,10 @@ dump_cmd=(
 )
 
 if [[ -n "$POSTGRES_CONTAINER" ]]; then
-    # Pipe via docker exec — PGPASSWORD inherits via -e.
-    if ! docker exec -e PGPASSWORD="$PGPASSWORD" "$POSTGRES_CONTAINER" \
+    # [аудит #13] `-e PGPASSWORD` БЕЗ значения: docker берёт его из своего
+    # окружения. Форма `-e PGPASSWORD="$PGPASSWORD"` разворачивалась в argv
+    # docker CLI, и пароль был виден любому пользователю хоста в `ps`.
+    if ! docker exec -e PGPASSWORD "$POSTGRES_CONTAINER" \
             pg_dump --username="$DB_USER" --dbname="$DB_NAME" \
             --clean --if-exists --no-owner --no-privileges \
          | gzip -9 > "$tmp"; then

@@ -22,8 +22,8 @@
 # Required env:
 #   MIGRATE_COMPOSE_FILE   compose file(s). ONE filename (prod: docker-compose.unified.yml)
 #                          OR a whitespace-separated LIST that the runner splits into
-#                          multiple `-f` args (staging: "docker-compose.unified.yml
-#                          docker-compose.staging.yml") so `compose exec/images` validate
+#                          multiple `-f` args (profk: "docker-compose.unified.yml
+#                          docker-compose.profk.yml") so `compose exec/images` validate
 #                          against the SAME network/volume model as the deploy — a
 #                          base-only file mis-validates an override that removes/changes
 #                          external networks.

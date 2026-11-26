@@ -12,7 +12,7 @@
 
 **Главные риски:**
 1. **Нет CI/CD** — тесты запускаются только вручную, нет автоматической проверки PR
-2. **Хардкоженные секреты** в `docker-compose.unified.yml` (пароль БД `@ppl1c@ti0n`, IP-адрес сервера `95.46.96.105` в комментарии)
+2. **Хардкоженные секреты** в `docker-compose.unified.yml` (пароль БД `<REDACTED>`, IP-адрес сервера `95.46.96.105` в комментарии)
 3. **Нет TLS** настройки в prod docker-compose (Let's Encrypt сертификаты монтируются в unified, но не в `docker-compose.prod.yml`)
 4. **Монолитный фронтенд** — `admin.js` (2977 строк), `script.js` (2066 строк)
 5. **Нет ESLint конфигурации** в корне проекта — `npm run lint` фактически бесполезен
@@ -117,8 +117,8 @@ docs/                   — 80+ MD-файлов
 
 | Файл | Строка | Проблема | Severity |
 |------|--------|----------|----------|
-| `docker-compose.unified.yml` | 36 | `DB_PASSWORD=@ppl1c@ti0n` | 🔴 CRITICAL |
-| `docker-compose.unified.yml` | 52 | `POSTGRES_PASSWORD=@ppl1c@ti0n` | 🔴 CRITICAL |
+| `docker-compose.unified.yml` | 36 | `DB_PASSWORD=<REDACTED>` | 🔴 CRITICAL |
+| `docker-compose.unified.yml` | 52 | `POSTGRES_PASSWORD=<REDACTED>` | 🔴 CRITICAL |
 | `docker-compose.unified.yml` | 144 | IP-адрес `95.46.96.105` (в комментарии) | 🟡 MEDIUM |
 | `docker-compose.dev.yml` | 72-73 | `DB_PASSWORD=postgres`, JWT fallbacks `dev-secret-key-*` | ✅ OK (dev only) |
 | `src/services/ukIntegrationService.js` | 41-43 | `●●●●●●●●` — маскирование для API ответа | ✅ OK (не утечка) |
@@ -351,7 +351,7 @@ docs/                   — 80+ MD-файлов
 | Проблема | Severity | Детали |
 |----------|----------|--------|
 | `.env` файл существует | ⚠️ MEDIUM | Содержит `UK_WEBHOOK_SECRET`, в .gitignore — но если был закоммичен ранее, секрет в git history |
-| `docker-compose.unified.yml` | 🔴 CRITICAL | `DB_PASSWORD=@ppl1c@ti0n` хардкожен, **закоммичен в git** |
+| `docker-compose.unified.yml` | 🔴 CRITICAL | `DB_PASSWORD=<REDACTED>` хардкожен, **закоммичен в git** |
 | JWT fallback secrets | ⚠️ MEDIUM | `dev-secret-key-change-in-production` в dev compose — OK для dev, но опасно если забыть сменить |
 | IP-адрес сервера | 🟡 LOW | `95.46.96.105` в закомментированном WireGuard — утечка infra-информации |
 
@@ -546,7 +546,7 @@ cors({ origin: process.env.CORS_ORIGINS?.split(',') || 'http://localhost:8080', 
 ### C1. Хардкоженные секреты в git
 
 **Файл:** `docker-compose.unified.yml`, строки 36, 52
-**Проблема:** Пароль БД `@ppl1c@ti0n` закоммичен в git-историю
+**Проблема:** Пароль БД `<REDACTED>` закоммичен в git-историю
 **Решение:**
 1. Вынести все секреты в `.env.prod` (уже в .gitignore)
 2. Использовать `${DB_PASSWORD}` вместо литералов

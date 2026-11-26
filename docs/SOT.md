@@ -545,7 +545,7 @@ InfraSafe                         UK Bot
 - Replay protection (300s tolerance)
 - Timing-safe comparison
 - Idempotent маппинг (UNIQUE constraint + insert-first)
-- Секреты: UK_WEBHOOK_SECRET, UK_SERVICE_USER, UK_SERVICE_PASSWORD — только в ENV
+- Секреты: UK_WEBHOOK_SECRET — только в ENV
 
 **Фазы:**
 1. Фундамент (БД, модели, маршруты, админ UI, логирование) — DONE
@@ -661,8 +661,6 @@ Express → metricController.receiveTelemetry → DB insert + trigger update_hea
 
 **UK-интеграция (только ENV, не в БД):**
 - `UK_WEBHOOK_SECRET` — HMAC-SHA256 shared secret
-- `UK_SERVICE_USER` — сервисная учётная запись
-- `UK_SERVICE_PASSWORD` — пароль сервисной учётной записи
 
 **UK-интеграция (в БД, управляется через admin UI):**
 - `uk_integration_enabled`, `uk_api_url`, `uk_frontend_url`

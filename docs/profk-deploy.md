@@ -33,8 +33,10 @@ below for the one-time cutover (host-build remains the break-glass path).
 3. **Repo**: cloned to `/opt/infrasafe` (owned by `infrasafe`).
 4. **`.env.prod`** (gitignored): copied from the current prod, then domain fields retargeted —
    `CORS_ORIGINS=https://profk.uz`, `UK_API_URL=https://profk.uz/uk`, `UK_API_ALLOWED_HOSTS=profk.uz`.
-   `.env → .env.prod` symlink (SEC-15). *(Secrets are currently shared with the soon-to-be staging
-   box — rotation planned.)*
+   `.env → .env.prod` symlink (SEC-15).
+4a. **`.env.db`** (gitignored, audit #12 A12-17): `cp .env.db.example .env.db && chmod 600 .env.db`,
+   set `POSTGRES_PASSWORD` (bootstrap superuser `infrasafe_app`). Only the postgres container reads
+   this file; `.env.prod` must NOT contain `POSTGRES_PASSWORD` — the app runs as `infrasafe_runtime`.
 5. **`redis-config/redis.conf`** (gitignored): `cp redis.conf.example redis.conf` + `requirepass` =
    the password already in `REDIS_URL` (see `redis-config/README.md`).
 6. **Generate the init bundle** (gitignored, `.deploy/`):
@@ -45,8 +47,11 @@ below for the one-time cutover (host-build remains the break-glass path).
        database/init/07_*.sql database/init/08_*.sql database/init/09_*.sql \
        database/init/99_*.sql > .deploy/profk-initdb.sql
    ```
-   *(Note: `02_seed_data.sql` is the demo Tashkent dataset + `admin/admin123`. It was included in the
-   bootstrap then PURGED after go-live — see step 11. Omit it here for a genuinely clean bootstrap.)*
+   *(Note: `02_seed_data.sql` is the demo Tashkent dataset only — it creates NO users (audit #12,
+   A12-16). The first admin is created after bootstrap with `src/cli/create-admin.js`, see step 9a.
+   Omit `02_*.sql` here for a genuinely clean bootstrap; the demo data was purged on profk after
+   go-live — step 11. The dev-only admin lives in `database/dev-seed/` and must never be added to
+   this bundle.)*
 7. **External networks** (base declares them `external: true`):
    ```
    docker network create infrasafe_infrasafe-network
@@ -70,6 +75,12 @@ below for the one-time cutover (host-build remains the break-glass path).
    docker exec infrasafe-postgres-1 psql -U infrasafe_app -d infrasafe \
      -c "ALTER ROLE infrasafe_runtime LOGIN PASSWORD '$PW'"; unset PW
    ```
+9a. **First admin** (the init bundle creates no users):
+   ```
+   docker compose -f docker-compose.unified.yml -f docker-compose.profk.yml exec \
+     -e ADMIN_PASSWORD='<strong password>' app node src/cli/create-admin.js <username> <email>
+   ```
+   Run it after step 10 has started `app`. Log in, complete 2FA setup, change the password.
 10. **App + edge**: `up -d redis app`; extract dist (`scripts/rebuild-frontend.sh prepare && publish`);
     `certbot certonly --standalone -d profk.uz` (then switch renewal to **webroot** — authenticator +
     `webroot_path=/opt/infrasafe/certbot-webroot`, which nginx serves at `/.well-known/acme-challenge/`);

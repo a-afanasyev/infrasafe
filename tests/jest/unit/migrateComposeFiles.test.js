@@ -1,5 +1,5 @@
 // R2-15 Phase A: scripts/migrate.sh must accept the SAME compose `-f` set as the
-// deploy. On staging the override removes/changes the prod-only external networks,
+// deploy. On an overlay host the override removes/changes the prod-only external networks,
 // so a base-only `docker compose exec/images` mis-validates the network model.
 // MIGRATE_COMPOSE_FILE therefore may carry ONE filename (backward-compatible) OR a
 // whitespace-separated LIST that the runner splits into `-f a -f b`.
@@ -51,10 +51,10 @@ describe('migrate.sh compose-file set (R2-15 Phase A)', () => {
         ]);
     });
 
-    test('a whitespace-separated list expands to -f per file (staging)', () => {
-        expect(expand('docker-compose.unified.yml docker-compose.staging.yml')).toEqual([
+    test('a whitespace-separated list expands to -f per file (profk)', () => {
+        expect(expand('docker-compose.unified.yml docker-compose.profk.yml')).toEqual([
             '-f', 'docker-compose.unified.yml',
-            '-f', 'docker-compose.staging.yml',
+            '-f', 'docker-compose.profk.yml',
         ]);
     });
 });
