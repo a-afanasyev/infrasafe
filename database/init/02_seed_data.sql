@@ -169,10 +169,12 @@ INSERT INTO public.controllers (controller_id, serial_number, vendor, model, bui
 -- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: -
 --
 
--- DEV/TEST ONLY — prod has no users (database.sql ships no seed users).
--- The first admin in production is bootstrapped via src/cli/create-admin.js. SEC-13.
--- This dev seed (admin/admin123) is required by the test suite + E2E globalSetup; do not delete.
-INSERT INTO public.users (user_id, username, email, password_hash, full_name, role, is_active, created_at, updated_at, last_login) VALUES (55, 'admin', 'admin@infrasafe.com', '$2b$12$vSY6.Py5CkugrpdOE2Cj.OwUIcqB75gQ2MDMxm/NRGKd3R5LApKKe', NULL, 'admin', true, '2025-10-31 11:16:19.469741+00', '2025-10-31 11:16:35.514444+00', '2025-11-15 10:00:00.303315+00');
+-- [A12-16, аудит 16.11.2026] Пользователей здесь НЕТ и быть не должно.
+-- Этот файл лежит в database/init/ и попадает в боевой bootstrap (profk собирает
+-- init-бандл из этого каталога), а раньше он создавал администратора с известным
+-- паролем. Первый администратор на боевой площадке заводится через
+-- src/cli/create-admin.js. Тестовый администратор для разработки и E2E —
+-- database/dev-seed/dev_admin.sql, его подключает ТОЛЬКО docker-compose.dev.yml.
 
 
 --

@@ -52,7 +52,7 @@ Delete:
 В `docker-compose.unified.yml` строка 36, заменить:
 
 ```yaml
-      - DB_PASSWORD=@ppl1c@ti0n
+      - DB_PASSWORD=<REDACTED>
 ```
 
 на:
@@ -67,7 +67,7 @@ Delete:
 
 ```yaml
     environment:
-      - POSTGRES_PASSWORD=@ppl1c@ti0n
+      - POSTGRES_PASSWORD=<REDACTED>
       - POSTGRES_USER=infrasafe_app
       - POSTGRES_DB=infrasafe
 ```
@@ -101,7 +101,7 @@ Expected: команда завершается без ошибок (exit code 0
 git add docker-compose.unified.yml
 git commit -m "fix(security): remove hardcoded secrets and dead config from unified compose
 
-- Replace DB_PASSWORD=@ppl1c@ti0n with env variable reference
+- Replace DB_PASSWORD=<REDACTED> with env variable reference
 - Replace POSTGRES_PASSWORD with env variable reference
 - Remove 90 lines of commented-out services (Mosquitto, InfluxDB, Grafana, Node-RED, WireGuard)
 - Remove leaked server IP address 95.46.96.105 from WireGuard comment"

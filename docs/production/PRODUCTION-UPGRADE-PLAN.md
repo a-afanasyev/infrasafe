@@ -20,7 +20,7 @@
 
 ### 0.1 Ротация и вынос секретов из git
 
-**Проблема:** `docker-compose.unified.yml` содержит `DB_PASSWORD=@ppl1c@ti0n` (строки 36, 52), что закоммичено в историю git.
+**Проблема:** `docker-compose.unified.yml` содержит `DB_PASSWORD=<REDACTED>` (строки 36, 52), что закоммичено в историю git.
 
 **Действия:**
 
@@ -60,7 +60,7 @@ EOF
 
 ```yaml
 # Было:
-- DB_PASSWORD=@ppl1c@ti0n
+- DB_PASSWORD=<REDACTED>
 # Стало:
 - DB_PASSWORD=${DB_PASSWORD}
 ```
@@ -690,7 +690,7 @@ Endpoint `/metrics` (protect с isAdmin или отдельным bearer token).
 ```
 Pre-deploy:
 [ ] .env.prod создан с уникальными секретами (НЕ дефолтные)
-[ ] DB_PASSWORD ≠ @ppl1c@ti0n, ≠ postgres (сгенерирован openssl)
+[ ] DB_PASSWORD ≠ <REDACTED>, ≠ postgres (сгенерирован openssl)
 [ ] JWT_SECRET и JWT_REFRESH_SECRET сгенерированы (openssl rand -base64 64)
 [ ] UK_WEBHOOK_SECRET сгенерирован (openssl rand -hex 32)
 [ ] TLS сертификат установлен и nginx настроен

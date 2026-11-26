@@ -297,9 +297,10 @@ describe('update-production.sh image-source wiring (R2-15)', () => {
     });
 });
 
-// R2-15 Phase A: DEPLOY_ENV parameterization (prod=profk | staging | infrasafe).
-// `prod` selects the profk compose override + profk.uz URLs. `staging` selects
-// the future staging override + staging.infrasafe.uz. `infrasafe` is the SECOND
+// R2-15 Phase A: DEPLOY_ENV parameterization (prod=profk | infrasafe).
+// `prod` selects the profk compose override + profk.uz URLs. Профиль `staging`
+// удалён (аудит #12, A12-16): его оверлей подключал dev-сид с известным паролем
+// администратора, а самой площадки не существует. `infrasafe` is the SECOND
 // live prod host (.105, the original infrasafe.uz) — plain docker-compose.unified.yml,
 // no overlay, exactly the pre-R2-15-Phase-A behavior for that host.
 describe('update-production.sh DEPLOY_ENV parameterization (R2-15 Phase A)', () => {
@@ -330,24 +331,19 @@ describe('update-production.sh DEPLOY_ENV parameterization (R2-15 Phase A)', () 
 
     test('prod selects the profk compose set + profk.uz edge/verify URLs', () => {
         const prodIdx = SCRIPT.indexOf('    prod)');
-        const stagingIdx = SCRIPT.indexOf('    staging)');
+        const infrasafeIdx = SCRIPT.indexOf('    infrasafe)');
         expect(prodIdx).toBeGreaterThan(-1);
-        expect(stagingIdx).toBeGreaterThan(prodIdx);
-        const prodBranch = SCRIPT.slice(prodIdx, stagingIdx);
+        expect(infrasafeIdx).toBeGreaterThan(prodIdx);
+        const prodBranch = SCRIPT.slice(prodIdx, infrasafeIdx);
         expect(prodBranch).toMatch(/COMPOSE_FILES=\(docker-compose\.unified\.yml docker-compose\.profk\.yml\)/);
         expect(prodBranch).toMatch(/ENV_FILE="\.env\.prod"/);
         expect(prodBranch).toMatch(/https:\/\/profk\.uz\/health/);
         expect(prodBranch).toMatch(/VERIFY_URL_BASE:-https:\/\/profk\.uz/);
     });
 
-    test('staging selects the staging compose set + staging.infrasafe.uz URLs', () => {
-        const stagingIdx = SCRIPT.indexOf('    staging)');
-        const infrasafeIdx = SCRIPT.indexOf('    infrasafe)');
-        expect(infrasafeIdx).toBeGreaterThan(stagingIdx);
-        const stagingBranch = SCRIPT.slice(stagingIdx, infrasafeIdx);
-        expect(stagingBranch).toMatch(/COMPOSE_FILES=\(docker-compose\.unified\.yml docker-compose\.staging\.yml\)/);
-        expect(stagingBranch).toMatch(/ENV_FILE="\.env\.staging"/);
-        expect(stagingBranch).toMatch(/staging\.infrasafe\.uz/);
+    test('профиля staging нет: DEPLOY_ENV=staging падает как неизвестный', () => {
+        expect(SCRIPT).not.toMatch(/^\s*staging\)/m);
+        expect(SCRIPT).not.toMatch(/docker-compose\.staging\.yml|\.env\.staging/);
     });
 
     test('infrasafe selects the plain unified compose set (no overlay) + infrasafe.uz URLs', () => {
@@ -362,7 +358,7 @@ describe('update-production.sh DEPLOY_ENV parameterization (R2-15 Phase A)', () 
     });
 
     test('an unknown DEPLOY_ENV fails closed (no default host/compose fallthrough)', () => {
-        expect(SCRIPT).toMatch(/\*\)\s*echo "❌ bad DEPLOY_ENV=\$DEPLOY_ENV \(want prod\|staging\|infrasafe\)"[^\n]*exit 1/);
+        expect(SCRIPT).toMatch(/\*\)\s*echo "❌ bad DEPLOY_ENV=\$DEPLOY_ENV \(want prod\|infrasafe\)"[^\n]*exit 1/);
     });
 
     test('every docker compose call uses the ${COMPOSE_ARGS[@]} set — incl. rollback + switch', () => {
@@ -385,10 +381,9 @@ describe('update-production.sh DEPLOY_ENV parameterization (R2-15 Phase A)', () 
         expect(SCRIPT).toMatch(/BRANCH="\$\{DEPLOY_BRANCH:-\$\(git branch --show-current\)\}"/);
     });
 
-    test('SEC-15 env check is per-env, and staging fails closed on a stray .env.prod', () => {
+    test('SEC-15 env check is per-env', () => {
         expect(SCRIPT).toMatch(/test -f "\$ENV_FILE"/);
         expect(SCRIPT).toMatch(/readlink -f "\$ENV_FILE"/);
-        expect(SCRIPT).toMatch(/DEPLOY_ENV" = "staging" \] && \[ -e \.env\.prod \]/);
     });
 
     test('VERIFY_URL_BASE is exported so rebuild-frontend.sh verifies the right domain', () => {

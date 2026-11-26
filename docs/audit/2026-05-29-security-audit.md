@@ -90,7 +90,7 @@ different secret so are already rejected. **Confirmed by reading the code. Fix i
 ### 🟠 HIGH
 
 **SEC-2 — Hardcoded Postgres password committed** · `docker-compose.unified.yml:128`
-`POSTGRES_PASSWORD=@ppl1c@ti0n` in a git-tracked compose file. Anyone with repo read access has
+`POSTGRES_PASSWORD=<REDACTED>` in a git-tracked compose file. Anyone with repo read access has
 the DB password. **Fix**: move to `env_file: .env`/`.env.prod` (as `docker-compose.prod.yml`
 already does); rotate the password.
 

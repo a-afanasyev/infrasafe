@@ -132,6 +132,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      # [A12-16] Тестовый администратор должен существовать до первого входа E2E.
+      dev-seed:
+        condition: service_completed_successfully
     networks:
       - infrasafe-dev
     restart: unless-stopped
@@ -234,6 +237,31 @@ services:
       -c shared_preload_libraries=pg_stat_statements
     labels:
       - "description=PostgreSQL with PostGIS for Development"
+      - "version=dev"
+
+  # [A12-16, аудит 16.11.2026] Тестовый администратор (admin / admin123).
+  # Раньше он создавался init-скриптом из database/init/, а тот же каталог идёт
+  # в боевой bootstrap. Теперь сид лежит отдельно (database/dev-seed/) и
+  # накатывается этим одноразовым сервисом — только здесь, в dev-compose.
+  # Отдельный сервис, а не ещё один файл в /docker-entrypoint-initdb.d: каталог
+  # init примонтирован целиком и только на чтение, подмонтировать в него файл
+  # из другого места нельзя, не создав заглушку в рабочем дереве.
+  # Файл идемпотентен — сервис отрабатывает при каждом `up`.
+  dev-seed:
+    image: postgis/postgis:15-3.5@sha256:2a60827705ad26af212f31ca6ed4884f9fa95fffbe7eed5be516fece1bca25f8
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - PGPASSWORD=postgres
+    volumes:
+      - ./database/dev-seed:/dev-seed:ro
+    entrypoint: ["psql", "-h", "postgres", "-U", "postgres", "-d", "infrasafe", "-v", "ON_ERROR_STOP=1", "-f", "/dev-seed/dev_admin.sql"]
+    networks:
+      - infrasafe-dev
+    restart: "no"
+    labels:
+      - "description=InfraSafe dev-only admin seed (one-shot)"
       - "version=dev"
 
   # 🔧 Дополнительный сервис для разработки - файл watcher (опционально)

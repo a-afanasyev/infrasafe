@@ -250,6 +250,7 @@ npm run test:e2e          # E2E через Docker (запустить конте
 
 ```bash
 cp .env.example .env
+cp .env.db.example .env.db && chmod 600 .env.db   # только POSTGRES_PASSWORD, читает только контейнер БД
 openssl rand -base64 32    # DB_PASSWORD
 openssl rand -base64 64    # JWT_SECRET, JWT_REFRESH_SECRET
 openssl rand -base64 32    # TOTP_ENCRYPTION_KEY (2FA)

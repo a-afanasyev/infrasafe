@@ -307,3 +307,54 @@ describe('.env.example покрывает обязательные переме�
         }
     );
 });
+
+// [A12-17, аудит 16.11.2026] Пароль суперпользователя БД приложению не нужен:
+// оно ходит под ролью рантайма. После разделения env-файлов POSTGRES_PASSWORD
+// живёт в .env.db; если он остался в .env.prod, приложение по-прежнему держит
+// его в окружении. Это предупреждение, а не отказ старта: падение на проде из-за
+// неубранной строки хуже самой строки.
+describe('validateEnv — POSTGRES_PASSWORD в окружении приложения (A12-17)', () => {
+    const logger = require('../../../src/utils/logger');
+    const ORIGINAL = { ...process.env };
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        setValidProdEnv();
+        delete process.env.POSTGRES_PASSWORD;
+    });
+
+    afterEach(() => {
+        process.env = { ...ORIGINAL };
+    });
+
+    const postgresWarnings = () => logger.warn.mock.calls.map((args) => args.join(' ')).filter((line) => /POSTGRES_PASSWORD/.test(line));
+
+    test('предупреждает и не останавливает старт', () => {
+        process.env.POSTGRES_PASSWORD = 'superuser-secret-value';
+
+        expect(() => validateEnv()).not.toThrow();
+        const warnings = postgresWarnings();
+        expect(warnings.length).toBe(1);
+        expect(warnings[0]).toMatch(/\.env\.db/);
+    });
+
+    test('само значение в лог не попадает', () => {
+        process.env.POSTGRES_PASSWORD = 'superuser-secret-value';
+        validateEnv();
+
+        const everything = JSON.stringify([logger.warn.mock.calls, logger.info.mock.calls, logger.error.mock.calls]);
+        expect(everything).not.toContain('superuser-secret-value');
+    });
+
+    test('без переменной предупреждения нет', () => {
+        validateEnv();
+        expect(postgresWarnings()).toEqual([]);
+    });
+
+    test('вне production не шумит: в dev один .env обслуживает всё', () => {
+        process.env.NODE_ENV = 'development';
+        process.env.POSTGRES_PASSWORD = 'postgres';
+        validateEnv();
+        expect(postgresWarnings()).toEqual([]);
+    });
+});

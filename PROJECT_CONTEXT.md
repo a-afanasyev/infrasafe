@@ -455,11 +455,9 @@ timestamp                                            — ISO 8601
 | Переменная | Описание |
 |-----------|----------|
 | `UK_WEBHOOK_SECRET` | HMAC-SHA256 shared secret |
-| `UK_SERVICE_USER` | Service account for UK API |
-| `UK_SERVICE_PASSWORD` | Service account password |
 
 ### Отсутствуют в .env.example (нужно добавить)
-- `UK_WEBHOOK_SECRET`, `UK_SERVICE_USER`, `UK_SERVICE_PASSWORD`
+- `UK_WEBHOOK_SECRET`
 - `SENTRY_DSN`
 
 ---
@@ -487,7 +485,7 @@ timestamp                                            — ISO 8601
 - **node:18-alpine** в Dockerfile.prod и Dockerfile.dev — Node 18 EOL (апрель 2025), README заявляет Node 20+
 - **`npm install --only=production`** в Dockerfile.prod — deprecated, нужен `npm ci --omit=dev`
 - **PostgreSQL port 5432** экспонирован в docker-compose.prod.yml — security risk
-- **Hardcoded `DB_PASSWORD=@ppl1c@ti0n`** в docker-compose.unified.yml:36,52
+- **Hardcoded `DB_PASSWORD=<REDACTED>`** в docker-compose.unified.yml:36,52
 
 ### Deploy Target
 - VPS: `95.46.96.105` (leaked in docker-compose.unified.yml WireGuard comment)
@@ -587,7 +585,7 @@ npm run test:watch          # Watch mode
 ### Критичный технический долг
 | # | Проблема | Файл/Строка | Severity |
 |---|----------|-------------|----------|
-| 1 | Hardcoded DB password `@ppl1c@ti0n` | `docker-compose.unified.yml:36,52` | **CRITICAL** |
+| 1 | Hardcoded DB password `<REDACTED>` | `docker-compose.unified.yml:36,52` | **CRITICAL** |
 | 2 | Leaked server IP `95.46.96.105` | `docker-compose.unified.yml:143` | HIGH |
 | 3 | Node.js 18 (EOL) в Dockerfiles | `Dockerfile.prod:2,14`, `Dockerfile.dev:1` | **CRITICAL** |
 | 4 | No ESLint config | Нет `eslint.config.*` в корне | HIGH |
@@ -625,7 +623,7 @@ npm run test:watch          # Watch mode
 | 3 | **Нужны ли команды к контроллерам (bidirectional)?** | Firmware update, reboot, config push. Определяет MQTT topic structure |
 | 4 | **Какое edge-железо сервера?** | RAM, CPU, disk. Бюджет для Docker services |
 | 5 | **Один сервер или мульти-сайт?** | Edge gateways на объектах или всё к одному серверу |
-| 6 | **Что с Git-историей секретов?** | `@ppl1c@ti0n` в git history. BFG cleanup нужен? |
+| 6 | **Что с Git-историей секретов?** | `<REDACTED>` в git history. BFG cleanup нужен? |
 | 7 | **Когда появятся реальные контроллеры?** | Определяет timing для WireGuard + Mosquitto |
 | 8 | **Нужна ли offline resilience?** | Что делает контроллер без VPN? Буферизация? |
 | 9 | **Regulatory/compliance требования?** | Хранение данных, retention, audit trail |

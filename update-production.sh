@@ -10,15 +10,15 @@
 # [R2-15] DEPLOY_ENV selects the compose -f set, env file, edge health URL and
 # verify base. There is NO default (OPS-003): DEPLOY_ENV, else the host's
 # gitignored .deploy-env, else refuse to start. 'prod' = the profk production box
-# (docker-compose.unified.yml + docker-compose.profk.yml, profk.uz). 'staging' =
-# the future staging VM (+ docker-compose.staging.yml, staging.infrasafe.uz).
+# (docker-compose.unified.yml + docker-compose.profk.yml, profk.uz).
 # 'infrasafe' = the ORIGINAL infrasafe.uz production box (.105) — a second live
 # prod, kept on the plain docker-compose.unified.yml (no override) since it
 # predates the profk-specific overlay; this is the exact byte-identical
 # behavior the pre-R2-15-Phase-A script always had for this host. docker-compose.prod.yml
 # is DEPRECATED. This is an UPDATE tool — it does NOT bootstrap an empty host (no
 # `up -d postgres`; migrate needs a live postgres). A fresh host is bootstrapped
-# by hand (staging bootstrap script is not written yet — R2-15 Phase 2).
+# by hand. Профиль 'staging' удалён (аудит #12, A12-16): его compose-оверлей
+# подключал dev-сид с известным паролем администратора, а самой площадки нет.
 #
 set -Eeuo pipefail
 
@@ -57,19 +57,13 @@ case "$DEPLOY_ENV" in
         EDGE_HEALTH_URL="${EDGE_HEALTH_URL:-https://profk.uz/health}"
         VERIFY_URL_BASE="${VERIFY_URL_BASE:-https://profk.uz}"
         ;;
-    staging)
-        COMPOSE_FILES=(docker-compose.unified.yml docker-compose.staging.yml)
-        ENV_FILE=".env.staging"
-        EDGE_HEALTH_URL="${EDGE_HEALTH_URL:-https://staging.infrasafe.uz/health}"
-        VERIFY_URL_BASE="${VERIFY_URL_BASE:-https://staging.infrasafe.uz}"
-        ;;
     infrasafe)
         COMPOSE_FILES=(docker-compose.unified.yml)
         ENV_FILE=".env.prod"
         EDGE_HEALTH_URL="${EDGE_HEALTH_URL:-https://infrasafe.uz/health}"
         VERIFY_URL_BASE="${VERIFY_URL_BASE:-https://infrasafe.uz}"
         ;;
-    *) echo "❌ bad DEPLOY_ENV=$DEPLOY_ENV (want prod|staging|infrasafe)" >&2; exit 1 ;;
+    *) echo "❌ bad DEPLOY_ENV=$DEPLOY_ENV (want prod|infrasafe)" >&2; exit 1 ;;
 esac
 # Filenames-only list → migrate.sh; -f-prefixed array → local docker compose calls.
 COMPOSE_ARGS=(); for _cf in "${COMPOSE_FILES[@]}"; do COMPOSE_ARGS+=(-f "$_cf"); done
@@ -140,7 +134,7 @@ app_health_wait() {
 # конфиг, то есть ровно ту ошибку, ради которой A-13 и заводился.
 #
 # `-c` обязателен: мастер запущен с кастомным конфигом (nginx.production.conf /
-# nginx.profk.conf / nginx.staging.conf — зависит от набора compose-файлов), а
+# nginx.profk.conf — зависит от набора compose-файлов), а
 # `nginx -t` без `-c` проверяет стоковый /etc/nginx/nginx.conf. Проверено на
 # живом контейнере: стоковый файл валиден всегда, то есть проверка без `-c` не
 # могла поймать битый конфиг в принципе.
@@ -281,17 +275,11 @@ for _cf in "${COMPOSE_FILES[@]}"; do
 done
 
 # [SEC-15] the deploy must not boot with the wrong env file (dev config: NODE_ENV,
-# weak secrets — or, on staging, prod secrets via compose env_file precedence). A
+# weak secrets). A
 # `.env` that's just a symlink to $ENV_FILE is fine (identical content). Hard-fail.
 test -f "$ENV_FILE" || { err "❌ $ENV_FILE missing"; exit 1; }
 if [ -e .env ] && [ "$(readlink -f .env)" != "$(readlink -f "$ENV_FILE")" ]; then
     err "❌ .env is not a symlink to $ENV_FILE — remove/fix it before deploying (env=$DEPLOY_ENV)"
-    exit 1
-fi
-# compose lists env_file [.env, .env.prod] (later wins), so a stray .env.prod on
-# staging would silently override .env.staging with prod secrets — fail closed.
-if [ "$DEPLOY_ENV" = "staging" ] && [ -e .env.prod ]; then
-    err "❌ .env.prod present on staging — compose env_file would override .env.staging; remove it"
     exit 1
 fi
 

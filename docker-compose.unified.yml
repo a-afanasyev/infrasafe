@@ -17,6 +17,11 @@ services:
     networks:
       - leaflet-network
     restart: unless-stopped
+    # [аудит #12, п. 13] Процесс и так непривилегированный (nginx-user, порт
+    # 8080), поэтому capabilities не нужны вовсе — ни одна не возвращается.
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     # [Sprint 6 / P1-V13] Hardening ported from the now-deprecated
     # docker-compose.prod.yml — resource caps, healthcheck, log rotation.
     deploy:
@@ -177,23 +182,43 @@ services:
     networks:
       - leaflet-network
     restart: unless-stopped
+    # [аудит #12, п. 13] Entrypoint стартует от root, чинит владельца /data и
+    # опускается до пользователя redis. Набор подобран запуском (свежий том и
+    # рестарт): SETUID/SETGID — смена пользователя, CHOWN — правка владельца
+    # после восстановления тома, DAC_READ_SEARCH — обход каталога
+    # appendonlydir (0700, владелец redis). Без последнего контейнер стартует
+    # на пустом томе и ПАДАЕТ на первом же рестарте («find: Permission denied»).
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, CHOWN, DAC_READ_SEARCH]
+    security_opt:
+      - no-new-privileges:true
 
   # База данных PostgreSQL с PostGIS
   postgres:
     image: postgis/postgis:15-3.5@sha256:2a60827705ad26af212f31ca6ed4884f9fa95fffbe7eed5be516fece1bca25f8
 
-    # [SEC-2] DB credentials sourced from .env / .env.prod (both gitignored).
-    # Same dual-file pattern as the app service: dev uses .env, prod uses
-    # .env.prod; the absent one is silently skipped.
+    # [A12-17, аудит 16.11.2026] У контейнера БД СВОЙ env-файл — .env.db
+    # (gitignored, шаблон .env.db.example), и в нём только POSTGRES_PASSWORD.
+    # Раньше postgres читал .env / .env.prod приложения: в его окружении лежали
+    # JWT_SECRET, JWT_REFRESH_SECRET, JWT_2FA_SECRET, TOTP_ENCRYPTION_KEY,
+    # TELEMETRY_HMAC_SECRET и прочее — любой, кто получал `docker inspect` или
+    # исполнение в контейнере БД, получал и секреты приложения. Обратная
+    # сторона закрывается на хосте: POSTGRES_PASSWORD убирается из .env.prod,
+    # приложению остаётся только роль рантайма (DB_USER / DB_PASSWORD).
+    #
+    # `required: false` — намеренно. Пароль нужен образу ОДИН раз, при
+    # инициализации пустого тома; на существующей базе контейнер стартует и без
+    # файла, так что выкатка этого изменения не роняет БД, даже если .env.db
+    # ещё не создан. На пустом томе без файла entrypoint отказывается стартовать
+    # с понятной ошибкой («superuser password is not specified») — молча
+    # поднять базу с пустым паролем он не может.
     env_file:
-      - path: .env
-        required: false
-      - path: .env.prod
+      - path: .env.db
         required: false
     # [B-023] POSTGRES_PASSWORD comes straight from the env_file above — do NOT
     # add `- POSTGRES_PASSWORD=${POSTGRES_PASSWORD}` here. That form is resolved
     # by COMPOSE INTERPOLATION from the shell / a root `.env`, NOT from env_file,
-    # so when the password lives only in .env.prod compose warns "variable is not
+    # so when the password lives only in .env.db compose warns "variable is not
     # set, defaulting to a blank string" and the empty `environment:` value then
     # OVERRIDES the correct env_file value → postgres bootstraps with a blank
     # password. POSTGRES_USER/DB are kept as literals on purpose: they shield the
@@ -230,6 +255,16 @@ services:
     networks:
       - infrasafe-network
     restart: unless-stopped
+    # [аудит #12, п. 13] Entrypoint стартует от root, выставляет права на PGDATA
+    # и /var/run/postgresql и опускается до пользователя postgres. Набор
+    # подобран запуском (свежий том + рестарт на том же томе): SETUID/SETGID —
+    # смена пользователя, CHOWN/FOWNER — chown и chmod каталогов,
+    # DAC_READ_SEARCH — обход PGDATA (0700, владелец postgres). С одними
+    # SETUID/SETGID база поднимается на пустом томе и ПАДАЕТ на рестарте.
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID, FOWNER, DAC_READ_SEARCH]
+    security_opt:
+      - no-new-privileges:true
     # [Sprint 6 / P1-V13] Hardening ported from docker-compose.prod.yml.
     deploy:
       resources:

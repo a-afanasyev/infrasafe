@@ -223,6 +223,18 @@ function validateEnv() {
         // PRODUCTION_REQUIRED_VARS — presence is already guaranteed by the
         // missing-vars check above, so the dormant-until-set warns that used
         // to live here are unreachable dead code. Removed.
+
+        // [A12-17, аудит 16.11.2026] Пароль суперпользователя БД приложению не
+        // нужен — оно ходит под ролью рантайма (DB_USER / DB_PASSWORD). После
+        // разделения env-файлов он живёт в .env.db, который читает только
+        // контейнер postgres. Предупреждение, а не отказ старта: неубранная
+        // строка в .env.prod не должна ронять прод. Значение не логируется.
+        if (process.env.POSTGRES_PASSWORD) {
+            logger.warn(
+                'POSTGRES_PASSWORD присутствует в окружении приложения. Перенесите его в .env.db ' +
+                '(его читает только контейнер postgres) и удалите из .env.prod — см. .env.db.example.'
+            );
+        }
     }
 }
 
