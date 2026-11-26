@@ -23,7 +23,6 @@ const FILES = [
     'Dockerfile.unified',
     'Dockerfile.dev',
     'Dockerfile.frontend.dev',
-    'scripts/deploy-uk.sh',
     // services:/container: заданий CI — ни одна экосистема Dependabot их не
     // видит, поэтому digest здесь обязателен вдвойне.
     ...fs.readdirSync(path.join(ROOT, '.github/workflows'))
