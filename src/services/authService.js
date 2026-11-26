@@ -8,6 +8,7 @@ const User = require('../models/User');
 const db = require('../config/database');
 const { CircuitBreakerFactory } = require('../utils/circuitBreaker');
 const AccountLockout = require('../models/AccountLockout');
+const { normalizeSource } = require('../utils/clientSource');
 
 // Phase 13: clock-skew tolerance for JWT-cutoff comparison
 const JWT_CUTOFF_SKEW_MS = 5000;
@@ -36,6 +37,36 @@ const LOCKOUT_JITTER_MAX_MS = 3 * 60 * 1000; // up to 3 minutes
 // Префикс зарезервирован — authenticateUser отвергает такие логины (см. там).
 const TWO_FA_LOCKOUT_PREFIX = '2fa:user:';
 const twoFaLockoutKey = (userId) => `${TWO_FA_LOCKOUT_PREFIX}${userId}`;
+
+// [аудит #12, п. 9] Парольные промахи считаются по ИСТОЧНИКУ, а не по учётной
+// записи. Раньше ключом была строка логина, а блокировка зеркалилась в
+// `users.account_locked_until`: аноним пятью неверными паролями закрывал
+// администратору вход на 15 минут с ЛЮБОГО адреса — и мог повторять это
+// бесконечно. (Действующие сессии это не обрывало: с S-AUTH-1 middleware
+// столбец не проверяет; закрывался именно вход.)
+//
+// Теперь два счётчика, оба в `account_lockout`:
+//   `src:<источник>|<субъект>` — порог 5. Запирает только этот источник.
+//       Субъект — `uid:<id>` для существующей записи (логин и e-mail делят
+//       счётчик) или `login:<хэш>` для несуществующей (сама строка не
+//       хранится: в поле логина часто вставляют пароль).
+//   `acct:<субъект>` — порог 50, все источники вместе. Одному адресу его не
+//       набрать (он заперт после пяти), а распределённый перебор не получает
+//       бесконечных попыток. Приостанавливает только НОВЫЕ входы по паролю.
+//       Ведётся и для несуществующего логина: иначе ветка «записи нет» делала
+//       бы на два запроса к БД меньше и отличалась бы временем ответа.
+// Ни тот, ни другой не пишет `users.account_locked_until`: парольный перебор
+// больше не закрывает вход владельцу с другого адреса. Блокировку учётной записи целиком
+// по-прежнему ставят промахи второго фактора и повторной проверки пароля —
+// до них аноним без пароля не доходит.
+//
+// Все ключи, которые может породить аноним, начинаются с `src:`/`acct:` и в
+// ключ 2FA (`2fa:user:<id>`) попасть не могут.
+const ACCOUNT_BRAKE_MAX_ATTEMPTS = 50;
+const loginKeyHash = (login) => crypto.createHash('sha256').update(String(login)).digest('hex').slice(0, 32);
+const lockoutSubject = (user, login) => (user ? `uid:${user.user_id}` : `login:${loginKeyHash(login)}`);
+const sourceLockoutKey = (source, subject) => `src:${source}|${subject}`;
+const accountBrakeKey = (subject) => `acct:${subject}`;
 
 // [S-INJ-1] Границы нового пароля и email. 72 байта — предел bcrypt; 254 — RFC 5321.
 const PASSWORD_MIN_LENGTH = 8;
@@ -138,7 +169,8 @@ class AuthService {
                 username, email, passwordHash: hashedPassword, role
             });
 
-            logger.info(`Новый пользователь зарегистрирован: ${username} (${email})`);
+            // [аудит #12, п. 10] В лог — идентификатор, а не логин и e-mail.
+            logger.info(`Новый пользователь зарегистрирован: user_id=${newUser.user_id}`);
 
             // Возвращаем пользователя без пароля
             return {
@@ -156,7 +188,12 @@ class AuthService {
     }
 
     // Аутентификация пользователя
-    async authenticateUser(login, password) {
+    /**
+     * @param {string} login - имя пользователя или e-mail
+     * @param {string} password
+     * @param {string} [clientIp] - `req.ip`; источник для счётчика промахов
+     */
+    async authenticateUser(login, password, clientIp) {
         try {
             // Phase 12 follow-up: input-length guard before touching DB/PK
             // [N-03] Логины и ключи 2FA живут в одной таблице `account_lockout`.
@@ -170,25 +207,34 @@ class AuthService {
                 throw error;
             }
 
-            // Проверяем блокировку аккаунта (по введённой строке login)
-            await this.checkAccountLockout(login);
-
-            // Находим пользователя
+            // Пользователь ищется ДО проверки блокировки: ключ счётчика
+            // строится по учётной записи (логин и e-mail делят его), а для
+            // несуществующей — по хэшу введённой строки. Обе ветки дальше
+            // проходят одни и те же шаги, поэтому ни ответ, ни время не
+            // выдают, существует ли запись.
             const user = await this.findUserByUsernameOrEmail(login, login);
+            const subject = lockoutSubject(user, login);
+            const sourceKey = sourceLockoutKey(normalizeSource(clientIp), subject);
+            const brakeKey = accountBrakeKey(subject);
+
+            await this.checkAccountLockout(sourceKey);
+            await this.checkAccountLockout(brakeKey);
+
             if (!user) {
-                await this.recordFailedAttempt(login);
+                // [аудит #12, п. 8] Пароль «сверяется» всегда: без фиктивного
+                // bcrypt несуществующий логин отвечал на порядок быстрее
+                // существующего и выдавал себя временем ответа.
+                await this._timingEqualizerDelay();
+                await this.recordLoginFailure(sourceKey, brakeKey);
                 const error = new Error('Неверное имя пользователя или пароль');
                 error.code = 'INVALID_CREDENTIALS';
                 throw error;
             }
 
-            // [Lockout username↔email bypass] `account_lockout` is keyed by the
-            // exact string the caller typed. A lock recorded against the
-            // username can otherwise be bypassed by logging in with the same
-            // account's email (or vice versa) — checkAccountLockout(login)
-            // above only sees the string actually submitted. Once the user
-            // row is resolved, `users.account_locked_until` is the
-            // authoritative, identity-keyed lock and must be checked too.
+            // `users.account_locked_until` — блокировка учётной записи целиком.
+            // Парольные промахи её больше не ставят (см. шапку файла); сюда
+            // она приходит от промахов второго фактора и повторной проверки
+            // пароля, и вход обязан её уважать.
             if (user.account_locked_until && new Date(user.account_locked_until).getTime() > Date.now()) {
                 logger.warn(`Account lockout active (authoritative check) for user_id=${user.user_id}`);
                 await this._timingEqualizerDelay();
@@ -197,23 +243,28 @@ class AuthService {
                 throw error;
             }
 
+            // Проверяем пароль
+            const isPasswordValid = await this.verifyPassword(password, user.password_hash);
+            if (!isPasswordValid) {
+                await this.recordLoginFailure(sourceKey, brakeKey);
+                const error = new Error('Неверное имя пользователя или пароль');
+                error.code = 'INVALID_CREDENTIALS';
+                throw error;
+            }
+
+            // [аудит #12, п. 8] Признак «деактивирован» раскрывается только
+            // после верного пароля. Раньше проверка стояла до сверки: аноним
+            // узнавал, что запись существует и выключена, и по ответу, и по
+            // времени (ветка не доходила до bcrypt).
             if (!user.is_active) {
                 const error = new Error('Аккаунт деактивирован');
                 error.code = 'ACCOUNT_DISABLED';
                 throw error;
             }
 
-            // Проверяем пароль
-            const isPasswordValid = await this.verifyPassword(password, user.password_hash);
-            if (!isPasswordValid) {
-                await this.recordFailedAttempt(login, user.user_id);
-                const error = new Error('Неверное имя пользователя или пароль');
-                error.code = 'INVALID_CREDENTIALS';
-                throw error;
-            }
-
-            // Сбрасываем счетчик неудачных попыток
-            await this.clearFailedAttempts(login, user.user_id);
+            // Сбрасываем счётчики неудачных попыток: свой источник и общий тормоз
+            await this.clearFailedAttempts(sourceKey, user.user_id);
+            await AccountLockout.clearAttempts(brakeKey);
 
             // Обновляем время последнего входа
             await this.updateLastLogin(user.user_id);
@@ -731,13 +782,21 @@ class AuthService {
         await AccountLockout.clearAttempts(login);
     }
 
+    // [аудит #12, п. 9] Парольный промах: счётчик источника и общий тормоз.
+    // userId НЕ передаётся — с ним модель зеркалит блокировку в
+    // `users.account_locked_until`, а его проверяет вход — с любого адреса.
+    async recordLoginFailure(sourceKey, brakeKey) {
+        await this.recordFailedAttempt(sourceKey);
+        await this.recordFailedAttempt(brakeKey, null, ACCOUNT_BRAKE_MAX_ATTEMPTS);
+    }
+
     // Запись неудачной попытки входа (atomic UPSERT, survives restart / scale-out)
     // H-1: when `userId` is known, the model mirrors a fresh lock onto
     // `users.account_locked_until` in the SAME statement — that column (not
     // the `account_lockout` table) is what auth middleware actually enforces
     // on already-issued access tokens. Without this, a brute-force lockout
     // never revoked a still-valid JWT.
-    async recordFailedAttempt(login, userId = null) {
+    async recordFailedAttempt(login, userId = null, maxAttempts = this.maxLoginAttempts) {
         // SEC-11: add cryptographically-random jitter to the base lockout
         // window so the unlock time is not a fixed, predictable interval.
         const jitterMs = crypto.randomInt(LOCKOUT_JITTER_MAX_MS);
@@ -745,13 +804,13 @@ class AuthService {
 
         const result = await AccountLockout.recordFailedAttempt(
             login,
-            this.maxLoginAttempts,
+            maxAttempts,
             lockoutDuration,
             userId
         );
         const failedAttempts = result?.failed_attempts ?? 0;
         const lockedUntil = result?.locked_until ?? null;
-        if (lockedUntil && failedAttempts >= this.maxLoginAttempts) {
+        if (lockedUntil && failedAttempts >= maxAttempts) {
             logger.warn(
                 `Аккаунт login_hash=${loginHash(login)}${userId != null ? ` user_id=${userId}` : ''} ` +
                 'заблокирован из-за превышения лимита попыток входа'

@@ -44,7 +44,8 @@ const login = async (req, res, next) => {
         }
 
         // Аутентификация пользователя
-        const user = await authService.authenticateUser(username, password);
+        // req.ip — источник для счётчика промахов (блокируется он, а не учётная запись).
+        const user = await authService.authenticateUser(username, password, req.ip);
 
         // Проверяем, нужна ли 2FA
         // [M-4] Промежуточный токен уезжает в HttpOnly-куку и БОЛЬШЕ НЕ

@@ -37,6 +37,26 @@ class IntegrationLog {
     }
 
     /**
+     * [A12-10] Удалить записи старше `days` суток. Возвращает число удалённых.
+     *
+     * Срок проверяется здесь, а не только у вызывающего: ноль или мусор в
+     * аргументе превратили бы уборку в очистку всего журнала.
+     * @param {number} days - положительное целое
+     * @returns {Promise<number>}
+     */
+    static async deleteOlderThan(days) {
+        if (!Number.isInteger(days) || days <= 0) {
+            throw new Error(`IntegrationLog.deleteOlderThan: days must be a positive integer, got ${String(days).slice(0, 32)}`);
+        }
+        const { rowCount } = await db.query(
+            `DELETE FROM integration_log
+             WHERE created_at < NOW() - ($1 || ' days')::interval`,
+            [String(days)]
+        );
+        return rowCount;
+    }
+
+    /**
      * Find a log entry by event ID
      * @param {string} eventId - The event ID to search for
      * @returns {Promise<Object|null>} - Log entry or null

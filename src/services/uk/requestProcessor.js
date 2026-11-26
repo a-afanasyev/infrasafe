@@ -36,6 +36,31 @@ const TERMINAL_STATUSES = UK_TERMINAL_STATUSES;
 // forge extra log lines.
 const safeLogValue = (v) => String(v ?? '').replace(/[\r\n\t]/g, '_').slice(0, 64);
 
+// [A12-10] Что из вебхука заявки сохраняется в integration_log. Раньше туда
+// уходил payload целиком — вместе со всем, что УК положит в `request`
+// (заявитель, телефон, адрес, текст обращения). Обработке ниже нужны только
+// эти поля; остальное в журнал не пишется. Значения — только короткие
+// скаляры: вложенный объект или длинный текст в разрешённом поле был бы тем
+// же каналом утечки под другим именем.
+const LOGGED_REQUEST_FIELDS = ['request_number', 'source_event_id', 'status', 'new_status', 'building_external_id'];
+const LOGGED_VALUE_MAX_LENGTH = 100;
+
+const loggableScalar = (value) => {
+    if (typeof value === 'string') return value.slice(0, LOGGED_VALUE_MAX_LENGTH);
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    return undefined;
+};
+
+const minimalLogPayload = ({ event_id, event, request }) => ({
+    event_id: loggableScalar(event_id),
+    event: loggableScalar(event),
+    request: Object.fromEntries(
+        LOGGED_REQUEST_FIELDS
+            .map((field) => [field, loggableScalar(request?.[field])])
+            .filter(([, value]) => value !== undefined)
+    ),
+});
+
 class UKRequestProcessor {
     /**
      * Handle incoming request status webhook from UK.
@@ -55,7 +80,7 @@ class UKRequestProcessor {
                 entity_type: 'request',
                 entity_id: String(ukRequest.request_number || '').slice(0, 50),
                 action: event,
-                payload,
+                payload: minimalLogPayload(payload),
                 status: 'pending'
             });
         } catch (logError) {

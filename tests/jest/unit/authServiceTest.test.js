@@ -185,6 +185,26 @@ describe('AuthService', () => {
             expect(result.role).toBe('user');
         });
 
+        // [аудит #12, п. 10] В лог регистрации — идентификатор, а не логин и e-mail.
+        test('logs the new user by id, never by username or email', async () => {
+            const logger = require('../../../src/utils/logger');
+            db.query
+                .mockResolvedValueOnce({ rows: [] })
+                .mockResolvedValueOnce({
+                    rows: [{ user_id: 10, username: 'newuser', email: 'new@test.com', role: 'user', is_active: true }]
+                });
+
+            await authService.registerUser({ username: 'newuser', email: 'new@test.com', password: 'StrongPass1' });
+
+            const lines = [...logger.info.mock.calls, ...logger.warn.mock.calls, ...logger.error.mock.calls]
+                .map((args) => args.map(String).join(' '));
+            expect(lines.some((line) => line.includes('user_id=10'))).toBe(true);
+            for (const line of lines) {
+                expect(line).not.toContain('newuser');
+                expect(line).not.toContain('new@test.com');
+            }
+        });
+
         test('throws USER_EXISTS when user already exists', async () => {
             db.query.mockResolvedValueOnce({
                 rows: [{ user_id: 1, username: 'existing' }]
@@ -373,9 +393,11 @@ describe('AuthService', () => {
             expect(result.user_id).toBe(1);
         });
 
-        // H-1: wrong-password branch resolved a user — recordFailedAttempt
-        // must be called with that user_id so the lockout mirrors onto users.
-        test('passes the resolved user_id to recordFailedAttempt on wrong password', async () => {
+        // [аудит #12, п. 9] Парольный промах считается по источнику и НЕ
+        // зеркалится в users.account_locked_until (userId = null): иначе аноним
+        // пятью неверными паролями закрывал бы владельцу вход с любого адреса. Прежняя
+        // редакция этого теста (H-1) закрепляла обратное.
+        test('wrong password: counts against the source and the account brake, never mirrors onto users', async () => {
             cacheService.get.mockResolvedValue(null);
             db.query.mockResolvedValueOnce({
                 rows: [{
@@ -388,17 +410,16 @@ describe('AuthService', () => {
             });
 
             await expect(
-                authService.authenticateUser('admin', 'WrongPassword1')
+                authService.authenticateUser('admin', 'WrongPassword1', '203.0.113.10')
             ).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
 
-            expect(AccountLockout.recordFailedAttempt).toHaveBeenCalledWith(
-                'admin', 5, expect.any(Number), 7
-            );
+            expect(AccountLockout.recordFailedAttempt.mock.calls).toEqual([
+                ['src:203.0.113.10|uid:7', 5, expect.any(Number), null],
+                ['acct:uid:7', 50, expect.any(Number), null],
+            ]);
         });
 
-        // H-1: successful login must clear the lockout counter AND pass the
-        // user_id through so users.account_locked_until is cleared too.
-        test('passes the resolved user_id to clearFailedAttempts on success', async () => {
+        test('success clears the source counter (with user_id) and the account brake', async () => {
             cacheService.get.mockResolvedValue(null);
             db.query
                 .mockResolvedValueOnce({
@@ -413,9 +434,82 @@ describe('AuthService', () => {
                 })
                 .mockResolvedValueOnce({ rows: [] }); // updateLastLogin
 
-            await authService.authenticateUser('admin', 'StrongPass1');
+            await authService.authenticateUser('admin', 'StrongPass1', '203.0.113.10');
 
-            expect(AccountLockout.clearAttempts).toHaveBeenCalledWith('admin', 9);
+            expect(AccountLockout.clearAttempts).toHaveBeenCalledWith('src:203.0.113.10|uid:9', 9);
+            expect(AccountLockout.clearAttempts).toHaveBeenCalledWith('acct:uid:9');
+        });
+
+        // [аудит #12, п. 8] Вход не различает существующий и несуществующий
+        // логин по времени: bcrypt выполняется в обеих ветках ровно один раз.
+        describe('timing: bcrypt runs exactly once on every failing path', () => {
+            let compareSpy;
+            beforeEach(() => { compareSpy = jest.spyOn(bcrypt, 'compare'); });
+            afterEach(() => { compareSpy.mockRestore(); });
+
+            test('nonexistent login', async () => {
+                db.query.mockResolvedValue({ rows: [] });
+
+                await expect(authService.authenticateUser('ghost', 'whatever', '203.0.113.10'))
+                    .rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
+
+                expect(compareSpy).toHaveBeenCalledTimes(1);
+            });
+
+            test('existing login, wrong password', async () => {
+                db.query.mockResolvedValueOnce({
+                    rows: [{ user_id: 7, username: 'admin', password_hash: hashedPassword, is_active: true }]
+                });
+
+                await expect(authService.authenticateUser('admin', 'WrongPassword1', '203.0.113.10'))
+                    .rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
+
+                expect(compareSpy).toHaveBeenCalledTimes(1);
+            });
+
+            test('deactivated account, wrong password — indistinguishable from nonexistent', async () => {
+                db.query.mockResolvedValueOnce({
+                    rows: [{ user_id: 7, username: 'admin', password_hash: hashedPassword, is_active: false }]
+                });
+
+                await expect(authService.authenticateUser('admin', 'WrongPassword1', '203.0.113.10'))
+                    .rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
+
+                expect(compareSpy).toHaveBeenCalledTimes(1);
+            });
+        });
+
+        // Число обращений к таблице счётчиков одинаково для существующей и
+        // несуществующей записи — иначе разница в два запроса была бы тем же
+        // оракулом по времени, только тоньше.
+        test('existing and nonexistent logins make the same lockout queries', async () => {
+            db.query.mockResolvedValueOnce({ rows: [] });
+            await expect(authService.authenticateUser('ghost', 'x', '203.0.113.10')).rejects.toBeDefined();
+            const ghost = [AccountLockout.get.mock.calls.length, AccountLockout.recordFailedAttempt.mock.calls.length];
+
+            jest.clearAllMocks();
+            db.query.mockResolvedValueOnce({
+                rows: [{ user_id: 7, username: 'admin', password_hash: hashedPassword, is_active: true }]
+            });
+            await expect(authService.authenticateUser('admin', 'WrongPassword1', '203.0.113.10')).rejects.toBeDefined();
+            const real = [AccountLockout.get.mock.calls.length, AccountLockout.recordFailedAttempt.mock.calls.length];
+
+            expect(ghost).toEqual([2, 2]);
+            expect(real).toEqual(ghost);
+        });
+
+        test('nonexistent login: the typed string never reaches the lockout table', async () => {
+            db.query.mockResolvedValue({ rows: [] });
+
+            await expect(authService.authenticateUser('MyRealPassword123!', 'x', '203.0.113.10'))
+                .rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
+
+            // Те же два счётчика, что и у существующей записи: ветки симметричны.
+            expect(AccountLockout.recordFailedAttempt.mock.calls).toEqual([
+                [expect.stringMatching(/^src:203\.0\.113\.10\|login:[0-9a-f]{32}$/), 5, expect.any(Number), null],
+                [expect.stringMatching(/^acct:login:[0-9a-f]{32}$/), 50, expect.any(Number), null],
+            ]);
+            expect(JSON.stringify(AccountLockout.recordFailedAttempt.mock.calls)).not.toContain('MyRealPassword123!');
         });
     });
 

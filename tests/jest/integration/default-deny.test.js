@@ -320,6 +320,15 @@ describe('Default-deny JWT middleware (src/routes/index.js)', () => {
             expect(res.body).toHaveProperty('status', 'healthy');
         });
 
+        // [аудит #12, п. 14] Анонимный корень API не раскрывает версию
+        // приложения: по ней подбирают известные уязвимости под конкретный релиз.
+        test('GET /api/ does not disclose the application version', async () => {
+            const res = await request(denyApp).get('/api/');
+            expect(res.status).toBe(200);
+            expect(res.body).not.toHaveProperty('version');
+            expect(JSON.stringify(res.body)).not.toMatch(/\d+\.\d+\.\d+/);
+        });
+
         test('GET /api/buildings-metrics returns 200 without token (public allowlist, optionalAuth)', async () => {
             // Must use denyApp: tests that the global middleware passes this route
             // WITHOUT a token — this is the canonical source of truth for the policy.

@@ -34,7 +34,7 @@ InfraSafe — цифровая IoT-платформа мониторинга и�
 | Frontend | Vanilla JavaScript (без фреймворка) | ES6+ |
 | Карты | Leaflet.js | 1.9.4 |
 | Графики | Chart.js | 4.4.1 |
-| XSS-защита | DOMPurify | 3.2.7 |
+| XSS-защита | DOMPurify | 3.5.0 |
 | Контейнеризация | Docker Compose | - |
 | Reverse proxy | Nginx | Alpine |
 | Тесты | Jest | - |
