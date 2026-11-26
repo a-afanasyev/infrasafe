@@ -169,7 +169,22 @@ describe('AuthController', () => {
             authService.generateTokens.mockReturnValue({ accessToken: 'a', refreshToken: 'r' });
             req.body = { username: 'admin', password: 'a'.repeat(1024) };
             await authController.login(req, res, next);
-            expect(authService.authenticateUser).toHaveBeenCalledWith('admin', 'a'.repeat(1024));
+            expect(authService.authenticateUser).toHaveBeenCalledWith('admin', 'a'.repeat(1024), undefined);
+        });
+
+        // [аудит #12, п. 9] Счётчик промахов ключуется источником — контроллер
+        // обязан передать сервису req.ip, иначе все входы сольются в «unknown».
+        test('passes req.ip to the service as the lockout source', async () => {
+            authService.authenticateUser.mockResolvedValue({
+                user_id: 1, username: 'admin', role: 'user', totp_enabled: false
+            });
+            authService.generateTokens.mockReturnValue({ accessToken: 'a', refreshToken: 'r' });
+            req.ip = '203.0.113.9';
+            req.body = { username: 'admin', password: 'StrongPass1' };
+
+            await authController.login(req, res, next);
+
+            expect(authService.authenticateUser).toHaveBeenCalledWith('admin', 'StrongPass1', '203.0.113.9');
         });
 
         // [S-PERIM-4] Неудачный и удачный вход оставляют событие с IP и
