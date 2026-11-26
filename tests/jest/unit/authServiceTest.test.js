@@ -395,7 +395,7 @@ describe('AuthService', () => {
 
         // [аудит #12, п. 9] Парольный промах считается по источнику и НЕ
         // зеркалится в users.account_locked_until (userId = null): иначе аноним
-        // пятью неверными паролями обрывал бы сессии владельца. Прежняя
+        // пятью неверными паролями закрывал бы владельцу вход с любого адреса. Прежняя
         // редакция этого теста (H-1) закрепляла обратное.
         test('wrong password: counts against the source and the account brake, never mirrors onto users', async () => {
             cacheService.get.mockResolvedValue(null);
