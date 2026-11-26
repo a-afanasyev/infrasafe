@@ -142,6 +142,35 @@ describe('Error Handler Middleware', () => {
         expect(body.error.meta).toBeUndefined();
     });
 
+    // [пентест 26.11.2026] Битое тело запроса: body-parser кладёт в message текст
+    // парсера с фрагментом присланного («Unexpected token '"', ""username""...»).
+    // Клиенту — нейтральная фраза; подробность остаётся в серверном логе.
+    describe('ошибка разбора тела запроса', () => {
+        const parseError = () => Object.assign(
+            new SyntaxError('Unexpected token \'"\', ""username""... is not valid JSON'),
+            { statusCode: 400, status: 400, type: 'entity.parse.failed', expose: true, body: '{"username":' }
+        );
+
+        test('клиент получает нейтральное сообщение без текста парсера', () => {
+            errorHandler(parseError(), req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(400);
+            const body = res.json.mock.calls[0][0];
+            expect(body.error.message).toBe('Некорректный JSON в теле запроса');
+            expect(JSON.stringify(body)).not.toMatch(/Unexpected|username|token/);
+        });
+
+        test('исходный текст остаётся в логе', () => {
+            errorHandler(parseError(), req, res, next);
+            expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('Unexpected token'));
+        });
+
+        test('обычная 400 с собственным сообщением не затрагивается', () => {
+            errorHandler(Object.assign(new Error('Поле name обязательно'), { statusCode: 400 }), req, res, next);
+            expect(res.json.mock.calls[0][0].error.message).toBe('Поле name обязательно');
+        });
+    });
+
     test('logs error message', () => {
         const err = new Error('Logged error');
         err.statusCode = 400;
