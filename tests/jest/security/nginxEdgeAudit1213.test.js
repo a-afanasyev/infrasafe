@@ -163,3 +163,22 @@ describe('#14 — ссылка /map из общей разметки не зав
         expect(about).toMatch(/href="\/map"/);
     });
 });
+
+describe.each(Object.entries(CONFS))('пентест 26.11.2026 — %s: CORS-заголовки не дублируются', (file, { domain }) => {
+    // И nginx, и приложение ставили Access-Control-Allow-Origin и
+    // Access-Control-Allow-Credentials — в ответе /api/ их было по два. Браузер
+    // такой ответ для cross-origin отклоняет («multiple values»), то есть
+    // разрешённый второй домен работать не мог. Источник один — edge (он же
+    // отвечает на preflight и ставит заголовки на собственные 429/502), а
+    // заголовки апстрима снимаются.
+    const api = topLevelLocations(tlsVhosts(read(file)).find((v) => v.name === domain).body).find((l) => l.name === '/api/');
+
+    test.each(['Access-Control-Allow-Origin', 'Access-Control-Allow-Credentials'])('%s от приложения снимается', (header) => {
+        expect(api.body).toMatch(new RegExp(`proxy_hide_header\\s+${header};`));
+    });
+
+    test('edge по-прежнему ставит оба заголовка сам', () => {
+        expect(api.body).toMatch(/add_header\s+'Access-Control-Allow-Origin'\s+\$cors_origin\s+always;/);
+        expect(api.body).toMatch(/add_header\s+'Access-Control-Allow-Credentials'\s+'true'\s+always;/);
+    });
+});

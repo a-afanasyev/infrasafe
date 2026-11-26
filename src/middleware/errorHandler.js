@@ -23,9 +23,16 @@ const errorHandler = (err, req, res, next) => {
     // Формируем ответ — для 500 ошибок никогда не раскрываем внутренние детали клиенту.
     // [N-52] Исключение — ошибка, явно помеченная `expose` (так делает отказ
     // открытого circuit breaker): её текст написан для клиента.
-    const clientMessage = statusCode >= 500 && err.expose !== true
-        ? 'Внутренняя ошибка сервера'
-        : (err.message || 'Внутренняя ошибка сервера');
+    // [пентест 26.11.2026] Ошибка разбора тела (body-parser): её message — текст
+    // парсера с фрагментом присланного. Наружу — нейтральная фраза; подробность
+    // уже ушла в лог строкой выше.
+    const isBodyParseError = err.type === 'entity.parse.failed';
+    let clientMessage = err.message || 'Внутренняя ошибка сервера';
+    if (isBodyParseError) {
+        clientMessage = 'Некорректный JSON в теле запроса';
+    } else if (statusCode >= 500 && err.expose !== true) {
+        clientMessage = 'Внутренняя ошибка сервера';
+    }
 
     if (Number.isFinite(err.retryAfterSeconds) && err.retryAfterSeconds > 0) {
         res.set('Retry-After', String(Math.ceil(err.retryAfterSeconds)));
