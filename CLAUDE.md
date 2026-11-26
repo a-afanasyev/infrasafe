@@ -110,7 +110,7 @@ nginx (8088), app (3000), postgres (5435), redis. Состав compose, роли
 Step 5b деплоя (`scripts/compose-drift-check.sh`, Check C) — аудит 05.11.2026, H-1.
 
 ## Test Data
-- **Admin**: admin / admin123
+- **Admin**: admin / admin123 — только в dev: его создаёт `database/dev-seed/dev_admin.sql` через одноразовый сервис `dev-seed` в `docker-compose.dev.yml` (A12-16). В `database/init/` пользователей нет — каталог идёт в боевой bootstrap; на боевой площадке первый администратор заводится `src/cli/create-admin.js`. Контейнер postgres читает только `.env.db` (A12-17).
 - **Test user**: testuser / TestPass123
 - **17 buildings** in Tashkent with coordinates, **34 metric records**
 
