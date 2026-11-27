@@ -2,6 +2,12 @@
 # Layer:  docker compose -f docker-compose.unified.yml -f docker-compose.profk.yml ...
 services:
   postgres:
+    # [аудит #12] profk ещё НЕ прошёл окно перехода на PostgreSQL 15.20 / PostGIS 3.7
+    # (общий compose уже указывает на новый образ). Пока строка здесь, любой
+    # `compose up -d postgres` поднимает прежний образ. Убирать её можно только
+    # вместе с прохождением окна: scripts/pg-image-upgrade.sh snapshot → смена
+    # образа → finalize → verify, при остановленном приложении и со свежим бэкапом.
+    image: postgis/postgis:15-3.5@sha256:2a60827705ad26af212f31ca6ed4884f9fa95fffbe7eed5be516fece1bca25f8
     # Fresh DB: replace legacy database.sql with the concatenated canonical init
     # (database/init 01-09 bake migrations 003-017; 99 self-declares them). Single
     # file = same target as base → replaces source. migrate up applies 018+.
