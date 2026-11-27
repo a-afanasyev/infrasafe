@@ -60,5 +60,10 @@ describe('образ PostgreSQL/PostGIS', () => {
         for (const step of ['REINDEX DATABASE', 'REFRESH COLLATION VERSION', 'postgis_extensions_upgrade', 'bt_index_check']) {
             expect(script).toContain(step);
         }
+        // Окно на .105 (27.11.2026): образ 15-3.7 не поставляет postgis_tiger_geocoder,
+        // а в базе он оставался установленным — дамп на новом образе не
+        // восстанавливался. Скрипт обязан и лечить это, и проверять.
+        expect(script).toContain('DROP EXTENSION postgis_tiger_geocoder');
+        expect(script).toMatch(/NOT EXISTS \(SELECT 1 FROM pg_available_extensions/);
     });
 });

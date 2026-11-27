@@ -121,6 +121,25 @@ finalize)
             q "$db" "SELECT postgis_extensions_upgrade()" >/dev/null
             say "[$db] PostGIS теперь $(q "$db" "SELECT extversion FROM pg_extension WHERE extname='postgis'")"
         fi
+        # Расширение, установленное в базе, но отсутствующее в новом образе.
+        # База с ним работает, однако дамп содержит CREATE EXTENSION, и
+        # восстановление на этом образе падает — то есть ломается DR.
+        # Известный случай: postgis_tiger_geocoder (геокодер адресов США).
+        # Прежние образы postgis ставили его в каждую базу сами, образ 15-3.7
+        # его не поставляет вовсе. Пустой — удаляется; всё остальное — стоп:
+        # молча удалить чужое расширение с данными скрипт права не имеет.
+        for ext in $(q "$db" "SELECT extname FROM pg_extension e WHERE NOT EXISTS (SELECT 1 FROM pg_available_extensions a WHERE a.name = e.extname)"); do
+            if [ "$ext" = postgis_tiger_geocoder ] \
+               && [ "$(q "$db" "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'tiger_data' AND c.relkind = 'r'")" = 0 ]; then
+                say "[$db] $ext отсутствует в образе и не содержит данных — удаляю"
+                q "$db" "DROP EXTENSION postgis_tiger_geocoder"
+                # Без CASCADE: непустая схема не удалится, и это правильный отказ.
+                q "$db" "DROP SCHEMA IF EXISTS tiger_data" || true
+                q "$db" "DROP SCHEMA IF EXISTS tiger" || true
+            else
+                die "[$db] расширение $ext установлено в базе, но его нет в новом образе — решите вручную (дамп с ним не восстановится)"
+            fi
+        done
         say "[$db] REINDEX DATABASE"
         q "$db" "REINDEX DATABASE \"$db\""
         q "$db" "ALTER DATABASE \"$db\" REFRESH COLLATION VERSION"
@@ -149,6 +168,9 @@ verify)
 
     ext="$(q infrasafe "SELECT string_agg(name || ' ' || installed_version || '→' || default_version, ', ') FROM pg_available_extensions WHERE installed_version IS NOT NULL AND installed_version <> default_version")"
     [ -z "$ext" ] && say "✓ все расширения на версии библиотеки" || { say "✗ расширения отстают от библиотеки: $ext"; fail=1; }
+
+    orphan="$(for db in $(databases); do q "$db" "SELECT string_agg('$db:' || extname, ',') FROM pg_extension e WHERE NOT EXISTS (SELECT 1 FROM pg_available_extensions a WHERE a.name = e.extname)"; done | { grep -v '^$' || true; } | tr '\n' ' ')"
+    [ -z "$orphan" ] && say "✓ каждое установленное расширение есть в образе (дамп восстановим)" || { say "✗ расширения без файлов в образе — дамп на этом образе не восстановится: $orphan"; fail=1; }
 
     # amcheck: каждый btree-индекс сверяется со своей таблицей (heapallindexed).
     q infrasafe "CREATE EXTENSION IF NOT EXISTS amcheck" >/dev/null
