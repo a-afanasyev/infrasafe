@@ -208,8 +208,12 @@ describe('powerAnalyticsService', () => {
             const result = await getTransformerPower(3);
 
             expect(result.id).toBe(3);
+            // Раньше здесь закреплялось `WHERE transformer_id = $1` — то есть сам
+            // дефект: такого столбца у подзапроса нет, и на живой базе запрос
+            // падал. Мок этого видеть не может; настоящая проверка —
+            // tests/jest/db/powerAnalyticsTransformer.db.test.js.
             expect(db.query).toHaveBeenCalledWith(
-                expect.stringContaining('WHERE transformer_id = $1'),
+                expect.stringContaining('WHERE id = $1'),
                 [3]
             );
         });

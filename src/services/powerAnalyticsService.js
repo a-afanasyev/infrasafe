@@ -154,7 +154,11 @@ const getTransformersPower = async () => {
 };
 
 const getTransformerPower = async (transformerId) => {
-    const wrappedQuery = `SELECT * FROM (${TRANSFORMERS_POWER_QUERY}) AS transformers_power WHERE transformer_id = $1`;
+    // Подзапрос отдаёт идентификатор под именем `id` (`t.transformer_id as id`).
+    // Здесь стояло `WHERE transformer_id = $1` — такого столбца у подзапроса
+    // нет, и маршрут отвечал 500 на любом id с самого появления. Замоканная БД
+    // в юнит-тесте этого не видела; проверка — tests/jest/db/powerAnalyticsTransformer.db.test.js.
+    const wrappedQuery = `SELECT * FROM (${TRANSFORMERS_POWER_QUERY}) AS transformers_power WHERE id = $1`;
     const result = await db.query(wrappedQuery, [transformerId]);
 
     if (result.rows.length === 0) {
