@@ -195,7 +195,15 @@ services:
 
   # База данных PostgreSQL с PostGIS
   postgres:
-    image: postgis/postgis:15-3.5@sha256:2a60827705ad26af212f31ca6ed4884f9fa95fffbe7eed5be516fece1bca25f8
+    # [аудит #12] PostgreSQL 15.20 + PostGIS 3.7.0 на Debian 13. Прежний тег 15-3.5
+    # (15.13, Debian 11) проект postgis больше не пересобирает — минорные версии
+    # сервера приходят только с новыми тегами. Смена образа на СУЩЕСТВУЮЩЕМ томе —
+    # это ещё и смена glibc (2.31 → 2.41) и PostGIS: обязательны REINDEX,
+    # обновление версии collation и расширений. Делается только через
+    # scripts/pg-image-upgrade.sh (snapshot → смена образа → finalize → verify)
+    # при остановленном приложении. Площадка, не прошедшая окно, закреплена на
+    # прежнем образе в своём оверлее (см. docker-compose.profk.yml).
+    image: postgis/postgis:15-3.7@sha256:e92057473639cafa4186f1a498989e5267a1455fa33a9ca8e8af7afce88c89d3
 
     # [A12-17, аудит 16.11.2026] У контейнера БД СВОЙ env-файл — .env.db
     # (gitignored, шаблон .env.db.example), и в нём только POSTGRES_PASSWORD.

@@ -45,7 +45,9 @@ jobs:
     timeout-minutes: 20   # [N-50] зависший шаг не держит раннер 6 часов
     services:
       postgres:
-        image: postgis/postgis:15-3.3@sha256:a2fc46b52819d25add4ed93d3da83e106e17ea3ace6883cce3791631c9820bb2
+        # Тот же образ, что в docker-compose.unified.yml: SQL-тесты обязаны идти на
+        # версии сервера, которая стоит в бою (сторож — postgresImagePin.test.js).
+        image: postgis/postgis:15-3.7@sha256:e92057473639cafa4186f1a498989e5267a1455fa33a9ca8e8af7afce88c89d3
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
