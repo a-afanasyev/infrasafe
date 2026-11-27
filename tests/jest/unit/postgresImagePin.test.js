@@ -12,9 +12,8 @@
  * Отсюда два сторожа:
  *   * dev-стек и CI обязаны гонять тесты на том же образе, что идёт в прод, —
  *     иначе SQL проверяется на версии, которой в бою нет;
- *   * площадка, не прошедшая окно, должна быть ЯВНО закреплена на старом образе
- *     в своём оверлее: общий compose уже указывает на новый, и случайный
- *     `compose up -d postgres` молча сменил бы образ без REINDEX.
+ *   * оверлеи площадок не держат собственный образ базы: на время перехода
+ *     вторую площадку закрепляют на прежнем образе, и строку легко забыть.
  */
 
 const fs = require('fs');
@@ -26,7 +25,6 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
 const compose = (rel) => yaml.load(read(rel));
 
 const NEW = /^postgis\/postgis:15-3\.7@sha256:[0-9a-f]{64}$/;
-const OLD = 'postgis/postgis:15-3.5@sha256:2a60827705ad26af212f31ca6ed4884f9fa95fffbe7eed5be516fece1bca25f8';
 
 const unified = compose('docker-compose.unified.yml').services.postgres.image;
 
@@ -46,10 +44,11 @@ describe('образ PostgreSQL/PostGIS', () => {
         expect(ci.jobs.test.services.postgres.image).toBe(unified);
     });
 
-    test('profk до своего окна явно закреплён на прежнем образе', () => {
-        // Убрать строку из оверлея можно только вместе с прохождением окна:
-        // snapshot → смена образа → finalize → verify (scripts/pg-image-upgrade.sh).
-        expect(compose('docker-compose.profk.yml').services.postgres.image).toBe(OLD);
+    test('ни один оверлей площадки не держит собственный образ базы', () => {
+        // На время перехода profk был закреплён на прежнем образе (15-3.5) прямо в
+        // оверлее. Окно пройдено 27.11.2026 — закрепление снято. Забытая строка
+        // означала бы, что площадка молча отстаёт от общего compose.
+        expect(compose('docker-compose.profk.yml').services.postgres.image).toBeUndefined();
     });
 
     test('скрипт перехода на месте и исполняемый', () => {
