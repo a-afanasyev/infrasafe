@@ -171,6 +171,48 @@ describe('Error Handler Middleware', () => {
         });
     });
 
+    // [проверка за авторизацией 27.11.2026] Ошибки, причина которых — запрос
+    // клиента, уходили как 500: сервисы помечают «не найдено» кодом
+    // `*_NOT_FOUND`, но не статусом, а Postgres на нечисловой фильтр отвечает
+    // 22P02. Мониторинг видел «сбой сервера» там, где сервер был прав.
+    describe('ошибки запроса клиента не превращаются в 500', () => {
+        test.each(['CONTROLLER_NOT_FOUND', 'TRANSFORMER_NOT_FOUND', 'BUILDING_NOT_FOUND'])('%s без статуса → 404 с исходным сообщением', (code) => {
+            errorHandler(Object.assign(new Error('Контроллер не найден'), { code }), req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(404);
+            expect(res.json.mock.calls[0][0].error).toMatchObject({ message: 'Контроллер не найден', status: 404 });
+        });
+
+        test.each([['22P02', 'invalid input syntax for type integer: "1 or 1=1"'], ['22003', 'value "99999999999" is out of range for type integer']])(
+            'ошибка Postgres %s → 400 без текста СУБД',
+            (code, pgMessage) => {
+                errorHandler(Object.assign(new Error(pgMessage), { code, severity: 'ERROR', routine: 'pg_strtoint32' }), req, res, next);
+
+                expect(res.status).toHaveBeenCalledWith(400);
+                const body = res.json.mock.calls[0][0];
+                expect(body.error.message).toBe('Некорректное значение параметра запроса');
+                expect(JSON.stringify(body)).not.toMatch(/integer|syntax|1 or 1=1|range/);
+            }
+        );
+
+        test('текст СУБД остаётся в серверном логе', () => {
+            errorHandler(Object.assign(new Error('invalid input syntax for type integer: "x"'), { code: '22P02' }), req, res, next);
+            expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('invalid input syntax'));
+        });
+
+        test('явный статус ошибки главнее кода', () => {
+            errorHandler(Object.assign(new Error('Конфликт'), { code: 'CONTROLLER_NOT_FOUND', statusCode: 409 }), req, res, next);
+            expect(res.status).toHaveBeenCalledWith(409);
+        });
+
+        test.each(['23505', '42703', '57014', 'ECONNREFUSED', 'SOMETHING_ELSE'])('прочие коды (%s) остаются 500 и не раскрывают текст', (code) => {
+            errorHandler(Object.assign(new Error('column "transformer_id" does not exist'), { code }), req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(500);
+            expect(res.json.mock.calls[0][0].error.message).toBe('Внутренняя ошибка сервера');
+        });
+    });
+
     test('logs error message', () => {
         const err = new Error('Logged error');
         err.statusCode = 400;

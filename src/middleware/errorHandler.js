@@ -4,6 +4,10 @@ const logger = require('../utils/logger');
 // `process.env.NODE_ENV === 'development'` would miss `Development`,
 // `DEVELOPMENT`, or stray whitespace. Re-read per call instead of caching
 // at module load so tests that mutate NODE_ENV continue to work.
+// Коды Postgres «значение не подходит типу»: invalid_text_representation и
+// numeric_value_out_of_range.
+const PG_BAD_PARAM_CODES = new Set(['22P02', '22003']);
+
 const isDev = () => (process.env.NODE_ENV || '').trim().toLowerCase() === 'development';
 
 /**
@@ -18,7 +22,19 @@ const errorHandler = (err, req, res, next) => {
     }
 
     // Устанавливаем статус ответа
-    const statusCode = err.statusCode || 500;
+    // [проверка за авторизацией 27.11.2026] Ошибки, причина которых — запрос
+    // клиента, приходили сюда без статуса и уходили как 500:
+    //   * сервисы помечают «сущности нет» кодом `*_NOT_FOUND`; часть
+    //     контроллеров переводит его в 404 сама, часть просто зовёт next(error);
+    //   * Postgres на нечисловое значение в числовом фильтре отвечает 22P02, на
+    //     число вне диапазона — 22003 (запросы параметризованы, это не инъекция,
+    //     но и не сбой сервера).
+    // Явный statusCode ошибки главнее; текст СУБД клиенту не отдаётся.
+    const isNotFoundCode = typeof err.code === 'string' && /_NOT_FOUND$/.test(err.code);
+    const isBadParamValue = PG_BAD_PARAM_CODES.has(err.code);
+    let statusCode = err.statusCode || 500;
+    if (!err.statusCode && isNotFoundCode) statusCode = 404;
+    if (!err.statusCode && isBadParamValue) statusCode = 400;
 
     // Формируем ответ — для 500 ошибок никогда не раскрываем внутренние детали клиенту.
     // [N-52] Исключение — ошибка, явно помеченная `expose` (так делает отказ
@@ -30,6 +46,8 @@ const errorHandler = (err, req, res, next) => {
     let clientMessage = err.message || 'Внутренняя ошибка сервера';
     if (isBodyParseError) {
         clientMessage = 'Некорректный JSON в теле запроса';
+    } else if (!err.statusCode && isBadParamValue) {
+        clientMessage = 'Некорректное значение параметра запроса';
     } else if (statusCode >= 500 && err.expose !== true) {
         clientMessage = 'Внутренняя ошибка сервера';
     }
