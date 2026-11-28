@@ -41,9 +41,6 @@ regexes = [
     '''TestPass123''',
     '''admin123''',
 
-    # JWT example tokens used in unit tests as fixtures.
-    '''ey[A-Za-z0-9_-]{10,}\.ey[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}''',
-
     # Dev-only postgres bootstrap password in docker-compose. Production
     # bootstrap is done once at container init from .env.prod; this
     # literal is only relevant on fresh dev `docker compose up`.
@@ -74,3 +71,26 @@ regexes = [
     '''^secret-0123456789abcdef''',
     '''^test-(2fa-)?secret-''',
 ]
+
+# [Q-31] JWT-фикстуры — только в тестах. Раньше регулярка JWT стояла в
+# глобальном allowlist и прятала JWT-подобную строку в ЛЮБОМ файле, включая
+# src/ и ранбуки в docs/. Глобальный [[allowlists]] с condition появился лишь в
+# gitleaks 8.25, а gitleaks-action в CI ставит 8.24.3 — поэтому исключение
+# висит на самих правилах (дополняет встроенные, не заменяет их): jwt и
+# generic-api-key — второе ловит тот же токен в `token = "ey..."`, когда первое
+# промолчало.
+[[rules]]
+id = "jwt"
+[[rules.allowlists]]
+description = "JWT fixtures in tests only"
+condition = "AND"
+paths = ['''^tests/''']
+regexes = ['''ey[A-Za-z0-9_-]{10,}\.ey[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}''']
+
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+description = "JWT fixtures in tests only"
+condition = "AND"
+paths = ['''^tests/''']
+regexes = ['''ey[A-Za-z0-9_-]{10,}\.ey[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}''']

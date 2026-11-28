@@ -54,3 +54,44 @@ describe('[H-1] update-production.sh — Step 5b', () => {
         expect(block).not.toMatch(/exit 1/);
     });
 });
+
+describe('[Q-13] compose-drift-check.sh — Check D (config drift)', () => {
+    test('сравнивает config --hash с меткой config-hash запущенного контейнера', () => {
+        expect(drift).toMatch(/Check D: config drift/);
+        expect(drift).toMatch(/docker compose "\$\{COMPOSE_F\[@\]\}" config --hash '\*'/);
+        expect(drift).toMatch(/com\.docker\.compose\.config-hash/);
+        expect(drift).toMatch(/CONFIG DRIFT/);
+    });
+
+    test('дрейф конфигурации входит в общий результат (exit 1 → Step 5b предупреждает)', () => {
+        const d = drift.slice(drift.indexOf('Check D: config drift'));
+        expect(d).toMatch(/d_drift=1/);
+        expect(d).toMatch(/\n\s*drift=1/);
+    });
+});
+
+describe('[Q-31] поставка', () => {
+    test('публично разрешены только 80 и 443 (WireGuard снят)', () => {
+        expect(drift).toMatch(/ALLOWED_PUBLIC_PORTS="\$\{ALLOWED_PUBLIC_PORTS:-80 443\}"/);
+    });
+
+    test('guard «изменение раннера + pending-миграции» покрывает и оркестратор с помощниками', () => {
+        const at = deploy.indexOf('runner change +');
+        const guard = deploy.slice(deploy.lastIndexOf('if [ -n "$(git diff --name-only HEAD "$TARGET"', at), at);
+        for (const f of ['scripts/migrate.sh', 'scripts/lib/', 'update-production.sh', 'scripts/rebuild-frontend.sh', 'scripts/compose-drift-check.sh']) {
+            expect(guard).toContain(f);
+        }
+    });
+
+    test('gitleaks: JWT-подобные строки исключены только в tests/', () => {
+        const gl = fs.readFileSync(path.join(ROOT, '.gitleaks.toml'), 'utf8');
+        const globalPart = gl.slice(0, gl.indexOf('[[rules]]'));
+        expect(globalPart).not.toMatch(/ey\[A-Za-z0-9_-\]/);
+        const rules = gl.slice(gl.indexOf('[[rules]]'));
+        for (const id of ['jwt', 'generic-api-key']) {
+            const block = rules.slice(rules.indexOf(`id = "${id}"`));
+            expect(block).toMatch(/condition = "AND"/);
+            expect(block).toMatch(/paths = \['''\^tests\/'''\]/);
+        }
+    });
+});

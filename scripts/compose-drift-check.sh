@@ -12,11 +12,14 @@
 #                        0.0.0.0/:: that is NOT in the public whitelist
 #                        (P-PENTEST-1/-4: app/frontend AND the separate UK-stack
 #                        containers exposed plaintext to the internet).
+#   C) image drift     — container runs another image than the compose pins.
+#   D) config drift    — container was created from an older service config
+#                        (cap_drop, mounts, command, env_file, ...).
 #
 # Usage:
 #   bash scripts/compose-drift-check.sh [compose-file]
 #   COMPOSE_FILE=docker-compose.unified.yml bash scripts/compose-drift-check.sh
-#   ALLOWED_PUBLIC_PORTS="80 443 51820" bash scripts/compose-drift-check.sh
+#   ALLOWED_PUBLIC_PORTS="80 443 8443" bash scripts/compose-drift-check.sh
 #
 # Exit code: 0 = clean, 1 = drift found, 2 = usage/precondition error.
 # NOTE: must run on the deploy HOST (needs the running containers). Not a CI check.
@@ -36,9 +39,10 @@ COMPOSE_FILE="${1:-${COMPOSE_FILE:-docker-compose.unified.yml}}"
 COMPOSE_FILES="${COMPOSE_FILES:-$COMPOSE_FILE}"
 COMPOSE_F=()
 for f in $COMPOSE_FILES; do COMPOSE_F+=(-f "$f"); done
-# Ports allowed to be published on 0.0.0.0/:: (public edge + VPN). Everything
-# else MUST bind 127.0.0.1. Override with ALLOWED_PUBLIC_PORTS="80 443 ...".
-ALLOWED_PUBLIC_PORTS="${ALLOWED_PUBLIC_PORTS:-80 443 51820}"
+# Ports allowed to be published on 0.0.0.0/:: (public edge only — WireGuard
+# 51820 retired, аудит 28.11.2026 Q-31). Everything else MUST bind 127.0.0.1.
+# Override with ALLOWED_PUBLIC_PORTS="80 443 ...".
+ALLOWED_PUBLIC_PORTS="${ALLOWED_PUBLIC_PORTS:-80 443}"
 
 command -v docker  >/dev/null 2>&1 || die "docker not found"
 command -v python3 >/dev/null 2>&1 || die "python3 not found"
@@ -222,6 +226,47 @@ for svc, body in (d.get("services") or {}).items():
 
 if [ "$c_drift" -eq 0 ]; then
   log "Check C: clean — every running container uses its declared image"
+else
+  drift=1
+fi
+
+# ---------------------------------------------------------------------------
+# Check D — config drift (declared service config vs the config the container
+# was CREATED from)
+#
+# [аудит 28.11.2026, Q-13] A–C не видят cap_drop / security_opt, монтирований,
+# command, env_file и environment. update-production.sh пересоздаёт только app,
+# поэтому hardening nginx/redis/postgres (S-PERIM-10) и разделение .env.db
+# (A12-17) действуют лишь после ручного пересоздания — и до этого контейнер
+# выглядит здоровым. Compose при `up` пишет хэш конфигурации сервиса в метку
+# com.docker.compose.config-hash; `config --hash` считает его тем же кодом.
+# Хэш зависит от набора -f и от окружения (.env), поэтому команда собирается
+# из тех же COMPOSE_FILES, что передаёт деплой, и запускается из того же
+# каталога. Образ сравнивает Check C; хэш смену digest в теге не ловит.
+# ---------------------------------------------------------------------------
+log "Check D: config drift (declared service config vs running container)"
+
+hashes="$(docker compose "${COMPOSE_F[@]}" config --hash '*' 2>/dev/null)" \
+  || die "could not compute config hashes (docker compose config --hash failed)"
+
+d_drift=0
+while read -r svc declared_hash; do
+  [ -n "${svc:-}" ] && [ -n "${declared_hash:-}" ] || continue
+  cname="$(docker ps --filter "label=com.docker.compose.project=$PROJECT" \
+             --filter "label=com.docker.compose.service=$svc" --format '{{.Names}}' | head -1)"
+  [ -n "$cname" ] || continue   # не запущен — уже отмечен в Check A как «·»
+  running_hash="$(docker inspect "$cname" --format '{{index .Config.Labels "com.docker.compose.config-hash"}}' 2>/dev/null || true)"
+  if [ "$running_hash" = "$declared_hash" ]; then
+    printf '  ✓ %s (%s): config matches\n' "$svc" "$cname"
+  else
+    printf '  ✗ %s (%s): CONFIG DRIFT — created from an older compose config (hardening/mounts/command/env may not apply) → docker compose %s up -d --no-deps %s\n' \
+      "$svc" "$cname" "${COMPOSE_F[*]}" "$svc"
+    d_drift=1
+  fi
+done <<< "$hashes"
+
+if [ "$d_drift" -eq 0 ]; then
+  log "Check D: clean — every running container matches its declared config"
 else
   drift=1
 fi
