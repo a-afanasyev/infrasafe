@@ -92,6 +92,21 @@ describe('[N-03] зарезервированный префикс нельзя 
         })).toThrow(expect.objectContaining({ code: 'VALIDATION_ERROR' }));
     });
 
+    // [Q-15] Все префиксы ключей `account_lockout`, не только 2FA.
+    test.each(['src:1.2.3.4|uid:1', 'acct:uid:1', '2fa:x', 'reauth:uid:1', 'ACCT:uid:1'])(
+        'validateUserData отвергает имя с префиксом ключа блокировки: %s', (username) => {
+            expect(() => authService.validateUserData({
+                username, email: 'x@example.com', password: 'Str0ngPassw0rd!',
+            })).toThrow(expect.objectContaining({ code: 'VALIDATION_ERROR' }));
+        });
+
+    // [Q-16] Нестроковое имя — 400, а не TypeError на .trim() → 500.
+    test.each([123, ['admin'], { a: 1 }])('validateUserData отвергает нестроковое имя: %p', (username) => {
+        expect(() => authService.validateUserData({
+            username, email: 'x@example.com', password: 'Str0ngPassw0rd!',
+        })).toThrow(expect.objectContaining({ code: 'VALIDATION_ERROR' }));
+    });
+
     test('обычное имя проходит', () => {
         expect(() => authService.validateUserData({
             username: 'operator', email: 'x@example.com', password: 'Str0ngPassw0rd!',

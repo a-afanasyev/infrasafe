@@ -63,6 +63,11 @@ const twoFaLockoutKey = (userId) => `${TWO_FA_LOCKOUT_PREFIX}${userId}`;
 // Все ключи, которые может породить аноним, начинаются с `src:`/`acct:` и в
 // ключ 2FA (`2fa:user:<id>`) попасть не могут.
 const ACCOUNT_BRAKE_MAX_ATTEMPTS = 50;
+// [Q-15] Повторная проверка пароля (смена пароля, отключение 2FA) — свой ключ
+// по user_id; раньше ключом было голое имя пользователя в той же таблице.
+const reauthLockoutKey = (userId) => `reauth:uid:${userId}`;
+// Префиксы всех ключей `account_lockout` — имя пользователя с ними запрещено.
+const LOCKOUT_KEY_PREFIX_RE = /^(src|acct|2fa|reauth):/i;
 const loginKeyHash = (login) => crypto.createHash('sha256').update(String(login)).digest('hex').slice(0, 32);
 const lockoutSubject = (user, login) => (user ? `uid:${user.user_id}` : `login:${loginKeyHash(login)}`);
 const sourceLockoutKey = (source, subject) => `src:${source}|${subject}`;
@@ -686,18 +691,19 @@ class AuthService {
     // failures with INVALID_PASSWORD via validatePassword) so the register
     // controller maps them to 400 instead of a generic 500.
     validateUserData({ username, email, password }) {
-        if (!username || username.trim().length < 3) {
+        // [Q-16] Тип — первым: число или массив падали на .trim() → 500.
+        if (typeof username !== 'string' || username.trim().length < 3) {
             const err = new Error('Имя пользователя должно содержать минимум 3 символа');
             err.code = 'VALIDATION_ERROR';
             throw err;
         }
 
-        // [N-03] Имя с зарезервированным префиксом ключа 2FA: войти таким
-        // пользователем нельзя (authenticateUser отвергает такой логин), а его
-        // промахи повторной проверки пароля попадали бы в счётчик второго
-        // фактора ЧУЖОГО аккаунта — ключи живут в одной таблице.
-        if (username.startsWith(TWO_FA_LOCKOUT_PREFIX)) {
-            const err = new Error('Имя пользователя не может начинаться с «2fa:user:»');
+        // [N-03, Q-15] Имя с префиксом ключа `account_lockout` (`src:`, `acct:`,
+        // `2fa:`, `reauth:`) запрещено. Сами ключи из имени больше не строятся,
+        // но такое имя — заготовка для коллизии при следующей правке ключей,
+        // а законного применения у него нет.
+        if (LOCKOUT_KEY_PREFIX_RE.test(username)) {
+            const err = new Error('Имя пользователя не может начинаться с «src:», «acct:», «2fa:» или «reauth:»');
             err.code = 'VALIDATION_ERROR';
             throw err;
         }
@@ -1013,8 +1019,12 @@ class AuthService {
      * ошибки оценивал несимметрично: самоблокировка на окно lockout против
      * бесплатного перебора. Решение обращено сознательно.
      *
-     * Ключ счётчика — `username`, тот же, что и у формы входа: отдельный ключ
-     * означал бы два независимых ведра и фактически удвоенный лимит.
+     * [Q-15] Ключ счётчика — `reauth:uid:<id>`. Раньше им было голое имя
+     * пользователя — «тот же, что у формы входа», но с аудита #12 вход
+     * считает по `src:`/`acct:` и с этим ключом давно не совпадает, а имя
+     * вида `acct:uid:1` писало бы в чужую строку. На пороге блокировка, как
+     * и прежде, ставится на учётную запись целиком (`users.account_locked_until`)
+     * — до этого пути без действующей сессии не дойти.
      *
      * @returns {Promise<{ok: true} | {ok: false, reason: 'no_user'|'bad_password'}>}
      * @throws {Error} code=ACCOUNT_LOCKED — аккаунт заблокирован сейчас.
@@ -1028,11 +1038,10 @@ class AuthService {
             return { ok: false, reason: 'no_user' };
         }
 
-        // Идентити-ключевая блокировка — та же, что и в authenticateUser.
-        // Обычно сюда не доходит: auth-middleware отвергает запрос раньше,
-        // прочитав тот же столбец. Но между чтением в middleware и этой
-        // строкой блокировка может успеть наступить, и полагаться на чужую
-        // проверку в функции, чья работа — сравнить пароль, неправильно.
+        // Блокировка учётной записи — та же, что проверяет authenticateUser.
+        // Middleware её НЕ проверяет (S-AUTH-1: блокировка действует на вход,
+        // а не на выданные сессии), поэтому эта проверка — единственная на
+        // пути повторной проверки пароля.
         if (user.account_locked_until && new Date(user.account_locked_until).getTime() > Date.now()) {
             logger.warn(`Reauth отклонён: аккаунт user_id=${userId} заблокирован`);
             await this._timingEqualizerDelay();
@@ -1048,11 +1057,11 @@ class AuthService {
 
         const isValid = await bcrypt.compare(password, hash);
         if (!isValid) {
-            await this.recordFailedAttempt(user.username, userId);
+            await this.recordFailedAttempt(reauthLockoutKey(userId), userId);
             return { ok: false, reason: 'bad_password' };
         }
 
-        await this.clearFailedAttempts(user.username, userId);
+        await this.clearFailedAttempts(reauthLockoutKey(userId), userId);
         return { ok: true };
     }
 
