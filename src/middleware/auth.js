@@ -253,7 +253,8 @@ const optionalAuth = async (req, res, next) => {
         // token (e.g. the 2FA temp-token, scope:'2fa') must never grant req.user
         // here either — degrade gracefully to the anonymous path like an invalid
         // token does. Normal access tokens (generateTokens) carry NO scope.
-        if (decoded.scope) {
+        // [S-AUTH-3] То же для typed-токенов (refresh): как в authenticateJWT.
+        if (decoded.scope || decoded.type) {
             req.user = null;
             return next();
         }
