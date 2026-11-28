@@ -38,6 +38,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      # [Q-37] Настоящий `nginx -t` обоих edge-конфигов в закреплённом образе:
+      # текстовые jest-наборы ошибок разбора не видят.
+      - name: nginx -t (edge configs)
+        run: bash scripts/nginx-config-test.sh
 
   test:
     name: Tests & Coverage
