@@ -26,18 +26,19 @@ IMAGE="$(sed -n 's/^[[:space:]]*image:[[:space:]]*\(nginx:[^[:space:]]*\).*/\1/p
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
-# Копия, а не сам каталог: сертификат .105 лежит внутри nginx-config/extra/
-# (gitignored), а смонтированный ro каталог не даёт создать там файлы.
-cp -R "$ROOT/nginx-config" "$WORK/custom"
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=nginx-config-test" \
     -keyout "$WORK/key.pem" -out "$WORK/cert.pem" >/dev/null 2>&1
 
 rc=0
 for conf in "${CONFS[@]}"; do
     echo "== nginx -t: $conf ($IMAGE)"
+    # Каталог конфигов копируется ВНУТРИ контейнера: сертификат .105 лежит в
+    # nginx-config/extra/ (gitignored), а писать в смонтированный каталог нельзя —
+    # файлы от root потом не удалить с хоста раннера.
     docker run --rm --network none \
-        -v "$WORK/custom:/etc/nginx/custom" -v "$WORK:/dummy:ro" \
+        -v "$ROOT/nginx-config:/src:ro" -v "$WORK:/dummy:ro" \
         "$IMAGE" sh -ec '
+            cp -R /src /etc/nginx/custom
             conf="/etc/nginx/custom/$1"
             for p in $(sed -n "s/^[[:space:]]*ssl_\(certificate\|certificate_key\|trusted_certificate\)[[:space:]]\{1,\}\([^;]*\);.*/\2/p" "$conf" | sort -u); do
                 mkdir -p "$(dirname "$p")"
