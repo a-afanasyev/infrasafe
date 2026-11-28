@@ -146,9 +146,14 @@ describe('AlertService — uncovered branches', () => {
             );
         });
 
-        test('returns null when load_percent is not a number', async () => {
+        // [Q-01] Раньше здесь стояла строка 'N/A' — и тест закреплял ровно ту
+        // ветку, в которую уходила ЛЮБАЯ реальная загрузка: MV отдаёт NUMERIC
+        // строкой. Теперь Transformer приводит поля MV к числу (проверено на
+        // живой БД в tests/jest/db/alertCore), а guard отсекает только то, что
+        // числом не является: NULL (нет метрик за сутки), NaN, Infinity.
+        test.each([[null], [NaN], [Infinity]])('returns null when load_percent is %p', async (value) => {
             analyticsService.getTransformerLoad.mockResolvedValue({
-                load_percent: 'N/A',
+                load_percent: value,
                 name: 'TestTransformer'
             });
 
@@ -158,6 +163,19 @@ describe('AlertService — uncovered branches', () => {
             expect(logger.warn).toHaveBeenCalledWith(
                 expect.stringContaining('Нет данных загрузки')
             );
+        });
+
+        // [Q-33] Как checkLeak после e15436f: отказ шлюза (createAlert → null)
+        // не взводит cooldown, иначе следующая проверка ждала бы 15 минут.
+        test('does not bump cooldown when createAlert returns null', async () => {
+            analyticsService.getTransformerLoad.mockResolvedValue({ load_percent: 90, name: 'TF-01' });
+            const spy = jest.spyOn(alertService, 'createAlert').mockResolvedValueOnce(null);
+
+            const result = await alertService.checkTransformerLoad(7);
+
+            expect(result).toBeNull();
+            expect(alertService.lastChecks.has('transformer:7:load_check')).toBe(false);
+            spy.mockRestore();
         });
 
         test('returns null when load below threshold (50%)', async () => {

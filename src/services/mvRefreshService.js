@@ -49,6 +49,7 @@ const logger = require('../utils/logger');
 const { waitForIdle } = require('../utils/workerStop');
 const { unlockAdvisory, releaseClient } = require('../utils/pgClient');
 const envFlags = require('../utils/envFlags');
+const alertService = require('./alertService');
 
 const DEFAULT_INTERVAL_SECONDS = 60;
 const MIN_INTERVAL_SECONDS = 10;
@@ -167,6 +168,17 @@ class MvRefreshScheduler {
                 this._consecutiveFailures = 0;
                 this._lastFailureLogAt = 0;
                 logger.info(`MV refresh succeeded in ${durationMs}ms`);
+
+                // [Q-02] Свежие данные MV — единственный автономный повод
+                // проверить перегрузку трансформаторов (иначе проверка шла только
+                // от всплывающего окна на карте). Под той же advisory-блокировкой,
+                // чтобы реплики не проверяли параллельно. Отказ проверки — не
+                // отказ refresh: счётчик неудач не трогаем.
+                try {
+                    await alertService.checkAllTransformers();
+                } catch (checkErr) {
+                    logger.error(`Transformer check after MV refresh failed: ${checkErr.message}`);
+                }
             } finally {
                 if (locked) {
                     await unlockAdvisory(client, ADVISORY_LOCK_KEY, 'MV refresh'); // [N-21]

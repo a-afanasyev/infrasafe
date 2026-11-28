@@ -18,14 +18,15 @@ const logger = require('../../utils/logger');
 
 // [Sprint 10 PR-1] Persistence gate. Returns { allowed, reason }.
 //
-// For LEAK_DETECTED via controller — SQL aggregation against `metrics`
-// counting `leak_sensor=true` samples whose earliest reading is at least
-// `minSeconds` ago. ≥2 samples needed to filter single-blip noise.
+// LEAK_DETECTED / VOLTAGE_ANOMALY / HEATING_FAILURE via controller — SQL
+// aggregation against `metrics`. TRANSFORMER_* — fail-open (the MV load is a
+// 24h average; there is no per-sample series to measure persistence on).
 //
-// [B-005 / Sprint 11] Extended to VOLTAGE_ANOMALY and HEATING_FAILURE.
-// For TRANSFORMER_* — still fail-open in v1 (analyticsService aggregates
-// pre-window, persistence semantics would require rolling helpers that
-// are out of scope here).
+// [Q-08] Both paths measure a CONTINUOUS fault (checkVerifyPersistenceGate):
+// ≥2 anomalous samples since the last healthy one, spanning ≥ minSeconds.
+// The legacy path used to count anomalous samples in the lookback and ignore
+// healthy ones between them — two isolated blips 9 minutes apart raised a
+// CRITICAL. Now it is the same gate with the window start at NOW() − lookback.
 async function checkPersistenceGate(alertData, rule, sinceTimestamp = null) {
     const minSeconds = rule.min_persistence_seconds;
     if (!minSeconds || minSeconds <= 0) {
@@ -40,108 +41,13 @@ async function checkPersistenceGate(alertData, rule, sinceTimestamp = null) {
         return await checkVerifyPersistenceGate(alertData, rule, sinceTimestamp);
     }
 
-    const { type, severity, infrastructure_type, infrastructure_id } = alertData;
     const lookbackSeconds = Math.max(minSeconds * 2, 600);
-
-    if (type === 'LEAK_DETECTED' && infrastructure_type === 'controller') {
-        const result = await db.query(
-            `SELECT COUNT(*) AS samples, MIN(timestamp) AS first_seen
-             FROM metrics
-             WHERE controller_id = $1
-               AND leak_sensor = true
-               AND timestamp >= NOW() - ($2::int * INTERVAL '1 second')`,
-            [infrastructure_id, lookbackSeconds]
-        );
-        const samples = parseInt(result.rows[0].samples, 10);
-        const firstSeen = result.rows[0].first_seen;
-        if (samples < 2) {
-            return { allowed: false, reason: `LEAK persistence: only ${samples} leak samples in lookback window` };
-        }
-        const firstSeenAge = (Date.now() - new Date(firstSeen).getTime()) / 1000;
-        if (firstSeenAge < minSeconds) {
-            return { allowed: false, reason: `LEAK persistence: condition observed for ${firstSeenAge.toFixed(0)}s, need ${minSeconds}s` };
-        }
-        return { allowed: true, reason: `LEAK persistence OK: ${samples} samples spanning ${firstSeenAge.toFixed(0)}s` };
-    }
-
-    if (type === 'VOLTAGE_ANOMALY' && infrastructure_type === 'controller') {
-        // Two-tier predicate: WARNING needs ≥2 samples with any phase
-        // outside the warn band; CRITICAL needs ≥2 samples with either
-        // 2+ phases outside warn band OR any phase outside crit band.
-        // We pick the predicate that matches the alertData.severity so
-        // a WARNING alert isn't blocked by absence of CRITICAL samples
-        // and vice versa.
-        const { voltage } = sharedThresholds;
-        const filterClause = severity === 'CRITICAL'
-            ? `((CASE WHEN electricity_ph1 NOT BETWEEN $3 AND $4 THEN 1 ELSE 0 END)
-              + (CASE WHEN electricity_ph2 NOT BETWEEN $3 AND $4 THEN 1 ELSE 0 END)
-              + (CASE WHEN electricity_ph3 NOT BETWEEN $3 AND $4 THEN 1 ELSE 0 END)) >= 2
-              OR electricity_ph1 NOT BETWEEN $5 AND $6
-              OR electricity_ph2 NOT BETWEEN $5 AND $6
-              OR electricity_ph3 NOT BETWEEN $5 AND $6`
-            : `electricity_ph1 NOT BETWEEN $3 AND $4
-               OR electricity_ph2 NOT BETWEEN $3 AND $4
-               OR electricity_ph3 NOT BETWEEN $3 AND $4`;
-
-        const params = severity === 'CRITICAL'
-            ? [infrastructure_id, lookbackSeconds,
-               voltage.warn_min, voltage.warn_max,
-               voltage.crit_min, voltage.crit_max]
-            : [infrastructure_id, lookbackSeconds,
-               voltage.warn_min, voltage.warn_max];
-
-        const result = await db.query(
-            `SELECT COUNT(*) AS samples, MIN(timestamp) AS first_seen
-             FROM metrics
-             WHERE controller_id = $1
-               AND timestamp >= NOW() - ($2::int * INTERVAL '1 second')
-               AND (electricity_ph1 IS NOT NULL OR electricity_ph2 IS NOT NULL OR electricity_ph3 IS NOT NULL)
-               AND (${filterClause})`,
-            params
-        );
-        const samples = parseInt(result.rows[0].samples, 10);
-        const firstSeen = result.rows[0].first_seen;
-        if (samples < 2) {
-            return { allowed: false, reason: `VOLTAGE persistence (${severity}): only ${samples} samples in lookback window` };
-        }
-        const firstSeenAge = (Date.now() - new Date(firstSeen).getTime()) / 1000;
-        if (firstSeenAge < minSeconds) {
-            return { allowed: false, reason: `VOLTAGE persistence (${severity}): condition observed for ${firstSeenAge.toFixed(0)}s, need ${minSeconds}s` };
-        }
-        return { allowed: true, reason: `VOLTAGE persistence OK (${severity}): ${samples} samples spanning ${firstSeenAge.toFixed(0)}s` };
-    }
-
-    if (type === 'HEATING_FAILURE' && infrastructure_type === 'controller') {
-        const { heating } = sharedThresholds;
-        const result = await db.query(
-            `SELECT COUNT(*) AS samples, MIN(timestamp) AS first_seen
-             FROM metrics
-             WHERE controller_id = $1
-               AND hot_water_in_temp IS NOT NULL
-               AND hot_water_in_temp < $3
-               AND timestamp >= NOW() - ($2::int * INTERVAL '1 second')`,
-            [infrastructure_id, lookbackSeconds, heating.hot_water_in_critical]
-        );
-        const samples = parseInt(result.rows[0].samples, 10);
-        const firstSeen = result.rows[0].first_seen;
-        if (samples < 2) {
-            return { allowed: false, reason: `HEATING persistence: only ${samples} sub-threshold samples in lookback window` };
-        }
-        const firstSeenAge = (Date.now() - new Date(firstSeen).getTime()) / 1000;
-        if (firstSeenAge < minSeconds) {
-            return { allowed: false, reason: `HEATING persistence: condition observed for ${firstSeenAge.toFixed(0)}s, need ${minSeconds}s` };
-        }
-        return { allowed: true, reason: `HEATING persistence OK: ${samples} samples spanning ${firstSeenAge.toFixed(0)}s` };
-    }
-
-    // Fail-open for unsupported type/infra combinations (TRANSFORMER_*
-    // still pending rolling-window aggregations in analyticsService).
-    return { allowed: true, reason: `persistence not enforced for ${type}/${infrastructure_type} in v1` };
+    return await checkVerifyPersistenceGate(alertData, rule, new Date(Date.now() - lookbackSeconds * 1000));
 }
 
-// [AUD-001 PR-B] Verify-mode persistence gate. Unlike the legacy gate
-// (which only counts anomalous samples + MIN(timestamp) and ignores healthy
-// samples between them), this measures a CONTINUOUS fault that holds NOW:
+// [AUD-001 PR-B] Continuous-fault persistence gate (since Q-08 — for both the
+// verify and the ordinary path). Measures a fault that holds NOW, not a
+// count of anomalous samples with healthy ones ignored between them:
 //   lastHealthy = MAX(timestamp) of a healthy sample after observationSince
 //   faultStart  = MIN(timestamp) of an anomalous sample AFTER lastHealthy
 //   allow iff  ≥2 anomalous samples since faultStart  AND
