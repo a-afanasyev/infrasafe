@@ -31,7 +31,7 @@ describe('AdminService', () => {
         test('handles empty result', async () => {
             db.query.mockResolvedValue({ rows: [], rowCount: 0 });
 
-            const result = await adminService.batchDelete('buildings', 'id', [999]);
+            const result = await adminService.batchDelete('buildings', 'building_id', [999]);
             expect(result.rowCount).toBe(0);
         });
 
@@ -39,7 +39,7 @@ describe('AdminService', () => {
             db.query.mockRejectedValue(new Error('FK constraint'));
 
             await expect(
-                adminService.batchDelete('buildings', 'id', [1])
+                adminService.batchDelete('buildings', 'building_id', [1])
             ).rejects.toThrow('FK constraint');
         });
 
@@ -60,13 +60,13 @@ describe('AdminService', () => {
             db.query.mockResolvedValue(mockResult);
 
             const result = await adminService.batchUpdateColumn(
-                'controllers', 'controller_id', [1, 2], 'status', 'offline'
+                'transformers', 'transformer_id', [1, 2], 'voltage_kv', 10
             );
 
             expect(result.rowCount).toBe(2);
             expect(db.query).toHaveBeenCalledWith(
-                'UPDATE controllers SET status = $1, updated_at = NOW() WHERE controller_id = ANY($2) RETURNING controller_id',
-                ['offline', [1, 2]]
+                'UPDATE transformers SET voltage_kv = $1, updated_at = NOW() WHERE transformer_id = ANY($2) RETURNING transformer_id',
+                [10, [1, 2]]
             );
         });
 
@@ -74,9 +74,21 @@ describe('AdminService', () => {
             db.query.mockResolvedValue({ rows: [], rowCount: 0 });
 
             const result = await adminService.batchUpdateColumn(
-                'controllers', 'id', [999], 'status', 'active'
+                'lines', 'line_id', [999], 'voltage_kv', 10
             );
             expect(result.rowCount).toBe(0);
+        });
+
+        // [Q-20] Списки сужены до того, что реально зовут контроллеры: пакетная
+        // правка `users.is_active` не должна быть в одном шаге от новой строки.
+        test.each([
+            ['users', 'user_id', 'is_active'],
+            ['controllers', 'controller_id', 'status'],
+            ['lines', 'line_id', 'maintenance_date'],
+        ])('rejects identifiers no caller uses: %s.%s/%s', async (table, idColumn, column) => {
+            await expect(adminService.batchUpdateColumn(table, idColumn, [1], column, true))
+                .rejects.toMatchObject({ message: expect.stringContaining('not allowed') });
+            expect(db.query).not.toHaveBeenCalled();
         });
 
         test('rejects untrusted column for update', async () => {

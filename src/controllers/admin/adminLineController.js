@@ -145,12 +145,8 @@ async function batchLinesOperation(req, res, next) {
                 }
                 result = await adminService.batchUpdateColumn('lines', 'line_id', ids, 'voltage_kv', data.voltage_kv);
                 break;
-            case 'set_maintenance':
-                if (!data || !data.maintenance_date) {
-                    return next(createError('maintenance_date is required for set_maintenance action', 400));
-                }
-                result = await adminService.batchUpdateColumn('lines', 'line_id', ids, 'maintenance_date', data.maintenance_date);
-                break;
+            // [Q-20] `set_maintenance` удалён: столбца `lines.maintenance_date`
+            // в схеме нет, действие всегда падало 500-й, вызывающих в UI нет.
             default:
                 return next(createError(`Unknown action: ${action}`, 400));
         }
