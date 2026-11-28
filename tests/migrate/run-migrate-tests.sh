@@ -403,5 +403,30 @@ rc=0; tpsql -c "UPDATE alert_rules SET season_from=NULL, season_to=NULL" >/dev/n
 rc=0; migrate "$C041" up >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 0 ] && pass "повторный up после 041 — no-op" || fail "повторный up exit $rc"
 
+# ===========================================================================
+# [Q-31] Файл без своего BEGIN/COMMIT runner оборачивает вместе с записью в
+# schema_migrations в одну транзакцию. Прежде такой файл шёл в autocommit:
+# упавший на втором операторе оставлял первый применённым.
+info "16) одна транзакция: миграция без своего BEGIN/COMMIT и запись о ней"
+C16a="$(commit_with "090_e2e_tx_partial.sql" $'CREATE TABLE e2e_tx_partial (id int);\nSELECT this_is_not_valid_sql_function();\n')"
+before="$(count_applied)"
+rc=0; migrate "$C16a" up >/dev/null 2>&1 || rc=$?
+[ "$rc" -ne 0 ] && pass "упавшая миграция без BEGIN → up non-zero" || fail "exit $rc (want non-zero)"
+t="$(tpsql -c "SELECT (to_regclass('public.e2e_tx_partial') IS NOT NULL)")"
+[ "$t" = "f" ] && pass "первый оператор откатился вместе с упавшим" || fail "e2e_tx_partial осталась — частичное применение"
+after="$(count_applied)"; [ "$after" = "$before" ] && pass "упавшая не записана" || fail "rows $before→$after"
+
+C16b="$(commit_with "091_e2e_tx_ok.sql" $'CREATE TABLE e2e_tx_ok (id int);\n')"
+rc=0; migrate "$C16b" up >/dev/null 2>&1 || rc=$?
+rec="$(tpsql -c "SELECT count(*) FROM schema_migrations WHERE filename='091_e2e_tx_ok.sql'")"
+[ "$rc" -eq 0 ] && [ "$rec" = "1" ] && pass "миграция без BEGIN применена и записана" || fail "rc=$rc rec=$rec"
+
+# CREATE INDEX CONCURRENTLY в транзакции невозможен — такой файл обязан идти
+# прежним путём (как 007), а не падать.
+C16c="$(commit_with "092_e2e_concurrently.sql" $'CREATE INDEX CONCURRENTLY IF NOT EXISTS e2e_tx_ok_idx ON e2e_tx_ok (id);\n')"
+rc=0; migrate "$C16c" up >/dev/null 2>&1 || rc=$?
+i="$(tpsql -c "SELECT (to_regclass('public.e2e_tx_ok_idx') IS NOT NULL)")"
+[ "$rc" -eq 0 ] && [ "$i" = "t" ] && pass "CONCURRENTLY применяется вне общей транзакции" || fail "rc=$rc idx=$i"
+
 echo ""
 info "summary: pass=$PASS fail=$FAIL"

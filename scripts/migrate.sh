@@ -71,6 +71,9 @@ for _cf in "${_MIGRATE_COMPOSE_FILES[@]}"; do COMPOSE_F_ARGS+=(-f "$_cf"); done
 
 RUN_ID="$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)"
 LOCK_ACQUIRED=0
+# [Q-31] Файлы, которые нельзя обернуть в одну транзакцию с записью о них
+# (применение в `up`): свой BEGIN/COMMIT или операторы вне транзакции.
+NON_WRAPPABLE_RE='^[[:space:]]*(BEGIN([[:space:]]+(TRANSACTION|WORK))?|COMMIT|START[[:space:]]+TRANSACTION)[[:space:]]*;|CONCURRENTLY|^[[:space:]]*VACUUM|ADD[[:space:]]+VALUE'
 
 # --- psql plumbing ---------------------------------------------------------
 psql_base() {
@@ -265,16 +268,31 @@ SQL
         return 1
     fi
     say "  + applying $fn"
-    # pinned blob via stdin; pipefail catches a bad blob (git show fail) so we
-    # never record a migration that did not actually run. The migration owns its
-    # own txn (007 is CREATE INDEX CONCURRENTLY — non-transactional) so the
-    # runner does NOT wrap it.
-    git show "$MIGRATE_TARGET_COMMIT:$path" | psql_base
-    # record in a SEPARATE statement
-    psql_base -v fn="$fn" -v ck="$file_ck" <<'SQL'
+    local sql
+    sql="$(git show "$MIGRATE_TARGET_COMMIT:$path")" || return 1
+    # [Q-31] Миграция и запись о ней — ОДНОЙ транзакцией, если файл это
+    # допускает: иначе обрыв между двумя psql оставлял применённую, но не
+    # записанную миграцию (следующий up переприменил бы её). Не допускают:
+    # свой BEGIN/COMMIT (внутренний COMMIT закрыл бы внешнюю транзакцию раньше
+    # записи) и операторы, запрещённые в транзакции (007 — CREATE INDEX
+    # CONCURRENTLY). Такие файлы идут прежним путём: файл сам владеет своей
+    # транзакцией, запись — отдельным вызовом. Проверка по тексту грубая
+    # (CONCURRENTLY в теле функции тоже уводит на прежний путь) — это безопасная
+    # сторона. Имя (NNN_[A-Za-z0-9._-]+.sql, migrate-discover.js) и checksum
+    # (hex) кавычек не содержат, поэтому подставляются литералом, без -v: psql
+    # интерполировал бы :переменные и в тексте самой миграции.
+    if grep -qiE "$NON_WRAPPABLE_RE" <<< "$sql"; then
+        printf '%s\n' "$sql" | psql_base
+        psql_base -v fn="$fn" -v ck="$file_ck" <<'SQL'
 INSERT INTO schema_migrations(filename, checksum) VALUES (:'fn', :'ck');
 SQL
-    ok "  ✓ $fn applied + recorded"
+        ok "  ✓ $fn applied + recorded (own transaction)"
+    else
+        { printf '%s\n' "$sql"
+          printf "INSERT INTO schema_migrations(filename, checksum) VALUES ('%s', '%s');\n" "$fn" "$file_ck"
+        } | psql_base --single-transaction
+        ok "  ✓ $fn applied + recorded (one transaction)"
+    fi
 }
 
 cmd_up() {
