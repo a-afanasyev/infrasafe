@@ -9,7 +9,7 @@
  *   - _tick advisory-lock guard (skip when lock not acquired)
  *   - _tick mutex (skip when previous tick still inflight)
  *   - _drainOne outcome translation (success/dead/retry/skip)
- *   - Backoff schedule + dead-letter after MAX_ATTEMPTS
+ *   - Backoff schedule (capped, no attempt cap — drain-TTL bounds retries)
  *   - AlertRequestMap.markSent called on success
  *   - notification_failure recorded on dead-letter
  */
@@ -38,8 +38,7 @@ jest.mock('../../../src/models/UkOutbox', () => ({
     markSent: jest.fn(),
     markFailed: jest.fn(),
     markDead: jest.fn(),
-    resetForSkip: jest.fn(),
-    MAX_ATTEMPTS: 5
+    resetForSkip: jest.fn()
 }));
 jest.mock('../../../src/models/AlertRequestMap', () => ({
     findByIdempotencyKey: jest.fn(),
@@ -341,13 +340,13 @@ describe('ukOutboxService', () => {
             expect(IntegrationLog.updateStatusByEventId).toHaveBeenCalledWith('evt-abc', 'retrying', 'rate limit');
         });
 
-        it('[B-007] retry escalating to dead at MAX_ATTEMPTS → integration_log "failed"', async () => {
+        it('[Q-04] retry past the old 5-attempt cap stays "retrying" in integration_log', async () => {
             UkOutbox.pickNext.mockResolvedValue({ ...queuedRow, attempt_count: 4 });
             ukWebhookClient.send.mockResolvedValue({ outcome: 'retry', code: 503, error: 'persistent 503' });
 
             await service._tick();
 
-            expect(IntegrationLog.updateStatusByEventId).toHaveBeenCalledWith('evt-abc', 'failed', 'persistent 503');
+            expect(IntegrationLog.updateStatusByEventId).toHaveBeenCalledWith('evt-abc', 'retrying', 'persistent 503');
         });
 
         it('[B-007] success → updates integration_log status to "success"', async () => {
@@ -399,15 +398,38 @@ describe('ukOutboxService', () => {
             expect(UkOutbox.markFailed).toHaveBeenCalledWith(1, 'down', 503, 4);
         });
 
-        it('retry at MAX_ATTEMPTS-1 → markDead instead of markFailed', async () => {
+        it('[Q-04] retry at attempt_count=4 (old cap) → markFailed 32s, NOT markDead', async () => {
             UkOutbox.pickNext.mockResolvedValue({ ...queuedRow, attempt_count: 4 });
             ukWebhookClient.send.mockResolvedValue({ outcome: 'retry', code: 503, error: 'persistent 503' });
-            AlertRequestMap.findByIdempotencyKey.mockResolvedValue({ infrasafe_alert_id: 7 });
 
             await service._tick();
 
-            expect(UkOutbox.markDead).toHaveBeenCalled();
-            expect(UkOutbox.markFailed).not.toHaveBeenCalled();
+            expect(UkOutbox.markFailed).toHaveBeenCalledWith(1, 'persistent 503', 503, 32);
+            expect(UkOutbox.markDead).not.toHaveBeenCalled();
+        });
+
+        it('[Q-04] backoff is capped at MAX_BACKOFF_SECONDS for long-retrying rows', async () => {
+            UkOutbox.pickNext.mockResolvedValue({ ...queuedRow, attempt_count: 200 });
+            ukWebhookClient.send.mockResolvedValue({ outcome: 'retry', error: 'ECONNREFUSED' });
+
+            await service._tick();
+
+            expect(UkOutbox.markFailed).toHaveBeenCalledWith(1, 'ECONNREFUSED', null, service.MAX_BACKOFF_SECONDS);
+            expect(UkOutbox.markDead).not.toHaveBeenCalled();
+        });
+
+        it('[Q-33] consecutive skips are throttled — logged once, not per row', async () => {
+            UkOutbox.pickNext.mockResolvedValue(queuedRow);
+            ukWebhookClient.send.mockResolvedValue({ outcome: 'skip', error: 'UK_WEBHOOK_SECRET missing' });
+
+            await service._tick();
+            await service._tick();
+            await service._tick();
+
+            const skipLogs = [...logger.error.mock.calls, ...logger.warn.mock.calls]
+                .filter(c => /skip: UK_WEBHOOK_SECRET missing/.test(c[0]));
+            expect(skipLogs).toHaveLength(1);
+            expect(service._consecutiveFailures).toBe(3);
         });
     });
 

@@ -34,7 +34,8 @@
  *   dead    → UkOutbox.markDead + record notification_failure on the
  *             underlying alert (operator visibility)
  *   retry   → UkOutbox.markFailed with exponential backoff
- *             (2,4,8,16,32 seconds) up to MAX_ATTEMPTS, then mark dead
+ *             (2,4,8,… seconds, capped at MAX_BACKOFF_SECONDS). No attempt
+ *             cap: the drain-TTL (UK_OUTBOX_MAX_AGE_HOURS) is the bound [Q-04]
  *   skip    → UkOutbox.resetForSkip (60s) — config issue, don't burn
  *             retry budget
  */
@@ -75,8 +76,10 @@ const ADVISORY_LOCK_KEY = 1187807153;
 const FAILURE_LOG_THROTTLE_MS = 10 * 60 * 1000; // 10 minutes
 const FAILURE_ESCALATE_THRESHOLD = 5;
 
-// Exponential backoff schedule on retriable failures (seconds).
-const BACKOFF_SCHEDULE = [2, 4, 8, 16, 32];
+// [Q-04] Exponential backoff on retriable failures: 2^attempt seconds, capped.
+// Retriable rows are bounded by the drain-TTL, not by an attempt count — five
+// attempts used to bury an alert.created after ~30 s of UK downtime.
+const MAX_BACKOFF_SECONDS = 300;
 
 class UkOutboxService {
     constructor() {
@@ -200,9 +203,12 @@ class UkOutboxService {
                 }
 
                 try {
-                    await this._drainOne();
-                    this._consecutiveFailures = 0;
-                    this._lastFailureLogAt = 0;
+                    // [Q-33] A skip already counted itself as a failure; resetting
+                    // here would make _logFailure log every skipped row.
+                    if (await this._drainOne() !== 'skip') {
+                        this._consecutiveFailures = 0;
+                        this._lastFailureLogAt = 0;
+                    }
                 } finally {
                     await unlockAdvisory(client, ADVISORY_LOCK_KEY, 'ukOutboxService'); // [N-21]
                 }
@@ -265,25 +271,17 @@ class UkOutboxService {
             this._consecutiveFailures += 1;
             const skipErr = new Error(`ukOutboxService skip: ${outcome.error}`);
             this._logFailure(skipErr);
-            return;
+            return 'skip';
         }
 
-        // outcome === 'retry'
+        // outcome === 'retry' — no attempt cap; _isStale above ends it [Q-04].
+        // pickNext orders by next_attempt_at, so a row that keeps failing is
+        // pushed behind fresh rows on every attempt and cannot starve them.
         const nextAttempt = row.attempt_count + 1;
-        if (nextAttempt >= UkOutbox.MAX_ATTEMPTS) {
-            await UkOutbox.markDead(row.id, outcome.error, outcome.code || null);
-            await this._syncIntegrationLog(row.event_id, 'failed', outcome.error);
-            logger.warn(`ukOutboxService: event_id=${row.event_id} dead after ${nextAttempt} attempts: ${outcome.error}`);
-            await this._recordNotificationFailure(row, outcome);
-            return;
-        }
-        // BACKOFF_SCHEDULE is 0-indexed: schedule[0]=2s is the first
-        // retry's delay (after attempt 1 fails). `nextAttempt` already
-        // counts the just-incremented attempt, so subtract one to index.
-        const backoffSec = BACKOFF_SCHEDULE[Math.min(nextAttempt - 1, BACKOFF_SCHEDULE.length - 1)];
+        const backoffSec = Math.min(2 ** nextAttempt, MAX_BACKOFF_SECONDS);
         await UkOutbox.markFailed(row.id, outcome.error, outcome.code || null, backoffSec);
         await this._syncIntegrationLog(row.event_id, 'retrying', outcome.error);
-        logger.info(`ukOutboxService: event_id=${row.event_id} retry in ${backoffSec}s (attempt ${nextAttempt}/${UkOutbox.MAX_ATTEMPTS}): ${outcome.error}`);
+        logger.info(`ukOutboxService: event_id=${row.event_id} retry in ${backoffSec}s (attempt ${nextAttempt}): ${outcome.error}`);
     }
 
     /**
@@ -365,7 +363,7 @@ class UkOutboxService {
                              'channel', 'uk_webhook',
                              'event_id', $2::text,
                              'attempt_count', $3::int,
-                             'response_code', $4,
+                             'response_code', $4::int,
                              'error', $5::text,
                              'failed_at', to_jsonb(NOW())
                          )
@@ -406,3 +404,4 @@ class UkOutboxService {
 const singleton = new UkOutboxService();
 module.exports = singleton;
 module.exports.UkOutboxService = UkOutboxService;
+module.exports.MAX_BACKOFF_SECONDS = MAX_BACKOFF_SECONDS;
