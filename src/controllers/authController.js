@@ -116,7 +116,7 @@ const login = async (req, res, next) => {
             // time distributed spraying. Return the SAME 401 + generic message
             // as INVALID_CREDENTIALS so a locked account is indistinguishable
             // from a wrong password. Lockout detail is logged server-side in
-            // authService.checkAccountLockout, never surfaced to the client.
+            // authService._rejectLocked, never surfaced to the client.
             return res.status(401).json({ error: 'Неверное имя пользователя или пароль' });
         }
 

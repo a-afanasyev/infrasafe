@@ -217,15 +217,15 @@ class AuthService {
             const sourceKey = sourceLockoutKey(normalizeSource(clientIp), subject);
             const brakeKey = accountBrakeKey(subject);
 
-            await this.checkAccountLockout(sourceKey);
-            await this.checkAccountLockout(brakeKey);
+            // [Q-11] Попытка резервируется ДО сверки пароля (см. reserveLoginAttempt):
+            // промах уже засчитан, и на неверном пароле писать больше нечего.
+            await this.reserveLoginAttempt(sourceKey, brakeKey);
 
             if (!user) {
                 // [аудит #12, п. 8] Пароль «сверяется» всегда: без фиктивного
                 // bcrypt несуществующий логин отвечал на порядок быстрее
                 // существующего и выдавал себя временем ответа.
                 await this._timingEqualizerDelay();
-                await this.recordLoginFailure(sourceKey, brakeKey);
                 const error = new Error('Неверное имя пользователя или пароль');
                 error.code = 'INVALID_CREDENTIALS';
                 throw error;
@@ -237,16 +237,19 @@ class AuthService {
             // пароля, и вход обязан её уважать.
             if (user.account_locked_until && new Date(user.account_locked_until).getTime() > Date.now()) {
                 logger.warn(`Account lockout active (authoritative check) for user_id=${user.user_id}`);
+                // [Q-11] Резервация здесь НЕ возвращается, хотя пароль не
+                // сверялся: лишние запросы сделали бы ветку отличимой по
+                // времени от несуществующего логина.
                 await this._timingEqualizerDelay();
                 const error = new Error('Аккаунт временно заблокирован. Попробуйте позже.');
                 error.code = 'ACCOUNT_LOCKED';
                 throw error;
             }
 
-            // Проверяем пароль
+            // Проверяем пароль. Если bcrypt бросит — резервация остаётся
+            // засчитанным промахом (fail-closed): исход сверки неизвестен.
             const isPasswordValid = await this.verifyPassword(password, user.password_hash);
             if (!isPasswordValid) {
-                await this.recordLoginFailure(sourceKey, brakeKey);
                 const error = new Error('Неверное имя пользователя или пароль');
                 error.code = 'INVALID_CREDENTIALS';
                 throw error;
@@ -748,7 +751,7 @@ class AuthService {
     // SEC-11: equalize response latency with the unlocked wrong-password path
     // by paying the same bcrypt cost before throwing ACCOUNT_LOCKED. Result is
     // intentionally discarded — it never affects control flow. Shared by
-    // checkAccountLockout (string-keyed check) and authenticateUser's
+    // _rejectLocked (counter-keyed reject) and authenticateUser's
     // authoritative users.account_locked_until check.
     async _timingEqualizerDelay() {
         try {
@@ -758,36 +761,46 @@ class AuthService {
         }
     }
 
-    // Проверка блокировки аккаунта (SEC-NEW-004: persistent via PostgreSQL)
-    async checkAccountLockout(login) {
-        const record = await AccountLockout.get(login);
-        if (!record || !record.locked_until) return;
-
-        const lockedUntilMs = new Date(record.locked_until).getTime();
-        if (Date.now() < lockedUntilMs) {
-            // [1A-FU2-S-M1] Generic user-facing message (no ISO timestamp).
-            // Previously the thrown error.message embedded the exact unlock
-            // time, which an API-direct attacker (curl, script) could use to
-            // time follow-up spraying. The frontend normalizer (login.js)
-            // already strips it from the HTML response, but raw API consumers
-            // bypassed that. Now the timestamp is only logged server-side.
-            logger.warn(`Account lockout active for login_hash=${loginHash(login)} until=${new Date(lockedUntilMs).toISOString()}`);
-            await this._timingEqualizerDelay();
-            const error = new Error('Аккаунт временно заблокирован. Попробуйте позже.');
-            error.code = 'ACCOUNT_LOCKED';
-            throw error;
-        }
-
-        // Lockout expired — clean up so counters reset on next attempt
-        await AccountLockout.clearAttempts(login);
+    // SEC-11: случайная добавка к окну блокировки — время разблокировки
+    // нельзя предсказать и синхронизировать с ним распределённый перебор.
+    _lockoutDurationMs() {
+        return this.lockoutDuration + crypto.randomInt(LOCKOUT_JITTER_MAX_MS);
     }
 
-    // [аудит #12, п. 9] Парольный промах: счётчик источника и общий тормоз.
-    // userId НЕ передаётся — с ним модель зеркалит блокировку в
-    // `users.account_locked_until`, а его проверяет вход — с любого адреса.
-    async recordLoginFailure(sourceKey, brakeKey) {
-        await this.recordFailedAttempt(sourceKey);
-        await this.recordFailedAttempt(brakeKey, null, ACCOUNT_BRAKE_MAX_ATTEMPTS);
+    // [Q-11] Зарезервировать попытку входа ДО сверки пароля: счётчик источника,
+    // затем общий тормоз. Раньше оба только читались, а промах записывался
+    // после bcrypt, и параллельная пачка проходила проверку раньше, чем
+    // фиксировался 5-й (50-й) промах. Теперь попытка, которой счётчик выдал
+    // номер сверх порога, до bcrypt не доходит.
+    //
+    // Отбитая источником попытка в тормоз не идёт: иначе один запертый адрес
+    // набивал бы общий счётчик. Отбитая тормозом — возвращает резервацию
+    // источника: пароль не сверялся, и владелец, ждущий снятия тормоза, не
+    // должен запереть свой адрес. Сбой между шагами оставляет резервацию
+    // засчитанным промахом (fail-closed); успешный вход снимает оба счётчика.
+    //
+    // userId в модель НЕ передаётся: парольный промах не пишет
+    // `users.account_locked_until` (см. шапку файла).
+    async reserveLoginAttempt(sourceKey, brakeKey) {
+        const source = await AccountLockout.reserveAttempt(sourceKey, this.maxLoginAttempts, this._lockoutDurationMs());
+        if (source.failed_attempts > this.maxLoginAttempts) {
+            return this._rejectLocked(sourceKey);
+        }
+        const brake = await AccountLockout.reserveAttempt(brakeKey, ACCOUNT_BRAKE_MAX_ATTEMPTS, this._lockoutDurationMs());
+        if (brake.failed_attempts > ACCOUNT_BRAKE_MAX_ATTEMPTS) {
+            await AccountLockout.releaseAttempt(sourceKey, this.maxLoginAttempts);
+            return this._rejectLocked(brakeKey);
+        }
+    }
+
+    // [1A-FU2-S-M1] Сообщение без времени разблокировки — оно только в логе.
+    // SEC-11: фиктивный bcrypt выравнивает время с веткой неверного пароля.
+    async _rejectLocked(key) {
+        logger.warn(`Account lockout active for login_hash=${loginHash(key)}`);
+        await this._timingEqualizerDelay();
+        const error = new Error('Аккаунт временно заблокирован. Попробуйте позже.');
+        error.code = 'ACCOUNT_LOCKED';
+        throw error;
     }
 
     // Запись неудачной попытки входа (atomic UPSERT, survives restart / scale-out)
@@ -797,10 +810,7 @@ class AuthService {
     // on already-issued access tokens. Without this, a brute-force lockout
     // never revoked a still-valid JWT.
     async recordFailedAttempt(login, userId = null, maxAttempts = this.maxLoginAttempts) {
-        // SEC-11: add cryptographically-random jitter to the base lockout
-        // window so the unlock time is not a fixed, predictable interval.
-        const jitterMs = crypto.randomInt(LOCKOUT_JITTER_MAX_MS);
-        const lockoutDuration = this.lockoutDuration + jitterMs;
+        const lockoutDuration = this._lockoutDurationMs();
 
         const result = await AccountLockout.recordFailedAttempt(
             login,

@@ -23,6 +23,8 @@ jest.mock('../../../src/services/cacheService', () => ({
 jest.mock('../../../src/models/AccountLockout', () => ({
     get: jest.fn().mockResolvedValue(null),
     recordFailedAttempt: jest.fn().mockResolvedValue({ failed_attempts: 1, locked_until: null }),
+    reserveAttempt: jest.fn().mockResolvedValue({ failed_attempts: 1, locked_until: null }),
+    releaseAttempt: jest.fn().mockResolvedValue(undefined),
     clearAttempts: jest.fn().mockResolvedValue(undefined),
     cleanup: jest.fn().mockResolvedValue(0),
 }));
@@ -318,8 +320,8 @@ describe('AuthService', () => {
         });
 
         test('throws ACCOUNT_LOCKED when account is locked', async () => {
-            AccountLockout.get.mockResolvedValueOnce({
-                failed_attempts: 5,
+            AccountLockout.reserveAttempt.mockResolvedValueOnce({
+                failed_attempts: 6,
                 locked_until: new Date(Date.now() + 900000),
             });
 
@@ -336,7 +338,6 @@ describe('AuthService', () => {
         // once the user row is resolved.
         test('throws ACCOUNT_LOCKED when locked by username but logging in with email', async () => {
             cacheService.get.mockResolvedValue(null);
-            AccountLockout.get.mockResolvedValueOnce(null); // no lockout row keyed by 'admin@test.com'
             db.query.mockResolvedValueOnce({
                 rows: [{
                     user_id: 1,
@@ -355,7 +356,6 @@ describe('AuthService', () => {
 
         test('throws ACCOUNT_LOCKED when locked by email but logging in with username', async () => {
             cacheService.get.mockResolvedValue(null);
-            AccountLockout.get.mockResolvedValueOnce(null); // no lockout row keyed by 'admin'
             db.query.mockResolvedValueOnce({
                 rows: [{
                     user_id: 1,
@@ -374,7 +374,6 @@ describe('AuthService', () => {
 
         test('an EXPIRED users.account_locked_until does not block login', async () => {
             cacheService.get.mockResolvedValue(null);
-            AccountLockout.get.mockResolvedValueOnce(null);
             db.query
                 .mockResolvedValueOnce({
                     rows: [{
@@ -413,10 +412,12 @@ describe('AuthService', () => {
                 authService.authenticateUser('admin', 'WrongPassword1', '203.0.113.10')
             ).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
 
-            expect(AccountLockout.recordFailedAttempt.mock.calls).toEqual([
-                ['src:203.0.113.10|uid:7', 5, expect.any(Number), null],
-                ['acct:uid:7', 50, expect.any(Number), null],
+            // [Q-11] Промах засчитан резервацией ДО bcrypt — после неё не пишется ничего.
+            expect(AccountLockout.reserveAttempt.mock.calls).toEqual([
+                ['src:203.0.113.10|uid:7', 5, expect.any(Number)],
+                ['acct:uid:7', 50, expect.any(Number)],
             ]);
+            expect(AccountLockout.recordFailedAttempt).not.toHaveBeenCalled();
         });
 
         test('success clears the source counter (with user_id) and the account brake', async () => {
@@ -485,16 +486,16 @@ describe('AuthService', () => {
         test('existing and nonexistent logins make the same lockout queries', async () => {
             db.query.mockResolvedValueOnce({ rows: [] });
             await expect(authService.authenticateUser('ghost', 'x', '203.0.113.10')).rejects.toBeDefined();
-            const ghost = [AccountLockout.get.mock.calls.length, AccountLockout.recordFailedAttempt.mock.calls.length];
+            const ghost = [AccountLockout.reserveAttempt.mock.calls.length, AccountLockout.releaseAttempt.mock.calls.length];
 
             jest.clearAllMocks();
             db.query.mockResolvedValueOnce({
                 rows: [{ user_id: 7, username: 'admin', password_hash: hashedPassword, is_active: true }]
             });
             await expect(authService.authenticateUser('admin', 'WrongPassword1', '203.0.113.10')).rejects.toBeDefined();
-            const real = [AccountLockout.get.mock.calls.length, AccountLockout.recordFailedAttempt.mock.calls.length];
+            const real = [AccountLockout.reserveAttempt.mock.calls.length, AccountLockout.releaseAttempt.mock.calls.length];
 
-            expect(ghost).toEqual([2, 2]);
+            expect(ghost).toEqual([2, 0]);
             expect(real).toEqual(ghost);
         });
 
@@ -505,11 +506,11 @@ describe('AuthService', () => {
                 .rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
 
             // Те же два счётчика, что и у существующей записи: ветки симметричны.
-            expect(AccountLockout.recordFailedAttempt.mock.calls).toEqual([
-                [expect.stringMatching(/^src:203\.0\.113\.10\|login:[0-9a-f]{32}$/), 5, expect.any(Number), null],
-                [expect.stringMatching(/^acct:login:[0-9a-f]{32}$/), 50, expect.any(Number), null],
+            expect(AccountLockout.reserveAttempt.mock.calls).toEqual([
+                [expect.stringMatching(/^src:203\.0\.113\.10\|login:[0-9a-f]{32}$/), 5, expect.any(Number)],
+                [expect.stringMatching(/^acct:login:[0-9a-f]{32}$/), 50, expect.any(Number)],
             ]);
-            expect(JSON.stringify(AccountLockout.recordFailedAttempt.mock.calls)).not.toContain('MyRealPassword123!');
+            expect(JSON.stringify(AccountLockout.reserveAttempt.mock.calls)).not.toContain('MyRealPassword123!');
         });
     });
 
@@ -872,61 +873,51 @@ describe('AuthService', () => {
         });
     });
 
-    describe('checkAccountLockout', () => {
-        test('does not throw when no lockout record', async () => {
-            AccountLockout.get.mockResolvedValueOnce(null);
-            await expect(authService.checkAccountLockout('user')).resolves.not.toThrow();
+    // [Q-11] Резервация вместо «прочитал блокировку»: номер попытки выдаёт
+    // атомарный UPSERT, и попытка сверх порога до bcrypt не доходит.
+    describe('reserveLoginAttempt', () => {
+        const locked = (n) => ({ failed_attempts: n, locked_until: new Date(Date.now() + 900000) });
+
+        test('within both thresholds: reserves source then brake, does not throw', async () => {
+            await expect(authService.reserveLoginAttempt('src:k', 'acct:k')).resolves.toBeUndefined();
+            expect(AccountLockout.reserveAttempt.mock.calls).toEqual([
+                ['src:k', 5, expect.any(Number)],
+                ['acct:k', 50, expect.any(Number)],
+            ]);
         });
 
-        test('does not throw when record exists but locked_until is null', async () => {
-            AccountLockout.get.mockResolvedValueOnce({
-                failed_attempts: 2,
-                locked_until: null,
-            });
-            await expect(authService.checkAccountLockout('user')).resolves.not.toThrow();
+        test('the 5th reservation is still admitted', async () => {
+            AccountLockout.reserveAttempt.mockResolvedValueOnce(locked(5));
+            await expect(authService.reserveLoginAttempt('src:k', 'acct:k')).resolves.toBeUndefined();
         });
 
-        test('throws ACCOUNT_LOCKED when lockout is active', async () => {
-            AccountLockout.get.mockResolvedValueOnce({
-                failed_attempts: 5,
-                locked_until: new Date(Date.now() + 900000),
-            });
-
-            await expect(
-                authService.checkAccountLockout('user')
-            ).rejects.toMatchObject({ code: 'ACCOUNT_LOCKED' });
+        test('source over threshold: ACCOUNT_LOCKED, brake untouched', async () => {
+            AccountLockout.reserveAttempt.mockResolvedValueOnce(locked(6));
+            await expect(authService.reserveLoginAttempt('src:k', 'acct:k'))
+                .rejects.toMatchObject({ code: 'ACCOUNT_LOCKED' });
+            expect(AccountLockout.reserveAttempt).toHaveBeenCalledTimes(1);
+            expect(AccountLockout.releaseAttempt).not.toHaveBeenCalled();
         });
 
-        // SEC-11: response-latency timing oracle. A locked account must NOT
-        // return faster than a not-locked wrong-password attempt, otherwise an
-        // attacker measuring latency can distinguish locked vs not-locked
-        // accounts. The locked path therefore performs a dummy bcrypt.compare
-        // (constant work) before throwing ACCOUNT_LOCKED, equalizing timing
-        // with the real verifyPassword bcrypt.compare on the unlocked path.
+        test('brake over threshold: ACCOUNT_LOCKED and the source reservation is returned', async () => {
+            AccountLockout.reserveAttempt
+                .mockResolvedValueOnce({ failed_attempts: 1, locked_until: null })
+                .mockResolvedValueOnce(locked(51));
+            await expect(authService.reserveLoginAttempt('src:k', 'acct:k'))
+                .rejects.toMatchObject({ code: 'ACCOUNT_LOCKED' });
+            expect(AccountLockout.releaseAttempt).toHaveBeenCalledWith('src:k', 5);
+        });
+
+        // SEC-11: отказ по блокировке не должен отвечать быстрее неверного пароля.
         test('performs a dummy bcrypt.compare before throwing ACCOUNT_LOCKED (timing equalization)', async () => {
             const compareSpy = jest.spyOn(bcrypt, 'compare');
-            AccountLockout.get.mockResolvedValueOnce({
-                failed_attempts: 5,
-                locked_until: new Date(Date.now() + 900000),
-            });
+            AccountLockout.reserveAttempt.mockResolvedValueOnce(locked(6));
 
-            await expect(
-                authService.checkAccountLockout('user')
-            ).rejects.toMatchObject({ code: 'ACCOUNT_LOCKED' });
+            await expect(authService.reserveLoginAttempt('src:k', 'acct:k'))
+                .rejects.toMatchObject({ code: 'ACCOUNT_LOCKED' });
 
-            // bcrypt work must have happened on the locked path
             expect(compareSpy).toHaveBeenCalled();
             compareSpy.mockRestore();
-        });
-
-        test('clears attempts and does not throw when lockout has expired', async () => {
-            AccountLockout.get.mockResolvedValueOnce({
-                failed_attempts: 5,
-                locked_until: new Date(Date.now() - 1000),
-            });
-
-            await expect(authService.checkAccountLockout('user')).resolves.not.toThrow();
-            expect(AccountLockout.clearAttempts).toHaveBeenCalledWith('user');
         });
     });
 
