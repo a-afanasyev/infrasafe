@@ -23,7 +23,13 @@ jest.mock('../../../src/config/database', () => ({
     getPool: jest.fn()
 }));
 
+// [Q-02] После успешного refresh тик проверяет трансформаторы.
+jest.mock('../../../src/services/alertService', () => ({
+    checkAllTransformers: jest.fn().mockResolvedValue({ checked: 0, alerts_created: 0, alerts: [] })
+}));
+
 const db = require('../../../src/config/database');
+const alertService = require('../../../src/services/alertService');
 const logger = require('../../../src/utils/logger');
 const { MvRefreshScheduler } = require('../../../src/services/mvRefreshService');
 
@@ -183,6 +189,41 @@ describe('MvRefreshScheduler', () => {
         await scheduler._tick();
 
         expect(scheduler._consecutiveFailures).toBe(0);
+    });
+
+    test('[Q-02] _tick checks transformers after a successful refresh, while holding the lock', async () => {
+        db.query.mockResolvedValue({ rows: [] });
+        alertService.checkAllTransformers.mockImplementationOnce(async () => {
+            // Блокировка ещё не снята — реплики не проверяют параллельно.
+            expect(clientMock.query).not.toHaveBeenCalledWith('SELECT pg_advisory_unlock($1)', [3095635313]);
+            return { checked: 1, alerts_created: 0, alerts: [] };
+        });
+
+        await scheduler._tick();
+
+        expect(alertService.checkAllTransformers).toHaveBeenCalledTimes(1);
+    });
+
+    test('[Q-02] no transformer check when the refresh failed or the lock is held elsewhere', async () => {
+        db.query.mockRejectedValueOnce(new Error('refresh failed'));
+        await scheduler._tick();
+
+        clientMock = makeClientMock(false);
+        db.getPool.mockReturnValue({ connect: jest.fn().mockResolvedValue(clientMock) });
+        await scheduler._tick();
+
+        expect(alertService.checkAllTransformers).not.toHaveBeenCalled();
+    });
+
+    test('[Q-02] a failing transformer check does not fail the refresh', async () => {
+        db.query.mockResolvedValue({ rows: [] });
+        alertService.checkAllTransformers.mockRejectedValueOnce(new Error('analytics down'));
+
+        await expect(scheduler._tick()).resolves.toBeUndefined();
+
+        expect(scheduler._consecutiveFailures).toBe(0);
+        expect(clientMock.release).toHaveBeenCalledTimes(1);
+        expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('Transformer check after MV refresh failed'));
     });
 
     test('_tick releases the client even when the refresh throws', async () => {

@@ -10,6 +10,13 @@ const FOREIGN_KEY_VIOLATION = '23503';
 // Сколько имён показать в ответе: список нужен человеку для решения, а не выгрузка.
 const DEPENDENTS_PREVIEW = 20;
 
+// [Q-01] Числовые столбцы mv_transformer_load_realtime (миграция 042).
+const MV_NUMERIC_FIELDS = [
+    'capacity_kva', 'latitude', 'longitude',
+    'buildings_count', 'controllers_count', 'active_controllers_count',
+    'avg_total_voltage', 'avg_total_amperage', 'load_percent', 'recent_metrics_count',
+];
+
 /** [N-62] 409: к трансформатору привязаны здания. */
 function transformerHasBuildings(id, buildings) {
     const error = createError(
@@ -355,13 +362,26 @@ class Transformer {
     // (migration 012 rebuilt the MV onto `transformers`); the geo methods read
     // transformers.geom (kept in sync from lat/lng by trig_transformers_geom).
 
+    // [Q-01] Числовые столбцы MV — NUMERIC/BIGINT, node-pg отдаёт их строками
+    // (глобальный парсер типов намеренно не ставится, см. buildingMetricsService).
+    // Строковый `load_percent` молча выключал алерты о перегрузке: проверка
+    // `checkTransformerLoad` ждёт число. Приводим здесь — все читатели MV идут
+    // через эти методы. NULL (нет метрик за сутки) остаётся NULL, а не 0.
+    static _mvRow(row) {
+        const out = { ...row };
+        for (const k of MV_NUMERIC_FIELDS) {
+            if (out[k] !== null && out[k] !== undefined) out[k] = Number(out[k]);
+        }
+        return out;
+    }
+
     // Real-time load analytics for one transformer (from the MV).
     static async getLoadAnalytics(id) {
         const { rows } = await db.query(
             'SELECT * FROM mv_transformer_load_realtime WHERE id = $1',
             [id]
         );
-        return rows.length ? rows[0] : null;
+        return rows.length ? Transformer._mvRow(rows[0]) : null;
     }
 
     // All transformers with load analytics, most-loaded first.
@@ -369,7 +389,7 @@ class Transformer {
         const { rows } = await db.query(
             'SELECT * FROM mv_transformer_load_realtime ORDER BY load_percent DESC, name'
         );
-        return rows;
+        return rows.map(Transformer._mvRow);
     }
 
     // Transformers at/above a load threshold.
@@ -380,7 +400,7 @@ class Transformer {
              ORDER BY load_percent DESC`,
             [threshold]
         );
-        return rows;
+        return rows.map(Transformer._mvRow);
     }
 
     // Nearest buildings to a transformer. Passes an INTEGER transformer_id →

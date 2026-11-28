@@ -116,9 +116,10 @@ describe('[AR-2] исходы проверок алертов попадают �
 
     test('успешное создание считается как created', async () => {
         AlertRule.findByTypeAndSeverity.mockResolvedValue(rule);
-        const firstSeen = new Date(Date.now() - 60000).toISOString();
+        const faultStart = new Date(Date.now() - 60000).toISOString();
         db.query
-            .mockResolvedValueOnce({ rows: [{ samples: '5', first_seen: firstSeen }] })   // гейт persistence
+            .mockResolvedValueOnce({ rows: [{ owned: false }] })   // [Q-03] подавление/верификация
+            .mockResolvedValueOnce({ rows: [{ fault_start: faultStart, last_fault: new Date().toISOString(), n: '5' }] })   // гейт persistence
             .mockResolvedValueOnce({ rows: [{ alert_id: 5, created_at: new Date() }] });  // INSERT
 
         const result = await alertService.createAlert(alertData);
@@ -130,7 +131,9 @@ describe('[AR-2] исходы проверок алертов попадают �
     test('отказ гейта считается отдельно от создания', async () => {
         AlertRule.findByTypeAndSeverity.mockResolvedValue(rule);
         // Одного сэмпла мало → гейт persistence отказывает.
-        db.query.mockResolvedValueOnce({ rows: [{ samples: '1', first_seen: new Date().toISOString() }] });
+        db.query
+            .mockResolvedValueOnce({ rows: [{ owned: false }] })   // [Q-03] подавление/верификация
+            .mockResolvedValueOnce({ rows: [{ fault_start: new Date().toISOString(), last_fault: new Date().toISOString(), n: '1' }] });
 
         const result = await alertService.createAlert(alertData);
 

@@ -241,7 +241,8 @@ class InfrastructureAlertService {
                 ? await this._getTransformerLoadSince(transformerId, opts.reopenContext.observationSince)
                 : await analyticsService.getTransformerLoad(transformerId);
 
-            if (!loadData || typeof loadData.load_percent !== 'number') {
+            // [Q-01] Number.isFinite, а не typeof: NaN/Infinity — тоже «нет данных».
+            if (!loadData || !Number.isFinite(loadData.load_percent)) {
                 if (verifyMode) return { checked: false, alert: null };
                 logger.warn(`Нет данных загрузки для трансформатора ${transformerId}`);
                 return null;
@@ -324,8 +325,12 @@ class InfrastructureAlertService {
                 return null;
             }
 
+            // [Q-33] Cooldown — только при успешном создании (как в checkLeak,
+            // e15436f): отказ шлюза не должен глушить проверку на 15 минут.
             const createdAlert = await this.createAlert(alertData);
-            this.lastChecks.set(checkKey, now);
+            if (createdAlert) {
+                this.lastChecks.set(checkKey, now);
+            }
 
             return createdAlert;
 
@@ -972,6 +977,13 @@ class InfrastructureAlertService {
         return alertGates.checkAffectedBuildingsGate(alertData, rule);
     }
 
+    // [Q-03] delegate-only → alert/alertQueries. (Spied by tests.)
+    async _isTupleMutedOrVerifying(alertData) {
+        return alertQueries.isTupleMutedOrVerifying(
+            alertData.infrastructure_type, alertData.infrastructure_id, alertData.type
+        );
+    }
+
     // [B-009] delegate-only → alert/alertGates. `now` инжектируется тестами.
     _checkSeasonGate(alertData, rule, now) {
         return alertGates.checkSeasonGate(alertData, rule, now);
@@ -1008,6 +1020,20 @@ class InfrastructureAlertService {
                     logger.info(
                         `Alert skipped by season gate: ${alertData.type}/${alertData.severity} ` +
                         `for ${alertData.infrastructure_type}:${alertData.infrastructure_id} — ${seasonCheck.reason}`
+                    );
+                    metrics.recordAlertCheck(alertData.type, 'gate_denied');   // [AR-2]
+                    return null;
+                }
+                // [Q-03] После сезонного гейта (тот не ходит в БД). Обычный путь
+                // (не verify: тот приходит с sinceTimestamp и сам создаёт
+                // переоткрытие) молчит, пока кортеж подавлен оператором или ждёт
+                // верификации. Иначе первый же сэмпл после закрытия заявки УК
+                // заводил новый алерт без цепочки — мимо grace и квоты переоткрытий.
+                // Без правила алерт в УК не уходит, поэтому проверка внутри `if (rule)`.
+                if (!options.sinceTimestamp && await this._isTupleMutedOrVerifying(alertData)) {
+                    logger.info(
+                        `Alert skipped: ${alertData.type} for ${alertData.infrastructure_type}:${alertData.infrastructure_id} ` +
+                        '— active suppression or pending verification'
                     );
                     metrics.recordAlertCheck(alertData.type, 'gate_denied');   // [AR-2]
                     return null;

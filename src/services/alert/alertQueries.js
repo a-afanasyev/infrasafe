@@ -243,7 +243,35 @@ async function hasRecentHeatingAnomaly(controllerId) {
     return result.rows.length > 0;
 }
 
+// [Q-03] Кортеж (тип инфраструктуры, id, тип алерта) уже «чей-то»: оператор
+// его подавил, либо по нему идёт верификация после закрытия заявки (до конца
+// окна — дальше застрявшая строка не держит кортеж вечно). Обычная телеметрия в
+// это время алертов не создаёт: переоткрытием владеет верификатор (grace, квота,
+// цепочка). В обеих таблицах infrastructure_id — INTEGER, в алертах — varchar:
+// нечисловой id там встретиться не может, поэтому в SQL его не шлём вовсе.
+const PG_INT_MAX = 2147483647;
+async function isTupleMutedOrVerifying(infraType, infraId, alertType) {
+    const id = Number(infraId);
+    if (!Number.isInteger(id) || id < 0 || id > PG_INT_MAX) {
+        return false;
+    }
+    const result = await db.query(
+        `SELECT EXISTS (
+                    SELECT 1 FROM alert_suppressions
+                    WHERE infrastructure_type = $1 AND infrastructure_id = $2 AND alert_type = $3
+                      AND cleared_at IS NULL AND suppress_until > NOW()
+                ) OR EXISTS (
+                    SELECT 1 FROM alert_verifications
+                    WHERE infrastructure_type = $1 AND infrastructure_id = $2 AND alert_type = $3
+                      AND status = 'pending' AND window_until > NOW()
+                ) AS owned`,
+        [infraType, id, alertType]
+    );
+    return result.rows[0].owned === true;
+}
+
 module.exports = {
+    isTupleMutedOrVerifying,
     voltageSeverityCandidates,
     getTransformerLoadSince,
     latestProfileSampleAnomalous,
