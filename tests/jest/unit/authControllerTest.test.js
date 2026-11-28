@@ -7,6 +7,7 @@ jest.mock('../../../src/services/authService', () => ({
     logout: jest.fn(),
     refreshToken: jest.fn(),
     changePassword: jest.fn(),
+    verifyReauthPassword: jest.fn(),
     // [P1-V1] logout now best-effort blacklists the refresh token too
     blacklistToken: jest.fn()
 }));
@@ -681,6 +682,18 @@ describe('AuthController', () => {
     });
 
     describe('changePassword', () => {
+        // [Q-16] Нестроковый пароль уходил в bcrypt.compare и давал 500.
+        test.each([
+            [{ currentPassword: 123, newPassword: 'NewPass1' }],
+            [{ currentPassword: ['OldPass1'], newPassword: 'NewPass1' }],
+            [{ currentPassword: 'OldPass1', newPassword: { a: 1 } }],
+        ])('returns 400 for non-string passwords: %j', async (body) => {
+            req.body = body;
+            await authController.changePassword(req, res, next);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(authService.changePassword).not.toHaveBeenCalled();
+        });
+
         test('returns 400 when currentPassword is missing', async () => {
             req.body = { newPassword: 'NewPass1' };
             await authController.changePassword(req, res, next);
@@ -765,6 +778,16 @@ describe('AuthController', () => {
             await authController.changePassword(req, res, next);
 
             expect(authService.changePassword).toHaveBeenCalledWith(99, 'OldPass1', 'NewPass1');
+        });
+    });
+
+    // [Q-16] disable-2fa: нестроковый пароль — 400, до сверки с хэшем.
+    describe('disable2FA', () => {
+        test.each([123, ['x'], { a: 1 }, true])('returns 400 for non-string password: %p', async (password) => {
+            req.body = { password };
+            await authController.disable2FA(req, res, next);
+            expect(res.status).toHaveBeenCalledWith(400);
+            expect(authService.verifyReauthPassword).not.toHaveBeenCalled();
         });
     });
 });

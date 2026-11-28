@@ -363,7 +363,10 @@ const changePassword = async (req, res, next) => {
         const userId = req.user.user_id || req.user.userId;
         const { currentPassword, newPassword } = req.body;
 
-        if (!currentPassword || !newPassword) {
+        // [Q-16] Тип — строго строка: число или массив уходили в
+        // bcrypt.compare и давали 500 (тот же класс, что S-AUTH-2в на входе).
+        if (typeof currentPassword !== 'string' || typeof newPassword !== 'string'
+            || !currentPassword || !newPassword) {
             return res.status(400).json({
                 error: 'Current password and new password are required'
             });
@@ -542,7 +545,8 @@ const disable2FA = async (req, res, next) => {
         const userId = req.user.user_id || req.user.userId;
         const { password } = req.body;
 
-        if (!password) {
+        // [Q-16] Нестроковый пароль — 400 до bcrypt.compare (иначе 500).
+        if (typeof password !== 'string' || !password) {
             return res.status(400).json({ error: 'Password is required to disable 2FA' });
         }
 
