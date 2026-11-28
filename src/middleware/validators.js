@@ -118,6 +118,11 @@ const normalizeMetricsRange = (req, res, next) => {
     const now = Date.now();
     const startIn = req.query.startDate ? Date.parse(req.query.startDate) : null;
     const endIn = req.query.endDate ? Date.parse(req.query.endDate) : null;
+    // [Q-19] isISO8601 пропускает формы, которых Date.parse не знает
+    // (`2026-W10`, `2026-123`): NaN дальше ронял toISOString() → 500.
+    if (Number.isNaN(startIn) || Number.isNaN(endIn)) {
+        return sendError(res, 400, 'startDate/endDate must be calendar dates in ISO 8601');
+    }
 
     let start;
     let end;
@@ -146,8 +151,10 @@ const normalizeMetricsRange = (req, res, next) => {
 };
 
 const validateMetricsRange = [
-    query('startDate').optional().isISO8601().withMessage('startDate must be ISO 8601'),
-    query('endDate').optional().isISO8601().withMessage('endDate must be ISO 8601'),
+    // [Q-19] isString — повторённый параметр приходит массивом; strict
+    // отвергает несуществующие даты (`2026-02-30`).
+    query('startDate').optional().isString().bail().isISO8601({ strict: true }).withMessage('startDate must be ISO 8601'),
+    query('endDate').optional().isString().bail().isISO8601({ strict: true }).withMessage('endDate must be ISO 8601'),
     query('timeFrame').optional().isIn([...metricsQuery.timeFrames])
         .withMessage(`timeFrame must be one of ${metricsQuery.timeFrames.join(', ')}`),
     handleValidationErrors,

@@ -74,6 +74,19 @@ describe('[S-INJ-2] validateMetricsRange', () => {
         expect(res.status).toBe(400);
     });
 
+    // [Q-19] Формы ISO 8601, которые Date.parse не понимает (неделя,
+    // порядковый день), повторённый параметр (массив) и несуществующая дата
+    // давали NaN → toISOString() бросал → 500.
+    test.each([
+        'startDate=2026-W10',
+        'endDate=2026-123',
+        'startDate=2026-01-01&startDate=2026-01-02',
+        'endDate=2026-02-30',
+    ])('%s → 400, а не 500', async (qs) => {
+        const res = await request(app).get(`/m?${qs}`);
+        expect(res.status).toBe(400);
+    });
+
     test('timeFrame вне списка → 400, из списка — ok', async () => {
         expect((await request(app).get('/m?timeFrame=30d')).status).toBe(400);
         expect((await request(app).get('/m?timeFrame=7d')).status).toBe(200);
