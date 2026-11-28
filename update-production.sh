@@ -382,7 +382,11 @@ pending_n="$(echo "$status_out" | sed -n 's/.*migrate-status: applied=[0-9]* pen
 # Runner-change deploy-guard: never ship a runner-code change AND pending
 # migrations in the same release — the runner executes from the OLD checkout,
 # so a runner change must land in a SEPARATE earlier release.
-if [ -n "$(git diff --name-only HEAD "$TARGET" -- scripts/migrate.sh scripts/lib/)" ] \
+# [Q-31] Тот же довод для самого оркестратора и его помощников: этот процесс —
+# СТАРЫЙ update-production.sh, а rebuild-frontend.sh и compose-drift-check.sh
+# после merge он зовёт уже НОВЫМИ. Схему такой релиз не несёт.
+if [ -n "$(git diff --name-only HEAD "$TARGET" -- scripts/migrate.sh scripts/lib/ \
+            update-production.sh scripts/rebuild-frontend.sh scripts/compose-drift-check.sh)" ] \
    && [ "${pending_n:-0}" -gt 0 ]; then
     err "❌ runner change + ${pending_n} pending migration(s) in one release — split them"
     exit 1
@@ -426,11 +430,11 @@ ok "✅ app healthy"
 # пересоздаёт ТОЛЬКО app, поэтому бамп postgres/redis/nginx в compose ничего не
 # делает, пока контейнер не пересоздан руками. Предупреждение, не отказ: БД не
 # должна пересоздаваться внутри деплоя приложения.
-say "🧭 Step 5b: compose drift check (networks / public ports / images)"
+say "🧭 Step 5b: compose drift check (networks / public ports / images / config)"
 if COMPOSE_FILES="${COMPOSE_FILES[*]}" bash scripts/compose-drift-check.sh; then
     ok "✅ no compose drift"
 else
-    warn "⚠ compose drift detected — see ✗ lines above; images: recreate the listed service(s) in a maintenance window"
+    warn "⚠ compose drift detected — see ✗ lines above; images/config: recreate the listed service(s) in a maintenance window"
 fi
 
 # Step 6 — publish dist (flag AFTER success; two statements so a publish failure
