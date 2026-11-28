@@ -72,7 +72,7 @@ for _cf in "${_MIGRATE_COMPOSE_FILES[@]}"; do COMPOSE_F_ARGS+=(-f "$_cf"); done
 RUN_ID="$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)"
 LOCK_ACQUIRED=0
 # [Q-31] Файлы, которые нельзя обернуть в одну транзакцию с записью о них
-# (см. process_one): свой BEGIN/COMMIT или операторы вне транзакции.
+# (применение в `up`): свой BEGIN/COMMIT или операторы вне транзакции.
 NON_WRAPPABLE_RE='^[[:space:]]*(BEGIN([[:space:]]+(TRANSACTION|WORK))?|COMMIT|START[[:space:]]+TRANSACTION)[[:space:]]*;|CONCURRENTLY|^[[:space:]]*VACUUM|ADD[[:space:]]+VALUE'
 
 # --- psql plumbing ---------------------------------------------------------
