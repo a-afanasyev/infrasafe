@@ -39,6 +39,8 @@ jest.mock('../../../src/services/cacheService', () => ({
 jest.mock('../../../src/models/AccountLockout', () => ({
   get: jest.fn().mockResolvedValue(null),
   recordFailedAttempt: jest.fn().mockResolvedValue({ failed_attempts: 1, locked_until: null }),
+  reserveAttempt: jest.fn().mockResolvedValue({ failed_attempts: 1, locked_until: null }),
+  releaseAttempt: jest.fn().mockResolvedValue(undefined),
   clearAttempts: jest.fn().mockResolvedValue(undefined),
   cleanup: jest.fn().mockResolvedValue(0),
 }));

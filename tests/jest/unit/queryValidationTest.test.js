@@ -18,6 +18,17 @@ const {
 
 describe('queryValidation', () => {
     describe('validateSortOrder', () => {
+        // [Q-20] Повторённый параметр приходит массивом: order.toUpperCase()
+        // бросал, а catch отдавал колонку 'id', которой у buildings/
+        // controllers/metrics нет, → 500 из БД.
+        test.each([['buildings', 'building_id', 'ASC'], ['metrics', 'timestamp', 'DESC']])(
+            'non-string order/sort on %s falls back to the entity default, not "id"', (entity, column, order) => {
+                expect(validateSortOrder(entity, ['name', 'x'], ['asc', 'desc']))
+                    .toEqual({ validSort: column, validOrder: order });
+                expect(validateSortOrder(entity, column, { a: 1 }))
+                    .toEqual({ validSort: column, validOrder: order });
+            });
+
         test('returns valid sort and order for known entity and valid column', () => {
             const result = validateSortOrder('buildings', 'name', 'desc');
             expect(result.validSort).toBe('name');

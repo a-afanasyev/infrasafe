@@ -85,6 +85,66 @@ async function recordFailedAttempt(login, maxAttempts, lockoutMs, userId = null)
 }
 
 /**
+ * [Q-11] Зарезервировать попытку входа ДО сверки пароля: один атомарный UPSERT
+ * увеличивает счётчик и возвращает новое значение. Вызывающий пропускает
+ * попытку к bcrypt, только если `failed_attempts <= maxAttempts`, — поэтому
+ * параллельная пачка не может обогнать счётчик, как при «прочитал → сверил →
+ * записал». На `maxAttempts`-й резервации ставится блокировка; успешный вход
+ * снимает её через clearAttempts.
+ *
+ * Отличия от recordFailedAttempt: действующая блокировка НЕ продлевается
+ * (иначе отбитые попытки держали бы её вечно — для общего тормоза это
+ * анонимный DoS), а `users` не трогается (парольный промах на учётную запись
+ * целиком не влияет). Истёкшая блокировка, как и там, сбрасывает счёт на 1.
+ *
+ * @returns {Promise<{ failed_attempts: number, locked_until: Date | null }>}
+ */
+async function reserveAttempt(login, maxAttempts, lockoutMs) {
+    const { rows } = await db.query(
+        `
+        INSERT INTO account_lockout (login, failed_attempts, first_attempt_at, last_attempt_at, locked_until)
+        VALUES ($1, 1, NOW(), NOW(),
+                CASE WHEN 1 >= $2 THEN NOW() + ($3 || ' milliseconds')::interval END)
+        ON CONFLICT (login) DO UPDATE SET
+            failed_attempts = CASE
+                WHEN account_lockout.locked_until <= NOW() THEN 1
+                ELSE account_lockout.failed_attempts + 1
+            END,
+            first_attempt_at = CASE
+                WHEN account_lockout.locked_until <= NOW() THEN NOW()
+                ELSE account_lockout.first_attempt_at
+            END,
+            last_attempt_at = NOW(),
+            locked_until = CASE
+                WHEN account_lockout.locked_until > NOW() THEN account_lockout.locked_until
+                WHEN (CASE WHEN account_lockout.locked_until <= NOW() THEN 1
+                           ELSE account_lockout.failed_attempts + 1 END) >= $2
+                THEN NOW() + ($3 || ' milliseconds')::interval
+                ELSE NULL
+            END
+        RETURNING failed_attempts, locked_until
+        `,
+        [login, maxAttempts, String(lockoutMs)]
+    );
+    return rows[0];
+}
+
+/**
+ * [Q-11] Вернуть резервацию, по которой пароль так и не сверялся (попытку
+ * отбил другой счётчик). Снимает блокировку, если без этой попытки порог
+ * не достигнут.
+ */
+async function releaseAttempt(login, maxAttempts) {
+    await db.query(
+        `UPDATE account_lockout SET
+             failed_attempts = failed_attempts - 1,
+             locked_until = CASE WHEN failed_attempts - 1 < $2 THEN NULL ELSE locked_until END
+         WHERE login = $1 AND failed_attempts > 0`,
+        [login, maxAttempts]
+    );
+}
+
+/**
  * Remove the lockout record for the given login. Called after a successful
  * authentication. When `userId` is known, also clears
  * `users.account_locked_until` in the same statement (hygiene — an expired
@@ -126,6 +186,8 @@ async function cleanup(staleAfterMs = 24 * 60 * 60 * 1000) {
 module.exports = {
     get,
     recordFailedAttempt,
+    reserveAttempt,
+    releaseAttempt,
     clearAttempts,
     cleanup,
 };

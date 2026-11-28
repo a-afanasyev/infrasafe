@@ -76,6 +76,11 @@ const setupQueryMock = (db) => {
             return { rows: [], rowCount: 0 };
         }
 
+        // [Q-11] Резервация попытки входа — UPSERT ... RETURNING всегда даёт строку.
+        if (s.includes('INSERT INTO account_lockout')) {
+            return { rows: [{ failed_attempts: 1, locked_until: null }], rowCount: 1 };
+        }
+
         // Find user by ID (JWT middleware verification)
         if (s.includes('FROM users') && s.includes('user_id = $1') && !s.includes('INSERT') && !s.includes('UPDATE')) {
             const hash = await getTestPasswordHash();

@@ -77,7 +77,9 @@ beforeEach(() => {
 });
 
 describe('[M-5] verifyReauthPassword считается в блокировке', () => {
-    test('промах записывается в счётчик по username И по user_id', async () => {
+    // [Q-15] Ключ — `reauth:uid:<id>`, а не голое имя: имя вида `acct:uid:1`
+    // писало бы в чужую строку той же таблицы.
+    test('промах записывается в счётчик reauth:uid:<id> И по user_id', async () => {
         bcrypt.compare.mockResolvedValueOnce(false);
 
         const result = await authService.verifyReauthPassword(7, 'guess');
@@ -87,7 +89,7 @@ describe('[M-5] verifyReauthPassword считается в блокировке'
         // user_id обязателен: именно он переносит блокировку на
         // users.account_locked_until, а её и проверяет auth-middleware.
         expect(AccountLockout.recordFailedAttempt).toHaveBeenCalledWith(
-            'operator', expect.any(Number), expect.any(Number), 7
+            'reauth:uid:7', expect.any(Number), expect.any(Number), 7
         );
     });
 
@@ -97,7 +99,7 @@ describe('[M-5] verifyReauthPassword считается в блокировке'
         const result = await authService.verifyReauthPassword(7, 'correct');
 
         expect(result.ok).toBe(true);
-        expect(AccountLockout.clearAttempts).toHaveBeenCalledWith('operator', 7);
+        expect(AccountLockout.clearAttempts).toHaveBeenCalledWith('reauth:uid:7', 7);
         expect(AccountLockout.recordFailedAttempt).not.toHaveBeenCalled();
     });
 
@@ -166,7 +168,7 @@ describe('[M-5] changePassword — тот же оракул, та же защи�
             .rejects.toMatchObject({ code: 'INVALID_CURRENT_PASSWORD' });
 
         expect(AccountLockout.recordFailedAttempt).toHaveBeenCalledWith(
-            'operator', expect.any(Number), expect.any(Number), 7
+            'reauth:uid:7', expect.any(Number), expect.any(Number), 7
         );
     });
 
@@ -187,7 +189,7 @@ describe('[M-5] changePassword — тот же оракул, та же защи�
 
         await authService.changePassword(7, 'correct', 'NewPass123!');
 
-        expect(AccountLockout.clearAttempts).toHaveBeenCalledWith('operator', 7);
+        expect(AccountLockout.clearAttempts).toHaveBeenCalledWith('reauth:uid:7', 7);
         expect(User.updatePassword).toHaveBeenCalled();
     });
 });

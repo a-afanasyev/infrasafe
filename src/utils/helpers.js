@@ -45,8 +45,19 @@ const isClientError = (error) =>
  * @param {Error} error пойманная ошибка
  * @returns {Error} она же, если статус клиентский; иначе новая 500
  */
+// Коды Postgres «значение не подходит типу» — ошибка запроса клиента, не
+// сбой сервера: invalid_text_representation, numeric_value_out_of_range и
+// [Q-20] invalid_datetime_format / datetime_field_overflow (мусор в фильтре
+// даты; коды сверены на живом Postgres в tests/jest/db).
+const PG_BAD_PARAM_CODES = new Set(['22P02', '22003', '22007', '22008']);
+
+// [Q-20] Ошибка Postgres из PG_BAD_PARAM_CODES проходит как есть (без
+// statusCode): errorHandler сам ставит ей 400 и подменяет текст СУБД
+// нейтральной фразой. Раньше она превращалась здесь в глухую 500.
 const toClientError = (error) =>
-    (isClientError(error) ? error : createError('Internal server error', 500));
+    (isClientError(error) || PG_BAD_PARAM_CODES.has(error?.code)
+        ? error
+        : createError('Internal server error', 500));
 
 /**
  * Валидация координат
@@ -67,5 +78,6 @@ module.exports = {
     createError,
     isClientError,
     toClientError,
+    PG_BAD_PARAM_CODES,
     validateCoordinates,
 };

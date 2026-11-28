@@ -92,6 +92,21 @@ const validateLineUpdate = [
     handleValidationErrors,
 ];
 
+// [Q-20] Значения пакетных операций — по тем же правилам, что одиночная
+// запись: раньше контроллер проверял их только на истинность, и `"abc"` или
+// `-5` падали 500-й из БД (22P02 / CHECK > 0). Наличие поля для конкретного
+// действия по-прежнему проверяет контроллер.
+const validateTransformerBatchData = [
+    ...optionalPositiveNumber('data.voltage_kv', 'Напряжение (кВ)'),
+    ...optionalPositiveNumber('data.power_kva', 'Мощность (кВА)'),
+    handleValidationErrors,
+];
+
+const validateLineBatchData = [
+    ...optionalPositiveNumber('data.voltage_kv', 'Напряжение (кВ)'),
+    handleValidationErrors,
+];
+
 const validateWaterLineCreate = [
     ...requiredText('name', 'Название линии'),
     ...optionalText('description', 'Описание'),
@@ -139,6 +154,8 @@ module.exports = {
     validateTransformerCreate,
     validateLineCreate,
     validateLineUpdate,
+    validateTransformerBatchData,
+    validateLineBatchData,
     validateWaterLineCreate,
     validateColdWaterSourceCreate,
     validateHeatSourceCreate,

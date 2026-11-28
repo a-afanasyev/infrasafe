@@ -13,6 +13,8 @@ const {
     validateTransformerCreate,
     validateLineCreate,
     validateLineUpdate,
+    validateTransformerBatchData,
+    validateLineBatchData,
     validateWaterLineCreate,
     validateColdWaterSourceCreate,
     validateHeatSourceCreate,
@@ -577,7 +579,7 @@ router.delete('/transformers/:id', rateLimitStrict, validateIdParam, adminContro
  *       200:
  *         description: Результат массовой операции
  */
-router.post('/transformers/batch', rateLimitStrict, validateBatchIds, adminController.batchTransformersOperation);
+router.post('/transformers/batch', rateLimitStrict, validateBatchIds, validateTransformerBatchData, adminController.batchTransformersOperation);
 
 /**
  * @swagger
@@ -747,7 +749,7 @@ router.delete('/lines/:id', rateLimitStrict, validateIdParam, adminController.de
  *             properties:
  *               action:
  *                 type: string
- *                 enum: [delete, update_voltage, set_maintenance, export]
+ *                 enum: [delete, update_voltage]
  *               ids:
  *                 type: array
  *                 items:
@@ -758,7 +760,7 @@ router.delete('/lines/:id', rateLimitStrict, validateIdParam, adminController.de
  *       200:
  *         description: Результат массовой операции
  */
-router.post('/lines/batch', rateLimitStrict, validateBatchIds, adminController.batchLinesOperation);
+router.post('/lines/batch', rateLimitStrict, validateBatchIds, validateLineBatchData, adminController.batchLinesOperation);
 
 /**
  * @swagger

@@ -381,15 +381,15 @@ describe('AdminLineController', () => {
             );
         });
 
-        test('batch set_maintenance calls adminService.batchUpdateColumn', async () => {
+        // [Q-20] Тест закреплял UPDATE несуществующего `lines.maintenance_date`
+        // (мок БД не может этого заметить). Действие удалено.
+        test('set_maintenance is an unknown action → 400, no UPDATE', async () => {
             req.body = { action: 'set_maintenance', ids: [1, 2], data: { maintenance_date: '2026-05-01' } };
-            adminService.batchUpdateColumn.mockResolvedValue({ rows: [{ line_id: 1 }, { line_id: 2 }] });
 
             await batchLinesOperation(req, res, next);
 
-            expect(adminService.batchUpdateColumn).toHaveBeenCalledWith(
-                'lines', 'line_id', [1, 2], 'maintenance_date', '2026-05-01'
-            );
+            expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
+            expect(adminService.batchUpdateColumn).not.toHaveBeenCalled();
         });
 
         test('returns 400 when action is missing', async () => {

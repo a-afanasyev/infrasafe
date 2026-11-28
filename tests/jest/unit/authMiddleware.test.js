@@ -719,6 +719,22 @@ describe('Auth Middleware', () => {
             expect(authService.getUserForAuth).not.toHaveBeenCalled();
         });
 
+        // [Q-18] Refresh-токен (type:'refresh') при совпавших в dev/test
+        // секретах прошёл бы подпись — req.user он давать не должен.
+        test('treats a type:"refresh" token as anonymous', async () => {
+            req.headers.authorization = 'Bearer refresh-token';
+            authService.isTokenBlacklisted.mockResolvedValue(false);
+            jwt.verify.mockImplementation((token, secret, opts, cb) => {
+                cb(null, { user_id: 1, type: 'refresh' });
+            });
+
+            await optionalAuth(req, res, next);
+
+            expect(req.user).toBeNull();
+            expect(next).toHaveBeenCalled();
+            expect(authService.getUserForAuth).not.toHaveBeenCalled();
+        });
+
         test('treats any non-empty scope claim as anonymous', async () => {
             req.headers.authorization = 'Bearer scoped-token';
             authService.isTokenBlacklisted.mockResolvedValue(false);

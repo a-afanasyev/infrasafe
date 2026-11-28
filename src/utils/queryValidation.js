@@ -141,12 +141,15 @@ function validateSortOrder(entityType, sort, order) {
             validSort = defaultParams.column;
         }
 
-        // Валидируем направление сортировки
+        // Валидируем направление сортировки.
+        // [Q-20] Только строка: повторённый параметр приходит массивом, и
+        // order.toUpperCase() бросал — catch ниже отдавал колонку 'id'.
+        const upperOrder = typeof order === 'string' ? order.toUpperCase() : null;
         let validOrder;
-        if (order && allowedOrderDirections.includes(order.toUpperCase())) {
-            validOrder = order.toUpperCase();
+        if (upperOrder && allowedOrderDirections.includes(upperOrder)) {
+            validOrder = upperOrder;
         } else {
-            if (order && !allowedOrderDirections.includes(order.toUpperCase())) {
+            if (order) {
                 logger.warn(`Недопустимое направление сортировки '${order}'. Используем '${defaultParams.order}'.`);
             }
             validOrder = defaultParams.order;
@@ -163,11 +166,13 @@ function validateSortOrder(entityType, sort, order) {
     } catch (error) {
         logger.error(`Ошибка валидации параметров сортировки: ${error.message}`);
         
-        // В случае ошибки возвращаем безопасные дефолтные значения
-        return {
-            validSort: 'id',
-            validOrder: 'ASC'
-        };
+        // В случае ошибки возвращаем безопасные дефолтные значения.
+        // [Q-20] Дефолт сущности, а не 'id': у buildings/controllers/metrics
+        // такой колонки нет, и запасной путь сам давал 500.
+        const fallback = defaultSortParams[entityType];
+        return fallback
+            ? { validSort: fallback.column, validOrder: fallback.order }
+            : { validSort: 'id', validOrder: 'ASC' };
     }
 }
 
