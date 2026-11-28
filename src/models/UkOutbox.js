@@ -8,7 +8,8 @@
  *
  * Status state machine:
  *   pending → sent  (on 202/409 from UK)
- *   pending → dead  (on 401/422, or after 5 failed 5xx attempts)
+ *   pending → dead  (on 401/422, or when a retried row outlives
+ *                    UK_OUTBOX_MAX_AGE_HOURS — see ukOutboxService._isStale)
  *
  * Idempotency: enqueue uses `INSERT ... ON CONFLICT (event_id) DO NOTHING`
  * so concurrent retries with the same idempotency_key are no-ops, not
@@ -25,9 +26,6 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const metrics = require('../observability/metrics');   // [AR-2]
-
-// After this many failed send attempts a row is marked dead.
-const MAX_ATTEMPTS = 5;
 
 class UkOutbox {
     /**
@@ -138,8 +136,7 @@ class UkOutbox {
 
     /**
      * Record a retriable failure (429/503/network) and bump attempt_count.
-     * If attempts reach MAX_ATTEMPTS the row stays pending but next_attempt_at
-     * is set far in the future; caller should detect this and call markDead.
+     * The row stays pending until next_attempt_at; there is no attempt cap.
      *
      * @param {number} id
      * @param {string} errorMessage
@@ -223,7 +220,7 @@ class UkOutbox {
      * would bury a critical escalation forever — revive it instead. The
      * `status = 'dead'` guard makes it idempotent and race-safe (a row another
      * worker already revived/sent matches zero rows). Resets attempt_count so
-     * the full backoff budget is available again, AND created_at so the
+     * backoff restarts from the shortest delay, AND created_at so the
      * drain-TTL guard (ukOutboxService._isStale) gives the revived row a fresh
      * delivery window — without this a row dead-by-age would be re-killed on the
      * very next drain tick, looping forever against the sweep that revives it.
@@ -246,10 +243,6 @@ class UkOutbox {
             logger.error(`UkOutbox.reviveDead error: ${error.message}`);
             throw error;
         }
-    }
-
-    static get MAX_ATTEMPTS() {
-        return MAX_ATTEMPTS;
     }
 
     /**

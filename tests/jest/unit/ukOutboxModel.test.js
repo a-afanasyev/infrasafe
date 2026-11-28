@@ -225,9 +225,9 @@ describe('UkOutbox model', () => {
         });
     });
 
-    describe('MAX_ATTEMPTS constant', () => {
-        it('is exposed for callers to compute attempt-cap logic', () => {
-            expect(UkOutbox.MAX_ATTEMPTS).toBe(5);
+    describe('[Q-04] no attempt cap', () => {
+        it('MAX_ATTEMPTS is gone — retried rows are bounded by the drain-TTL', () => {
+            expect(UkOutbox.MAX_ATTEMPTS).toBeUndefined();
         });
     });
 });
