@@ -1,12 +1,11 @@
 const logger = require('../utils/logger');
+const { PG_BAD_PARAM_CODES } = require('../utils/helpers');
 
 // [Sprint 5 / P2-4] Case-insensitive dev check — the previous
 // `process.env.NODE_ENV === 'development'` would miss `Development`,
 // `DEVELOPMENT`, or stray whitespace. Re-read per call instead of caching
 // at module load so tests that mutate NODE_ENV continue to work.
-// Коды Postgres «значение не подходит типу»: invalid_text_representation и
-// numeric_value_out_of_range.
-const PG_BAD_PARAM_CODES = new Set(['22P02', '22003']);
+// Коды Postgres «значение не подходит типу» — PG_BAD_PARAM_CODES в utils/helpers.
 
 const isDev = () => (process.env.NODE_ENV || '').trim().toLowerCase() === 'development';
 

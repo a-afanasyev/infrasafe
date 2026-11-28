@@ -183,7 +183,10 @@ describe('Error Handler Middleware', () => {
             expect(res.json.mock.calls[0][0].error).toMatchObject({ message: 'Контроллер не найден', status: 404 });
         });
 
-        test.each([['22P02', 'invalid input syntax for type integer: "1 or 1=1"'], ['22003', 'value "99999999999" is out of range for type integer']])(
+        test.each([['22P02', 'invalid input syntax for type integer: "1 or 1=1"'], ['22003', 'value "99999999999" is out of range for type integer'],
+            // [Q-20] мусор в фильтре даты
+            ['22007', 'invalid input syntax for type timestamp with time zone: "x"'],
+            ['22008', 'date/time field value out of range: "2026-13-45"']])(
             'ошибка Postgres %s → 400 без текста СУБД',
             (code, pgMessage) => {
                 errorHandler(Object.assign(new Error(pgMessage), { code, severity: 'ERROR', routine: 'pg_strtoint32' }), req, res, next);
