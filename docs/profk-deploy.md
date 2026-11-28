@@ -18,8 +18,9 @@ below for the one-time cutover (host-build remains the break-glass path).
     (`./.deploy/profk-initdb.sql`, generated — see below) so a fresh DB bootstraps the
     `database/init/` path (01-09 bake migrations 003-017, 99 self-declares them in
     `schema_migrations`); `migrate up` then applies 018+.
-  - `nginx`: points `command` + `healthcheck` at `nginx.profk.conf` and swaps the cert **sources**
-    to `/etc/letsencrypt/live/profk.uz/*.pem` (same `/etc/nginx/ssl/*` targets as base).
+  - `nginx`: points `command` + `healthcheck` at `nginx.profk.conf` and mounts the host
+    `/etc/letsencrypt/{live,archive}` **directories** at the same paths; `nginx.profk.conf` reads
+    `/etc/letsencrypt/live/profk.uz/*.pem` (Q-12 — see "Certificate renewal" below).
 - **`nginx-config/nginx.profk.conf`** — fork of `nginx.production.conf`: `server_name` + CORS map +
   CSP → `profk.uz` (dropped the `aisolutions` SAN alias); `/uk/*` routing + HMAC unchanged. The
   **root `location = /` returns a 302 to `https://profk.uz/uk/home`** (client sees the UK home
@@ -91,6 +92,38 @@ below for the one-time cutover (host-build remains the break-glass path).
     token_blacklist RESTART IDENTITY CASCADE;` + `REFRESH MATERIALIZED VIEW mv_transformer_load_realtime;`
     — keeps `alert_rules`/`integration_config`), then create the real admin:
     `docker exec -it infrasafe-app-1 node src/cli/create-admin.js <user> <email>` (muted password prompt).
+
+## Certificate renewal (Q-12, 2026-11-28)
+Until 2026-11-28 the overlay bind-mounted the three `live/profk.uz/*.pem` symlinks as single files.
+Docker resolves a file mount once, at container start, and pins `archive/profk.uz/…N.pem`; after
+`certbot renew` writes `…N+1.pem` and repoints the symlink, `nginx -s reload` keeps serving the OLD
+certificate until the container is recreated. Now the directories are mounted, so a reload is enough.
+
+**One-time switch (needs the nginx container RECREATED — a few seconds of downtime for profk.uz,
+assets.profk.uz AND the UK panel `/uk/*`):**
+```
+cd /opt/infrasafe
+git pull --ff-only                       # nginx.profk.conf now points at /etc/letsencrypt/...
+docker compose -f docker-compose.unified.yml -f docker-compose.profk.yml up -d --no-deps nginx
+docker exec infrasafe-nginx-1 nginx -t -c /etc/nginx/custom/nginx.profk.conf
+curl -fsS https://profk.uz/health >/dev/null && echo OK
+```
+Recreate right after the pull: the RUNNING container has no `/etc/letsencrypt`, so between the two
+commands its healthcheck fails, and a `docker restart` (instead of `up -d`) would not start nginx at
+all. For the same reason do NOT roll this change out with `update-production.sh` — its Step 6b runs
+`nginx -t` inside the old container and aborts. If `main` carries other changes too, do the two
+commands above first, then run `update-production.sh` as usual.
+
+**Renewal hook** (host, once): `/etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh`, mode 0755 —
+certbot runs it only after a certificate was actually renewed:
+```
+#!/bin/sh
+set -e
+docker exec infrasafe-nginx-1 nginx -t -c /etc/nginx/custom/nginx.profk.conf
+docker exec infrasafe-nginx-1 nginx -c /etc/nginx/custom/nginx.profk.conf -s reload
+```
+Run it once by hand to check it. After a renewal `notBefore` of the served certificate must move:
+`echo | openssl s_client -connect profk.uz:443 -servername profk.uz 2>/dev/null | openssl x509 -noout -dates`.
 
 ## DB-stored config toggles (in `integration_config`, not env)
 UK integration is DB-gated — on a fresh DB it seeds **off**, so inbound webhooks 503 until enabled:

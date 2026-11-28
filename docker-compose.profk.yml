@@ -10,11 +10,19 @@ services:
 
   nginx:
     # profk.uz edge: staging-style override — point command + healthcheck at the
-    # profk config fork, and swap the cert SOURCES (same /etc/nginx/ssl targets).
+    # profk config fork and mount the host certbot tree.
     command: ["nginx", "-c", "/etc/nginx/custom/nginx.profk.conf", "-g", "daemon off;"]
     healthcheck:
       test: ["CMD", "nginx", "-t", "-c", "/etc/nginx/custom/nginx.profk.conf"]
+    # [Q-12] Сертификат — КАТАЛОГАМИ, не файлами. Файловый bind-mount симлинка
+    # live/profk.uz/*.pem docker разыменовывает при старте и держит inode
+    # archive/…N.pem: после продления certbot кладёт N+1 и переставляет ссылку, а
+    # `nginx -s reload` продолжает читать старый файл до пересоздания контейнера
+    # (та же ловушка, что [B-012] у конфига). Каталог разрешается при каждом
+    # чтении. Цели совпадают с хостовыми путями — ссылки в live/ относительные
+    # (../../archive/…). Только live/ и archive/: accounts/ (ключ ACME-аккаунта)
+    # и renewal/ периметру не нужны. Ключ 0600 root читает мастер nginx — он
+    # root в контейнере, владелец файла, DAC_OVERRIDE для этого не нужен.
     volumes:
-      - /etc/letsencrypt/live/profk.uz/fullchain.pem:/etc/nginx/ssl/fullchain.pem:ro
-      - /etc/letsencrypt/live/profk.uz/privkey.pem:/etc/nginx/ssl/privkey.pem:ro
-      - /etc/letsencrypt/live/profk.uz/chain.pem:/etc/nginx/ssl/chain.pem:ro
+      - /etc/letsencrypt/live:/etc/letsencrypt/live:ro
+      - /etc/letsencrypt/archive:/etc/letsencrypt/archive:ro
