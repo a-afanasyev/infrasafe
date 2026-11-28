@@ -208,7 +208,8 @@ credential-эндпоинтов УК через `%61uth` (S-PERIM-1) подтв�
 - `fix/uk-outbox` — Q-04, Q-05 (Q-09 ждёт решения владельца);
 - ветка телеметрии — Q-06, Q-07, Q-10, Q-23 вместе с TEL-1/N-20;
 - `fix/auth-lockout` — Q-11, Q-15, Q-16, Q-19, Q-20;
-- `fix/ops-perimeter` — Q-13, Q-25, Q-26, Q-28, Q-29, Q-31, Q-37;
+- `fix/ops-perimeter` — Q-13, Q-25, Q-26, Q-28, Q-29, Q-31, Q-37 (Q-31c — отдельным
+  релизом, `fix/migrate-single-transaction`: правка раннера);
 - уборка — Q-32, Q-35, Q-36 и остальное.
 
 ## Легенда
